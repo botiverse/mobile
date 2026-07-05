@@ -16,9 +16,9 @@
     "fullscreen": true,
     "systemBars": "hidden",
     "validation": {
-      "uniqueColors": 461,
-      "dominantRatio": 0.8840806
+      "uniqueColors": 471,
+      "dominantRatio": 0.8835283
     }
   },
-  "capturedAt": "1783233936381"
+  "capturedAt": "1783244611143"
 }

@@ -1,204 +1,840 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Slock Visual Testing Runs</title>
+  <title>Slock Visual Testing</title>
   <style>
-    body { margin: 24px; color: #141111; background: #fffaf0; font-family: system-ui, sans-serif; }
-    main { max-width: 1080px; margin: 0 auto; }
-    h1 { margin: 0 0 8px; font-size: 32px; }
-    a { color: #141111; font-weight: 700; }
-    .hero { border: 2px solid #141111; background: #fff; padding: 18px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
-    .hero h2 { margin: 0 0 8px; font-size: 22px; }
-    .hero p { margin: 0 0 14px; color: #514946; }
-    .primary { display: inline-block; border: 2px solid #141111; background: #FFD440; color: #141111; padding: 10px 14px; box-shadow: 3px 3px 0 #141111; text-decoration: none; }
-    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
-    .runMeta { color: #514946; margin: 0 0 14px; }
-    .downloads { border: 2px solid #141111; background: #fff; padding: 12px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
-    .downloads h2 { margin: 0 0 8px; font-size: 18px; }
-    .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
-    .pill { border: 2px solid #141111; background: #fff; padding: 6px 10px; box-shadow: 3px 3px 0 #141111; }
-    table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 4px 4px 0 #141111; }
-    th, td { border: 2px solid #141111; padding: 10px; text-align: left; vertical-align: top; }
-    th { background: #FFD440; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    :root { --bg: #ffffff; --canvas: #F6F9FC; --border: #ededed; --hairline: #e6e6e6; --text: #2E3438; --muted: #798186; --faint: #B0B7BD; --hover: #f6f7f8; --accent: #029CFD; --sel-bg: #E3F3FF; --green: #16a34a; --amber: #d97706; --red: #dc2626; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; color: var(--text); background: var(--bg); font-family: "Alibaba PuHuiTi 3.0", "Alibaba PuHuiTi", "PingFang SC", "Nunito Sans", -apple-system, ui-sans-serif, "Segoe UI", Roboto, "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    code, .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+    a { color: var(--accent); }
+    .sb { display: grid; grid-template-columns: 236px minmax(0, 1fr); height: 100vh; }
+    /* ---- sidebar ---- */
+    .sb-sidebar { background: var(--bg); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; min-height: 0; }
+    .sb-brand { padding: 15px 16px 10px; }
+    .sb-brand h1 { margin: 0; font-size: 14px; font-weight: 800; letter-spacing: -0.01em; }
+    .sb-brand .sub { margin-top: 3px; font-size: 12px; color: var(--muted); }
+    .sb-brand .sub code { font-size: 11px; }
+    .sb-search { padding: 0 12px 10px; }
+    .sb-search .box { display: flex; align-items: center; gap: 6px; border: 1px solid var(--hairline); border-radius: 5px; padding: 6px 8px; background: var(--bg); }
+    .sb-search .box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .sb-search svg { color: var(--faint); flex: none; }
+    .sb-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: inherit; font-size: 13px; color: var(--text); }
+    .sb-search input::placeholder { color: var(--faint); }
+    .sb-search .kbd { flex: none; border: 1px solid var(--hairline); border-radius: 3px; padding: 0 5px; font-size: 10px; line-height: 15px; color: var(--muted); background: #fafbfc; }
+    .sb-tree { flex: 1; overflow: auto; padding: 4px 8px 12px; }
+    .sb-group-head { display: flex; width: 100%; align-items: center; gap: 5px; padding: 6px 6px; background: none; border: 0; border-radius: 5px; font: inherit; font-weight: 700; font-size: 13px; color: var(--text); cursor: pointer; text-align: left; }
+    .sb-group-head:hover { background: var(--hover); }
+    .sb-group-head .count { margin-left: auto; font-weight: 600; font-size: 11px; color: var(--faint); }
+    .sb-caret { display: inline-flex; color: var(--muted); transition: transform 0.12s ease; }
+    .sb-group.closed .sb-caret { transform: rotate(-90deg); }
+    .sb-group.closed .sb-row { display: none; }
+    .sb-glyph { display: inline-flex; flex: none; color: var(--faint); }
+    .sb-group-head .sb-glyph { color: var(--muted); }
+    .sb-row { display: flex; width: 100%; align-items: center; gap: 7px; height: 28px; padding: 0 8px 0 22px; background: none; border: 0; border-radius: 5px; font: inherit; font-size: 13px; color: var(--text); cursor: pointer; text-align: left; }
+    .sb-row:hover { background: var(--hover); }
+    .sb-row.active { background: var(--sel-bg); color: var(--accent); }
+    .sb-row.active .sb-glyph { color: var(--accent); }
+    .sb-row .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-pct { flex: none; font-size: 10.5px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .sb-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--faint); }
+    .sb-dot.pass { background: var(--green); }
+    .sb-dot.different { background: var(--amber); }
+    .sb-dot.missing { background: var(--red); }
+    .sb-empty { padding: 12px; color: var(--muted); font-size: 12px; }
+    .sb-foot { border-top: 1px solid var(--hairline); padding: 6px 14px 14px; max-height: 40vh; overflow: auto; }
+    .sb-foot .lbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin: 12px 0 4px; }
+    .sb-foot a.link { display: block; padding: 3px 0; font-size: 12.5px; color: var(--text); text-decoration: none; }
+    .sb-foot a.link:hover { color: var(--accent); }
+    .sb-foot a.link.accent { color: var(--accent); font-weight: 700; }
+    .sb-run { display: flex; gap: 7px; align-items: baseline; padding: 3px 0; text-decoration: none; }
+    .sb-run:hover .subj { text-decoration: underline; }
+    .sb-run code { font-size: 11px; border: 1px solid var(--hairline); border-radius: 4px; padding: 0 4px; background: #fafbfc; color: var(--text); }
+    .sb-run .subj { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
+    /* ---- main / toolbar ---- */
+    .sb-main { display: flex; flex-direction: column; min-width: 0; background: var(--canvas); }
+    .sb-toolbar { display: flex; align-items: center; gap: 4px; height: 40px; padding: 0 8px 0 14px; background: var(--bg); border-bottom: 1px solid var(--hairline); flex: none; }
+    .sb-story-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 42%; }
+    .sb-story-title .t { font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-story-title .i { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-comptabs { display: flex; align-items: stretch; height: 40px; margin-left: 6px; }
+    .sb-comptab { height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
+    .sb-comptab:hover:not(:disabled) { color: var(--text); }
+    .sb-comptab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .sb-comptab:disabled { color: #cdd2d6; cursor: not-allowed; }
+    .sb-spacer { flex: 1; }
+    .sb-tools { display: flex; align-items: center; gap: 1px; }
+    .sb-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 5px; background: none; color: #5c6870; cursor: pointer; }
+    .sb-iconbtn:hover { background: var(--hover); color: var(--text); }
+    .sb-iconbtn.on { background: var(--sel-bg); color: var(--accent); }
+    .sb-zoomlbl { font-size: 11px; color: var(--muted); min-width: 40px; text-align: center; font-variant-numeric: tabular-nums; }
+    .sb-sep { width: 1px; height: 18px; background: var(--hairline); margin: 0 5px; flex: none; }
+    .sb-classic { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--bg); font-size: 12px; font-weight: 700; color: var(--text); text-decoration: none; white-space: nowrap; }
+    .sb-classic:hover { border-color: var(--accent); color: var(--accent); }
+    /* ---- canvas ---- */
+    .sb-canvas { flex: 1; overflow: auto; min-height: 0; background: var(--canvas); }
+    .sb-canvas[data-bg="white"] { background: #ffffff; }
+    .sb-canvas[data-bg="dark"] { background: #1b1b1b; }
+    .sb-overview { padding: 28px; }
+    .sb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; max-width: 900px; }
+    .sb-stat { background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; padding: 14px 16px; }
+    .sb-stat .lbl { font-size: 12px; color: var(--muted); }
+    .sb-stat .val { font-size: 26px; font-weight: 800; margin-top: 2px; letter-spacing: -0.01em; }
+    .sb-stat.pass .val { color: var(--green); }
+    .sb-stat.different .val { color: var(--amber); }
+    .sb-stat.missing .val { color: var(--red); }
+    .sb-hint { margin-top: 18px; max-width: 720px; background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; padding: 15px 17px; font-size: 13.5px; line-height: 1.5; }
+    .sb-hint p { margin: 0 0 8px; } .sb-hint p:last-child { margin-bottom: 0; }
+    .sb-hint code { font-size: 12px; background: var(--canvas); border-radius: 3px; padding: 1px 4px; }
+    .sb-stage-wrap { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; padding: 34px 28px; }
+    .sb-stage { transform-origin: top center; transition: transform 0.1s ease; }
+    .sb-card { background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04); padding: 16px; }
+    .sb-card img { display: block; max-width: 620px; height: auto; border-radius: 3px; }
+    .sb-stage.actual .sb-card img { max-width: none; }
+    .sb-missing { color: var(--muted); font-size: 13px; padding: 24px; text-align: center; }
+    /* ---- overlay panel (reused engine) ---- */
+    .sb-stage .overlayComparison { width: min(660px, 78vw); background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); padding: 12px 14px; }
+    .overlayComparison summary { cursor: pointer; font-weight: 800; font-size: 13px; margin-bottom: 10px; }
+    .overlayControls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 10px; }
+    .overlayControls label { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--text); }
+    .overlayControls select { border: 1px solid var(--hairline); border-radius: 5px; padding: 3px 6px; font: inherit; font-size: 12px; background: var(--bg); }
+    .overlayControls input[type="range"] { accent-color: var(--accent); width: 96px; }
+    .overlayControls button { border: 1px solid var(--hairline); border-radius: 5px; background: var(--bg); padding: 3px 9px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .overlayControls button:hover { border-color: var(--accent); color: var(--accent); }
+    .overlayControls code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+    .overlayCanvasWrap { overflow: auto; border: 1px solid var(--hairline); border-radius: 4px; background: #fff; }
+    .overlayCanvasWrap canvas { display: block; width: 100%; height: auto; image-rendering: auto; touch-action: none; cursor: crosshair; }
+    .overlayComparison[data-overlay-mode="split"] .overlayCanvasWrap canvas { cursor: ew-resize; }
+    .overlayComparison[data-overlay-mode="align"] .overlayCanvasWrap canvas { cursor: move; }
+    .cropInfo { color: var(--muted); font-size: 12px; }
+    /* ---- addons panel ---- */
+    .sb-addons { flex: none; background: var(--bg); border-top: 1px solid var(--hairline); display: flex; flex-direction: column; height: 34%; min-height: 150px; }
+    .sb-addon-tabbar { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--hairline); flex: none; }
+    .sb-addon-tab { height: 36px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
+    .sb-addon-tab:hover { color: var(--text); }
+    .sb-addon-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+    .sb-addon-body { overflow: auto; padding: 14px 16px; font-size: 13px; }
+    .sb-mtable, .sb-props { border-collapse: collapse; font-size: 12.5px; }
+    .sb-mtable td, .sb-mtable th, .sb-props td, .sb-props th { border: 1px solid var(--hairline); padding: 6px 11px; text-align: left; }
+    .sb-mtable th, .sb-props th { background: var(--canvas); font-weight: 700; }
+    .sb-mtable td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+    .sb-mtable td.num.pass { color: var(--green); } .sb-mtable td.num.different { color: var(--amber); } .sb-mtable td.num.missing { color: var(--red); }
+    .sb-kv { display: grid; grid-template-columns: max-content 1fr; gap: 5px 18px; align-items: baseline; max-width: 760px; }
+    .sb-kv dt { color: var(--muted); font-weight: 700; }
+    .sb-kv dd { margin: 0; }
+    .sb-kv dd code { font-size: 12px; }
+    .sb-status-inline { display: inline-flex; align-items: center; gap: 6px; }
+    .sb-note { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--canvas); font-size: 12.5px; max-width: 760px; line-height: 1.5; }
+    .sb-variant { margin: 0 0 12px; }
+    .sb-variant .vname { font-weight: 800; font-size: 13px; }
+    .sb-addon-empty { color: var(--muted); font-size: 13px; }
+    @media (max-width: 860px) {
+      .sb { grid-template-columns: 1fr; height: auto; }
+      .sb-sidebar { border-right: 0; border-bottom: 1px solid var(--hairline); max-height: 55vh; }
+      .sb-main { height: auto; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Slock Visual Testing</h1>
-    <section class="hero">
-      <h2>最新视觉对比</h2>
-      <p><code>11f2525-20260705065201</code> · react vs android</p>
-      <p class="runMeta">Generated <time class="localizedTime" datetime="2026-07-05T06:52:14.347Z" data-timestamp="2026-07-05T06:52:14.347Z" title="2026-07-05T06:52:14.347Z">2026-07-05 06:52:14 UTC</time></p>
-      <a class="primary" href="runs/11f2525-20260705065201/">查看详情</a>
-      <div class="meta">
-        <span class="pill">Total 82</span>
-        <span class="pill">Pass 0</span>
-        <span class="pill">Basic pass 1</span>
-        <span class="pill">Different 78</span>
-        <span class="pill">Missing 3</span>
-        <span class="pill">AI 0/82 ready</span>
-        <span class="pill">Components Parity 73/77 active</span><span class="pill">Screens Parity 10/25 active</span>
+  <div class="sb">
+    <aside class="sb-sidebar">
+      <div class="sb-brand">
+        <h1>Slock Visual Testing</h1>
+        <div class="sub"><code>7ca6a69-20260705095113</code> · react vs android</div>
       </div>
-    </section>
-    <section class="downloads">
-      <h2>下载 / 机器数据</h2>
-      <p>给自动化、LLM 摘要和调试使用；普通查看只需要点上面的“查看详情”。</p>
-      <div class="links">
-        <a class="pill" href="index.json">index.json</a>
-        <a class="pill" href="llms.txt">llms.txt</a>
-        <a class="pill" href="latest/component-matrix.json">coverage matrix JSON</a>
-        <a class="pill" href="latest/metadata.json">latest metadata</a>
-        <a class="pill" href="latest/raft-ui/">Raft UI 快速入口</a>
+      <div class="sb-search">
+        <div class="box">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="5.5" cy="5.5" r="4"/><path d="M8.6 8.6L12 12"/></svg>
+          <input id="vt-search" type="search" placeholder="Find components" autocomplete="off" aria-label="Find components"/>
+          <span class="kbd">/</span>
+        </div>
       </div>
-    </section>
-    <h2>历史记录</h2>
-    <table>
-      <thead><tr><th>Commit</th><th>Generated</th><th>Providers</th><th>Diff Summary</th><th>Action</th></tr></thead>
-      <tbody><tr>
-    <td><code>11f2525-20260705065201</code><br/>feat(#107 consumer): drive conversation-flow translation from the local mode (#44)</td>
-    <td><time class="localizedTime" datetime="2026-07-05T06:52:14.347Z" data-timestamp="2026-07-05T06:52:14.347Z" title="2026-07-05T06:52:14.347Z">2026-07-05 06:52:14 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 1<br/>Different 78<br/>Missing 3</td>
-    <td><a href="runs/11f2525-20260705065201/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>0baa579-20260704220716</code><br/>fix(visual): align message share selection toolbar</td>
-    <td><time class="localizedTime" datetime="2026-07-04T22:07:28.723Z" data-timestamp="2026-07-04T22:07:28.723Z" title="2026-07-04T22:07:28.723Z">2026-07-04 22:07:28 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 1<br/>Different 79<br/>Missing 2</td>
-    <td><a href="runs/0baa579-20260704220716/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>0458783-20260704203528</code><br/>Merge remote-tracking branch 'origin/main'</td>
-    <td><time class="localizedTime" datetime="2026-07-04T20:35:39.102Z" data-timestamp="2026-07-04T20:35:39.102Z" title="2026-07-04T20:35:39.102Z">2026-07-04 20:35:39 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 1<br/>Different 79<br/>Missing 2</td>
-    <td><a href="runs/0458783-20260704203528/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>963d46cb1-20260703121500</code><br/>Merge branch 'ad3/task293-visual-row-checkbox'</td>
-    <td><time class="localizedTime" datetime="2026-07-03T12:16:43.994Z" data-timestamp="2026-07-03T12:16:43.994Z" title="2026-07-03T12:16:43.994Z">2026-07-03 12:16:43 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 3<br/>Different 78<br/>Missing 1</td>
-    <td><a href="runs/963d46cb1-20260703121500/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>b120ed975-20260703092044</code><br/>fix(visual): align raft ui primitive parity</td>
-    <td><time class="localizedTime" datetime="2026-07-03T09:20:45.010Z" data-timestamp="2026-07-03T09:20:45.010Z" title="2026-07-03T09:20:45.010Z">2026-07-03 09:20:45 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 52<br/>Pass 0<br/>Basic pass 0<br/>Different 0<br/>Missing 52</td>
-    <td><a href="runs/b120ed975-20260703092044/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>48631ed3f-20260703075006</code><br/>fix(home): refresh update notices periodically</td>
-    <td><time class="localizedTime" datetime="2026-07-03T07:50:06.654Z" data-timestamp="2026-07-03T07:50:06.654Z" title="2026-07-03T07:50:06.654Z">2026-07-03 07:50:06 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 82<br/>Pass 0<br/>Basic pass 3<br/>Different 78<br/>Missing 1</td>
-    <td><a href="runs/48631ed3f-20260703075006/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>c153932a6-20260703042704</code><br/>test(visual): add raft ui controlled open coverage</td>
-    <td><time class="localizedTime" datetime="2026-07-03T04:27:31.027Z" data-timestamp="2026-07-03T04:27:31.027Z" title="2026-07-03T04:27:31.027Z">2026-07-03 04:27:31 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 104<br/>Pass 0<br/>Basic pass 3<br/>Different 100<br/>Missing 1</td>
-    <td><a href="runs/c153932a6-20260703042704/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>695c99afb-20260702214109</code><br/>test(visual): add raft ui interaction states</td>
-    <td><time class="localizedTime" datetime="2026-07-02T21:41:37.377Z" data-timestamp="2026-07-02T21:41:37.377Z" title="2026-07-02T21:41:37.377Z">2026-07-02 21:41:37 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 104<br/>Pass 0<br/>Basic pass 3<br/>Different 100<br/>Missing 1</td>
-    <td><a href="runs/695c99afb-20260702214109/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>695c99afb-20260702202831</code><br/>test(visual): add raft ui interaction states</td>
-    <td><time class="localizedTime" datetime="2026-07-02T20:28:59.301Z" data-timestamp="2026-07-02T20:28:59.301Z" title="2026-07-02T20:28:59.301Z">2026-07-02 20:28:59 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 103<br/>Pass 0<br/>Basic pass 3<br/>Different 99<br/>Missing 1</td>
-    <td><a href="runs/695c99afb-20260702202831/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>b1d7a3d01-20260702184638</code><br/>test(visual): add raft ui wip library cases</td>
-    <td><time class="localizedTime" datetime="2026-07-02T18:47:05.118Z" data-timestamp="2026-07-02T18:47:05.118Z" title="2026-07-02T18:47:05.118Z">2026-07-02 18:47:05 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 102<br/>Pass 0<br/>Basic pass 3<br/>Different 98<br/>Missing 1</td>
-    <td><a href="runs/b1d7a3d01-20260702184638/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701181253</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T18:13:59.047Z" data-timestamp="2026-07-01T18:13:59.047Z" title="2026-07-01T18:13:59.047Z">2026-07-01 18:13:59 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701181253/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701181139</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T18:12:43.459Z" data-timestamp="2026-07-01T18:12:43.459Z" title="2026-07-01T18:12:43.459Z">2026-07-01 18:12:43 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701181139/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T18:11:29.039Z" data-timestamp="2026-07-01T18:11:29.039Z" title="2026-07-01T18:11:29.039Z">2026-07-01 18:11:29 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701173710</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:37:32.552Z" data-timestamp="2026-07-01T17:37:32.552Z" title="2026-07-01T17:37:32.552Z">2026-07-01 17:37:32 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173710/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701173638</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:37:03.870Z" data-timestamp="2026-07-01T17:37:03.870Z" title="2026-07-01T17:37:03.870Z">2026-07-01 17:37:03 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173638/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701173402</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:34:22.633Z" data-timestamp="2026-07-01T17:34:22.633Z" title="2026-07-01T17:34:22.633Z">2026-07-01 17:34:22 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173402/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701173330</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:33:55.302Z" data-timestamp="2026-07-01T17:33:55.302Z" title="2026-07-01T17:33:55.302Z">2026-07-01 17:33:55 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701173330/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701172140</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:22:00.657Z" data-timestamp="2026-07-01T17:22:00.657Z" title="2026-07-01T17:22:00.657Z">2026-07-01 17:22:00 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701172140/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701172109</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:21:28.669Z" data-timestamp="2026-07-01T17:21:28.669Z" title="2026-07-01T17:21:28.669Z">2026-07-01 17:21:28 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701172109/">查看详情</a></td>
-  </tr>
-<tr>
-    <td><code>1c6dce5ad-20260701171619</code><br/>Remove CLI agent API compatibility rewrite (#3582)</td>
-    <td><time class="localizedTime" datetime="2026-07-01T17:16:39.939Z" data-timestamp="2026-07-01T17:16:39.939Z" title="2026-07-01T17:16:39.939Z">2026-07-01 17:16:39 UTC</time></td>
-    <td>react vs android</td>
-    <td>Total 62<br/>Pass 0<br/>Basic pass 3<br/>Different 58<br/>Missing 1</td>
-    <td><a href="runs/1c6dce5ad-20260701171619/">查看详情</a></td>
-  </tr></tbody>
-    </table>
-  </main>
+      <nav class="sb-tree" id="vt-tree" aria-label="Visual cases"></nav>
+      <div class="sb-foot">
+        <div class="lbl">Reports</div>
+        <a class="link accent" href="latest/report.html">Classic report</a>
+        <a class="link accent" href="latest/raft-ui/">Raft UI package report</a>
+        <div class="lbl">Runs</div>
+        <div id="vt-runs"></div>
+        <div class="lbl">Data</div>
+        <a class="link" href="index.json">index.json</a>
+        <a class="link" href="llms.txt">llms.txt</a>
+        <a class="link" href="latest/component-matrix.json">coverage matrix JSON</a>
+        <a class="link" href="latest/metadata.json">latest metadata</a>
+      </div>
+    </aside>
+    <main class="sb-main">
+      <div class="sb-toolbar">
+        <div class="sb-story-title" id="vt-story-title"><span class="t">Overview</span></div>
+        <div class="sb-comptabs" id="vt-comptabs"></div>
+        <div class="sb-spacer"></div>
+        <div class="sb-tools" id="vt-tools" hidden></div>
+        <div class="sb-sep" id="vt-tools-sep" hidden></div>
+        <a class="sb-classic" href="latest/report.html">Classic report</a>
+      </div>
+      <div class="sb-canvas" id="vt-canvas">
+        <div class="sb-overview" id="vt-overview">
+          <div class="sb-stats">
+            <div class="sb-stat"><div class="lbl">Total</div><div class="val">82</div></div>
+            <div class="sb-stat pass"><div class="lbl">Pass</div><div class="val">1</div></div>
+            <div class="sb-stat different"><div class="lbl">Different</div><div class="val">80</div></div>
+            <div class="sb-stat missing"><div class="lbl">Missing</div><div class="val">1</div></div>
+            <div class="sb-stat"><div class="lbl">AI analysis</div><div class="val">0/82</div></div>
+          </div>
+          <div class="sb-hint">
+            <p><strong>react</strong> vs <strong>android</strong> visual parity · run <code>7ca6a69-20260705095113</code> · generated <time class="localizedTime" datetime="2026-07-05T09:51:26.231Z" data-timestamp="2026-07-05T09:51:26.231Z" title="2026-07-05T09:51:26.231Z">2026-07-05 09:51:26 UTC</time>.</p>
+            <p>Select a component in the sidebar to inspect its captures — switch between react, android, side-by-side and the interactive overlay, then read metrics in the bottom panel.</p>
+          </div>
+        </div>
+        <div class="sb-stage-wrap" id="vt-stage-wrap" hidden>
+          <div class="sb-stage" id="vt-stage"></div>
+        </div>
+      </div>
+      <div class="sb-addons" id="vt-addons" hidden>
+        <div class="sb-addon-tabbar" id="vt-addon-tabbar"></div>
+        <div class="sb-addon-body" id="vt-addon-body"></div>
+      </div>
+    </main>
+  </div>
+  <script type="application/json" id="vt-data">{"name":"Slock Visual Testing","runId":"7ca6a69-20260705095113","commit":"7ca6a69-20260705095113","commitSubject":"fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)","generatedAt":"2026-07-05T09:51:26.231Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":1,"different":80,"missing":1},"analysisSummary":{"total":82,"ready":0,"pending":82},"reportHref":"latest/report.html","runs":[{"runId":"7ca6a69-20260705095113","commitSubject":"fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)","generatedAt":"2026-07-05T09:51:26.231Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":1,"different":80,"missing":1},"href":"runs/7ca6a69-20260705095113/","report":"runs/7ca6a69-20260705095113/report.html"},{"runId":"11f2525-20260705065201","commitSubject":"feat(#107 consumer): drive conversation-flow translation from the local mode (#44)","generatedAt":"2026-07-05T06:52:14.347Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":1,"different":78,"missing":3},"href":"runs/11f2525-20260705065201/","report":"runs/11f2525-20260705065201/report.html"},{"runId":"0baa579-20260704220716","commitSubject":"fix(visual): align message share selection toolbar","generatedAt":"2026-07-04T22:07:28.723Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":1,"different":79,"missing":2},"href":"runs/0baa579-20260704220716/","report":"runs/0baa579-20260704220716/report.html"},{"runId":"0458783-20260704203528","commitSubject":"Merge remote-tracking branch 'origin/main'","generatedAt":"2026-07-04T20:35:39.102Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":1,"different":79,"missing":2},"href":"runs/0458783-20260704203528/","report":"runs/0458783-20260704203528/report.html"},{"runId":"963d46cb1-20260703121500","commitSubject":"Merge branch 'ad3/task293-visual-row-checkbox'","generatedAt":"2026-07-03T12:16:43.994Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":3,"different":78,"missing":1},"href":"runs/963d46cb1-20260703121500/","report":"runs/963d46cb1-20260703121500/report.html"},{"runId":"b120ed975-20260703092044","commitSubject":"fix(visual): align raft ui primitive parity","generatedAt":"2026-07-03T09:20:45.010Z","baseline":"react","current":"android","summary":{"total":52,"same":0,"pass":0,"basic-pass":0,"different":0,"missing":52},"href":"runs/b120ed975-20260703092044/","report":"runs/b120ed975-20260703092044/report.html"},{"runId":"48631ed3f-20260703075006","commitSubject":"fix(home): refresh update notices periodically","generatedAt":"2026-07-03T07:50:06.654Z","baseline":"react","current":"android","summary":{"total":82,"same":0,"pass":0,"basic-pass":3,"different":78,"missing":1},"href":"runs/48631ed3f-20260703075006/","report":"runs/48631ed3f-20260703075006/report.html"},{"runId":"c153932a6-20260703042704","commitSubject":"test(visual): add raft ui controlled open coverage","generatedAt":"2026-07-03T04:27:31.027Z","baseline":"react","current":"android","summary":{"total":104,"same":0,"pass":0,"basic-pass":3,"different":100,"missing":1},"href":"runs/c153932a6-20260703042704/","report":"runs/c153932a6-20260703042704/report.html"},{"runId":"695c99afb-20260702214109","commitSubject":"test(visual): add raft ui interaction states","generatedAt":"2026-07-02T21:41:37.377Z","baseline":"react","current":"android","summary":{"total":104,"same":0,"pass":0,"basic-pass":3,"different":100,"missing":1},"href":"runs/695c99afb-20260702214109/","report":"runs/695c99afb-20260702214109/report.html"},{"runId":"695c99afb-20260702202831","commitSubject":"test(visual): add raft ui interaction states","generatedAt":"2026-07-02T20:28:59.301Z","baseline":"react","current":"android","summary":{"total":103,"same":0,"pass":0,"basic-pass":3,"different":99,"missing":1},"href":"runs/695c99afb-20260702202831/","report":"runs/695c99afb-20260702202831/report.html"},{"runId":"b1d7a3d01-20260702184638","commitSubject":"test(visual): add raft ui wip library cases","generatedAt":"2026-07-02T18:47:05.118Z","baseline":"react","current":"android","summary":{"total":102,"same":0,"pass":0,"basic-pass":3,"different":98,"missing":1},"href":"runs/b1d7a3d01-20260702184638/","report":"runs/b1d7a3d01-20260702184638/report.html"},{"runId":"1c6dce5ad-20260701181253","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T18:13:59.047Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701181253/","report":"runs/1c6dce5ad-20260701181253/report.html"},{"runId":"1c6dce5ad-20260701181139","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T18:12:43.459Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701181139/","report":"runs/1c6dce5ad-20260701181139/report.html"},{"runId":"1c6dce5ad","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T18:11:29.039Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad/","report":"runs/1c6dce5ad/report.html"},{"runId":"1c6dce5ad-20260701173710","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:37:32.552Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701173710/","report":"runs/1c6dce5ad-20260701173710/report.html"},{"runId":"1c6dce5ad-20260701173638","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:37:03.870Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701173638/","report":"runs/1c6dce5ad-20260701173638/report.html"},{"runId":"1c6dce5ad-20260701173402","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:34:22.633Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701173402/","report":"runs/1c6dce5ad-20260701173402/report.html"},{"runId":"1c6dce5ad-20260701173330","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:33:55.302Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701173330/","report":"runs/1c6dce5ad-20260701173330/report.html"},{"runId":"1c6dce5ad-20260701172140","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:22:00.657Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701172140/","report":"runs/1c6dce5ad-20260701172140/report.html"},{"runId":"1c6dce5ad-20260701172109","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:21:28.669Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701172109/","report":"runs/1c6dce5ad-20260701172109/report.html"},{"runId":"1c6dce5ad-20260701171619","commitSubject":"Remove CLI agent API compatibility rewrite (#3582)","generatedAt":"2026-07-01T17:16:39.939Z","baseline":"react","current":"android","summary":{"total":62,"same":0,"pass":0,"basic-pass":3,"different":58,"missing":1},"href":"runs/1c6dce5ad-20260701171619/","report":"runs/1c6dce5ad-20260701171619/report.html"}],"cases":[{"id":"components.ui.segmented-control.states","title":"Raft UI Segmented Control","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8974780701754386,"rgbSimilarity":0.9454363429907385,"baselineImage":"latest/react/components.ui.segmented-control.states.png","currentImage":"latest/android/components.ui.segmented-control.states.png","sideBySideImage":"latest/diff/react__android/components.ui.segmented-control.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8974780701754386,"rgbSimilarity":0.9454363429907385,"pixelMismatchRatio":0.10252192982456143,"comparisonWidth":342,"comparisonHeight":96,"baselineWidth":342,"baselineHeight":96,"currentWidth":342,"currentHeight":96},"variants":[{"name":"Mentions Selected","props":{"selected":"mentions"}}]},{"id":"components.ui.button.states","title":"Raft UI Button","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8238791423001949,"rgbSimilarity":0.9135589445654814,"baselineImage":"latest/react/components.ui.button.states.png","currentImage":"latest/android/components.ui.button.states.png","sideBySideImage":"latest/diff/react__android/components.ui.button.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8238791423001949,"rgbSimilarity":0.9135589445654814,"pixelMismatchRatio":0.17612085769980512,"comparisonWidth":342,"comparisonHeight":150,"baselineWidth":342,"baselineHeight":150,"currentWidth":342,"currentHeight":150},"variants":[{"name":"Tones And Sizes"}]},{"id":"components.ui.badge.states","title":"Raft UI Badge","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.922673531655225,"rgbSimilarity":0.9657332209941354,"baselineImage":"latest/react/components.ui.badge.states.png","currentImage":"latest/android/components.ui.badge.states.png","sideBySideImage":"latest/diff/react__android/components.ui.badge.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.922673531655225,"rgbSimilarity":0.9657332209941354,"pixelMismatchRatio":0.07732646834477497,"comparisonWidth":342,"comparisonHeight":92,"baselineWidth":342,"baselineHeight":92,"currentWidth":342,"currentHeight":92},"variants":[{"name":"Tones"}]},{"id":"components.ui.form-field.states","title":"Raft UI Form Field","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8255294768452663,"rgbSimilarity":0.8714948823953037,"baselineImage":"latest/react/components.ui.form-field.states.png","currentImage":"latest/android/components.ui.form-field.states.png","sideBySideImage":"latest/diff/react__android/components.ui.form-field.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8255294768452663,"rgbSimilarity":0.8714948823953037,"pixelMismatchRatio":0.17447052315473366,"comparisonWidth":342,"comparisonHeight":296,"baselineWidth":342,"baselineHeight":296,"currentWidth":342,"currentHeight":226},"variants":[{"name":"Label Hint Error"}]},{"id":"components.ui.textarea.states","title":"Raft UI Textarea","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.6139254385964912,"rgbSimilarity":0.9069143924626556,"baselineImage":"latest/react/components.ui.textarea.states.png","currentImage":"latest/android/components.ui.textarea.states.png","sideBySideImage":"latest/diff/react__android/components.ui.textarea.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.6139254385964912,"rgbSimilarity":0.9069143924626556,"pixelMismatchRatio":0.3860745614035088,"comparisonWidth":342,"comparisonHeight":240,"baselineWidth":342,"baselineHeight":240,"currentWidth":342,"currentHeight":240},"variants":[{"name":"Helper And Error"}]},{"id":"components.ui.checkbox.states","title":"Raft UI Checkbox","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8973506999822789,"rgbSimilarity":0.9562080499988996,"baselineImage":"latest/react/components.ui.checkbox.states.png","currentImage":"latest/android/components.ui.checkbox.states.png","sideBySideImage":"latest/diff/react__android/components.ui.checkbox.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8973506999822789,"rgbSimilarity":0.9562080499988996,"pixelMismatchRatio":0.1026493000177211,"comparisonWidth":342,"comparisonHeight":132,"baselineWidth":342,"baselineHeight":132,"currentWidth":342,"currentHeight":132},"variants":[{"name":"Checked Unchecked Disabled"}]},{"id":"components.ui.check-marker.states","title":"Raft UI Check Marker","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8953373015873016,"rgbSimilarity":0.9429024972562124,"baselineImage":"latest/react/components.ui.check-marker.states.png","currentImage":"latest/android/components.ui.check-marker.states.png","sideBySideImage":"latest/diff/react__android/components.ui.check-marker.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8953373015873016,"rgbSimilarity":0.9429024972562124,"pixelMismatchRatio":0.10466269841269837,"comparisonWidth":342,"comparisonHeight":112,"baselineWidth":342,"baselineHeight":112,"currentWidth":342,"currentHeight":112},"variants":[{"name":"Shape Size Tone"}]},{"id":"components.ui.attention-dot.states","title":"Raft UI Attention Dot","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.9340277777777778,"rgbSimilarity":0.9686675839926614,"baselineImage":"latest/react/components.ui.attention-dot.states.png","currentImage":"latest/android/components.ui.attention-dot.states.png","sideBySideImage":"latest/diff/react__android/components.ui.attention-dot.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9340277777777778,"rgbSimilarity":0.9686675839926614,"pixelMismatchRatio":0.06597222222222221,"comparisonWidth":342,"comparisonHeight":80,"baselineWidth":342,"baselineHeight":80,"currentWidth":342,"currentHeight":80},"variants":[{"name":"Sizes And Tones"}]},{"id":"components.ui.status-dot.states","title":"Raft UI Status Dot","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.9584922451055174,"rgbSimilarity":0.9838336249831741,"baselineImage":"latest/react/components.ui.status-dot.states.png","currentImage":"latest/android/components.ui.status-dot.states.png","sideBySideImage":"latest/diff/react__android/components.ui.status-dot.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9584922451055174,"rgbSimilarity":0.9838336249831741,"pixelMismatchRatio":0.04150775489448255,"comparisonWidth":342,"comparisonHeight":92,"baselineWidth":342,"baselineHeight":92,"currentWidth":342,"currentHeight":92},"variants":[{"name":"Presence Tones"}]},{"id":"components.ui.progress-bar.states","title":"Raft UI Progress Bar","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.777824938690813,"rgbSimilarity":0.8711601461310146,"baselineImage":"latest/react/components.ui.progress-bar.states.png","currentImage":"latest/android/components.ui.progress-bar.states.png","sideBySideImage":"latest/diff/react__android/components.ui.progress-bar.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.777824938690813,"rgbSimilarity":0.8711601461310146,"pixelMismatchRatio":0.22217506130918696,"comparisonWidth":342,"comparisonHeight":124,"baselineWidth":342,"baselineHeight":124,"currentWidth":342,"currentHeight":124},"variants":[{"name":"Determinate Tones"}]},{"id":"components.ui.skeleton.states","title":"Raft UI Skeleton","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.5496491228070175,"rgbSimilarity":0.9798871689026488,"baselineImage":"latest/react/components.ui.skeleton.states.png","currentImage":"latest/android/components.ui.skeleton.states.png","sideBySideImage":"latest/diff/react__android/components.ui.skeleton.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.5496491228070175,"rgbSimilarity":0.9798871689026488,"pixelMismatchRatio":0.4503508771929825,"comparisonWidth":342,"comparisonHeight":150,"baselineWidth":342,"baselineHeight":150,"currentWidth":342,"currentHeight":150},"variants":[{"name":"Row Block Circle"}]},{"id":"components.ui.spinner.states","title":"Raft UI Spinner","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.9504830917874396,"rgbSimilarity":0.9797823095676104,"baselineImage":"latest/react/components.ui.spinner.states.png","currentImage":"latest/android/components.ui.spinner.states.png","sideBySideImage":"latest/diff/react__android/components.ui.spinner.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9504830917874396,"rgbSimilarity":0.9797823095676104,"pixelMismatchRatio":0.049516908212560384,"comparisonWidth":342,"comparisonHeight":92,"baselineWidth":342,"baselineHeight":92,"currentWidth":342,"currentHeight":92},"variants":[{"name":"Sizes And Inverse"}]},{"id":"components.ui.slug-input.states","title":"Raft UI Slug Input","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.7649793883616144,"rgbSimilarity":0.9130756549575963,"baselineImage":"latest/react/components.ui.slug-input.states.png","currentImage":"latest/android/components.ui.slug-input.states.png","sideBySideImage":"latest/diff/react__android/components.ui.slug-input.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7649793883616144,"rgbSimilarity":0.9130756549575963,"pixelMismatchRatio":0.2350206116383856,"comparisonWidth":342,"comparisonHeight":122,"baselineWidth":342,"baselineHeight":122,"currentWidth":342,"currentHeight":122},"variants":[{"name":"Filled And Disabled"}]},{"id":"components.ui.section-eyebrow.states","title":"Raft UI Section Eyebrow","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.9083714721586575,"rgbSimilarity":0.966987896947066,"baselineImage":"latest/react/components.ui.section-eyebrow.states.png","currentImage":"latest/android/components.ui.section-eyebrow.states.png","sideBySideImage":"latest/diff/react__android/components.ui.section-eyebrow.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9083714721586575,"rgbSimilarity":0.966987896947066,"pixelMismatchRatio":0.09162852784134246,"comparisonWidth":342,"comparisonHeight":92,"baselineWidth":342,"baselineHeight":92,"currentWidth":342,"currentHeight":92},"variants":[{"name":"Tones"}]},{"id":"components.ui.section-header.states","title":"Raft UI Section Header","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8945042530568846,"rgbSimilarity":0.9274556712637207,"baselineImage":"latest/react/components.ui.section-header.states.png","currentImage":"latest/android/components.ui.section-header.states.png","sideBySideImage":"latest/diff/react__android/components.ui.section-header.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8945042530568846,"rgbSimilarity":0.9274556712637207,"pixelMismatchRatio":0.10549574694311536,"comparisonWidth":342,"comparisonHeight":88,"baselineWidth":342,"baselineHeight":88,"currentWidth":342,"currentHeight":88},"variants":[{"name":"Count And Action"}]},{"id":"components.ui.selection-popover.states","title":"Raft UI Selection Popover","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.82175345771837,"rgbSimilarity":0.8896136340609447,"baselineImage":"latest/react/components.ui.selection-popover.states.png","currentImage":"latest/android/components.ui.selection-popover.states.png","sideBySideImage":"latest/diff/react__android/components.ui.selection-popover.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.82175345771837,"rgbSimilarity":0.8896136340609447,"pixelMismatchRatio":0.17824654228162995,"comparisonWidth":342,"comparisonHeight":252,"baselineWidth":342,"baselineHeight":252,"currentWidth":342,"currentHeight":252},"variants":[{"name":"Searchable Options"}]},{"id":"components.ui.menu-item.states","title":"Raft UI Menu Item","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8452877128364189,"rgbSimilarity":0.9179990383281362,"baselineImage":"latest/react/components.ui.menu-item.states.png","currentImage":"latest/android/components.ui.menu-item.states.png","sideBySideImage":"latest/diff/react__android/components.ui.menu-item.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8452877128364189,"rgbSimilarity":0.9179990383281362,"pixelMismatchRatio":0.1547122871635811,"comparisonWidth":342,"comparisonHeight":181,"baselineWidth":342,"baselineHeight":181,"currentWidth":342,"currentHeight":176},"variants":[{"name":"Default Disabled Divider"}]},{"id":"components.ui.select.states","title":"Raft UI Select","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.8842014830891662,"rgbSimilarity":0.9232051165354673,"baselineImage":"latest/react/components.ui.select.states.png","currentImage":"latest/android/components.ui.select.states.png","sideBySideImage":"latest/diff/react__android/components.ui.select.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8842014830891662,"rgbSimilarity":0.9232051165354673,"pixelMismatchRatio":0.11579851691083376,"comparisonWidth":342,"comparisonHeight":194,"baselineWidth":342,"baselineHeight":194,"currentWidth":342,"currentHeight":194},"variants":[{"name":"Closed And Disabled"}]},{"id":"components.ui.surface-list-item.states","title":"Raft UI Surface List Item","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.7449874686716792,"rgbSimilarity":0.938163239504828,"baselineImage":"latest/react/components.ui.surface-list-item.states.png","currentImage":"latest/android/components.ui.surface-list-item.states.png","sideBySideImage":"latest/diff/react__android/components.ui.surface-list-item.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7449874686716792,"rgbSimilarity":0.938163239504828,"pixelMismatchRatio":0.2550125313283208,"comparisonWidth":342,"comparisonHeight":182,"baselineWidth":342,"baselineHeight":182,"currentWidth":342,"currentHeight":168},"variants":[{"name":"Default And Selected"}]},{"id":"components.ui.avatar-list-row.states","title":"Raft UI Avatar List Row","surface":"library","category":"library","captureType":"component-fixture","status":"different","similarity":0.7100563909774437,"rgbSimilarity":0.8584611947443043,"baselineImage":"latest/react/components.ui.avatar-list-row.states.png","currentImage":"latest/android/components.ui.avatar-list-row.states.png","sideBySideImage":"latest/diff/react__android/components.ui.avatar-list-row.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7100563909774437,"rgbSimilarity":0.8584611947443043,"pixelMismatchRatio":0.28994360902255634,"comparisonWidth":342,"comparisonHeight":168,"baselineWidth":342,"baselineHeight":168,"currentWidth":342,"currentHeight":168},"variants":[{"name":"Agent And Human"}]},{"id":"components.auth.register.inputs","title":"Auth Register Inputs","surface":"auth","category":"auth","captureType":"component-fixture","status":"different","similarity":0.7961842265159801,"rgbSimilarity":0.9025556476894839,"baselineImage":"latest/react/components.auth.register.inputs.png","currentImage":"latest/android/components.auth.register.inputs.png","sideBySideImage":"latest/diff/react__android/components.auth.register.inputs.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7961842265159801,"rgbSimilarity":0.9025556476894839,"pixelMismatchRatio":0.2038157734840199,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React RegisterPage auth input typography and placeholders vs Android rendering of the shared KMP Register page.","variants":[{"name":"Default","props":{"registerName":"Product UX Designer","registerEmail":"new@slock.ai","registerPassword":"correct horse battery staple"}}]},{"id":"components.navigation.tabbar.states","title":"Navigation Tabbar States","surface":"navigation","category":"app/navigation","captureType":"component-fixture","status":"different","similarity":0.9571940697533114,"rgbSimilarity":0.83618748297309,"baselineImage":"latest/react/components.navigation.tabbar.states.png","currentImage":"latest/android/components.navigation.tabbar.states.png","sideBySideImage":"latest/diff/react__android/components.navigation.tabbar.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9571940697533114,"rgbSimilarity":0.83618748297309,"pixelMismatchRatio":0.04280593024668855,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":53,"currentWidth":390,"currentHeight":844},"note":"React now captures the real MainLayout MobileTabBar from the visual route. The previous hand-built VisualMobileTabBar approximation was removed from the provider path. Harmony remains pending real-device/provider capture.","variants":[{"name":"Home Selected","props":{"selected":"home"}}]},{"id":"components.thread.composer.empty","title":"Thread Composer Empty","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8163157894736842,"rgbSimilarity":0.9082531437526271,"baselineImage":"latest/react/components.thread.composer.empty.png","currentImage":"latest/android/components.thread.composer.empty.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.empty.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8163157894736842,"rgbSimilarity":0.9082531437526271,"pixelMismatchRatio":0.18368421052631578,"comparisonWidth":342,"comparisonHeight":100,"baselineWidth":342,"baselineHeight":100,"currentWidth":342,"currentHeight":100},"note":"Real React MessageInput empty state vs Android connected visual-only rendering of ThreadComposerContent with an empty seed. This case specifically protects the disabled send button color/opacity and empty placeholder treatment.","variants":[{"name":"Empty Send Disabled","props":{"draft":"","showAsTaskToggle":true,"enabled":true}}]},{"id":"components.thread.composer.states","title":"Thread Composer States","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.7722514619883041,"rgbSimilarity":0.8619253908190951,"baselineImage":"latest/react/components.thread.composer.states.png","currentImage":"latest/android/components.thread.composer.states.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7722514619883041,"rgbSimilarity":0.8619253908190951,"pixelMismatchRatio":0.22774853801169592,"comparisonWidth":342,"comparisonHeight":100,"baselineWidth":342,"baselineHeight":100,"currentWidth":342,"currentHeight":100},"note":"Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.","variants":[{"name":"Draft Send Enabled","props":{"draft":"Review the Android composer crop","showAsTaskToggle":true,"enabled":true}}]},{"id":"components.thread.composer.as-task-selected","title":"Thread Composer As Task Selected","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.7692105263157895,"rgbSimilarity":0.855418721094674,"baselineImage":"latest/react/components.thread.composer.as-task-selected.png","currentImage":"latest/android/components.thread.composer.as-task-selected.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.as-task-selected.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7692105263157895,"rgbSimilarity":0.855418721094674,"pixelMismatchRatio":0.23078947368421054,"comparisonWidth":342,"comparisonHeight":100,"baselineWidth":342,"baselineHeight":100,"currentWidth":342,"currentHeight":100},"note":"Real React MessageInput with As Task checked vs Android connected visual-only rendering of ThreadComposerContent seeded with seedAsTask=true. This is a focused diff for the selected As Task toggle.","variants":[{"name":"Draft As Task Selected","props":{"draft":"Review the Android composer crop before release.","showAsTaskToggle":true,"asTask":true,"enabled":true}}]},{"id":"components.thread.composer.member-suggestions","title":"Thread Composer Member Suggestions","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.7639345760233918,"rgbSimilarity":0.8574412696365137,"baselineImage":"latest/react/components.thread.composer.member-suggestions.png","currentImage":"latest/android/components.thread.composer.member-suggestions.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7639345760233918,"rgbSimilarity":0.8574412696365137,"pixelMismatchRatio":0.23606542397660824,"comparisonWidth":342,"comparisonHeight":320,"baselineWidth":342,"baselineHeight":320,"currentWidth":342,"currentHeight":320},"note":"Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.","variants":[{"name":"Member Trigger Open","props":{"draft":"@","showAsTaskToggle":true,"enabled":true}}]},{"id":"components.thread.composer.channel-suggestions","title":"Thread Composer Channel Suggestions","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.6326571637426901,"rgbSimilarity":0.8166291494668103,"baselineImage":"latest/react/components.thread.composer.channel-suggestions.png","currentImage":"latest/android/components.thread.composer.channel-suggestions.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.6326571637426901,"rgbSimilarity":0.8166291494668103,"pixelMismatchRatio":0.3673428362573099,"comparisonWidth":342,"comparisonHeight":320,"baselineWidth":342,"baselineHeight":320,"currentWidth":342,"currentHeight":320},"note":"Real React MessageInput #channel autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the channel suggestion panel open. Covers the # icon, channel name, and description row layout.","variants":[{"name":"Channel Trigger Open","props":{"draft":"#","showAsTaskToggle":true,"enabled":true}}]},{"id":"components.thread.composer.image-preview","title":"Thread Composer Image Preview","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8847844920944337,"rgbSimilarity":0.8751837695586557,"baselineImage":"latest/react/components.thread.composer.image-preview.png","currentImage":"latest/android/components.thread.composer.image-preview.png","sideBySideImage":"latest/diff/react__android/components.thread.composer.image-preview.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8847844920944337,"rgbSimilarity":0.8751837695586557,"pixelMismatchRatio":0.11521550790556634,"comparisonWidth":342,"comparisonHeight":270,"baselineWidth":342,"baselineHeight":210,"currentWidth":342,"currentHeight":270},"note":"Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.","variants":[{"name":"Ready Image Preview","props":{"draft":"Uploading the design crop for review.","showAsTaskToggle":true,"enabled":true}}]},{"id":"components.thread.files.list","title":"Thread Files List","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8178774928774929,"rgbSimilarity":0.9088034746662194,"baselineImage":"latest/react/components.thread.files.list.png","currentImage":"latest/android/components.thread.files.list.png","sideBySideImage":"latest/diff/react__android/components.thread.files.list.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8178774928774929,"rgbSimilarity":0.9088034746662194,"pixelMismatchRatio":0.1821225071225071,"comparisonWidth":390,"comparisonHeight":360,"baselineWidth":390,"baselineHeight":360,"currentWidth":390,"currentHeight":360},"note":"Real React ChannelFilesPanel vs Android connected visual-only rendering of ThreadFilesContent with image, PDF, archive, download/open state, and load-more affordance.","variants":[{"name":"Mixed Files","props":{"channelId":"visual-thread-composer"}}]},{"id":"components.thread.header.states","title":"Thread Header States","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8152136752136752,"rgbSimilarity":0.7897742025585155,"baselineImage":"latest/react/components.thread.header.states.png","currentImage":"latest/android/components.thread.header.states.png","sideBySideImage":"latest/diff/react__android/components.thread.header.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8152136752136752,"rgbSimilarity":0.7897742025585155,"pixelMismatchRatio":0.18478632478632484,"comparisonWidth":390,"comparisonHeight":120,"baselineWidth":390,"baselineHeight":120,"currentWidth":390,"currentHeight":62},"note":"React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.","variants":[{"name":"Channel Description + Tabs","props":{"channelName":"首页专修","description":"Home shell, server badge, and bottom dock polish","activeTab":"chat"}}]},{"id":"components.thread.message.row","title":"Thread Message Row","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.9522602989427634,"rgbSimilarity":0.8830451686487404,"baselineImage":"latest/react/components.thread.message.row.png","currentImage":"latest/android/components.thread.message.row.png","sideBySideImage":"latest/diff/react__android/components.thread.message.row.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9522602989427634,"rgbSimilarity":0.8830451686487404,"pixelMismatchRatio":0.04773970105723657,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":108,"currentWidth":390,"currentHeight":844},"note":"Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.","variants":[{"name":"Agent Message / Task / Replies","props":{"messageId":"msg_agent_reply","replyCount":5,"taskNumber":10}}]},{"id":"components.thread.message-row.deleted-human","title":"Thread Message Row Deleted Human","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.958789038765342,"rgbSimilarity":0.9247940489437704,"baselineImage":"latest/react/components.thread.message-row.deleted-human.png","currentImage":"latest/android/components.thread.message-row.deleted-human.png","sideBySideImage":"latest/diff/react__android/components.thread.message-row.deleted-human.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.958789038765342,"rgbSimilarity":0.9247940489437704,"pixelMismatchRatio":0.04121096123465795,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":109,"currentWidth":390,"currentHeight":844},"note":"Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.","variants":[{"name":"Deleted Human Author"}]},{"id":"components.thread.message-menu.default","title":"Thread Message Context Menu / Default Message","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8973964029651234,"rgbSimilarity":0.9331192808471869,"baselineImage":"latest/react/components.thread.message-menu.default.png","currentImage":"latest/android/components.thread.message-menu.default.png","sideBySideImage":"latest/diff/react__android/components.thread.message-menu.default.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8973964029651234,"rgbSimilarity":0.9331192808471869,"pixelMismatchRatio":0.10260359703487665,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React MessageItem right-click menu captured through the portal plus Android shared ThreadMessageMenuChrome with default message actions. Protects quick reactions and grouped row separators.","variants":[{"name":"Default Message"}]},{"id":"components.thread.message-menu.task","title":"Thread Message Context Menu / Task Message","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8856665451452181,"rgbSimilarity":0.9276983599369998,"baselineImage":"latest/react/components.thread.message-menu.task.png","currentImage":"latest/android/components.thread.message-menu.task.png","sideBySideImage":"latest/diff/react__android/components.thread.message-menu.task.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8856665451452181,"rgbSimilarity":0.9276983599369998,"pixelMismatchRatio":0.11433345485478186,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.","variants":[{"name":"Task Message"}]},{"id":"components.thread.message-share.selection","title":"Thread Message Share Selection","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.8252278527160044,"rgbSimilarity":0.9309585699228842,"baselineImage":"latest/react/components.thread.message-share.selection.png","currentImage":"latest/android/components.thread.message-share.selection.png","sideBySideImage":"latest/diff/react__android/components.thread.message-share.selection.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8252278527160044,"rgbSimilarity":0.9309585699228842,"pixelMismatchRatio":0.1747721472839956,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.","variants":[{"name":"Two Selected Messages"}]},{"id":"components.home.titlebar.states","title":"Home Titlebar States","surface":"home","category":"app/home","captureType":"component-fixture","status":"basic-pass","similarity":0.9877050674444039,"rgbSimilarity":0.99532661073503,"baselineImage":"latest/react/components.home.titlebar.states.png","currentImage":"latest/android/components.home.titlebar.states.png","sideBySideImage":"latest/diff/react__android/components.home.titlebar.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9877050674444039,"rgbSimilarity":0.99532661073503,"pixelMismatchRatio":0.012294932555596105,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React now captures the real mobile Sidebar titlebar with the visual server and notification fixture. The previous hand-built titlebar markup was removed from the provider path. Harmony remains pending real-device/provider capture.","variants":[{"name":"Server Unread / Notification Trigger","props":{"serverName":"Slock Design","serverUnread":true,"notifications":2}}]},{"id":"components.home.notification-center.states","title":"Home Notification Center States","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.8938449386316685,"rgbSimilarity":0.9505627118186369,"baselineImage":"latest/react/components.home.notification-center.states.png","currentImage":"latest/android/components.home.notification-center.states.png","sideBySideImage":"latest/diff/react__android/components.home.notification-center.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8938449386316685,"rgbSimilarity":0.9505627118186369,"pixelMismatchRatio":0.10615506136833153,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React and Android now render the same two-notification fixture: warning agent disconnect plus info release-gate review. Harmony remains pending real-device/provider capture.","variants":[{"name":"Warning / Info Notifications","props":{"notifications":2}}]},{"id":"components.home.search.results","title":"Home Search Results","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.747642483898408,"rgbSimilarity":0.9006093824088764,"baselineImage":"latest/react/components.home.search.results.png","currentImage":"latest/android/components.home.search.results.png","sideBySideImage":"latest/diff/react__android/components.home.search.results.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.747642483898408,"rgbSimilarity":0.9006093824088764,"pixelMismatchRatio":0.25235751610159196,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React MessageSearchPage filtered results vs Android rendering of shared Home Search panel. Covers query field, reusable filter primitives, entity results, grouped thread hits, and load-more affordance.","variants":[{"name":"Filtered Search Results","props":{"query":"android","sender":"artin","channel":"design","range":"7d","sort":"recent"}}]},{"id":"components.home.search.channel-dropdown","title":"Home Search Channel Dropdown","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.44322517924413657,"rgbSimilarity":0.8861649379644382,"baselineImage":"latest/react/components.home.search.channel-dropdown.png","currentImage":"latest/android/components.home.search.channel-dropdown.png","sideBySideImage":"latest/diff/react__android/components.home.search.channel-dropdown.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.44322517924413657,"rgbSimilarity":0.8861649379644382,"pixelMismatchRatio":0.5567748207558634,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Focused open-state canonical for the search channel filter. React opens the real MessageSearchPage SelectionPopover; Android opens SharedHomeSearchPanel's real SlockFilterPopover through initialOpenFilterId after the channel trigger anchor is measured. Covers trigger alignment, popover border/shadow, internal search input chrome, and channel option rows without DM leakage.","variants":[{"name":"Open Channel Dropdown","props":{"query":"android"}}]},{"id":"components.home.saved.results","title":"Home Saved Results","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.8179117147707979,"rgbSimilarity":0.9127051253124033,"baselineImage":"latest/react/components.home.saved.results.png","currentImage":"latest/android/components.home.saved.results.png","sideBySideImage":"latest/diff/react__android/components.home.saved.results.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8179117147707979,"rgbSimilarity":0.9127051253124033,"pixelMismatchRatio":0.18208828522920206,"comparisonWidth":342,"comparisonHeight":620,"baselineWidth":342,"baselineHeight":620,"currentWidth":342,"currentHeight":620},"note":"Real React SavedPanel saved-message list vs Android rendering of shared Home Saved panel after Search/Saved parity. Covers panel header, saved channel/thread/DM rows, sender avatar/meta, remove affordance, and load-more action.","variants":[{"name":"Saved Messages List","props":{"savedCount":3,"hasMore":true}}]},{"id":"components.home.activity.results","title":"Home Activity Results","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.81860969628372,"rgbSimilarity":0.9168395037069101,"baselineImage":"latest/react/components.home.activity.results.png","currentImage":"latest/android/components.home.activity.results.png","sideBySideImage":"latest/diff/react__android/components.home.activity.results.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.81860969628372,"rgbSimilarity":0.9168395037069101,"pixelMismatchRatio":0.18139030371627995,"comparisonWidth":342,"comparisonHeight":620,"baselineWidth":342,"baselineHeight":620,"currentWidth":342,"currentHeight":620},"note":"Real React ThreadsInbox activity page vs Android rendering of shared Home Activity panel. Covers PanelHeader/back affordance, segmented filters, mark-all-read action, ConversationPreviewCard-like rows, unread/mention/task footer badges, and scroll body spacing.","variants":[{"name":"Activity Inbox List","props":{"totalCount":3,"totalUnreadCount":3,"filter":"all"}}]},{"id":"components.tasks.panel.states","title":"Tasks Panel States","surface":"tasks","category":"app/tasks","captureType":"component-fixture","status":"different","similarity":0.7889853873724841,"rgbSimilarity":0.8679830573530758,"baselineImage":"latest/react/components.tasks.panel.states.png","currentImage":"latest/android/components.tasks.panel.states.png","sideBySideImage":"latest/diff/react__android/components.tasks.panel.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7889853873724841,"rgbSimilarity":0.8679830573530758,"pixelMismatchRatio":0.21101461262751586,"comparisonWidth":390,"comparisonHeight":930,"baselineWidth":390,"baselineHeight":930,"currentWidth":390,"currentHeight":844},"note":"Real React TasksPanel (server mode, list view) with shared tasksFixture.json rows covering todo / in_progress / in_review / done status sections, task numbers, and per-status InlineBadgeEditor chips.","variants":[{"name":"Status Sections","props":{"view":"list","taskCount":4}}]},{"id":"components.tasks.status-menu","title":"Tasks Status Menu","surface":"tasks","category":"app/tasks","captureType":"component-fixture","status":"different","similarity":0.40817588843904634,"rgbSimilarity":0.8954376115418425,"baselineImage":"latest/react/components.tasks.status-menu.png","currentImage":"latest/android/components.tasks.status-menu.png","sideBySideImage":"latest/diff/react__android/components.tasks.status-menu.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.40817588843904634,"rgbSimilarity":0.8954376115418425,"pixelMismatchRatio":0.5918241115609537,"comparisonWidth":342,"comparisonHeight":260,"baselineWidth":342,"baselineHeight":260,"currentWidth":342,"currentHeight":260},"note":"Real React InlineBadgeEditor status menu rendered open with all five selectable statuses (Todo / In Progress / In Review / Done / Closed) and the current status check-marked.","variants":[{"name":"Open All Statuses","props":{"selected":"in_progress"}}]},{"id":"components.home.create-channel.dialog","title":"Home Create Channel Dialog","surface":"home","category":"app/home","captureType":"component-fixture","status":"different","similarity":0.731701907886742,"rgbSimilarity":0.8579082385981291,"baselineImage":"latest/react/components.home.create-channel.dialog.png","currentImage":"latest/android/components.home.create-channel.dialog.png","sideBySideImage":"latest/diff/react__android/components.home.create-channel.dialog.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.731701907886742,"rgbSimilarity":0.8579082385981291,"pixelMismatchRatio":0.26829809211325795,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React CreateChannelDialog vs Android rendering of the shared SharedCreateChannelDialog/SlockUnifiedDialog route.","variants":[{"name":"Create Channel Prefilled Members","props":{"name":"android-artifacts","description":"Build reports, screenshots, release blockers","selected":"human+agent"}}]},{"id":"components.members.create-agent.dialog","title":"Members Create Agent Dialog - Runtime Matrix","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.7409314619030258,"rgbSimilarity":0.8361544617036987,"baselineImage":"latest/react/components.members.create-agent.dialog.png","currentImage":"latest/android/components.members.create-agent.dialog.png","sideBySideImage":"latest/diff/react__android/components.members.create-agent.dialog.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7409314619030258,"rgbSimilarity":0.8361544617036987,"pixelMismatchRatio":0.25906853809697417,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Matrix covers Codex CLI default, Claude Code default, and Claude custom-provider/advanced configuration because each runtime exposes different selectable fields.","variants":[{"name":"Create Agent Prefilled Runtime","props":{"name":"Product-QA-Bot","description":"Watches release screenshots and reports visual regressions before merge.","machine":"Jiachengs-MacBook-Pro","runtime":"codex"}}]},{"id":"components.members.create-agent.claude-dialog","title":"Members Create Agent Dialog - Claude Code","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.7062218981650261,"rgbSimilarity":0.8323929519148687,"baselineImage":"latest/react/components.members.create-agent.claude-dialog.png","currentImage":"latest/android/components.members.create-agent.claude-dialog.png","sideBySideImage":"latest/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7062218981650261,"rgbSimilarity":0.8323929519148687,"pixelMismatchRatio":0.2937781018349739,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"variants":[{"name":"Create Agent Claude Runtime","props":{"name":"Product-QA-Bot","description":"Watches release screenshots and reports visual regressions before merge.","machine":"Jiachengs-MacBook-Pro","runtime":"claude"}}]},{"id":"components.members.create-agent.claude-custom-provider-dialog","title":"Members Create Agent Dialog - Claude Custom Provider","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.7074978733746506,"rgbSimilarity":0.8333483289212594,"baselineImage":"latest/react/components.members.create-agent.claude-custom-provider-dialog.png","currentImage":"latest/android/components.members.create-agent.claude-custom-provider-dialog.png","sideBySideImage":"latest/diff/react__android/components.members.create-agent.claude-custom-provider-dialog.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7074978733746506,"rgbSimilarity":0.8333483289212594,"pixelMismatchRatio":0.29250212662534936,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"variants":[{"name":"Create Agent Claude Custom Provider","props":{"name":"Product-QA-Bot","description":"Watches release screenshots and reports visual regressions before merge.","machine":"Jiachengs-MacBook-Pro","runtime":"claude","providerMode":"custom","advancedOpen":true}}]},{"id":"components.members.agent-detail.profile","title":"Members Agent Detail Profile","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.7866539069145704,"rgbSimilarity":0.8980023422663369,"baselineImage":"latest/react/components.members.agent-detail.profile.png","currentImage":"latest/android/components.members.agent-detail.profile.png","sideBySideImage":"latest/diff/react__android/components.members.agent-detail.profile.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7866539069145704,"rgbSimilarity":0.8980023422663369,"pixelMismatchRatio":0.21334609308542962,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React AgentDetailPanel profile tab vs Android rendering of the shared Members detail profile surface. Fixture pins a manageable Codex agent with machine, runtime config, skills, DMs, reminders, and activity summary data; additional private tabs can be split into separate cases.","variants":[{"name":"Profile With Management Actions","props":{"agent":"Product-UX-Designer","tab":"profile","canManage":true,"canViewPrivateSurfaces":true}}]},{"id":"components.channel.members.panel","title":"Channel Members Panel","surface":"channel","category":"channel","captureType":"component-fixture","status":"different","similarity":0.827117511240734,"rgbSimilarity":0.907329637651608,"baselineImage":"latest/react/components.channel.members.panel.png","currentImage":"latest/android/components.channel.members.panel.png","sideBySideImage":"latest/diff/react__android/components.channel.members.panel.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.827117511240734,"rgbSimilarity":0.907329637651608,"pixelMismatchRatio":0.17288248875926604,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React ChannelMembers modal opened from a channel header. Android/KMP provider uses the shared channel members modal route; Harmony capture remains pending.","variants":[{"name":"Open Members Panel","props":{"channel":"design"}}]},{"id":"components.channel.settings.panel","title":"Channel Settings Panel","surface":"channel","category":"channel","captureType":"component-fixture","status":"different","similarity":0.8296846518410499,"rgbSimilarity":0.8928881835879254,"baselineImage":"latest/react/components.channel.settings.panel.png","currentImage":"latest/android/components.channel.settings.panel.png","sideBySideImage":"latest/diff/react__android/components.channel.settings.panel.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8296846518410499,"rgbSimilarity":0.8928881835879254,"pixelMismatchRatio":0.1703153481589501,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React EditChannelDialog for the channel settings panel. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.","variants":[{"name":"Edit Channel Settings","props":{"channel":"design"}}]},{"id":"components.channel.members.add-panel","title":"Channel Add Member Panel","surface":"channel","category":"channel","captureType":"component-fixture","status":"different","similarity":0.8354599586827075,"rgbSimilarity":0.9036698524348398,"baselineImage":"latest/react/components.channel.members.add-panel.png","currentImage":"latest/android/components.channel.members.add-panel.png","sideBySideImage":"latest/diff/react__android/components.channel.members.add-panel.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8354599586827075,"rgbSimilarity":0.9036698524348398,"pixelMismatchRatio":0.1645400413172925,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React ChannelMembers add-member modal opened from the channel members panel. Android/KMP provider uses the shared add-member modal route; Harmony capture remains pending.","variants":[{"name":"Add Member Panel","props":{"channel":"design"}}]},{"id":"components.settings.page.states","title":"Settings Page States","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7763701543322397,"rgbSimilarity":0.8873238514833521,"baselineImage":"latest/react/components.settings.page.states.png","currentImage":"latest/android/components.settings.page.states.png","sideBySideImage":"latest/diff/react__android/components.settings.page.states.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7763701543322397,"rgbSimilarity":0.8873238514833521,"pixelMismatchRatio":0.22362984566776034,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.","variants":[{"name":"Account Page","props":{"tab":"account"}}]},{"id":"components.settings.account.page","title":"Settings Account Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7763701543322397,"rgbSimilarity":0.8873238514833521,"baselineImage":"latest/react/components.settings.account.page.png","currentImage":"latest/android/components.settings.account.page.png","sideBySideImage":"latest/diff/react__android/components.settings.account.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7763701543322397,"rgbSimilarity":0.8873238514833521,"pixelMismatchRatio":0.22362984566776034,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Account Page","props":{"tab":"account"}}]},{"id":"components.settings.account.provider-linked","title":"Settings Account Provider Linked","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7761179973265281,"rgbSimilarity":0.8881840684587041,"baselineImage":"latest/react/components.settings.account.provider-linked.png","currentImage":"latest/android/components.settings.account.provider-linked.png","sideBySideImage":"latest/diff/react__android/components.settings.account.provider-linked.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7761179973265281,"rgbSimilarity":0.8881840684587041,"pixelMismatchRatio":0.2238820026734719,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Account connected-provider state maps React AccountSection identities and provider connect affordances to shared KMP Settings.","variants":[{"name":"Provider Linked","props":{"tab":"account","state":"provider-linked"}}]},{"id":"components.settings.account.password-expanded","title":"Settings Account Password Expanded","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7510025519504192,"rgbSimilarity":0.862054355829093,"baselineImage":"latest/react/components.settings.account.password-expanded.png","currentImage":"latest/android/components.settings.account.password-expanded.png","sideBySideImage":"latest/diff/react__android/components.settings.account.password-expanded.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7510025519504192,"rgbSimilarity":0.862054355829093,"pixelMismatchRatio":0.2489974480495808,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Account password disclosure state maps React current/new/confirm password form to shared KMP Settings without exposing password values in snapshot fixtures.","variants":[{"name":"Password Expanded","props":{"tab":"account","state":"password-expanded"}}]},{"id":"components.settings.account.error-state","title":"Settings Account Error State","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.6743893547211083,"rgbSimilarity":0.8866731398679941,"baselineImage":"latest/react/components.settings.account.error-state.png","currentImage":"latest/android/components.settings.account.error-state.png","sideBySideImage":"latest/diff/react__android/components.settings.account.error-state.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.6743893547211083,"rgbSimilarity":0.8866731398679941,"pixelMismatchRatio":0.3256106452788917,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Account save/avatar/password/provider error messages are rendered from typed Store action state rather than raw API responses.","variants":[{"name":"Account Error","props":{"tab":"account","state":"error"}}]},{"id":"components.settings.server.profile","title":"Settings Server Profile","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7738820026734718,"rgbSimilarity":0.8953637462600044,"baselineImage":"latest/react/components.settings.server.profile.png","currentImage":"latest/android/components.settings.server.profile.png","sideBySideImage":"latest/diff/react__android/components.settings.server.profile.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7738820026734718,"rgbSimilarity":0.8953637462600044,"pixelMismatchRatio":0.22611799732652815,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Server Profile","props":{"tab":"server","section":"profile"}}]},{"id":"components.settings.administration.admins","title":"Settings Administration Admins","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8008020415603354,"rgbSimilarity":0.9185022084339006,"baselineImage":"latest/react/components.settings.administration.admins.png","currentImage":"latest/android/components.settings.administration.admins.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.admins.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8008020415603354,"rgbSimilarity":0.9185022084339006,"pixelMismatchRatio":0.1991979584396646,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Owners & Admins","props":{"tab":"administration","section":"admins"}}]},{"id":"components.settings.administration.invites","title":"Settings Administration Invites","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8717584153603111,"rgbSimilarity":0.9401245237431575,"baselineImage":"latest/react/components.settings.administration.invites.png","currentImage":"latest/android/components.settings.administration.invites.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.invites.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8717584153603111,"rgbSimilarity":0.9401245237431575,"pixelMismatchRatio":0.12824158463968893,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Pending Invites","props":{"tab":"administration","section":"invites"}}]},{"id":"components.settings.administration.join-links","title":"Settings Administration Join Links","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8457011787580508,"rgbSimilarity":0.913732690143328,"baselineImage":"latest/react/components.settings.administration.join-links.png","currentImage":"latest/android/components.settings.administration.join-links.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.join-links.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8457011787580508,"rgbSimilarity":0.913732690143328,"pixelMismatchRatio":0.15429882124194916,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Join Links","props":{"tab":"administration","section":"joinLinks"}}]},{"id":"components.settings.administration.pre-join-agreement","title":"Settings Administration Pre-join Agreement","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.749565560821485,"rgbSimilarity":0.9070430058846458,"baselineImage":"latest/react/components.settings.administration.pre-join-agreement.png","currentImage":"latest/android/components.settings.administration.pre-join-agreement.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.749565560821485,"rgbSimilarity":0.9070430058846458,"pixelMismatchRatio":0.25043443917851504,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Pre-join Agreement","props":{"tab":"administration","section":"preJoinAgreement"}}]},{"id":"components.settings.administration.onboarding","title":"Settings Administration Onboarding","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8370944221655122,"rgbSimilarity":0.9162856135284243,"baselineImage":"latest/react/components.settings.administration.onboarding.png","currentImage":"latest/android/components.settings.administration.onboarding.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.onboarding.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8370944221655122,"rgbSimilarity":0.9162856135284243,"pixelMismatchRatio":0.16290557783448778,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Onboarding","props":{"tab":"administration","section":"onboarding"}}]},{"id":"components.settings.administration.member-permissions","title":"Settings Administration Member Permissions","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.855468465184105,"rgbSimilarity":0.934136947524176,"baselineImage":"latest/react/components.settings.administration.member-permissions.png","currentImage":"latest/android/components.settings.administration.member-permissions.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.member-permissions.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.855468465184105,"rgbSimilarity":0.934136947524176,"pixelMismatchRatio":0.14453153481589498,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Member Permissions","props":{"tab":"administration","section":"memberPermissions"}}]},{"id":"components.settings.administration.translation","title":"Settings Administration Translation","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8573459715639811,"rgbSimilarity":0.9376673640250487,"baselineImage":"latest/react/components.settings.administration.translation.png","currentImage":"latest/android/components.settings.administration.translation.png","sideBySideImage":"latest/diff/react__android/components.settings.administration.translation.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8573459715639811,"rgbSimilarity":0.9376673640250487,"pixelMismatchRatio":0.14265402843601893,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Translation","props":{"tab":"administration","section":"translation"}}]},{"id":"components.settings.billing.page","title":"Settings Billing Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8075647101713452,"rgbSimilarity":0.9012655068913782,"baselineImage":"latest/react/components.settings.billing.page.png","currentImage":"latest/android/components.settings.billing.page.png","sideBySideImage":"latest/diff/react__android/components.settings.billing.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8075647101713452,"rgbSimilarity":0.9012655068913782,"pixelMismatchRatio":0.19243528982865477,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Plan & Billing","props":{"tab":"billing"}}]},{"id":"components.settings.language-region.page","title":"Settings Language & Region Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.7837860007291287,"rgbSimilarity":0.8757264440997434,"baselineImage":"latest/react/components.settings.language-region.page.png","currentImage":"latest/android/components.settings.language-region.page.png","sideBySideImage":"latest/diff/react__android/components.settings.language-region.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7837860007291287,"rgbSimilarity":0.8757264440997434,"pixelMismatchRatio":0.21621399927087126,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Language & Region","props":{"tab":"language-region"}}]},{"id":"components.settings.appearance.page","title":"Settings Appearance Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.802971199416697,"rgbSimilarity":0.9298618587062955,"baselineImage":"latest/react/components.settings.appearance.page.png","currentImage":"latest/android/components.settings.appearance.page.png","sideBySideImage":"latest/diff/react__android/components.settings.appearance.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.802971199416697,"rgbSimilarity":0.9298618587062955,"pixelMismatchRatio":0.19702880058330297,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React SettingsPanel AppearanceSection mapped to KMP SettingsAppearanceContent through the shared settings visual page; full Settings route coverage remains screens.settings.appearance pending.","variants":[{"name":"Appearance","props":{"tab":"appearance"}}]},{"id":"components.settings.notifications.page","title":"Settings Notifications Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.8302527646129542,"rgbSimilarity":0.9109419858193218,"baselineImage":"latest/react/components.settings.notifications.page.png","currentImage":"latest/android/components.settings.notifications.page.png","sideBySideImage":"latest/diff/react__android/components.settings.notifications.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8302527646129542,"rgbSimilarity":0.9109419858193218,"pixelMismatchRatio":0.16974723538704584,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Notifications","props":{"tab":"notifications"}}]},{"id":"components.settings.connected-apps.page","title":"Settings Connected Apps Page","surface":"settings","category":"app/settings","captureType":"component-fixture","status":"different","similarity":0.6103141329444647,"rgbSimilarity":0.8213084643262993,"baselineImage":"latest/react/components.settings.connected-apps.page.png","currentImage":"latest/android/components.settings.connected-apps.page.png","sideBySideImage":"latest/diff/react__android/components.settings.connected-apps.page.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.6103141329444647,"rgbSimilarity":0.8213084643262993,"pixelMismatchRatio":0.3896858670555353,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.","variants":[{"name":"Connected Apps","props":{"tab":"integrations"}}]},{"id":"screens.members.agent-detail.profile","title":"Members Agent Detail Profile Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.7863865597277919,"rgbSimilarity":0.8982986004382569,"baselineImage":"latest/react/screens.members.agent-detail.profile.png","currentImage":"latest/android/screens.members.agent-detail.profile.png","sideBySideImage":"latest/diff/react__android/screens.members.agent-detail.profile.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7863865597277919,"rgbSimilarity":0.8982986004382569,"pixelMismatchRatio":0.21361344027220808,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"profile"}}]},{"id":"screens.members.agent-detail.permissions","title":"Members Agent Detail Permissions Screen","surface":"members","category":"members","captureType":"real-screen","status":"missing","similarity":null,"rgbSimilarity":null,"baselineImage":null,"currentImage":null,"sideBySideImage":null,"note":"Real Members route capture for the Permissions tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"permissions"}}]},{"id":"screens.members.agent-detail.reminders","title":"Members Agent Detail Reminders Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.9393395309272087,"rgbSimilarity":0.9683070195713075,"baselineImage":"latest/react/screens.members.agent-detail.reminders.png","currentImage":"latest/android/screens.members.agent-detail.reminders.png","sideBySideImage":"latest/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9393395309272087,"rgbSimilarity":0.9683070195713075,"pixelMismatchRatio":0.06066046907279132,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"reminders"}}]},{"id":"screens.members.agent-detail.workspace","title":"Members Agent Detail Workspace Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.9483017377567141,"rgbSimilarity":0.9730892499585,"baselineImage":"latest/react/screens.members.agent-detail.workspace.png","currentImage":"latest/android/screens.members.agent-detail.workspace.png","sideBySideImage":"latest/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9483017377567141,"rgbSimilarity":0.9730892499585,"pixelMismatchRatio":0.051698262243285886,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"workspace"}}]},{"id":"screens.members.agent-detail.apps","title":"Members Agent Detail Apps Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.8651932191031717,"rgbSimilarity":0.9106786297781545,"baselineImage":"latest/react/screens.members.agent-detail.apps.png","currentImage":"latest/android/screens.members.agent-detail.apps.png","sideBySideImage":"latest/diff/react__android/screens.members.agent-detail.apps.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8651932191031717,"rgbSimilarity":0.9106786297781545,"pixelMismatchRatio":0.1348067808968283,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for the Apps tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"apps"}}]},{"id":"screens.members.agent-detail.activity","title":"Members Agent Detail Activity Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.8747356908494349,"rgbSimilarity":0.946308285618293,"baselineImage":"latest/react/screens.members.agent-detail.activity.png","currentImage":"latest/android/screens.members.agent-detail.activity.png","sideBySideImage":"latest/diff/react__android/screens.members.agent-detail.activity.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8747356908494349,"rgbSimilarity":0.946308285618293,"pixelMismatchRatio":0.12526430915056508,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for the Activity tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"agentTab":"activity"}}]},{"id":"screens.members.human.profile","title":"Members Human Detail Profile Screen","surface":"members","category":"members","captureType":"real-screen","status":"different","similarity":0.8807540405881638,"rgbSimilarity":0.9456157285290345,"baselineImage":"latest/react/screens.members.human.profile.png","currentImage":"latest/android/screens.members.human.profile.png","sideBySideImage":"latest/diff/react__android/screens.members.human.profile.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.8807540405881638,"rgbSimilarity":0.9456157285290345,"pixelMismatchRatio":0.11924595941183624,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real Members route capture for human member detail profile. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human. Harmony remains pending real-device/provider capture.","variants":[{"name":"Default","props":{"humanUserId":"visual-human-1"}}]},{"id":"components.members.agent-lifecycle-actions","title":"Members Agent Lifecycle Actions","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.03200874954429457,"rgbSimilarity":0.8778484627536663,"baselineImage":"latest/react/components.members.agent-lifecycle-actions.png","currentImage":"latest/android/components.members.agent-lifecycle-actions.png","sideBySideImage":"latest/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.03200874954429457,"rgbSimilarity":0.8778484627536663,"pixelMismatchRatio":0.9679912504557054,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent management dropdown. The Android fixture opens the same lifecycle action menu state so Stop Agent and Restart / Reset are visible."},{"id":"components.members.avatar-management","title":"Members Avatar Management","surface":"members","category":"members","captureType":"component-fixture","status":"different","similarity":0.7125713938510148,"rgbSimilarity":0.854790069712051,"baselineImage":"latest/react/components.members.avatar-management.png","currentImage":"latest/android/components.members.avatar-management.png","sideBySideImage":"latest/diff/react__android/components.members.avatar-management.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7125713938510148,"rgbSimilarity":0.854790069712051,"pixelMismatchRatio":0.28742860614898524,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states."},{"id":"screens.settings.computers","title":"Settings Computers Screen","surface":"settings","category":"app/settings","captureType":"real-screen","status":"different","similarity":0.9327348401992952,"rgbSimilarity":0.955323989684179,"baselineImage":"latest/react/screens.settings.computers.png","currentImage":"latest/android/screens.settings.computers.png","sideBySideImage":"latest/diff/react__android/screens.settings.computers.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.9327348401992952,"rgbSimilarity":0.955323989684179,"pixelMismatchRatio":0.0672651598007048,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list."},{"id":"screens.settings.computer-detail","title":"Settings Computer Detail Screen","surface":"settings","category":"app/settings","captureType":"real-screen","status":"different","similarity":0.7334761210353627,"rgbSimilarity":0.924465611415694,"baselineImage":"latest/react/screens.settings.computer-detail.png","currentImage":"latest/android/screens.settings.computer-detail.png","sideBySideImage":"latest/diff/react__android/screens.settings.computer-detail.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7334761210353627,"rgbSimilarity":0.924465611415694,"pixelMismatchRatio":0.26652387896463725,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state."},{"id":"screens.settings.server-danger-modal","title":"Settings Server Danger Modal","surface":"settings","category":"app/settings","captureType":"real-screen","status":"different","similarity":0.1688753189938024,"rgbSimilarity":0.862723974752773,"baselineImage":"latest/react/screens.settings.server-danger-modal.png","currentImage":"latest/android/screens.settings.server-danger-modal.png","sideBySideImage":"latest/diff/react__android/screens.settings.server-danger-modal.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.1688753189938024,"rgbSimilarity":0.862723974752773,"pixelMismatchRatio":0.8311246810061976,"comparisonWidth":390,"comparisonHeight":844,"baselineWidth":390,"baselineHeight":844,"currentWidth":390,"currentHeight":844},"note":"Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked."},{"id":"components.thread.message-row.rich-content","title":"Thread Message Row Rich Content","surface":"thread","category":"app/thread","captureType":"component-fixture","status":"different","similarity":0.7282557069492682,"rgbSimilarity":0.8898722495499233,"baselineImage":"latest/react/components.thread.message-row.rich-content.png","currentImage":"latest/android/components.thread.message-row.rich-content.png","sideBySideImage":"latest/diff/react__android/components.thread.message-row.rich-content.side-by-side.png","metrics":{"pixelPerfectSimilarity":0.7282557069492682,"rgbSimilarity":0.8898722495499233,"pixelMismatchRatio":0.2717442930507318,"comparisonWidth":342,"comparisonHeight":394,"baselineWidth":342,"baselineHeight":392,"currentWidth":342,"currentHeight":394},"note":"Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer."}],"raftUiHref":"latest/raft-ui/"}</script>
+  <script>
+    (() => {
+      const loadImage = (src) => new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Unable to load overlay image: " + src));
+        image.src = src;
+      });
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const sliderValue = (panel, selector, fallback) => {
+        const value = Number(panel.querySelector(selector)?.value ?? fallback);
+        return Number.isFinite(value) ? clamp(value / 100, 0, 1) : fallback / 100;
+      };
+      const snapValue = (value, size) => {
+        const snapPoints = [0, -size, -size / 2, size / 2, size];
+        const threshold = Math.max(4, size * 0.02);
+        for (const point of snapPoints) {
+          if (Math.abs(value - point) <= threshold) return point;
+        }
+        return value;
+      };
+      const snappedOffset = (panel, x, y, width, height) => {
+        if (!panel.querySelector("[data-overlay-snap]")?.checked) return { x, y };
+        return {
+          x: snapValue(x, width),
+          y: snapValue(y, height),
+        };
+      };
+
+      const drawOverlay = (panel, baselineImage, currentImage) => {
+        const canvas = panel.querySelector("canvas[data-overlay-canvas]");
+        if (!canvas) return;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        const width = Number(panel.dataset.overlayWidth) || baselineImage.naturalWidth || currentImage.naturalWidth;
+        const height = Number(panel.dataset.overlayHeight) || baselineImage.naturalHeight || currentImage.naturalHeight;
+        const mode = panel.querySelector("[data-overlay-mode]")?.value || "blend";
+        const baselineOpacity = sliderValue(panel, "[data-overlay-baseline-opacity]", 100);
+        const currentOpacity = sliderValue(panel, "[data-overlay-opacity]", 50);
+        const split = Math.max(0, Math.min(1, Number(panel.dataset.overlaySplit || 0.5)));
+        const offsetX = Number(panel.dataset.overlayOffsetX || 0);
+        const offsetY = Number(panel.dataset.overlayOffsetY || 0);
+        panel.dataset.overlayMode = mode;
+        canvas.width = width;
+        canvas.height = height;
+        context.clearRect(0, 0, width, height);
+        context.globalAlpha = baselineOpacity;
+        context.globalCompositeOperation = "source-over";
+        context.drawImage(baselineImage, 0, 0, width, height);
+        context.save();
+        context.globalAlpha = mode === "split" ? 1 : currentOpacity;
+        context.globalCompositeOperation = mode === "difference" ? "difference" : "source-over";
+        if (mode === "split") {
+          context.beginPath();
+          context.rect(0, 0, Math.round(width * split), height);
+          context.clip();
+          context.globalAlpha = 1;
+        }
+        context.drawImage(currentImage, mode === "align" ? offsetX : 0, mode === "align" ? offsetY : 0, width, height);
+        context.restore();
+        if (mode === "split") {
+          const x = Math.round(width * split);
+          context.save();
+          context.strokeStyle = "#141111";
+          context.lineWidth = Math.max(2, Math.round(width / 160));
+          context.beginPath();
+          context.moveTo(x, 0);
+          context.lineTo(x, height);
+          context.stroke();
+          context.fillStyle = "#FFD440";
+          context.strokeStyle = "#141111";
+          context.lineWidth = Math.max(1, Math.round(width / 300));
+          context.beginPath();
+          context.arc(x, Math.max(20, Math.round(height * 0.08)), Math.max(8, Math.round(width / 36)), 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+        if (mode === "align") {
+          context.save();
+          context.strokeStyle = "rgba(20, 17, 17, 0.35)";
+          context.lineWidth = Math.max(1, Math.round(width / 300));
+          context.setLineDash([6, 6]);
+          context.beginPath();
+          context.moveTo(width / 2, 0);
+          context.lineTo(width / 2, height);
+          context.moveTo(0, height / 2);
+          context.lineTo(width, height / 2);
+          context.stroke();
+          context.setLineDash([]);
+          context.strokeStyle = "#141111";
+          context.fillStyle = "#FFD440";
+          context.lineWidth = Math.max(2, Math.round(width / 180));
+          context.strokeRect(offsetX, offsetY, width, height);
+          context.beginPath();
+          context.arc(clamp(offsetX + width / 2, 12, width - 12), clamp(offsetY + height * 0.08, 12, height - 12), Math.max(8, Math.round(width / 40)), 0, Math.PI * 2);
+          context.fill();
+          context.stroke();
+          context.restore();
+        }
+        const baselineValueLabel = panel.querySelector("[data-overlay-baseline-opacity-value]");
+        if (baselineValueLabel) baselineValueLabel.textContent = Math.round(baselineOpacity * 100) + "%";
+        const valueLabel = panel.querySelector("[data-overlay-opacity-value]");
+        if (valueLabel) valueLabel.textContent = Math.round(currentOpacity * 100) + "%";
+        const splitLabel = panel.querySelector("[data-overlay-split-value]");
+        if (splitLabel) splitLabel.textContent = Math.round(split * 100) + "%";
+        const offsetLabel = panel.querySelector("[data-overlay-offset-value]");
+        if (offsetLabel) offsetLabel.textContent = Math.round(offsetX) + "px, " + Math.round(offsetY) + "px";
+      };
+
+      const initPanel = (panel) => {
+        if (!panel || panel.dataset.overlayReady === "1") return;
+        const canvas = panel.querySelector("canvas[data-overlay-canvas]");
+        if (!canvas) return;
+        panel.dataset.overlayReady = "1";
+        Promise.all([
+          loadImage(panel.dataset.baselineSrc),
+          loadImage(panel.dataset.currentSrc),
+        ]).then(([baselineImage, currentImage]) => {
+          const redraw = () => drawOverlay(panel, baselineImage, currentImage);
+          const updateSplitFromPointer = (event) => {
+            const rect = canvas.getBoundingClientRect();
+            if (!rect.width) return;
+            panel.dataset.overlaySplit = String(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)));
+            redraw();
+          };
+          const beginAlignDrag = (event) => {
+            const rect = canvas.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            panel.dataset.overlayDragClientX = String(event.clientX);
+            panel.dataset.overlayDragClientY = String(event.clientY);
+            panel.dataset.overlayDragStartX = String(Number(panel.dataset.overlayOffsetX || 0));
+            panel.dataset.overlayDragStartY = String(Number(panel.dataset.overlayOffsetY || 0));
+            panel.dataset.overlayDragScaleX = String(canvas.width / rect.width);
+            panel.dataset.overlayDragScaleY = String(canvas.height / rect.height);
+          };
+          const updateAlignFromPointer = (event) => {
+            const startClientX = Number(panel.dataset.overlayDragClientX || event.clientX);
+            const startClientY = Number(panel.dataset.overlayDragClientY || event.clientY);
+            const startX = Number(panel.dataset.overlayDragStartX || 0);
+            const startY = Number(panel.dataset.overlayDragStartY || 0);
+            const scaleX = Number(panel.dataset.overlayDragScaleX || 1);
+            const scaleY = Number(panel.dataset.overlayDragScaleY || 1);
+            const next = snappedOffset(
+              panel,
+              startX + (event.clientX - startClientX) * scaleX,
+              startY + (event.clientY - startClientY) * scaleY,
+              canvas.width,
+              canvas.height,
+            );
+            panel.dataset.overlayOffsetX = String(next.x);
+            panel.dataset.overlayOffsetY = String(next.y);
+            redraw();
+          };
+          panel.querySelector("[data-overlay-mode]")?.addEventListener("change", redraw);
+          panel.querySelector("[data-overlay-opacity]")?.addEventListener("input", redraw);
+          panel.querySelector("[data-overlay-baseline-opacity]")?.addEventListener("input", redraw);
+          panel.querySelector("[data-overlay-snap]")?.addEventListener("change", redraw);
+          panel.querySelector("[data-overlay-reset]")?.addEventListener("click", () => {
+            panel.dataset.overlayOffsetX = "0";
+            panel.dataset.overlayOffsetY = "0";
+            panel.dataset.overlaySplit = "0.5";
+            redraw();
+          });
+          canvas.addEventListener("pointerdown", (event) => {
+            const currentMode = panel.querySelector("[data-overlay-mode]")?.value;
+            if (currentMode !== "split" && currentMode !== "align") return;
+            canvas.setPointerCapture(event.pointerId);
+            if (currentMode === "split") {
+              updateSplitFromPointer(event);
+            } else {
+              beginAlignDrag(event);
+              updateAlignFromPointer(event);
+            }
+          });
+          canvas.addEventListener("pointermove", (event) => {
+            const currentMode = panel.querySelector("[data-overlay-mode]")?.value;
+            if (currentMode !== "split" && currentMode !== "align") return;
+            if (!canvas.hasPointerCapture(event.pointerId)) return;
+            if (currentMode === "split") updateSplitFromPointer(event);
+            else updateAlignFromPointer(event);
+          });
+          canvas.addEventListener("pointerup", (event) => {
+            if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          });
+          canvas.addEventListener("pointercancel", (event) => {
+            if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          });
+          redraw();
+        }).catch((error) => {
+          panel.dataset.overlayReady = "";
+          const status = panel.querySelector("[data-overlay-status]");
+          if (status) status.textContent = error.message;
+        });
+      };
+
+      // Expose the per-panel initializer so client-rendered pages (e.g. the
+      // Storybook-style homepage that swaps cases in the DOM) can wire an
+      // overlay panel that was not present at load time.
+      window.__slockInitOverlayComparison = initPanel;
+
+      for (const panel of document.querySelectorAll("[data-overlay-comparison]")) {
+        initPanel(panel);
+      }
+    })();
+  </script>
+  <script>
+  (function () {
+    var DATA = JSON.parse(document.getElementById("vt-data").textContent);
+    var SURFACE_ORDER = ["ui", "library", "home", "channel", "thread", "members", "tasks", "settings", "auth", "navigation", "screens"];
+    var BG_MODES = ["", "white", "dark"];
+    var ICONS = {
+      caret: '<svg class="sb-caret" width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M2 3.2h6L5 7.6z"/></svg>',
+      folder: '<svg class="sb-glyph" width="13" height="13" viewBox="0 0 14 14" fill="currentColor"><path d="M1.4 3.4h3.4l1 1.2h6.8v6.6H1.4z" opacity=".85"/></svg>',
+      component: '<svg class="sb-glyph" width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="2" width="10" height="10" rx="1.6"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>',
+      search: '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="5.5" cy="5.5" r="4"/><path d="M8.6 8.6L12 12"/></svg>',
+      zoomIn: '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><path d="M9.2 9.2L13 13"/><path d="M6 4v4M4 6h4"/></svg>',
+      zoomOut: '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="6" cy="6" r="4"/><path d="M9.2 9.2L13 13"/><path d="M4 6h4"/></svg>',
+      reset: '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 7.5a5.1 5.1 0 1 1-1.6-3.7"/><path d="M12.9 2.4v3.1h-3.1"/></svg>',
+      bg: '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7.5" cy="7.5" r="5.2"/><path d="M7.5 2.3a5.2 5.2 0 0 1 0 10.4z" fill="currentColor" stroke="none"/></svg>',
+      fit: '<svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.4V2.4h3M13 5.4V2.4h-3M2 9.6v3h3M13 9.6v3h-3"/></svg>'
+    };
+
+    var tree = document.getElementById("vt-tree");
+    var searchInput = document.getElementById("vt-search");
+    var overview = document.getElementById("vt-overview");
+    var stageWrap = document.getElementById("vt-stage-wrap");
+    var stage = document.getElementById("vt-stage");
+    var canvas = document.getElementById("vt-canvas");
+    var storyTitle = document.getElementById("vt-story-title");
+    var compTabsBox = document.getElementById("vt-comptabs");
+    var toolsBox = document.getElementById("vt-tools");
+    var toolsSep = document.getElementById("vt-tools-sep");
+    var addons = document.getElementById("vt-addons");
+    var addonTabbar = document.getElementById("vt-addon-tabbar");
+    var addonBody = document.getElementById("vt-addon-body");
+    var runsBox = document.getElementById("vt-runs");
+
+    var caseById = {};
+    var rowById = {};
+    var selectedId = null;
+    var compTab = null;
+    var addonTab = "metrics";
+    var zoom = 1;
+    var bgIndex = 0;
+    var actualSize = false;
+
+    function statusKind(status) {
+      if (status === "different") return "different";
+      if (status === "missing" || status === "error") return "missing";
+      if (status === "pass" || status === "basic-pass" || status === "same") return "pass";
+      return "other";
+    }
+    function pct(value, digits) {
+      if (typeof value !== "number") return null;
+      return (value * 100).toFixed(digits === undefined ? 1 : digits) + "%";
+    }
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined && text !== null) node.textContent = text;
+      return node;
+    }
+    function svgSpan(markup) {
+      var span = document.createElement("span");
+      span.style.display = "inline-flex";
+      span.innerHTML = markup;
+      return span.firstChild;
+    }
+    function tc(value) {
+      value = String(value || "");
+      return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+    }
+    function anchorId(id) {
+      return String(id).replace(/[^a-zA-Z0-9]+/g, "-");
+    }
+    function dims(w, h) {
+      return (w && h) ? (w + " x " + h) : "-";
+    }
+
+    // ----- runs footer -----
+    (DATA.runs || []).forEach(function (run) {
+      var link = document.createElement("a");
+      link.className = "sb-run";
+      link.href = run.href;
+      link.appendChild(el("code", null, run.runId));
+      var subject = el("span", "subj", run.commitSubject || (run.baseline + " vs " + run.current));
+      subject.title = (run.commitSubject || "") + (run.generatedAt ? " · " + run.generatedAt : "");
+      link.appendChild(subject);
+      runsBox.appendChild(link);
+    });
+    if (!(DATA.runs || []).length) runsBox.appendChild(el("div", "subj", "No runs recorded"));
+
+    // ----- sidebar tree -----
+    var groups = {};
+    (DATA.cases || []).forEach(function (item) {
+      caseById[item.id] = item;
+      var key = item.surface || "other";
+      (groups[key] = groups[key] || []).push(item);
+    });
+    var groupKeys = Object.keys(groups).sort(function (a, b) {
+      var ia = SURFACE_ORDER.indexOf(a); if (ia === -1) ia = SURFACE_ORDER.length;
+      var ib = SURFACE_ORDER.indexOf(b); if (ib === -1) ib = SURFACE_ORDER.length;
+      return (ia - ib) || a.localeCompare(b);
+    });
+    if (!groupKeys.length) {
+      tree.appendChild(el("div", "sb-empty", "No case-level data embedded for this run. Use the classic report instead."));
+    }
+    groupKeys.forEach(function (key) {
+      var group = el("div", "sb-group");
+      group.dataset.surface = key;
+      var head = el("button", "sb-group-head");
+      head.type = "button";
+      head.appendChild(svgSpan(ICONS.caret));
+      head.appendChild(svgSpan(ICONS.folder));
+      head.appendChild(el("span", "gname", key));
+      head.appendChild(el("span", "count", String(groups[key].length)));
+      head.addEventListener("click", function () { group.classList.toggle("closed"); });
+      group.appendChild(head);
+      groups[key].sort(function (a, b) { return a.id.localeCompare(b.id); });
+      groups[key].forEach(function (item) {
+        var row = el("button", "sb-row");
+        row.type = "button";
+        row.dataset.caseId = item.id;
+        row.title = item.id;
+        row.appendChild(svgSpan(ICONS.component));
+        var label = item.title && item.title !== item.id ? item.title : item.id.replace(/^components\./, "");
+        row.appendChild(el("span", "name", label));
+        var p = pct(item.similarity);
+        if (p) row.appendChild(el("span", "sb-pct", p));
+        row.appendChild(el("span", "sb-dot " + statusKind(item.status)));
+        row.addEventListener("click", function () { selectCase(item.id, true); });
+        rowById[item.id] = row;
+        group.appendChild(row);
+      });
+      tree.appendChild(group);
+    });
+
+    // ----- search filter -----
+    searchInput.addEventListener("input", function () {
+      var query = searchInput.value.trim().toLowerCase();
+      Array.prototype.forEach.call(tree.querySelectorAll(".sb-group"), function (group) {
+        var visible = 0;
+        Array.prototype.forEach.call(group.querySelectorAll(".sb-row"), function (row) {
+          var item = caseById[row.dataset.caseId];
+          var haystack = (item.id + " " + item.title + " " + item.category + " " + item.surface).toLowerCase();
+          var match = !query || haystack.indexOf(query) !== -1;
+          row.style.display = match ? "" : "none";
+          if (match) visible += 1;
+        });
+        group.style.display = visible ? "" : "none";
+        if (query) group.classList.remove("closed");
+      });
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "/" && document.activeElement !== searchInput) {
+        event.preventDefault();
+        searchInput.focus();
+      }
+    });
+
+    // ----- toolbar tools -----
+    function iconBtn(icon, title) {
+      var button = el("button", "sb-iconbtn");
+      button.type = "button";
+      button.title = title;
+      button.setAttribute("aria-label", title);
+      button.appendChild(svgSpan(icon));
+      return button;
+    }
+    var zoomLbl = el("span", "sb-zoomlbl", "100%");
+    var zoomOutBtn = iconBtn(ICONS.zoomOut, "Zoom out");
+    var zoomInBtn = iconBtn(ICONS.zoomIn, "Zoom in");
+    var resetBtn = iconBtn(ICONS.reset, "Reset zoom");
+    var bgBtn = iconBtn(ICONS.bg, "Toggle background");
+    var fitBtn = iconBtn(ICONS.fit, "Actual size / fit");
+    function applyZoom() { stage.style.transform = "scale(" + zoom + ")"; zoomLbl.textContent = Math.round(zoom * 100) + "%"; }
+    function applyBg() { if (BG_MODES[bgIndex]) canvas.dataset.bg = BG_MODES[bgIndex]; else canvas.removeAttribute("data-bg"); bgBtn.classList.toggle("on", bgIndex !== 0); }
+    function applyFit() { stage.classList.toggle("actual", actualSize); fitBtn.classList.toggle("on", actualSize); }
+    zoomOutBtn.addEventListener("click", function () { zoom = Math.max(0.2, Math.round((zoom - 0.2) * 100) / 100); applyZoom(); });
+    zoomInBtn.addEventListener("click", function () { zoom = Math.min(3, Math.round((zoom + 0.2) * 100) / 100); applyZoom(); });
+    resetBtn.addEventListener("click", function () { zoom = 1; applyZoom(); });
+    bgBtn.addEventListener("click", function () { bgIndex = (bgIndex + 1) % BG_MODES.length; applyBg(); });
+    fitBtn.addEventListener("click", function () { actualSize = !actualSize; applyFit(); });
+    [zoomOutBtn, zoomLbl, zoomInBtn, resetBtn, el("span", "sb-sep"), bgBtn, fitBtn].forEach(function (node) { toolsBox.appendChild(node); });
+
+    // ----- comparison tabs + stage -----
+    function compTabDefs(item) {
+      return [
+        { key: "react", label: tc(DATA.baseline), src: item.baselineImage },
+        { key: "android", label: tc(DATA.current), src: item.currentImage },
+        { key: "side", label: "Side-by-side", src: item.sideBySideImage },
+        { key: "overlay", label: "Overlay", overlay: Boolean(item.baselineImage && item.currentImage) }
+      ];
+    }
+    function tabAvailable(tab) { return tab.overlay ? tab.overlay : Boolean(tab.src); }
+
+    function buildOverlayPanel(item) {
+      var bl = tc(DATA.baseline);
+      var cur = tc(DATA.current);
+      var m = item.metrics || {};
+      var w = m.comparisonWidth || m.baselineWidth || m.currentWidth || 0;
+      var h = m.comparisonHeight || m.baselineHeight || m.currentHeight || 0;
+      var details = document.createElement("details");
+      details.className = "overlayComparison";
+      details.open = true;
+      details.setAttribute("data-overlay-comparison", "");
+      details.dataset.baselineSrc = item.baselineImage;
+      details.dataset.currentSrc = item.currentImage;
+      if (w) details.dataset.overlayWidth = String(w);
+      if (h) details.dataset.overlayHeight = String(h);
+      var canvasNote = (w && h) ? ("Canvas " + w + "x" + h) : "Canvas auto";
+      details.innerHTML =
+        '<summary>Overlay comparison · ' + bl + ' under ' + cur + '</summary>' +
+        '<div class="overlayControls">' +
+          '<label>Mode <select data-overlay-mode>' +
+            '<option value="blend">Blend</option>' +
+            '<option value="difference">Difference</option>' +
+            '<option value="split">Split drag</option>' +
+            '<option value="align">Align drag</option>' +
+          '</select></label>' +
+          '<label>' + bl + ' opacity <input data-overlay-baseline-opacity type="range" min="0" max="100" value="100"></label>' +
+          '<code data-overlay-baseline-opacity-value>100%</code>' +
+          '<label>' + cur + ' opacity <input data-overlay-opacity type="range" min="0" max="100" value="50"></label>' +
+          '<code data-overlay-opacity-value>50%</code>' +
+          '<label>Snap <input data-overlay-snap type="checkbox" checked></label>' +
+          '<button type="button" data-overlay-reset>Reset</button>' +
+          '<span class="cropInfo">Split <code data-overlay-split-value>50%</code></span>' +
+          '<span class="cropInfo">Offset <code data-overlay-offset-value>0px, 0px</code></span>' +
+          '<span class="cropInfo" data-overlay-status>' + canvasNote + '</span>' +
+        '</div>' +
+        '<div class="overlayCanvasWrap"><canvas data-overlay-canvas aria-label="' + item.id + ' overlay comparison"></canvas></div>';
+      return details;
+    }
+
+    function renderStage(item, key) {
+      stage.innerHTML = "";
+      var def = compTabDefs(item).filter(function (t) { return t.key === key; })[0];
+      if (!def) { stage.appendChild(el("div", "sb-missing", "No content.")); return; }
+      if (def.overlay) {
+        var panel = buildOverlayPanel(item);
+        stage.appendChild(panel);
+        if (window.__slockInitOverlayComparison) window.__slockInitOverlayComparison(panel);
+        return;
+      }
+      if (!def.src) { stage.appendChild(el("div", "sb-missing", "No " + def.label + " capture available for this case.")); return; }
+      var card = el("div", "sb-card");
+      var img = document.createElement("img");
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.alt = item.id + " (" + def.label + ")";
+      img.src = encodeURI(def.src);
+      card.appendChild(img);
+      stage.appendChild(card);
+    }
+
+    function buildCompTabs(item) {
+      compTabsBox.innerHTML = "";
+      var defs = compTabDefs(item);
+      var available = defs.filter(tabAvailable);
+      var preferred = defs.filter(function (t) { return t.key === "side" && tabAvailable(t); })[0]
+        || defs.filter(function (t) { return t.key === "overlay" && tabAvailable(t); })[0]
+        || available[0];
+      compTab = preferred ? preferred.key : null;
+      defs.forEach(function (def) {
+        var button = el("button", "sb-comptab", def.label);
+        button.type = "button";
+        if (!tabAvailable(def)) { button.disabled = true; }
+        else {
+          button.addEventListener("click", function () {
+            compTab = def.key;
+            Array.prototype.forEach.call(compTabsBox.children, function (child) { child.classList.remove("active"); });
+            button.classList.add("active");
+            renderStage(item, def.key);
+          });
+        }
+        if (def.key === compTab) button.classList.add("active");
+        compTabsBox.appendChild(button);
+      });
+      if (compTab) renderStage(item, compTab);
+      else stage.appendChild(el("div", "sb-missing", "No captures available for this case."));
+    }
+
+    // ----- addons -----
+    function metricRow(label, value, kind) {
+      var tr = document.createElement("tr");
+      tr.appendChild(el("th", null, label));
+      var td = el("td", "num" + (kind ? " " + kind : ""), value == null ? "-" : value);
+      tr.appendChild(td);
+      return tr;
+    }
+    function renderAddonBody(item) {
+      addonBody.innerHTML = "";
+      if (addonTab === "metrics") {
+        var m = item.metrics;
+        if (!m || (m.pixelPerfectSimilarity == null && m.rgbSimilarity == null)) {
+          addonBody.appendChild(el("div", "sb-addon-empty", "No comparison metrics for this case (status: " + item.status + ")."));
+          return;
+        }
+        var table = el("table", "sb-mtable");
+        var body = document.createElement("tbody");
+        body.appendChild(metricRow("Pixel-perfect similarity", pct(m.pixelPerfectSimilarity, 2), statusKind(item.status)));
+        body.appendChild(metricRow("RGB similarity", pct(m.rgbSimilarity, 2)));
+        body.appendChild(metricRow("Pixel mismatch", pct(m.pixelMismatchRatio, 2)));
+        body.appendChild(metricRow("Comparison size", dims(m.comparisonWidth, m.comparisonHeight)));
+        body.appendChild(metricRow("Baseline size (" + tc(DATA.baseline) + ")", dims(m.baselineWidth, m.baselineHeight)));
+        body.appendChild(metricRow("Current size (" + tc(DATA.current) + ")", dims(m.currentWidth, m.currentHeight)));
+        table.appendChild(body);
+        addonBody.appendChild(table);
+        return;
+      }
+      if (addonTab === "variant") {
+        if (!item.variants || !item.variants.length) {
+          addonBody.appendChild(el("div", "sb-addon-empty", "No variant metadata declared for this case."));
+          return;
+        }
+        item.variants.forEach(function (variant) {
+          var block = el("div", "sb-variant");
+          block.appendChild(el("div", "vname", variant.name));
+          if (variant.props && Object.keys(variant.props).length) {
+            var table = el("table", "sb-props");
+            var head = document.createElement("tr");
+            head.appendChild(el("th", null, "Prop"));
+            head.appendChild(el("th", null, "Value"));
+            table.appendChild(head);
+            Object.keys(variant.props).forEach(function (propKey) {
+              var tr = document.createElement("tr");
+              tr.appendChild(el("td", null, propKey));
+              var value = variant.props[propKey];
+              tr.appendChild(el("td", null, typeof value === "string" ? value : JSON.stringify(value)));
+              table.appendChild(tr);
+            });
+            block.appendChild(table);
+          }
+          addonBody.appendChild(block);
+        });
+        return;
+      }
+      // info
+      var kv = el("dl", "sb-kv");
+      function pair(term, value, mono) {
+        kv.appendChild(el("dt", null, term));
+        var dd = el("dd");
+        if (mono) { var code = el("code", null, value); dd.appendChild(code); } else { dd.textContent = value; }
+        kv.appendChild(dd);
+      }
+      pair("ID", item.id, true);
+      pair("Surface", item.surface);
+      pair("Category", item.category);
+      pair("Capture type", item.captureType || "-");
+      kv.appendChild(el("dt", null, "Status"));
+      var statusDd = el("dd");
+      var wrap = el("span", "sb-status-inline");
+      wrap.appendChild(el("span", "sb-dot " + statusKind(item.status)));
+      wrap.appendChild(el("span", null, item.status));
+      statusDd.appendChild(wrap);
+      kv.appendChild(statusDd);
+      addonBody.appendChild(kv);
+      if (item.note) addonBody.appendChild(el("div", "sb-note", item.note));
+    }
+    function buildAddons(item) {
+      addonTabbar.innerHTML = "";
+      [["metrics", "Metrics"], ["variant", "Variant"], ["info", "Info"]].forEach(function (entry) {
+        var button = el("button", "sb-addon-tab", entry[1]);
+        button.type = "button";
+        if (entry[0] === addonTab) button.classList.add("active");
+        button.addEventListener("click", function () {
+          addonTab = entry[0];
+          Array.prototype.forEach.call(addonTabbar.children, function (child) { child.classList.remove("active"); });
+          button.classList.add("active");
+          renderAddonBody(item);
+        });
+        addonTabbar.appendChild(button);
+      });
+      renderAddonBody(item);
+    }
+
+    // ----- selection -----
+    function renderCase(item) {
+      storyTitle.innerHTML = "";
+      storyTitle.appendChild(el("span", "t", item.title && item.title !== item.id ? item.title : item.id));
+      storyTitle.appendChild(el("span", "i", item.id));
+      zoom = 1; actualSize = false; bgIndex = 0;
+      applyZoom(); applyFit(); applyBg();
+      buildCompTabs(item);
+      buildAddons(item);
+    }
+
+    function selectCase(id, updateHash) {
+      var item = caseById[id];
+      if (!item) return;
+      if (selectedId && rowById[selectedId]) rowById[selectedId].classList.remove("active");
+      selectedId = id;
+      var row = rowById[id];
+      if (row) {
+        row.classList.add("active");
+        var group = row.closest(".sb-group");
+        if (group) group.classList.remove("closed");
+        if (row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
+      }
+      overview.hidden = true;
+      stageWrap.hidden = false;
+      toolsBox.hidden = false;
+      toolsSep.hidden = false;
+      addons.hidden = false;
+      renderCase(item);
+      if (updateHash) {
+        try { history.replaceState(null, "", "#case/" + encodeURIComponent(id)); } catch (error) { /* file:// */ }
+      }
+    }
+
+    function showOverview() {
+      overview.hidden = false;
+      stageWrap.hidden = true;
+      toolsBox.hidden = true;
+      toolsSep.hidden = true;
+      addons.hidden = true;
+      storyTitle.innerHTML = "";
+      storyTitle.appendChild(el("span", "t", "Overview"));
+      if (selectedId && rowById[selectedId]) rowById[selectedId].classList.remove("active");
+      selectedId = null;
+    }
+
+    function applyHash() {
+      var match = /^#case\/(.+)$/.exec(location.hash || "");
+      if (match) {
+        var id = decodeURIComponent(match[1]);
+        if (caseById[id]) { selectCase(id, false); return; }
+      }
+      showOverview();
+    }
+    window.addEventListener("hashchange", applyHash);
+    applyHash();
+  })();
+  </script>
   <script>
     (() => {
       const formatter = new Intl.DateTimeFormat(undefined, {

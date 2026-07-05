@@ -1,11 +1,11 @@
 # Slock Visual Testing
 
-Generated: 2026-07-05 06:52:14 UTC
-Latest run: 11f2525-20260705065201
-Latest commit: 11f2525-20260705065201
-Commit subject: feat(#107 consumer): drive conversation-flow translation from the local mode (#44)
+Generated: 2026-07-05 09:51:26 UTC
+Latest run: 7ca6a69-20260705095113
+Latest commit: 7ca6a69-20260705095113
+Commit subject: fix(tabbar): restore native OHOS HDS bar, iOS UITabBar, fix OHOS tap-through (#216) (#53)
 Providers: react vs android
-Summary: total 82, same 0, pass 0, basic-pass 1, different 78, missing 3
+Summary: total 82, same 0, pass 0, basic-pass 1, different 80, missing 1
 AI analysis: ready 0 / total 82, pending 82
 Visual coverage matrix: active 83 / total 102, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
@@ -105,6 +105,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 7ca6a69-20260705095113: react vs android, total 82, pass 0, basic-pass 1, different 80, matrix runs/7ca6a69-20260705095113/component-matrix.json, report runs/7ca6a69-20260705095113/report.html
 - 11f2525-20260705065201: react vs android, total 82, pass 0, basic-pass 1, different 78, matrix runs/11f2525-20260705065201/component-matrix.json, report runs/11f2525-20260705065201/report.html
 - 0baa579-20260704220716: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0baa579-20260704220716/component-matrix.json, report runs/0baa579-20260704220716/report.html
 - 0458783-20260704203528: react vs android, total 82, pass 0, basic-pass 1, different 79, matrix runs/0458783-20260704203528/component-matrix.json, report runs/0458783-20260704203528/report.html
