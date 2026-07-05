@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-07-05T21:45:23.279Z",
-  "runId": "911fdb1-20260705214455",
+  "generatedAt": "2026-07-05T22:21:49.928Z",
+  "runId": "911fdb1-20260705222119",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 102,
-    "active": 83,
+    "total": 103,
+    "active": 84,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
@@ -16,30 +16,30 @@
         "skipped": 2
       },
       "real-screen": {
-        "total": 25,
-        "active": 10,
+        "total": 26,
+        "active": 11,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 85,
+        "active": 86,
         "pending": 13,
         "unsupported": 0,
-        "total": 98
+        "total": 99
       },
       "android": {
         "active": 81,
-        "pending": 17,
+        "pending": 18,
         "unsupported": 0,
-        "total": 98
+        "total": 99
       },
       "harmony": {
         "active": 0,
-        "pending": 78,
+        "pending": 79,
         "unsupported": 0,
-        "total": 78
+        "total": 79
       }
     }
   },
@@ -122,7 +122,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8775231175361075,
+        "rgbSimilarity": 0.8775512355871797,
         "pixelPerfectSimilarity": 0.03504948623432036,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
@@ -176,12 +176,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.855304324742225,
+        "pixelPerfectSimilarity": 0.743825360176071,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
     {
@@ -238,7 +238,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.931581625921679,
+        "rgbSimilarity": 0.9315823103071791,
         "pixelPerfectSimilarity": 0.9085915664114717,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
@@ -407,7 +407,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.889903314288577,
+        "rgbSimilarity": 0.8899027710329119,
         "pixelPerfectSimilarity": 0.7729630289297224,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
@@ -801,12 +801,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8693115673291697,
+        "pixelPerfectSimilarity": 0.8507652389231337,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
       }
     },
     {
@@ -1141,8 +1141,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9785507438409629,
-        "pixelPerfectSimilarity": 0.5502599090318389,
+        "rgbSimilarity": 0.9776696012604739,
+        "pixelPerfectSimilarity": 0.5502555772146416,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
       }
     },
@@ -1264,7 +1264,7 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 97.72% > 96%",
-        "rgbSimilarity": 0.9898063349041248,
+        "rgbSimilarity": 0.9898518042129415,
         "pixelPerfectSimilarity": 0.9771732067689353,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
       }
@@ -2442,8 +2442,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8957698732360102,
-        "pixelPerfectSimilarity": 0.35850447604002106,
+        "rgbSimilarity": 0.8884214332944724,
+        "pixelPerfectSimilarity": 0.4557800326757673,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -2622,7 +2622,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.897385177013311,
+        "rgbSimilarity": 0.8974183138913823,
         "pixelPerfectSimilarity": 0.817978085632114,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
@@ -2907,12 +2907,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8605984759248754,
+        "pixelPerfectSimilarity": 0.7674373151861303,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.password-expanded.side-by-side.png"
       }
     },
     {
@@ -3433,8 +3433,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9284775462869574,
-        "pixelPerfectSimilarity": 0.8137596035700301,
+        "rgbSimilarity": 0.9284631049145258,
+        "pixelPerfectSimilarity": 0.8137082945139817,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -3951,8 +3951,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.896381434308445,
-        "pixelPerfectSimilarity": 0.8267323520101297,
+        "rgbSimilarity": 0.8963808529215165,
+        "pixelPerfectSimilarity": 0.8267331433998101,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.files.list.side-by-side.png"
       }
     },
@@ -4175,6 +4175,61 @@
       "comparison": null
     },
     {
+      "id": "screens.home.loading",
+      "title": "Home Loading Screen",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/home",
+      "surface": "home",
+      "group": "screens-home",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/Sidebar.tsx#SidebarRowsSkeleton",
+          "fixture": "fixtures/screens.home.loading.json",
+          "components": [
+            "MainLayout",
+            "Sidebar",
+            "SidebarRowsSkeleton",
+            "MobileTabBar"
+          ],
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "route": "compose_home_loading_visual",
+          "reason": "Android home loading state redesign (task #372) will capture compose_home_loading_visual against this React baseline.",
+          "components": [],
+          "fixture": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined.",
+          "components": [],
+          "fixture": ""
+        }
+      },
+      "notes": "Post-sign-in loading transition: MainLayout mounted at the server home with channels/DMs/agents/computers still fetching, so the mobile home surface shows Sidebar skeleton rows. Parity target for replacing the Android app's gray home loading state (task #372).",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "screens.home.saved",
       "title": "Home Saved Screen",
       "captureType": "real-screen",
@@ -4267,7 +4322,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9469700096184454,
+        "rgbSimilarity": 0.9468297891342374,
         "pixelPerfectSimilarity": 0.9045773078948435,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
@@ -4438,12 +4493,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8976224125618542,
+        "pixelPerfectSimilarity": 0.8173387477889847,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
     {
@@ -4791,7 +4846,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9225037941258813,
+        "rgbSimilarity": 0.9225052012860085,
         "pixelPerfectSimilarity": 0.7523024938901716,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computer-detail.side-by-side.png"
       }

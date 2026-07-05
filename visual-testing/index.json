@@ -1,31 +1,31 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-05T21:45:23.279Z",
-  "latestRunId": "911fdb1-20260705214455",
+  "generatedAt": "2026-07-05T22:21:49.928Z",
+  "latestRunId": "911fdb1-20260705222119",
   "latest": {
-    "runId": "911fdb1-20260705214455",
-    "commit": "911fdb1-20260705214455",
+    "runId": "911fdb1-20260705222119",
+    "commit": "911fdb1-20260705222119",
     "commitSubject": "fix(visual): component crops + fixture geometry for tabbar/message-row/header/list-items (#370) (#103)",
-    "generatedAt": "2026-07-05T21:45:23.279Z",
+    "generatedAt": "2026-07-05T22:21:49.928Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 82,
+      "total": 83,
       "same": 0,
       "pass": 0,
       "basic-pass": 4,
-      "different": 73,
-      "missing": 5
+      "different": 77,
+      "missing": 2
     },
     "analysisSummary": {
-      "total": 82,
+      "total": 83,
       "ready": 0,
-      "pending": 82
+      "pending": 83
     },
     "componentMatrixSummary": {
-      "total": 102,
-      "active": 83,
+      "total": 103,
+      "active": 84,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
@@ -36,40 +36,40 @@
           "skipped": 2
         },
         "real-screen": {
-          "total": 25,
-          "active": 10,
+          "total": 26,
+          "active": 11,
           "pending": 14,
           "skipped": 1
         }
       },
       "providers": {
         "react": {
-          "active": 85,
+          "active": 86,
           "pending": 13,
           "unsupported": 0,
-          "total": 98
+          "total": 99
         },
         "android": {
           "active": 81,
-          "pending": 17,
+          "pending": 18,
           "unsupported": 0,
-          "total": 98
+          "total": 99
         },
         "harmony": {
           "active": 0,
-          "pending": 78,
+          "pending": 79,
           "unsupported": 0,
-          "total": 78
+          "total": 79
         }
       }
     },
-    "href": "runs/911fdb1-20260705214455/",
-    "componentMatrix": "runs/911fdb1-20260705214455/component-matrix.json",
-    "llms": "runs/911fdb1-20260705214455/metadata.json"
+    "href": "runs/911fdb1-20260705222119/",
+    "componentMatrix": "runs/911fdb1-20260705222119/component-matrix.json",
+    "llms": "runs/911fdb1-20260705222119/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 102,
-    "active": 83,
+    "total": 103,
+    "active": 84,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
@@ -80,34 +80,98 @@
         "skipped": 2
       },
       "real-screen": {
-        "total": 25,
-        "active": 10,
+        "total": 26,
+        "active": 11,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 85,
+        "active": 86,
         "pending": 13,
         "unsupported": 0,
-        "total": 98
+        "total": 99
       },
       "android": {
         "active": 81,
-        "pending": 17,
+        "pending": 18,
         "unsupported": 0,
-        "total": 98
+        "total": 99
       },
       "harmony": {
         "active": 0,
-        "pending": 78,
+        "pending": 79,
         "unsupported": 0,
-        "total": 78
+        "total": 79
       }
     }
   },
   "runs": [
+    {
+      "runId": "911fdb1-20260705222119",
+      "commit": "911fdb1-20260705222119",
+      "commitSubject": "fix(visual): component crops + fixture geometry for tabbar/message-row/header/list-items (#370) (#103)",
+      "generatedAt": "2026-07-05T22:21:49.928Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 83,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 4,
+        "different": 77,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 83,
+        "ready": 0,
+        "pending": 83
+      },
+      "componentMatrixSummary": {
+        "total": 103,
+        "active": 84,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 77,
+            "active": 73,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 26,
+            "active": 11,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 86,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 99
+          },
+          "android": {
+            "active": 81,
+            "pending": 18,
+            "unsupported": 0,
+            "total": 99
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 79,
+            "unsupported": 0,
+            "total": 79
+          }
+        }
+      },
+      "href": "runs/911fdb1-20260705222119/",
+      "componentMatrix": "runs/911fdb1-20260705222119/component-matrix.json",
+      "llms": "runs/911fdb1-20260705222119/metadata.json"
+    },
     {
       "runId": "911fdb1-20260705214455",
       "commit": "911fdb1-20260705214455",
