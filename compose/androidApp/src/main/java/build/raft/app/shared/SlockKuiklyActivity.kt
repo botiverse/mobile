@@ -2945,7 +2945,9 @@ internal class SlockKuiklyBridgeModule(
 
     /** Native description prompt; returns null when cancelled or left blank. */
     private suspend fun promptFeedbackDescription(): String? {
-        val host = (activity as? Activity) ?: this
+        // AlertDialog needs a themed Activity context; appContext would crash and
+        // the module itself is not a Context. No visible Activity → treat as cancelled.
+        val host = activity ?: appContext as? Activity ?: return null
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { cont ->
                 val input = EditText(host).apply {
