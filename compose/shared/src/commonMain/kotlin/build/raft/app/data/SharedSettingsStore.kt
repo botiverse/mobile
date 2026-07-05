@@ -344,6 +344,7 @@ sealed interface SharedSettingsIntent {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
+    data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
@@ -846,6 +847,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setForegroundMessageBanners(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_foreground_message_banners_unavailable", retryable = false))
+        repository.setForegroundMessageBannersEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setActivityTaskStatusBadges(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1075,6 +1084,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Image annotation preference is not available on this platform."
+                    ),
+            foregroundMessageBanners =
+                chatLayout?.toSettingsMobileForegroundMessageBannersSnapshot()
+                    ?: foregroundMessageBanners.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Foreground message banner preference is not available on this platform."
                     ),
             activityTaskStatusBadges =
                 chatLayout?.toSettingsMobileActivityTaskStatusBadgesSnapshot()
@@ -1707,6 +1723,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setImageAnnotationEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_IMAGE_ANNOTATION)
+            }
+            is SharedSettingsIntent.SetForegroundMessageBanners -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS, inProgress = true)
+                    )
+                dataSource.setForegroundMessageBanners(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS)
             }
             is SharedSettingsIntent.SetActivityTaskStatusBadges -> {
                 _state.value =
@@ -2546,6 +2570,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
+            is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
@@ -2707,6 +2732,7 @@ internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
+internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
@@ -2848,6 +2874,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot
         available = true,
         statusLabel = if (imageAnnotationEnabled) "Enabled" else "Off",
         detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileForegroundMessageBannersSnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = foregroundMessageBannersEnabled,
+        available = true,
+        statusLabel = if (foregroundMessageBannersEnabled) "Enabled" else "Off",
+        detail = "Show an in-app banner for new messages while Raft is open. When off, foreground messages stay quiet."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileActivityTaskStatusBadgesSnapshot(): SettingsMobileToggleSnapshot =

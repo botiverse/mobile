@@ -43,6 +43,7 @@ import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
+import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_THREAD_ROW_AFFORDANCES
@@ -713,6 +714,7 @@ private data class HomeSecondaryRouteEnvironment(
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
+    val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
     val shellScope: SlockAppShellScope
@@ -741,12 +743,14 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
@@ -768,6 +772,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         timeContext,
         myMessageAlignment,
         compactConsecutiveMessages,
+        foregroundMessageBannersEnabled,
         activityTaskStatusBadgesEnabled,
         threadRowAffordances,
         shellScope
@@ -785,6 +790,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             compactConsecutiveMessages = compactConsecutiveMessages,
+            foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             threadRowAffordances = threadRowAffordances,
             shellScope = shellScope
@@ -1996,6 +2002,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
+    var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(false) }
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
@@ -2119,6 +2126,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
+    val latestHomeState by rememberUpdatedState(homeState)
+    val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
     LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
         bridge.log(
             "app_shell_auth_gate_state state=${authGateState.authGateDiagnosticsName()} " +
@@ -2219,6 +2228,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
+    var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
 
     fun refreshVisibleAppShellRoute(reason: String) {
         if (latestReadySession == null) return
@@ -2259,6 +2269,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
+        foregroundMessageBanner = null
         sharedStores.homeSavedStateCache.clear()
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
@@ -2299,9 +2310,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
+        foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
         threadRowAffordances = chatLayout.threadRowAffordances
     }
+    val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
     DisposableEffect(notificationPreferenceEvents) {
         val callbackRef =
             notificationPreferenceEvents.addPreferenceListener { snapshot ->
@@ -3050,6 +3063,31 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
+                    if (event is MessageNew) {
+                        val directory =
+                            (latestHomeState.content as? SharedHomeContentState.Content)
+                                ?.snapshot
+                                ?.toSharedConversationDirectoryState()
+                                ?: SharedConversationDirectoryState()
+                        foregroundMessageBanner =
+                            if (latestForegroundMessageBannersEnabled) {
+                                slockForegroundMessageBannerProjection(
+                                    serverId = serverId,
+                                    currentServerId = activeSession?.currentServerId,
+                                    message = event.message,
+                                    currentMemberId = activeSession?.user?.id,
+                                    visibleConversationKey =
+                                        appShellVisibleForegroundConversationKey(
+                                            selectedTab = latestSelectedTab,
+                                            selectedHomeDestination = latestSelectedHomeDestination,
+                                            selectedConversationId = latestSelectedHomeConversationId
+                                        ),
+                                    conversationDirectory = directory
+                                ) ?: foregroundMessageBanner
+                            } else {
+                                null
+                            }
+                    }
                 }
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
@@ -3065,6 +3103,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         appShellBottomTabs(selectedTab)
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
+    LaunchedEffect(foregroundMessageBanner?.id) {
+        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
+        delay(slockForegroundBannerAutoDismissMs())
+        if (foregroundMessageBanner?.id == bannerId) {
+            foregroundMessageBanner = null
+        }
+    }
 
     val mainRouteContent: @Composable () -> Unit = {
         SlockAppShellSurface(
@@ -3274,6 +3319,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onCompactConsecutiveMessagesSelected = {
                                 compactConsecutiveMessages = it
                             },
+                            onForegroundMessageBannersSelected = {
+                                foregroundMessageBannersEnabled = it
+                                if (!it) {
+                                    foregroundMessageBanner = null
+                                }
+                            },
                             onActivityTaskStatusBadgesSelected = {
                                 activityTaskStatusBadgesEnabled = it
                             },
@@ -3422,7 +3473,20 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        key("route-main") { mainRouteContent() }
+        SlockForegroundBannerHost(
+            banner = foregroundMessageBanner,
+            topSafeArea = shellScope.topSafeArea,
+            onBannerClick = { target ->
+                foregroundMessageBanner = null
+                openHomeConversation(
+                    conversation = target.conversation,
+                    source = "foreground_banner",
+                    anchorMessageId = target.focusedMessageId
+                )
+            }
+        ) {
+            key("route-main") { mainRouteContent() }
+        }
     }
 }
 
@@ -3445,6 +3509,7 @@ private fun SettingsAppShellContent(
     onOpenRouter: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
+    onForegroundMessageBannersSelected: (Boolean) -> Unit,
     onActivityTaskStatusBadgesSelected: (Boolean) -> Unit,
     onThreadRowAffordanceSelected: (ThreadRowAffordancePreference, Boolean) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
@@ -4167,6 +4232,10 @@ private fun SettingsAppShellContent(
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
+                    },
+                    onForegroundMessageBannersChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
+                        onForegroundMessageBannersSelected(enabled)
                     },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
@@ -5067,6 +5136,7 @@ private fun SettingsMobileContent(
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
+    onForegroundMessageBannersChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
@@ -5093,6 +5163,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
+                )
+            }
+            item {
+                SettingsForegroundMessageBannersCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onForegroundMessageBannersChange = onForegroundMessageBannersChange
                 )
             }
             item {
@@ -5190,6 +5267,54 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsForegroundMessageBannersCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onForegroundMessageBannersChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && actionState.inProgress
+    val preference = snapshot.foregroundMessageBanners
+    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageCircle, title = "Foreground message banners") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onForegroundMessageBannersChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Show banners while Raft is open" else "Do not show foreground banners",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -8505,6 +8630,13 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.MessageSquare,
                                 title = "Compact consecutive messages",
                                 fallbackStatus = "Unsupported",
+                                actionState = actionState
+                            ),
+                            mobile.foregroundMessageBanners.toMobileToggleRow(
+                                key = MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS,
+                                iconName = SlockLucideIconName.MessageCircle,
+                                title = "Foreground message banners",
+                                fallbackStatus = "Off",
                                 actionState = actionState
                             )
                         )

@@ -1097,6 +1097,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Enable the composer image preview and annotation transfer page. When off, selected images upload directly."
         ),
+    val foregroundMessageBanners: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = false,
+            available = true,
+            statusLabel = "Off",
+            detail = "Show an in-app banner for new messages while Raft is open. When off, foreground messages stay quiet."
+        ),
     val activityTaskStatusBadges: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,
