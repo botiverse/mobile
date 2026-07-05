@@ -50,18 +50,21 @@ internal fun SlockFormField(
     optional: Boolean = false,
     hint: String? = null,
     error: String? = null,
+    showLabel: Boolean = true,
     labelStyle: SlockFormFieldLabelStyle = SlockFormFieldLabelStyle.Uppercase,
     size: SlockFormFieldSize = SlockFormFieldSize.Default,
     content: @Composable () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockFormFieldLabel(
-            label = label,
-            required = required,
-            optional = optional,
-            labelStyle = labelStyle,
-            size = size
-        )
+        if (showLabel) {
+            SlockFormFieldLabel(
+                label = label,
+                required = required,
+                optional = optional,
+                labelStyle = labelStyle,
+                size = size
+            )
+        }
         content()
         val message = error?.takeIf { it.isNotBlank() } ?: hint?.takeIf { it.isNotBlank() }
         message?.let {
@@ -89,25 +92,27 @@ private fun SlockFormFieldLabel(
 ) {
     val compact = size == SlockFormFieldSize.Compact
     val uppercase = labelStyle == SlockFormFieldLabelStyle.Uppercase
+    val labelFontSize = if (compact) 11.sp else 14.sp
+    val labelLineHeight = if (compact) 14.sp else 18.sp
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = if (uppercase) label.uppercase() else label,
             style =
                 SlockType.SectionLabel
                     .copy(
-                        fontSize = if (compact) 12.sp else 14.sp,
-                        lineHeight = if (compact) 14.sp else 18.sp,
+                        fontSize = labelFontSize,
+                        lineHeight = labelLineHeight,
                         letterSpacing = if (uppercase) 1.1.sp else 0.sp
                     )
                     .withSlockFontWeight(FontWeight.Bold),
-            color = if (compact) SlockColor.TextBlack.copy(alpha = 0.60f) else SlockColor.TextBlack,
+            color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         if (required) {
             Text(
                 text = "*",
-                style = SlockType.SectionLabel.copy(fontSize = if (compact) 12.sp else 14.sp, lineHeight = if (compact) 14.sp else 18.sp),
+                style = SlockType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
                 color = SlockColor.AccentPink,
                 maxLines = 1
             )
@@ -117,9 +122,9 @@ private fun SlockFormFieldLabel(
                 text = "(optional)",
                 style =
                     SlockType.Caption
-                        .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = if (compact) 13.sp else 14.sp)
-                        .withSlockFontWeight(FontWeight.Normal),
-                color = SlockColor.TextBlack.copy(alpha = 0.40f),
+                        .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(if (compact) FontWeight.Bold else FontWeight.Normal),
+                color = if (compact) SlockColor.TextMutedGray else SlockColor.TextBlack.copy(alpha = 0.40f),
                 maxLines = 1
             )
         }
@@ -187,6 +192,8 @@ internal fun SlockSlugInput(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
+    placeholder: String = "",
+    placeholderColor: Color = SlockColor.TextMutedGray,
     enabled: Boolean = true,
     fieldHeight: Dp = 42.dp
 ) {
@@ -233,7 +240,8 @@ internal fun SlockSlugInput(
             TextField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = "",
+                placeholder = placeholder,
+                placeholderColor = placeholderColor,
                 autoFocus = false,
                 maxLines = 1,
                 textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),

@@ -381,6 +381,8 @@ internal fun SlockBrutalTextField(
     required: Boolean = false,
     optional: Boolean = false,
     enabled: Boolean = true,
+    hint: String? = null,
+    error: String? = null,
     autoFocus: Boolean = false,
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
@@ -394,8 +396,16 @@ internal fun SlockBrutalTextField(
      */
     password: Boolean = false
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = label, required = required, optional = optional)
+    val hasError = !error.isNullOrBlank()
+    SlockFormField(
+        label = label,
+        modifier = modifier,
+        required = required,
+        optional = optional,
+        hint = hint,
+        error = error,
+        size = SlockFormFieldSize.Compact
+    ) {
         SlockBrutalInputField(
             value = value,
             onValueChange = onValueChange,
@@ -405,6 +415,8 @@ internal fun SlockBrutalTextField(
             maxLines = maxLines,
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
+            borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
+            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions =
                 if (password) {
@@ -529,8 +541,7 @@ internal fun SlockBrutalReadOnlyField(
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
     textColor: Color = SlockColor.TextMutedGray
 ) {
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = label)
+    SlockFormField(label = label, modifier = modifier, size = SlockFormFieldSize.Compact) {
         SlockBrutalReadOnlyValueField(
             value = value,
             modifier = Modifier.fillMaxWidth(),
