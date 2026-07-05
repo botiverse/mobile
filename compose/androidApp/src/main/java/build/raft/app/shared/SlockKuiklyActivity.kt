@@ -2132,6 +2132,13 @@ internal class SlockKuiklyBridgeModule(
             }
             return
         }
+        if (action == "sendFeedback") {
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+            scope.launch {
+                callback?.invoke(submitFeedbackToQuiver())
+            }
+            return
+        }
         val result =
                 runCatching {
                     when (request.optString("action")) {
@@ -2171,12 +2178,10 @@ internal class SlockKuiklyBridgeModule(
                             mapOf("status" to "ok")
                         }
                         "prepareDiagnosticsFeedback" -> {
-                            prepareDiagnosticsFeedbackDraft()
-                        }
-                        "sendFeedback" -> {
-                            shareFeedbackWithDiagnosticsFile()
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_send_feedback")
-                            mapOf("status" to "ok")
+                            // Raft-channel upload flow retired: feedback goes to
+                            // Quiver via sendFeedback. A non-draft response skips
+                            // the channel picker in the shared settings UI.
+                            mapOf("status" to "unsupported")
                         }
                         "requestNotificationPermission" -> requestNotificationPermissionCapability()
                         "openNotificationSettings" -> {
@@ -2885,86 +2890,38 @@ internal class SlockKuiklyBridgeModule(
 
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
 
-    private fun buildFeedbackText(diagnosticsFileName: String, summaryText: String): String =
-            buildString {
-                appendLine("## Diagnostics")
-                appendLine()
-                appendLine(summaryText.trim())
-                appendLine()
-                appendLine("App-owned JSONL diagnostics are attached as `$diagnosticsFileName`.")
-                appendLine()
-                appendLine("## Feedback")
-                appendLine()
-                appendLine("<!-- Describe what happened here. -->")
-            }
-
-    private fun shareFeedbackWithDiagnosticsFile() {
-        val diagnostics = writeDiagnosticsFeedbackFile()
-        val diagnosticsFile = diagnostics.file
-        val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
-        SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
-                fileName = diagnosticsFile.name,
-                sizeBytes = diagnosticsFile.length(),
-                attachmentRegistered = buglyAttachmentRegistered
-        )
-        shareTextWithAttachment(
-                subject = "Raft feedback",
-                text = buildFeedbackText(diagnosticsFile.name, diagnostics.summaryText),
-                attachment = diagnosticsFile,
-                attachmentMimeType = diagnosticsFeedbackMimeType(diagnosticsFile)
-        )
-    }
-
-    private fun prepareDiagnosticsFeedbackDraft(): Map<String, Any> {
-        val diagnostics = writeDiagnosticsFeedbackFile()
-        val diagnosticsFile = diagnostics.file
-        val bytes = diagnosticsFile.readBytes()
-        val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
-        SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
-                fileName = diagnosticsFile.name,
-                sizeBytes = bytes.size.toLong(),
-                attachmentRegistered = buglyAttachmentRegistered
-        )
-        submitDiagnosticsFeedbackToQuiver(diagnosticsFile)
-        SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
-        return mapOf(
-                "status" to "ok",
-                "message" to buildDiagnosticsChannelFeedbackMessage(),
-                "fileName" to diagnosticsFile.name,
-                "mimeType" to diagnosticsFeedbackMimeType(diagnosticsFile),
-                "sizeBytes" to bytes.size.toLong(),
-                "bodyBase64" to Base64.encodeToString(bytes, Base64.NO_WRAP)
-        )
-    }
-
     /**
-     * Also file the diagnostics feedback as a Quiver ticket (kind=bug) so it
-     * lands in the Quiver console alongside crashes, in addition to the
-     * existing Raft-channel upload. Best-effort and off the UI path.
+     * Submit in-app feedback to the Quiver ticket system (kind=bug) with the
+     * diagnostics archive attached. Returns status=ok when the ticket was
+     * created so the settings UI can confirm.
      */
-    private fun submitDiagnosticsFeedbackToQuiver(diagnosticsFile: File) {
-        val scope = (activity as? ComponentActivity)?.lifecycleScope
-            ?: CoroutineScope(Dispatchers.IO)
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                QuiverFeedback(
-                        context = appContext,
-                        baseUrl = BuildConfig.QUIVER_BASE_URL,
-                        appSlug = BuildConfig.QUIVER_APP_SLUG,
-                        versionName = BuildConfig.VERSION_NAME,
-                        versionCode = BuildConfig.VERSION_CODE.toLong(),
-                        channel = BuildConfig.QUIVER_CHANNEL,
-                ).submit(
-                        message = "In-app feedback (diagnostics attached).",
-                        kind = "bug",
-                        attachments = listOf(diagnosticsFile),
-                )
-            }.onFailure {
-                SlockDiagnosticsLogger.record(
-                        "SlockDiagnostics",
-                        "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
-                )
-            }
+    private suspend fun submitFeedbackToQuiver(): Map<String, Any> {
+        val diagnostics = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile() }
+        val diagnosticsFile = diagnostics.file
+        return runCatching {
+            QuiverFeedback(
+                    context = appContext,
+                    baseUrl = BuildConfig.QUIVER_BASE_URL,
+                    appSlug = BuildConfig.QUIVER_APP_SLUG,
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE.toLong(),
+                    channel = BuildConfig.QUIVER_CHANNEL,
+            ).submit(
+                    message = "In-app feedback (diagnostics attached).",
+                    kind = "bug",
+                    attachments = listOf(diagnosticsFile),
+            )
+            SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submitted")
+            mapOf<String, Any>("status" to "ok")
+        }.getOrElse {
+            SlockDiagnosticsLogger.record(
+                    "SlockDiagnostics",
+                    "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
+            )
+            mapOf<String, Any>(
+                    "status" to "error",
+                    "message" to (it.message ?: "feedback submission failed"),
+            )
         }
     }
 
@@ -2983,13 +2940,6 @@ internal class SlockKuiklyBridgeModule(
             when (file.extension.lowercase()) {
                 "zip" -> "application/zip"
                 else -> "text/plain"
-            }
-
-    private fun buildDiagnosticsChannelFeedbackMessage(): String =
-            buildString {
-                appendLine("Diagnostics zip attached.")
-                appendLine()
-                append("<!-- Describe what happened here. -->")
             }
 
     private fun buildMergedSettingsDiagnosticsExportText(): String {
@@ -3055,34 +3005,6 @@ internal class SlockKuiklyBridgeModule(
         append(label)
         append(": ")
         appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
-    }
-
-    private fun shareTextWithAttachment(
-            subject: String,
-            text: String,
-            attachment: File,
-            attachmentMimeType: String
-    ) {
-        val attachmentUri =
-                FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", attachment)
-        val intent =
-                Intent(Intent.ACTION_SEND).apply {
-                    type = attachmentMimeType
-                    putExtra(Intent.EXTRA_SUBJECT, subject)
-                    putExtra(Intent.EXTRA_TEXT, text)
-                    putExtra(Intent.EXTRA_STREAM, attachmentUri)
-                    clipData = ClipData.newUri(appContext.contentResolver, attachment.name, attachmentUri)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-        runCatching {
-            appContext.startActivity(
-                    Intent.createChooser(intent, subject).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-            )
-        }.onFailure {
-            Toast.makeText(appContext, "Unable to open share sheet", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun shareText(subject: String, text: String) {
