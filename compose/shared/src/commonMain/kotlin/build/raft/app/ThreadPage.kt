@@ -3953,7 +3953,10 @@ internal fun SharedThreadRouteContent(
                     )
                 )
             }
-            bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
+            bridge.toast(
+                "Attachment upload failed: " +
+                    (threadUserFacingErrorCodeLabel(errorCode) ?: "Something went wrong. Please try again.")
+            )
         }
     }
     fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
@@ -5380,7 +5383,11 @@ internal fun SharedThreadRouteContent(
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
                                 errorCode != null ->
-                                    bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
+                                    bridge.toast(
+                                        "Attachment upload failed: " +
+                                            (threadUserFacingErrorCodeLabel(errorCode)
+                                                ?: "Something went wrong. Please try again.")
+                                    )
                                 response == null ->
                                     bridge.toast("Attachment picker unavailable")
                             }
@@ -8718,11 +8725,17 @@ private fun ThreadChatTab(
         "error" ->
             ThreadStateActionMessage(
                 title = "Failed to load thread",
-                detail = renderConfig.errorCode ?: "unknown_error",
+                detail =
+                    threadUserFacingErrorCodeLabel(renderConfig.errorCode)
+                        ?: "Something went wrong. Please try again.",
                 actionLabel = "Retry",
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
             )
-        "no_permission" -> ThreadStateMessage("No permission", renderConfig.errorCode ?: "missing capability")
+        "no_permission" ->
+            ThreadStateMessage(
+                "No permission",
+                threadUserFacingErrorCodeLabel(renderConfig.errorCode) ?: "You do not have permission to view this thread."
+            )
         "empty" ->
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
@@ -13241,7 +13254,7 @@ private fun ThreadOriginCard(
                     )
                     renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                         Text(
-                            text = "Refresh failed: $it",
+                            text = "Refresh failed: ${threadUserFacingErrorCodeLabel(it) ?: "Something went wrong. Please try again."}",
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray
                         )
@@ -14022,7 +14035,7 @@ private fun ThreadAttachmentCommentsDialog(
                 "error" ->
                     ThreadStateActionMessage(
                         title = "Failed to load comments",
-                        detail = state.errorCode ?: "thread_attachment_comments_failed",
+                        detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: "Something went wrong. Please try again.",
                         actionLabel = "Retry",
                         onClick = onRetry
                     )
@@ -14050,7 +14063,7 @@ private fun ThreadAttachmentCommentsDialog(
             }
             state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
                 Text(
-                    text = code.uppercase(),
+                    text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN.",
                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                     color = SlockColor.AccentRed,
                     maxLines = 1,
@@ -14743,7 +14756,9 @@ private fun ThreadForwardTargetModal(
                         detail =
                             when {
                                 loading -> "FETCHING RECENT CONVERSATIONS AND DM TARGETS."
-                                errorCode != null -> errorCode.uppercase()
+                                errorCode != null ->
+                                    threadUserFacingErrorCodeLabel(errorCode)?.uppercase()
+                                        ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN."
                                 query.isBlank() -> "RECENT DMS AND JOINED CHANNELS WILL APPEAR HERE."
                                 else -> "TRY A DIFFERENT SEARCH."
                             }
@@ -15121,7 +15136,10 @@ private fun ThreadMembersModal(
     }
     val removeErrorText =
         when (removeMemberStatus) {
-            "failed" -> "UNABLE TO REMOVE MEMBER: ${(removeMemberErrorCode ?: "member_remove_failed").uppercase()}"
+            "failed" ->
+                "UNABLE TO REMOVE MEMBER: " +
+                    (threadUserFacingErrorCodeLabel(removeMemberErrorCode ?: "member_remove_failed")
+                        ?: "Something went wrong. Please try again.").uppercase()
             "no_permission" -> "UNABLE TO REMOVE MEMBER: NO PERMISSION"
             else -> null
         }
@@ -15249,7 +15267,10 @@ private fun ThreadAddMemberModal(
         when {
             blocked -> "YOU DO NOT HAVE PERMISSION TO ADD MEMBERS."
             localError -> "SELECT A MEMBER BEFORE ADDING."
-            addMemberStatus == "failed" -> "UNABLE TO ADD MEMBER: ${(addMemberErrorCode ?: "member_add_failed").uppercase()}"
+            addMemberStatus == "failed" ->
+                "UNABLE TO ADD MEMBER: " +
+                    (threadUserFacingErrorCodeLabel(addMemberErrorCode ?: "member_add_failed")
+                        ?: "Something went wrong. Please try again.").uppercase()
             else -> null
         }
     SlockUnifiedDialog(

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.userFacingErrorCodeMessage
 import build.raft.app.network.SlockRequestTimeoutException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -36,6 +37,21 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
         ?.replace(Regex("\\s+"), " ")
         ?.takeIf { it.isNotBlank() }
         ?.let { value -> ThreadFailureReasonKnownLabels[value] ?: value }
+        ?.let(::redactThreadFailureReason)
+        ?.let { value ->
+            if (value.length <= ThreadFailureReasonMaxLength) {
+                value
+            } else {
+                value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
+            }
+        }
+
+internal fun threadUserFacingErrorCodeLabel(errorCode: String?): String? =
+    errorCode
+        ?.trim()
+        ?.replace(Regex("\\s+"), " ")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { value -> ThreadFailureReasonKnownLabels[value] ?: value.userFacingErrorCodeMessage() }
         ?.let(::redactThreadFailureReason)
         ?.let { value ->
             if (value.length <= ThreadFailureReasonMaxLength) {
