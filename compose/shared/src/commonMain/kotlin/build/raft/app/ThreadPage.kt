@@ -21,10 +21,17 @@ import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
 import build.raft.app.data.ComposeLocalWriteThrough
+import build.raft.app.data.ForwardMessageExecuteRequest
+import build.raft.app.data.ForwardMessageSendMode
+import build.raft.app.data.ForwardMessageTarget
+import build.raft.app.data.ForwardMessageTargetKind
+import build.raft.app.data.ForwardMessageTargetRepository
+import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
+import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
 import build.raft.app.data.ScreenError
@@ -557,6 +564,12 @@ internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
     (parentChannelId?.takeIf { it.isNotBlank() }
         ?: sourceThreadId?.takeIf { it.isNotBlank() }
         ?: streamChannelId?.takeIf { it.isNotBlank() })
+        ?.let(::ChannelId)
+
+internal fun KuiklyThreadScreenPayload.threadForwardSourceChannelId(): ChannelId? =
+    (sourceThreadId?.takeIf { it.isNotBlank() }
+        ?: streamChannelId?.takeIf { it.isNotBlank() }
+        ?: parentChannelId?.takeIf { it.isNotBlank() })
         ?.let(::ChannelId)
 
 internal fun KuiklyThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
@@ -1687,6 +1700,15 @@ private fun ThreadPageScreen() {
                 warningLogger = { message -> bridge.log("thread_channel_repository $message") }
             )
         }
+    val forwardTargetRepository =
+        remember(authStore, networkClient, channelRepository) {
+            RealForwardMessageTargetRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                channelRepository = channelRepository,
+                warningLogger = { message -> bridge.log("thread_forward_target_repository $message") }
+            )
+        }
     val membersStore =
         remember(authStore, channelRepository, routeScope) {
             SharedMembersStore(
@@ -1778,6 +1800,7 @@ private fun ThreadPageScreen() {
         initialPayload = payload,
         bridge = bridge,
         dataSource = dataSource,
+        forwardTargetRepository = forwardTargetRepository,
         threadSendScope = sharedStores.threadSendScope,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
@@ -2508,6 +2531,7 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
+    forwardTargetRepository: ForwardMessageTargetRepository? = null,
     threadSendScope: CoroutineScope,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
@@ -4148,6 +4172,8 @@ internal fun SharedThreadRouteContent(
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
+            forwardServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+            forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
             onFilesAuthRequired = { code -> routeAuthRequired(code) },
@@ -4247,6 +4273,18 @@ internal fun SharedThreadRouteContent(
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
                     val modeLabel = tab.threadForwardSelectionModeLabel()
                     bridge.toast("$modeLabel forwarding to $target needs API support")
+                }
+                action == "forwardMessagesSent" -> {
+                    val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
+                    val modeLabel = tab.threadForwardSelectionModeLabel()
+                    bridge.toast("$modeLabel forwarded to $target")
+                }
+                action == "forwardMessagesFailed" -> {
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to forward")
+                }
+                action == "forwardJoinConfirmationRequired" -> {
+                    val target = itemId?.takeIf { it.isNotBlank() } ?: "that channel"
+                    bridge.toast("Join $target before forwarding")
                 }
                 action == "forwardCreateGroupRequested" -> {
                     bridge.toast("Create group forwarding needs API support")
@@ -7322,6 +7360,8 @@ private fun ThreadPageContent(
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    forwardServerId: ServerId?,
+    forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     onFilesAuthRequired: (String?) -> Unit,
@@ -7417,8 +7457,11 @@ private fun ThreadPageContent(
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
-    val forwardMemberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
-    val forwardChannelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
+    var forwardTargetQuery by remember(threadInstanceKey) { mutableStateOf("") }
+    var forwardTargets by remember(threadInstanceKey) { mutableStateOf<List<ForwardMessageTarget>>(emptyList()) }
+    var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
+    var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var forwardSendingTargetId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
@@ -7435,19 +7478,50 @@ private fun ThreadPageContent(
                 .joinToString(separator = "\n")
         }
     val forwardTargetItems =
-        remember(
-            payload,
-            selectedShareMessages,
-            forwardChannelSuggestionSlice.suggestions,
-            forwardMemberSuggestionSlice.suggestions
-        ) {
-            threadForwardTargetItems(
-                payload = payload,
-                selectedMessages = selectedShareMessages,
-                channelSuggestions = forwardChannelSuggestionSlice.suggestions,
-                memberSuggestions = forwardMemberSuggestionSlice.suggestions
-            )
+        remember(forwardTargets) {
+            forwardTargets.map { it.toThreadForwardTargetItem() }
         }
+    LaunchedEffect(activeModal, forwardTargetQuery, forwardServerId, forwardTargetRepository, selectedShareMessageIds) {
+        if (activeModal != "forwardTargets") return@LaunchedEffect
+        val repository = forwardTargetRepository
+        val serverId = forwardServerId
+        if (repository == null || serverId == null) {
+            forwardTargets = emptyList()
+            forwardTargetStatus = SharedMembersLoadStatus.Error
+            forwardTargetErrorCode = "forward_target_repository_unavailable"
+            return@LaunchedEffect
+        }
+        forwardTargetStatus = SharedMembersLoadStatus.InFlight
+        forwardTargetErrorCode = null
+        val result =
+            if (forwardTargetQuery.isBlank()) {
+                repository.recentTargets(serverId, limit = 20)
+            } else {
+                repository.searchTargets(serverId, forwardTargetQuery, limit = 30)
+            }
+        when (result) {
+            is DataResult.Content -> {
+                forwardTargets = result.data
+                forwardTargetStatus = SharedMembersLoadStatus.Loaded
+                forwardTargetErrorCode = null
+            }
+            is DataResult.Empty -> {
+                forwardTargets = emptyList()
+                forwardTargetStatus = SharedMembersLoadStatus.Loaded
+                forwardTargetErrorCode = null
+            }
+            is DataResult.Error -> {
+                forwardTargets = emptyList()
+                forwardTargetStatus = SharedMembersLoadStatus.Error
+                forwardTargetErrorCode = result.error.code
+            }
+            is DataResult.NoPermission -> {
+                forwardTargets = emptyList()
+                forwardTargetStatus = SharedMembersLoadStatus.Error
+                forwardTargetErrorCode = result.blocker.code
+            }
+        }
+    }
     val clearShareSelection = {
         selectedShareMessageIds = emptySet()
         selectedShareBounds.clear()
@@ -7767,12 +7841,14 @@ private fun ThreadPageContent(
                         onMergeForward = {
                             if (selectedShareMessages.isNotEmpty()) {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+                                forwardTargetQuery = ""
                                 activeModal = "forwardTargets"
                             }
                         },
                         onForwardIndividually = {
                             if (selectedShareMessages.isNotEmpty()) {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Individual
+                                forwardTargetQuery = ""
                                 activeModal = "forwardTargets"
                             }
                         },
@@ -7908,9 +7984,12 @@ private fun ThreadPageContent(
                 ThreadForwardTargetModal(
                     mode = activeForwardSelectionMode,
                     selectedCount = selectedShareMessages.size,
+                    query = forwardTargetQuery,
+                    loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
-                    channelStatus = forwardChannelSuggestionSlice.status,
-                    memberStatus = forwardMemberSuggestionSlice.status,
+                    errorCode = forwardTargetErrorCode,
+                    sendingTargetId = forwardSendingTargetId,
+                    onQueryChange = { forwardTargetQuery = it },
                     onDismiss = { activeModal = null },
                     onCreateGroup = {
                         onThreadEvent(
@@ -7929,13 +8008,63 @@ private fun ThreadPageContent(
                         )
                     },
                     onSelectTarget = { target ->
-                        activeModal = null
-                        onThreadEvent(
-                            "forwardTargetSelected",
-                            target.title,
-                            null,
-                            activeForwardSelectionMode.wireValue
-                        )
+                        val repository = forwardTargetRepository
+                        val sourceChannelId = payload.threadForwardSourceChannelId()
+                        val forwardTarget = target.forwardTarget
+                        when {
+                            repository == null ->
+                                onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
+                            sourceChannelId == null ->
+                                onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
+                            forwardTarget == null ->
+                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
+                            forwardTarget.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel ->
+                                onThreadEvent("forwardJoinConfirmationRequired", forwardTarget.title, null, null)
+                            forwardSendingTargetId == null -> {
+                                forwardSendingTargetId = target.id
+                                shareExportScope.launch {
+                                    try {
+                                        when (val resolved = repository.resolveTargetChannel(forwardTarget)) {
+                                            is DataResult.Content -> {
+                                                val request =
+                                                    ForwardMessageExecuteRequest(
+                                                        sourceChannelId = sourceChannelId,
+                                                        targetChannelId = resolved.data,
+                                                        messageIds = selectedShareMessages.map { it.id },
+                                                        mode = activeForwardSelectionMode.toForwardMessageSendMode()
+                                                    )
+                                                when (val forwarded = repository.forwardMessages(request)) {
+                                                    is DataResult.Content -> {
+                                                        activeModal = null
+                                                        clearShareSelection()
+                                                        onThreadEvent(
+                                                            "forwardMessagesSent",
+                                                            forwardTarget.title,
+                                                            null,
+                                                            activeForwardSelectionMode.wireValue
+                                                        )
+                                                    }
+                                                    is DataResult.Empty ->
+                                                        onThreadEvent("forwardMessagesFailed", "No selected messages", null, null)
+                                                    is DataResult.Error ->
+                                                        onThreadEvent("forwardMessagesFailed", forwarded.error.code, null, null)
+                                                    is DataResult.NoPermission ->
+                                                        onThreadEvent("forwardMessagesFailed", forwarded.blocker.code, null, null)
+                                                }
+                                            }
+                                            is DataResult.Empty ->
+                                                onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
+                                            is DataResult.Error ->
+                                                onThreadEvent("forwardMessagesFailed", resolved.error.code, null, null)
+                                            is DataResult.NoPermission ->
+                                                onThreadEvent("forwardMessagesFailed", resolved.blocker.code, null, null)
+                                        }
+                                    } finally {
+                                        forwardSendingTargetId = null
+                                    }
+                                }
+                            }
+                        }
                     }
                 )
             "members" ->
@@ -14395,6 +14524,12 @@ private enum class ThreadForwardSelectionMode(val wireValue: String, val label: 
     Individual("individual", "Individual")
 }
 
+private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessageSendMode =
+    when (this) {
+        ThreadForwardSelectionMode.Merged -> ForwardMessageSendMode.Merged
+        ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
+    }
+
 private fun String?.threadForwardSelectionModeLabel(): String =
     when (this?.trim()?.lowercase()) {
         ThreadForwardSelectionMode.Individual.wireValue -> ThreadForwardSelectionMode.Individual.label
@@ -14408,126 +14543,70 @@ private data class ThreadForwardTargetItem(
     val kind: ThreadForwardTargetKind,
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
-    val avatarLabel: String = title.take(1).uppercase()
+    val avatarLabel: String = title.take(1).uppercase(),
+    val forwardTarget: ForwardMessageTarget? = null
 )
 
 private enum class ThreadForwardTargetKind {
-    Current,
     Channel,
+    DirectMessage,
+    PublicChannelUnjoined,
     Member
 }
 
-private fun threadForwardTargetItems(
-    payload: KuiklyThreadScreenPayload,
-    selectedMessages: List<KuiklyThreadMessageItem>,
-    channelSuggestions: List<build.raft.app.data.SharedMembersChannelSuggestion>,
-    memberSuggestions: List<SharedMembersMemberSuggestion>
-): List<ThreadForwardTargetItem> {
-    val deduped = LinkedHashMap<String, ThreadForwardTargetItem>()
-    payload.currentForwardTargetItem()?.let { deduped[it.id] = it }
-    selectedMessages
-        .asSequence()
-        .mapNotNull { it.authorForwardTargetItem() }
-        .forEach { item -> deduped.putIfAbsent(item.id, item) }
-    memberSuggestions
-        .asSequence()
-        .mapNotNull { it.forwardTargetItem() }
-        .forEach { item -> deduped.putIfAbsent(item.id, item) }
-    channelSuggestions
-        .asSequence()
-        .mapNotNull { it.forwardTargetItem() }
-        .forEach { item -> deduped.putIfAbsent(item.id, item) }
-    return deduped.values.toList()
-}
-
-private fun KuiklyThreadScreenPayload.currentForwardTargetItem(): ThreadForwardTargetItem? {
-    val id =
-        sourceThreadId?.takeIf { it.isNotBlank() }
-            ?: streamChannelId?.takeIf { it.isNotBlank() }
-            ?: parentChannelId?.takeIf { it.isNotBlank() }
-            ?: return null
-    val cleanTitle = title.trim().takeIf { it.isNotBlank() } ?: "Current conversation"
-    val isDm = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()
-    return ThreadForwardTargetItem(
-        id = "current:$id",
-        title = cleanTitle,
-        subtitle = if (isDm) "Current DM" else "Current channel",
-        kind = ThreadForwardTargetKind.Current,
-        avatarWireValue = dmPeerAvatarUrl,
-        gravatarHash = dmPeerGravatarUrl,
-        avatarLabel = dmPeerAvatarLabel?.takeIf { it.isNotBlank() } ?: cleanTitle.take(1).uppercase()
-    )
-}
-
-private fun KuiklyThreadMessageItem.authorForwardTargetItem(): ThreadForwardTargetItem? {
-    val id = authorId.takeIf { it.isNotBlank() } ?: return null
-    val title = authorName.takeIf { it.isNotBlank() } ?: authorHandle.takeIf { it.isNotBlank() } ?: return null
-    return ThreadForwardTargetItem(
-        id = "member:$id",
+private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTargetItem =
+    ThreadForwardTargetItem(
+        id = "${kind.name}:$id",
         title = title,
-        subtitle = authorDescription?.takeIf { it.isNotBlank() } ?: authorKind.threadForwardMemberKindLabel(),
-        kind = ThreadForwardTargetKind.Member,
+        subtitle = threadForwardTargetSubtitle(),
+        kind =
+            when (kind) {
+                ForwardMessageTargetKind.RecentChannel -> ThreadForwardTargetKind.Channel
+                ForwardMessageTargetKind.RecentDirectMessage -> ThreadForwardTargetKind.DirectMessage
+                ForwardMessageTargetKind.PublicChannelUnjoined -> ThreadForwardTargetKind.PublicChannelUnjoined
+                ForwardMessageTargetKind.HumanDirectMessageCandidate,
+                ForwardMessageTargetKind.AgentDirectMessageCandidate ->
+                    ThreadForwardTargetKind.Member
+            },
         avatarWireValue = avatarWireValue,
         gravatarHash = gravatarHash,
-        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(1).uppercase()
+        avatarLabel = avatarLabel,
+        forwardTarget = this
     )
-}
 
-private fun SharedMembersMemberSuggestion.forwardTargetItem(): ThreadForwardTargetItem? {
-    val id = memberId?.takeIf { it.isNotBlank() } ?: handle.takeIf { it.isNotBlank() } ?: return null
-    val title = displayName.takeIf { it.isNotBlank() } ?: handle.takeIf { it.isNotBlank() } ?: return null
-    return ThreadForwardTargetItem(
-        id = "member:$id",
-        title = title,
-        subtitle = description?.takeIf { it.isNotBlank() } ?: kind.name.lowercase().replaceFirstChar { it.uppercase() },
-        kind = ThreadForwardTargetKind.Member,
-        avatarWireValue = avatarWireValue,
-        gravatarHash = gravatarHash,
-        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(1).uppercase()
-    )
-}
-
-private fun build.raft.app.data.SharedMembersChannelSuggestion.forwardTargetItem(): ThreadForwardTargetItem? {
-    val name = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
-    return ThreadForwardTargetItem(
-        id = "channel:$name",
-        title = "#$name",
-        subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Channel",
-        kind = ThreadForwardTargetKind.Channel,
-        avatarLabel = "#"
-    )
-}
-
-private fun String.threadForwardMemberKindLabel(): String =
-    when (trim().lowercase()) {
-        "agent" -> "Agent"
-        "system" -> "System"
-        else -> "Member"
+private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
+    when (requiredAction) {
+        ForwardMessageTargetRequiredAction.JoinChannel ->
+            subtitle.ifBlank { "Join channel before forwarding" }
+        ForwardMessageTargetRequiredAction.CreateDirectMessage ->
+            subtitle.ifBlank { "Start DM before forwarding" }
+        ForwardMessageTargetRequiredAction.None ->
+            subtitle.ifBlank {
+                when (kind) {
+                    ForwardMessageTargetKind.RecentChannel -> "Recent channel"
+                    ForwardMessageTargetKind.RecentDirectMessage -> "Recent DM"
+                    ForwardMessageTargetKind.PublicChannelUnjoined -> "Public channel"
+                    ForwardMessageTargetKind.HumanDirectMessageCandidate -> "Member"
+                    ForwardMessageTargetKind.AgentDirectMessageCandidate -> "Agent"
+                }
+            }
     }
-
-private fun ThreadForwardTargetItem.matchesForwardTargetQuery(query: String): Boolean {
-    val normalized = query.trim().lowercase()
-    if (normalized.isBlank()) return true
-    return title.lowercase().contains(normalized) || subtitle.lowercase().contains(normalized)
-}
 
 @Composable
 private fun ThreadForwardTargetModal(
     mode: ThreadForwardSelectionMode,
     selectedCount: Int,
+    query: String,
+    loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
-    channelStatus: SharedMembersLoadStatus,
-    memberStatus: SharedMembersLoadStatus,
+    errorCode: String?,
+    sendingTargetId: String?,
+    onQueryChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onCreateGroup: () -> Unit,
     onMultiSelect: () -> Unit,
     onSelectTarget: (ThreadForwardTargetItem) -> Unit
 ) {
-    var query by remember(mode, selectedCount) { mutableStateOf("") }
-    val filteredTargets =
-        remember(targets, query) {
-            targets.filter { it.matchesForwardTargetQuery(query) }
-        }
     SlockUnifiedDialog(
         title = "Select",
         onDismiss = onDismiss,
@@ -14567,11 +14646,11 @@ private fun ThreadForwardTargetModal(
             }
             SharedHomeSearchInput(
                 query = query,
-                loading = channelStatus == SharedMembersLoadStatus.InFlight || memberStatus == SharedMembersLoadStatus.InFlight,
+                loading = loading,
                 interactive = true,
-                onQueryChange = { query = it },
+                onQueryChange = onQueryChange,
                 onSubmit = {},
-                onClear = { query = "" },
+                onClear = { onQueryChange("") },
                 placeholder = "Search",
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             )
@@ -14579,26 +14658,39 @@ private fun ThreadForwardTargetModal(
             ThreadForwardCreateGroupRow(onClick = onCreateGroup)
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
             Text(
-                text = "Recent",
+                text = if (query.isBlank()) "Recent" else "Search results",
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
             )
             Box(modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp)) {
-                if (filteredTargets.isEmpty()) {
+                if (targets.isEmpty()) {
                     ThreadModalEmptyState(
-                        title = "NO TARGETS",
-                        detail = "TRY A DIFFERENT SEARCH OR WAIT FOR CHANNELS TO LOAD."
+                        title =
+                            when {
+                                loading -> "LOADING TARGETS"
+                                errorCode != null -> "TARGETS UNAVAILABLE"
+                                query.isBlank() -> "NO RECENT TARGETS"
+                                else -> "NO TARGETS"
+                            },
+                        detail =
+                            when {
+                                loading -> "FETCHING RECENT CONVERSATIONS AND DM TARGETS."
+                                errorCode != null -> errorCode.uppercase()
+                                query.isBlank() -> "RECENT DMS AND JOINED CHANNELS WILL APPEAR HERE."
+                                else -> "TRY A DIFFERENT SEARCH."
+                            }
                     )
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
-                        items(filteredTargets.size, key = { filteredTargets[it].id }) { index ->
+                        items(targets.size, key = { targets[it].id }) { index ->
                             ThreadForwardTargetRow(
-                                target = filteredTargets[index],
-                                onClick = { onSelectTarget(filteredTargets[index]) }
+                                target = targets[index],
+                                sending = sendingTargetId == targets[index].id,
+                                onClick = { onSelectTarget(targets[index]) }
                             )
                         }
                     }
@@ -14646,6 +14738,7 @@ private fun ThreadForwardCreateGroupRow(onClick: () -> Unit) {
 @Composable
 private fun ThreadForwardTargetRow(
     target: ThreadForwardTargetItem,
+    sending: Boolean,
     onClick: () -> Unit
 ) {
     Button(
@@ -14660,7 +14753,8 @@ private fun ThreadForwardTargetRow(
         ) {
             when (target.kind) {
                 ThreadForwardTargetKind.Channel,
-                ThreadForwardTargetKind.Current ->
+                ThreadForwardTargetKind.PublicChannelUnjoined,
+                ThreadForwardTargetKind.DirectMessage ->
                     Box(
                         modifier =
                             Modifier
@@ -14670,7 +14764,12 @@ private fun ThreadForwardTargetRow(
                         contentAlignment = Alignment.Center
                     ) {
                         SlockLucideIcon(
-                            if (target.kind == ThreadForwardTargetKind.Channel) SlockLucideIconName.Hash else SlockLucideIconName.MessageCircle,
+                            when (target.kind) {
+                                ThreadForwardTargetKind.Channel,
+                                ThreadForwardTargetKind.PublicChannelUnjoined ->
+                                    SlockLucideIconName.Hash
+                                else -> SlockLucideIconName.MessageCircle
+                            },
                             modifier = Modifier.size(18.dp),
                             color = "#FF111111"
                         )
@@ -14701,6 +14800,14 @@ private fun ThreadForwardTargetRow(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+            if (sending) {
+                Text(
+                    text = "Sending",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
             }
         }
     }
