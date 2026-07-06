@@ -3795,7 +3795,6 @@ private fun SettingsAppShellContent(
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
                 SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationAbout)
-                SettingsDestinationReleaseNotes -> onDestinationChange(SettingsDestinationAbout)
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
                 else -> onDestinationChange(SettingsDestinationHome)
             }
@@ -4287,8 +4286,7 @@ private fun SettingsAppShellContent(
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
-                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) },
-                    onOpenReleaseNotes = { onDestinationChange(SettingsDestinationReleaseNotes) }
+                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsDestinationReleaseNotes -> {
                 val aboutSnapshot =
@@ -7713,8 +7711,7 @@ private fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
-    onSendFeedback: () -> Unit,
-    onOpenReleaseNotes: () -> Unit
+    onSendFeedback: () -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -7728,7 +7725,6 @@ private fun SharedSettingsAboutContent(
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "feedback" -> onSendFeedback()
-            "releaseNotes" -> onOpenReleaseNotes()
         }
     }
 }
@@ -8429,6 +8425,14 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Version, diagnostics, feedback",
                     iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
+                    section = "About"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationReleaseNotes,
+                    title = "Release Notes",
+                    subtitle = "Version history and changelog",
+                    iconName = SlockLucideIconName.FileText,
+                    selected = selectedDestination == SettingsDestinationReleaseNotes,
                     section = "About"
                 )
             )
@@ -9589,7 +9593,6 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 )
                             )
                             add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
-                            add(KuiklySharedSettingsRow("releaseNotes", SlockLucideIconName.FileText, "Release Notes", "View version history and changelog.", status = "Open", enabled = true))
                         }
                 )
             )
