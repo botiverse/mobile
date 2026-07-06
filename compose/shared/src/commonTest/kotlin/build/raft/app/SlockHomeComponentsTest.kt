@@ -636,6 +636,47 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun sidebarRegularChannelsPinAllBeforeServerOrderAndSortModes() {
+        val channels =
+            listOf(
+                SlockHomeConversationItem(id = "visual", name = "visual-testing", lastMessageAt = "2026-05-20T10:00:00Z"),
+                SlockHomeConversationItem(id = "all", name = "all", lastMessageAt = "2026-05-18T10:00:00Z"),
+                SlockHomeConversationItem(id = "artifacts", name = "artifacts", lastMessageAt = "2026-05-19T10:00:00Z")
+            )
+
+        val manual =
+            channels
+                .orderedBySidebarIds(listOf("visual", "artifacts"), pinnedFirstId = "all")
+                .sortedForSidebar(SlockSidebarSortMode.Manual, pinnedFirstId = "all") { it.name }
+        val recent =
+            channels
+                .orderedBySidebarIds(listOf("visual", "artifacts"), pinnedFirstId = "all")
+                .sortedForSidebar(SlockSidebarSortMode.Recent, pinnedFirstId = "all") { it.name }
+        val az =
+            channels
+                .orderedBySidebarIds(listOf("visual", "artifacts"), pinnedFirstId = "all")
+                .sortedForSidebar(SlockSidebarSortMode.Az, pinnedFirstId = "all") { it.name }
+
+        assertEquals(listOf("all", "visual", "artifacts"), manual.map { it.id })
+        assertEquals(listOf("all", "visual", "artifacts"), recent.map { it.id })
+        assertEquals(listOf("all", "artifacts", "visual"), az.map { it.id })
+    }
+
+    @Test
+    fun sidebarChannelSortOverlayExcludesPinnedAllChannel() {
+        val displayedChannels =
+            listOf(
+                SlockHomeConversationItem(id = "all", name = "all"),
+                SlockHomeConversationItem(id = "visual", name = "visual-testing"),
+                SlockHomeConversationItem(id = "artifacts", name = "artifacts")
+            )
+
+        val sortableChannels = displayedChannels.withoutSidebarPinnedItem("all")
+
+        assertEquals(listOf("visual", "artifacts"), sortableChannels.map { it.id })
+    }
+
+    @Test
     fun sidebarDmManualOrderFollowsServerOrderAndAppendsNewRows() {
         val directMessages =
             listOf(
