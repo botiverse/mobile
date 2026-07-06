@@ -121,10 +121,10 @@ contain a **lightweight** summary:
 1. One sentence describing what changed and why.
 2. Commit hash (or list of commit hashes).
 3. Main integration status: explicitly say whether the work is still only on a
-   worktree/branch, has been merged into local `main`, has been pushed/synced
-   to remote `main`, or is not applicable. If it is not merged, name the
-   branch/worktree and the blocker; if it is merged, include the local `main`
-   commit hash.
+   worktree/branch, has an open PR, has been merged to remote `main`, or is not
+   applicable. If it is not in PR, name the branch/worktree and the blocker; if
+   it has a PR, include the PR number/link; if it is merged, include the remote
+   merge commit.
 4. (Optional) Anything owner / QA needs to runtime-verify (hilog command, emulator steps, fixture capture path).
 
 Any meaningful progress / completion report should include this same main
@@ -136,14 +136,15 @@ are still useful — put them in the commit message body, the worktree's commit
 notes, or the `notes/` directory. Do not enforce a 4-piece rigid gate in the
 thread; reviewers can `git show <hash>` to inspect the diff.
 
-### No code gate required (2026-06-21)
+### No peer code gate required (2026-06-21; updated 2026-07-06)
 
-There is no AD1 / AD2 / peer code review gate before pushing to `main`. When a
+There is no AD1 / AD2 / peer code review gate before opening a PR. When a
 worktree is clean, validated locally, and the assignee judges it ready, the
-assignee (or `Cindy` on behalf) can push it. If a problem surfaces later,
-revert or follow-up; do not block the worktree-onto-main path on a review step.
+assignee should push a topic branch and open a PR. If a problem surfaces later,
+revert or follow up; do not block the branch-to-PR path on a review step unless
+the owner explicitly asks for that review.
 
-Trust the worktree-then-push flow. Validation, lint, focused tests, and
+Trust the worktree-then-PR flow. Validation, lint, focused tests, and
 runtime smoke still matter — but they are the assignee's responsibility, not a
 gate another agent has to clear.
 
@@ -222,23 +223,34 @@ When adding DTOs:
 - Negative tests (`xxxRejectsGuessedWrappersAndAliases`) are still useful and
   should be retained.
 
-### "Edit main" vs "push main" — distinct operations
+### Protected `main`: PR-only integration (2026-07-06)
 
-- **Edit main** = creating new commits directly on the `main` branch. The
-  rule is: do not do this. Every fix, refactor, or feature must come from a
-  worktree branch off `main` (e.g. `fix/api-task50-d1-d2`,
-  `chore/agents-md-workflow-discipline`).
-- **Push main** = `git push origin main` to publish commits that already exist
-  on local `main` to the remote. This is just a sync; it does not add new
-  content, and is not a workflow violation. The previous rule "main ahead of
-  origin/main is a stop sign" referred to commits *being created* on main,
-  not to publishing accumulated work.
+GitHub `main` is protected. Do not directly merge commits into local `main` as
+the completion path, and do not push directly to remote `main`.
 
-When pushing main, the canonical flow is: edit in a worktree branch, push the
-branch, fast-forward `main` to that branch tip (`git checkout main && git merge
---ff-only <branch>` or `git push origin main` if `main` is already pointing
-where the branch is), then push. Do not push a divergent / non-fast-forward
-`main` to origin; stop and resolve the branch/main state before publishing.
+The canonical flow is:
+
+1. Create a topic branch or worktree from current `origin/main`.
+2. Commit with `Signed-off-by:` and the correct `@mail.build` identity.
+3. Run focused validation and `scripts/check-commit-signoff.sh` for the PR
+   range.
+4. Push the topic branch and open a GitHub PR to `main`.
+5. Let GitHub merge the PR after required checks pass and owner/reviewer
+   approval is clear.
+6. After the PR is merged, sync local checkouts by fetching and resetting or
+   fast-forwarding clean local branches as appropriate. Do not reset a dirty
+   shared checkout; identify/move the dirty work first.
+
+If local `main` is ahead of `origin/main`, treat that as reconciliation debt:
+identify the ahead commits, map each to an existing PR or create a PR branch,
+and ask the owner before cleaning shared state. Equivalent commits that were
+squash-merged by GitHub may still appear as raw local ahead commits; use
+`git log --left-only --cherry-pick main...origin/main` to distinguish real
+unmerged work from squash-equivalent local commits.
+
+Direct `git push origin main` is only acceptable if the owner explicitly
+changes the protected-main policy for a specific incident. Do not use release
+or helper scripts as a workaround for branch protection.
 
 ### Non-interactive Git commands
 

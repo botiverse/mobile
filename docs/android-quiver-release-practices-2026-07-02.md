@@ -237,7 +237,9 @@ The wrapper performs the release preflight that is easy to forget manually:
 - verifies the local Slock branch is `main`
 - ensures the checked-out `third_party/kuikly-ui` commit is reachable from its
   configured remote branch, pushing it if needed
-- pushes Slock `main` to `origin/main`
+- verifies local Slock `main` matches `origin/main`; the wrapper does not push
+  Slock `main`. First merge the release candidate through a GitHub PR, then
+  dispatch the release workflow from the protected remote `main` commit.
 - dispatches `.github/workflows/android-release.yml` with the requested
   version/channel/variant
 - optionally waits for the GitHub Actions run to finish
