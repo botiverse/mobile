@@ -2219,6 +2219,25 @@ internal fun ChannelMembersPanelVisualScreen() {
 }
 
 @Composable
+internal fun ChannelMembersPanelJointChannelVisualScreen() {
+    val members = remember { channelPanelJointChannelVisualMembers() }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadMembersModal(
+            members = members,
+            membersCount = members.size,
+            canAddMembers = true,
+            removeMemberStatus = "idle",
+            removingMemberId = null,
+            removeMemberErrorCode = null,
+            onDismiss = {},
+            onAddMember = {},
+            onOpenMember = {},
+            onRemoveMember = {}
+        )
+    }
+}
+
+@Composable
 internal fun ChannelSettingsPanelVisualScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
@@ -2262,7 +2281,41 @@ internal fun ChannelAddMemberPanelVisualScreen() {
     }
 }
 
+// Canonical #design roster (task #370): mirrors the react channel-members
+// fixture (packages/web/visual-testing/VisualTestingCases.tsx, channel-members
+// kind) — agent Cindy with her activity detail, human artin as Owner, both
+// removable, no remote-server badge. Identity/avatar/copy values come from
+// fixtureData.json via VisualFixtureData.
 private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
+    listOf(
+        KuiklyThreadMemberItem(
+            id = "agent-cindy",
+            displayName = "Cindy",
+            handle = "Cindy",
+            roleLabel = "Capturing visual testing baselines",
+            avatarUrl = "pixel:robot",
+            avatarLabel = "CI",
+            kind = "agent",
+            agentStatus = AgentStatus.Working,
+            canRemove = true
+        ),
+        KuiklyThreadMemberItem(
+            id = "visual-user",
+            displayName = "artin",
+            handle = "artin",
+            roleLabel = "Owner",
+            avatarLabel = "AR",
+            kind = "human",
+            canRemove = true
+        )
+    )
+
+// Joint-channel example split out of components.channel.members.panel into its
+// own case components.channel.members.panel.joint-channel (task #370 scope
+// change): remote-server members carry the Botiverse source badge and cannot
+// be removed. The react counterpart + manifest entry land separately, so this
+// case is react-missing until then.
+private fun channelPanelJointChannelVisualMembers(): List<KuiklyThreadMemberItem> =
     listOf(
         KuiklyThreadMemberItem(
             id = "agent_android",
@@ -2286,23 +2339,38 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
         )
     )
 
+// Canonical add-member candidates (task #370): react shows agent Product UX
+// Designer plus humans artin and Designer (Designer preselected). The artin
+// candidate row intentionally uses a local id that differs from the member
+// roster's "visual-user" so the android row renders plain like react's
+// (a matching memberKey would add the JOINED marker, which react does not
+// show for this fixture).
 private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
     listOf(
         KuiklyThreadMemberItem(
-            id = "agent_product_ux",
+            id = "agent-product-ux",
             displayName = "Product UX Designer",
             handle = "Product-UX-Designer",
             roleLabel = "",
+            avatarUrl = "pixel:paint",
             avatarLabel = "PU",
             kind = "agent",
             agentStatus = AgentStatus.Online
+        ),
+        KuiklyThreadMemberItem(
+            id = "user_artin",
+            displayName = "artin",
+            handle = "artin",
+            roleLabel = "",
+            avatarLabel = "AR",
+            kind = "human"
         ),
         KuiklyThreadMemberItem(
             id = "user_designer",
             displayName = "Designer",
             handle = "designer",
             roleLabel = "",
-            avatarLabel = "D",
+            avatarLabel = "DE",
             kind = "human"
         )
     )

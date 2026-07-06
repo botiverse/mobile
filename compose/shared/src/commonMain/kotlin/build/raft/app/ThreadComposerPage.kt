@@ -730,7 +730,9 @@ private fun threadComposerVisualFixture(
     val base =
         KuiklyThreadComposerPayload(
             instanceId = resolvedInstanceId,
-            seedText = "Review the Android composer crop before release.",
+            // components.thread.composer.states draft — matches the react
+            // render host's rendered draft (latest/react capture, task #370).
+            seedText = "Review the Android composer crop",
             syncNonce = 1,
             focusRequestNonce = 0,
             placeholder = "Message design",
