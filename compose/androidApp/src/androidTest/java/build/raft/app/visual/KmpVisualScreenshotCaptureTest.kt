@@ -621,7 +621,8 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
                     .put("visualFixture", "default"),
-            crop = THREAD_MESSAGE_ROW_CROP
+            crop = THREAD_MESSAGE_ROW_CROP,
+            requireReactionAtlas = true
         )
     }
 
@@ -648,7 +649,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-menu-default")
                     .put("visualFixture", "default")
                     .put("menuVariant", "default"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true
         )
     }
 
@@ -662,7 +664,8 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-menu-task")
                     .put("visualFixture", "default")
                     .put("menuVariant", "task"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true
         )
     }
 
@@ -746,7 +749,8 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "components.thread.reaction-atlas",
             pageName = "compose_thread_reaction_atlas_visual",
             crop = THREAD_REACTION_ATLAS_CROP,
-            settleMs = 2_500
+            settleMs = 2_500,
+            requireReactionAtlas = true
         )
     }
 
@@ -1401,6 +1405,7 @@ class KmpVisualScreenshotCaptureTest {
         crop: VisualCrop,
         pageData: JSONObject? = null,
         settleMs: Long = 1_500,
+        requireReactionAtlas: Boolean = false,
         beforeScreenshot: (() -> Unit)? = null
     ) {
         currentCaseId = caseId
@@ -1419,7 +1424,7 @@ class KmpVisualScreenshotCaptureTest {
             waitForIdleBounded()
             onActivityNoIdle { suppressVisualKeyboard(it) }
             waitForIdleBounded()
-            val normalized = captureStableVisualBitmap(context, caseId, crop)
+            val normalized = captureStableVisualBitmap(context, caseId, crop, requireReactionAtlas)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1533,9 +1538,13 @@ class KmpVisualScreenshotCaptureTest {
     private fun captureStableVisualBitmap(
         context: Context,
         caseId: String,
-        crop: VisualCrop
+        crop: VisualCrop,
+        requireReactionAtlas: Boolean = false
     ): Bitmap {
         lastCaptureClampedToShortWindow = false
+        if (requireReactionAtlas) {
+            awaitReactionAtlasReady(caseId)
+        }
         val deadline = SystemClock.uptimeMillis() + STABLE_CAPTURE_TIMEOUT_MS
         var lastBitmap: Bitmap? = null
         var lastStats: VisualBitmapStats? = null
@@ -1616,6 +1625,77 @@ class KmpVisualScreenshotCaptureTest {
         )
         failureBitmap.recycle()
         throw AssertionError("$caseId visual capture failed validation after waiting for first frame: ${lastProblems.joinToString("; ")}")
+    }
+
+    /**
+     * Block (bounded) until the reaction sprite atlas has finished decoding, so
+     * a reaction case captures the sprite glyphs rather than the emoji fallback
+     * (task #379). The React side (#137) logs [REACTION_ATLAS_READY_TOKEN] via
+     * the Kuikly bridge (host tag "SlockKuikly") the moment the hoisted atlas
+     * ImageBitmap goes null->non-null; #138 mounts that provider into the fixture
+     * so the token fires during our capture. The token is deduped + process-
+     * global, so the first reaction case in a shard waits for the decode and
+     * every later reaction case sees the already-buffered token immediately.
+     *
+     * The token content is the correctness gate (see [logcatContainsToken]).
+     * This reads our OWN process's logcat, which needs no READ_LOGS permission
+     * since the token is emitted by the app-under-test process the
+     * instrumentation shares.
+     *
+     * Non-fatal by design: if the token never appears within the deadline we log
+     * and proceed to capture anyway (the old emoji-fallback frame), so a signal-
+     * side regression degrades to "no improvement", never a shard failure.
+     */
+    private fun awaitReactionAtlasReady(caseId: String) {
+        val deadline = SystemClock.uptimeMillis() + REACTION_ATLAS_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (logcatContainsToken(REACTION_ATLAS_READY_TOKEN)) {
+                Log.i(VISUAL_LOG_TAG, "$caseId reaction atlas ready (token seen); settling ${REACTION_ATLAS_SETTLE_AFTER_MS}ms before capture")
+                Thread.sleep(REACTION_ATLAS_SETTLE_AFTER_MS)
+                waitForIdleBounded()
+                return
+            }
+            Thread.sleep(REACTION_ATLAS_POLL_MS)
+        }
+        Log.w(VISUAL_LOG_TAG, "$caseId reaction atlas NOT ready within ${REACTION_ATLAS_TIMEOUT_MS}ms; capturing anyway (may show emoji fallback)")
+    }
+
+    /**
+     * True if the current process logcat buffer contains [token]. Reads a
+     * snapshot (`logcat -d`, non-blocking, exits immediately) filtered to the
+     * bridge tag [REACTION_ATLAS_LOG_TAG] to bound the scanned volume — the CI
+     * ring buffer is grown to 16M, so an unfiltered dump per poll would be heavy
+     * I/O. The tag filter is only a volume optimization; the [token] content
+     * match stays the correctness gate (the tag is shared with other bridge
+     * output, per CC-Wow2), and the token line is confirmed to ride this tag
+     * (#137: recordLog(level, "SlockKuikly", content)).
+     *
+     * ASSUMPTION — test and app share one process: the instrumented test runs
+     * in the SAME process/UID as the app under test, so an unprivileged
+     * `logcat -d` returns this process's own logs, which include the Kuikly
+     * bridge's token — no READ_LOGS needed. If the capture is ever split into a
+     * separate instrumentation process from the app, this read would no longer
+     * see the app's token (the settle would just time out non-fatally); route
+     * the signal cross-process (or grant READ_LOGS) before doing that.
+     *
+     * Any failure returns false so the caller falls through to its deadline
+     * rather than throwing.
+     */
+    private fun logcatContainsToken(token: String): Boolean {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(
+                arrayOf("logcat", "-d", "-s", REACTION_ATLAS_LOG_TAG)
+            )
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.any { it.contains(token) }
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "logcatContainsToken failed: ${t.message}")
+            false
+        } finally {
+            process?.destroy()
+        }
     }
 
     private fun homeServerSwitcherPageData(): JSONObject {
@@ -2492,6 +2572,31 @@ class KmpVisualScreenshotCaptureTest {
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
         private const val STABLE_CAPTURE_RETRY_MS = 750L
+
+        // Reaction-glyph sprite atlas settle (task #379). The reaction atlas is
+        // decoded async off an imageResource; in the headless capture env the
+        // decode lags the first snapshot, so reaction cases captured before it
+        // completes render the emoji fallback instead of the sprite glyphs. The
+        // React side (#137) emits a deduped bridge log the moment the hoisted
+        // atlas ImageBitmap goes null->non-null, and #138 mounts that same
+        // provider into the message-row/menu fixtures so the token fires during
+        // capture. We grep the token OUT of our own process logcat and only then
+        // let the stable capture proceed. The token content is the correctness
+        // gate (tag "SlockKuikly" is shared with other bridge output); we
+        // additionally tag-filter the dump purely to bound scanned volume.
+        // Non-fatal: on timeout we capture anyway (degrades to the old emoji-
+        // fallback frame, never a failure) so a signal regression can't break
+        // the shard.
+        private const val REACTION_ATLAS_READY_TOKEN = "thread_reaction_atlas_ready"
+        // Kuikly bridge host tag the token rides (SlockKuiklyActivity ->
+        // SlockAndroidBuglyDiagnostics.recordLog(level, "SlockKuikly", content)).
+        private const val REACTION_ATLAS_LOG_TAG = "SlockKuikly"
+        private const val REACTION_ATLAS_TIMEOUT_MS = 20_000L
+        private const val REACTION_ATLAS_POLL_MS = 250L
+        // Brief settle after the token so the next recomposition swaps emoji->
+        // sprite before we snapshot (the token means "atlas ready", the draw
+        // switches on the following frame).
+        private const val REACTION_ATLAS_SETTLE_AFTER_MS = 600L
 
         // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
         // warnings — grep this out of the uploaded logcat artifact (task #362).
