@@ -711,59 +711,21 @@ jobs:
             exit 1
           }
 
-      # entry/src/main/cpp links pbcurlwrapper; the runtime .so set is not
-      # committed — it is copied out of the NetworkKMM ohos-runtime artifact.
-      - name: Copy NetworkKMM OHOS runtime libs
-        working-directory: compose
-        shell: bash
-        run: |
-          ./gradlew -c settings.ohos.gradle.kts \
-            copyNetworkOhosRuntimeLibs \
-            --no-daemon --console=plain
-
-      # The kuikly hvigor compile plugin registers no tasks off-macOS
-      # (os.platform() !== 'darwin' → early return), so the shared KMP .so it
-      # would build never appears here and the entry ninja link fails on a
-      # missing libs/arm64-v8a/libshared.so. Replicate exactly what the plugin
-      # does on a Mac: link the debug shared library, copy the .so and the
-      # generated API header into the entry module.
-      - name: Build shared KMP library (kuikly plugin skips on linux)
-        working-directory: compose
-        shell: bash
-        run: |
-          echo "== container resources =="
-          nproc || true
-          free -h || true
-          # The 7.8 GiB / 2-CPU container (no cgroup cap) can neither give the
-          # konan compiler daemon enough heap for this module's whole-program
-          # release -opt link (kotlin.native.jvmArgs is ignored; the daemon
-          # keeps its small default and OOMs) nor link the DEBUG binary (its
-          # -g debug info bloats codegen until clang OOM-kills the runner).
-          # Split the work so each half gets the JVM it needs:
-          #
-          # 1) COMPILE the klib on the konan daemon — it supplies the large
-          #    thread stack the Compose compiler needs; running konanc on a
-          #    Gradle worker thread overflows -Xss and StackOverflows.
-          GRADLE_OPTS="-Xmx1g -Xss4m -Dfile.encoding=UTF-8" \
-          ./gradlew -c settings.ohos.gradle.kts \
-            :shared:compileKotlinOhosArm64 \
-            -Dkotlin.compiler.execution.strategy=in-process \
-            --no-daemon --console=plain
-          # 2) LINK the release .so with the konan daemon DISABLED so konanc
-          #    runs inside the Gradle JVM, where GRADLE_OPTS -Xmx6g actually
-          #    reaches it. The klib is already built, so this only links (no
-          #    Kotlin frontend → no Compose pass → no StackOverflow), and the
-          #    release variant keeps native codegen inside the memory budget.
-          GRADLE_OPTS="-Xmx6g -Xss4m -Dfile.encoding=UTF-8" \
-          ./gradlew -c settings.ohos.gradle.kts \
-            :shared:linkReleaseSharedOhosArm64 \
-            -Dkotlin.compiler.execution.strategy=in-process \
-            -Pkotlin.native.disableCompilerDaemon=true \
-            --no-daemon --console=plain
-          mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
-          cp shared/build/bin/ohosArm64/releaseShared/libshared.so ohosApp/entry/libs/arm64-v8a/
-          cp shared/build/bin/ohosArm64/releaseShared/libshared_api.h ohosApp/entry/src/main/cpp/
-
+      # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
+      # cannot see (e.g. the tabbar host regression). It deliberately stops
+      # short of the full unsigned-HAP assembleHap: that would require linking
+      # the shared KMP libshared.so, whose konanc whole-program release -opt
+      # link does not fit this 7.8 GiB / 2-CPU container. Every attempt hit a
+      # hard wall — the konan compiler daemon has a large-enough thread stack
+      # but a too-small heap that is not raisable (kotlin.native.jvmArgs is
+      # ignored) and OOMs the -opt; running konanc in-process makes the heap
+      # settable via -Xmx but then the deep IR-lowering recursion overflows the
+      # worker thread's stack (which ignores -Xss); the debug variant instead
+      # bloats codegen with -g until clang OOM-kills the whole runner. The
+      # Kotlin content of libshared is already gated by the "OHOS shared
+      # compile" job, so the unique coverage here is the ArkTS compile, which
+      # needs no native link. (Revisit assembleHap if this job moves to a
+      # larger runner or the image gains headroom.)
       - name: ohpm install
         working-directory: compose/ohosApp
         shell: bash
@@ -774,17 +736,10 @@ jobs:
         shell: bash
         run: hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
 
-      - name: hvigor assembleHap (unsigned)
+      - name: hvigor CompileArkTS (host .ets gate)
         working-directory: compose/ohosApp
         shell: bash
         run: |
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            assembleHap --analyze=normal --parallel --no-daemon
-
-      - name: Assert unsigned HAP produced
-        shell: bash
-        run: |
-          hap="compose/ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap"
-          test -f "$hap" || { echo "unsigned HAP not produced at $hap" >&2; exit 1; }
-          ls -la "$(dirname "$hap")"
+            default@CompileArkTS --analyze=normal --parallel --no-daemon
