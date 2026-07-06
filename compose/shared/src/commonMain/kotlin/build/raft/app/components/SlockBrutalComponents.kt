@@ -512,6 +512,7 @@ internal fun SlockBrutalInputField(
                     keyboardActions = keyboardActions,
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
+                    systemNewlineAction = isMultiline,
                     contentAlignment = fieldContentAlignment,
                     modifier = Modifier.weight(1f),
                     focusRequester = focusRequester
