@@ -7648,6 +7648,7 @@ private fun ThreadPageContent(
                         channelId = taskPanelChannelId,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
+                        timeContext = payload.toSlockTimeContext(),
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onIntent = onTasksIntent
                     )
@@ -14060,6 +14061,7 @@ private fun ThreadTasksTab(
     channelId: ChannelId,
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
+    timeContext: SlockTimeContext? = null,
     onOpenTask: (String) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -14077,6 +14079,7 @@ private fun ThreadTasksTab(
         showChannelFilter = false,
         createTasksChannelId = channelId,
         draftProjection = draftProjection,
+        timeContext = timeContext,
         onOpenTask = if (openTaskEnabled) {
             { task -> onOpenTask(task.id.value) }
         } else {

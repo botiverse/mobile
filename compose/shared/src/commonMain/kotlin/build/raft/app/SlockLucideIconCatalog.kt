@@ -24,6 +24,7 @@ enum class SlockLucideIconName(val wireName: String) {
     BellRing("bell-ring"),
     Blocks("blocks"),
     Bookmark("bookmark"),
+    BookmarkMinus("bookmark-minus"),
     Bot("bot"),
     Bug("bug"),
     Building2("building-2"),
