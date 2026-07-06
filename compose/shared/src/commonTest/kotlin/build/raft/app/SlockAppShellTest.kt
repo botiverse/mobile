@@ -729,6 +729,64 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerProjectionResultTracksActivityThreadEnrich() {
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-1",
+                channelId = "reply-stream",
+                threadId = "reply-stream",
+                body = "This should wait for activity enrich"
+            )
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(null, rawResult.sharedProjection)
+        assertEquals(ConversationKind.Channel, rawResult.resolvedKind)
+
+        val enrichedDirectory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            parentMessagePreview = "Original thread question",
+                            latestActivityMessageId = MessageId("reply-1"),
+                            latestActivityPreview = "The newest reply"
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val enrichedResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = enrichedDirectory
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, enrichedResult.sharedProjection?.surfaceKind)
+        assertEquals(ConversationKind.Thread, enrichedResult.resolvedKind)
+        assertEquals("Original thread question", enrichedResult.banner?.threadContext)
+        assertEquals("parent-channel", enrichedResult.banner?.conversation?.thread?.parentChannelId?.value)
+        assertEquals("parent-message", enrichedResult.banner?.conversation?.thread?.parentMessageId?.value)
+    }
+
+    @Test
     fun notificationLaunchUsesActivityEnrichForReplyThread() {
         val directory =
             InboxSnapshot(
