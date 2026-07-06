@@ -102,6 +102,28 @@ private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
 internal fun slockFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
     spaceGroteskFamily(fontWeight ?: FontWeight.Normal)
 
+// Space Mono mirrors the Space Grotesk wiring above: one FontFamily per weight,
+// manually dispatched (Kuikly drops weight info from the serialized family name,
+// so the weight must be encoded in the font name). React renders mono text
+// (`font-mono`) in Space Mono, which ships only Regular (400) and Bold (700), so
+// semibold-or-heavier maps to Bold and everything lighter maps to Regular.
+private val SpaceMonoBold = FontFamily(KuiklyFont("SpaceMono-Bold", FontWeight.Bold, FontStyle.Normal))
+private val SpaceMonoRegular = FontFamily(KuiklyFont("SpaceMono-Regular", FontWeight.Normal, FontStyle.Normal))
+
+private fun spaceMonoFamily(fontWeight: FontWeight): FontFamily =
+    when {
+        fontWeight >= FontWeight.SemiBold -> SpaceMonoBold
+        else -> SpaceMonoRegular
+    }
+
+internal fun slockMonoFamilyForWeight(fontWeight: FontWeight?): FontFamily =
+    spaceMonoFamily(fontWeight ?: FontWeight.Normal)
+
+// Convenience token for the common regular-weight mono callsites (task numbers,
+// timestamps, counts, handles, codes). Use slockMonoFamilyForWeight() when a
+// callsite needs bold mono.
+internal val SlockMonoFamily: FontFamily = SpaceMonoRegular
+
 private fun TextStyle.withSlockRenderedFontWeight(): TextStyle =
     if (fontFamily in SpaceGroteskFamilies) {
         copy(fontWeight = FontWeight.Normal)

@@ -727,7 +727,7 @@ private fun SharedActivityRow(
                     )
                     Text(
                         text = item.activityTimeLabel(timeContext),
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = SlockMonoFamily),
                         color = SlockColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

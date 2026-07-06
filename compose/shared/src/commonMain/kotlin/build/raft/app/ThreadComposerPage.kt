@@ -2005,7 +2005,7 @@ private fun ComposerMemberSuggestionRow(
             }
             Text(
                 text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                style = SlockType.Caption.copy(color = handleColor, fontFamily = SlockMonoFamily),
                 color = handleColor,
                 modifier = Modifier.padding(start = 6.dp),
                 maxLines = 1,

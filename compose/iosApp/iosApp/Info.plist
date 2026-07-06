@@ -28,6 +28,8 @@
             <string>space_grotesk_medium.ttf</string>
             <string>space_grotesk_semibold.ttf</string>
             <string>space_grotesk_bold.ttf</string>
+            <string>space_mono_regular.ttf</string>
+            <string>space_mono_bold.ttf</string>
         </array>
         <key>UIApplicationSceneManifest</key>
         <dict>

@@ -2,6 +2,7 @@ package build.raft.app.components
 
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
+import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockStatusIndicator
 import build.raft.app.SlockStroke
@@ -142,7 +143,7 @@ internal fun SlockProgressBar(
             ) {
                 Text(
                     text = label,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.60f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -151,7 +152,7 @@ internal fun SlockProgressBar(
                 if (showPercent && percent != null) {
                     Text(
                         text = "$percent%",
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.60f),
                         maxLines = 1
                     )

@@ -1671,7 +1671,7 @@ private fun SettingsComputerCard(
                     Text(
                         text = runLabel.text,
                         style = SlockType.Input.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = SlockMonoFamily,
                             fontSize = 11.sp,
                             lineHeight = 14.sp,
                             color = if (runLabel.isOffline) SlockColor.EmptyStateGray else SlockColor.TextMutedGray,
@@ -1685,7 +1685,7 @@ private fun SettingsComputerCard(
                         Text(
                             text = upgrade,
                             style = SlockType.Input.copy(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = SlockMonoFamily,
                                 fontSize = 11.sp,
                                 lineHeight = 14.sp,
                                 color = SlockColor.AccentOrange,

@@ -12685,7 +12685,7 @@ private fun SharedHomeSavedResultCard(
                     time?.let { t ->
                         Text(
                             text = t.formatSavedTimestamp(timeContext),
-                            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
                             color = SlockColor.TextBlack.copy(alpha = 0.4f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -14958,7 +14958,7 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
             SlockLucideIcon(SlockLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
             Text(
                 "PROFILE",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, letterSpacing = 1.3.sp, color = SlockColor.TextMutedGray),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, letterSpacing = 1.3.sp, color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
         }

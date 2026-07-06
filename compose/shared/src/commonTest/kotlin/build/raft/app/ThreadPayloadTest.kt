@@ -59,6 +59,7 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.toHomeChannelRow
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import build.raft.app.slockMonoFamilyForWeight
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -428,8 +429,10 @@ class ThreadPayloadTest {
         assertEquals(11.sp, style.fontSize)
         assertEquals(14.sp, style.lineHeight)
         assertEquals(0.sp, style.letterSpacing)
-        assertEquals(FontWeight.Bold, style.fontWeight)
-        assertEquals(FontFamily.Monospace, style.fontFamily)
+        // Space Mono ships weight in the family (Kuikly drops serialized weight),
+        // so the bold divider uses the mono Bold family with Normal weight (#375).
+        assertEquals(FontWeight.Normal, style.fontWeight)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Bold), style.fontFamily)
     }
 
     @Test

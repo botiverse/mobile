@@ -2221,7 +2221,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "/${server.slug}",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
                 color = SlockColor.TextBlack.copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2355,7 +2355,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
     Box(modifier = Modifier.height(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
         Text(
             text,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -2883,7 +2883,7 @@ private fun DimmedUnreadCount(text: String) {
     Box(modifier = Modifier.height(CountPillHeight).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(
             text,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = SlockMonoFamily),
             color = SlockColor.TextBlack.copy(alpha = 0.5f),
             maxLines = 1,
             textAlign = TextAlign.Center

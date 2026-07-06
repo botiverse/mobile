@@ -47,6 +47,8 @@ const SLOCK_FONTS: SlockFontResource[] = [
   { familyName: 'space_grotesk_bold', familySrc: $rawfile('fonts/space_grotesk_bold.ttf') },
   { familyName: 'space_grotesk_light', familySrc: $rawfile('fonts/space_grotesk_light.ttf') },
   { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
+  { familyName: 'space_mono_regular', familySrc: $rawfile('fonts/space_mono_regular.ttf') },
+  { familyName: 'space_mono_bold', familySrc: $rawfile('fonts/space_mono_bold.ttf') },
 ];
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';

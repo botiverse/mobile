@@ -44,6 +44,10 @@ static constexpr const char *kSlockFontFamilies[] = {
     "SpaceGrotesk-Medium",
     "SpaceGrotesk-SemiBold",
     "SpaceGrotesk-Bold",
+    "space_mono_regular",
+    "space_mono_bold",
+    "SpaceMono-Regular",
+    "SpaceMono-Bold",
 };
 
 static constexpr size_t kSlockFontFamiliesCount =
@@ -71,6 +75,10 @@ static char *SlockFontAdapter(const char *fontFamily,
         fileName = "space_grotesk_semibold";
     } else if (std::strcmp(fontFamily, "SpaceGrotesk-Bold") == 0 || std::strcmp(fontFamily, "space_grotesk_bold") == 0) {
         fileName = "space_grotesk_bold";
+    } else if (std::strcmp(fontFamily, "SpaceMono-Regular") == 0 || std::strcmp(fontFamily, "space_mono_regular") == 0) {
+        fileName = "space_mono_regular";
+    } else if (std::strcmp(fontFamily, "SpaceMono-Bold") == 0 || std::strcmp(fontFamily, "space_mono_bold") == 0) {
+        fileName = "space_mono_bold";
     }
     if (fileName != nullptr) {
         static thread_local std::string path;

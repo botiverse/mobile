@@ -6073,7 +6073,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                             Text(
                                 text = "$name=",
                                 style = SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),
@@ -6084,7 +6084,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                             Text(
                                 text = membersMaskedEnvValue(envVars[name]),
                                 style = SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),
