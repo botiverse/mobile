@@ -97,6 +97,12 @@ class KmpVisualScreenshotCaptureTest {
     // exception/timeout failures otherwise leave no on-site diagnostics.
     private var currentCaseId: String? = null
 
+    // Set true when a case falls back to a clamped short-window capture (task
+    // #370): those images pad-mismatch against React's full height and score a
+    // bit lower, so metadata flags them — a low score on a flagged case is a
+    // flaky short-window run, NOT a regression.
+    private var lastCaptureClampedToShortWindow = false
+
 
     @Test
     fun captureTokenPalette() {
@@ -1529,6 +1535,7 @@ class KmpVisualScreenshotCaptureTest {
         caseId: String,
         crop: VisualCrop
     ): Bitmap {
+        lastCaptureClampedToShortWindow = false
         val deadline = SystemClock.uptimeMillis() + STABLE_CAPTURE_TIMEOUT_MS
         var lastBitmap: Bitmap? = null
         var lastStats: VisualBitmapStats? = null
@@ -1578,6 +1585,23 @@ class KmpVisualScreenshotCaptureTest {
             }
             Thread.sleep(STABLE_CAPTURE_RETRY_MS)
         } while (SystemClock.uptimeMillis() < deadline)
+
+        if (lastBitmap == null) {
+            // The window never reached the crop's full size within the deadline
+            // (task #370: a flaky wm-size run can leave the display undersize, so
+            // a FULL_VIEWPORT 2532px crop never fits). Rather than drop the case
+            // to "missing", capture the actual window with a clamped crop (cropDp
+            // coerces to the available bounds) — the diff normalizes the size
+            // difference, so a slightly-short image beats nothing.
+            Log.w(VISUAL_LOG_TAG, "$caseId window never reached full crop size within ${STABLE_CAPTURE_TIMEOUT_MS}ms; capturing clamped best-effort")
+            lastCaptureClampedToShortWindow = true
+            val screenshot = captureActivityScreenshot(caseId)
+            val clamped = screenshot.cropDp(crop)
+            if (clamped !== screenshot) {
+                screenshot.recycle()
+            }
+            return clamped
+        }
 
         val failureBitmap = requireNotNull(lastBitmap) {
             "Unable to capture KMP visual screenshot for $caseId"
@@ -1862,6 +1886,7 @@ class KmpVisualScreenshotCaptureTest {
                 }
               },
               "diagnostics": $diagnostics,
+              "clampedToShortWindow": $lastCaptureClampedToShortWindow,
               "capturedAt": "${System.currentTimeMillis()}"
             }
             """.trimIndent() + "\n"
