@@ -357,6 +357,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
@@ -3628,6 +3629,8 @@ private fun SettingsAppShellContent(
         when (selectedDestination) {
             SettingsDestinationApiEnvironment ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+            SettingsDestinationReleaseNotes ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
             SettingsDestinationComputers -> Unit
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
@@ -7822,14 +7825,33 @@ private fun SharedSettingsReleaseNotesContent(
     versionCode: String,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
+    if (versionCode.isBlank()) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "加载中… / Loading…",
+                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        return
+    }
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        // The native WebView applies its own bottom safe-area content inset, so
+        // it stops short of the screen bottom and the Box's SurfaceWhite shows
+        // through as a white strip. Extend the WebView frame below the slot by
+        // the bottom safe-area height so that inset region falls off-screen and
+        // the page fills edge-to-edge regardless of page content height.
+        val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
         key(reloadKey, url) {
             SlockWebView(
                 url = url,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().height(webViewHeight),
                 allowNavigation = true,
                 onLoadSuccess = { loadError = null },
                 onLoadFailure = { reason -> loadError = reason }
