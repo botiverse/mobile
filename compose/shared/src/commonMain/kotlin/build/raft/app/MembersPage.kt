@@ -516,6 +516,7 @@ data class KuiklyMemberDetailPayload(
     val memberKind: String = "",
     val sourceServerId: String = "",
     val initialAgentTab: String? = null,
+    val visualMode: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
@@ -2037,6 +2038,9 @@ private fun MemberDetailVisualSeedContent(
     val initialAgentTab = remember(payload.initialAgentTab) {
         payload.initialAgentTab.toMembersAgentDetailTabOrNull()
     }
+    val visualMode = remember(payload.visualMode) {
+        payload.visualMode.orEmpty().toMembersAgentDetailVisualMode()
+    }
     MembersDetailContent(
         member = seed.member,
         agentDetailState = seed.agentDetailState,
@@ -2066,6 +2070,7 @@ private fun MemberDetailVisualSeedContent(
         onReportAgentIssue = { true },
         onUnavailableAction = {},
         timeContext = payload.toSlockTimeContext(),
+        initialVisualMode = visualMode,
         initialAgentTab = initialAgentTab,
         agentPanelTabOrder = payload.agentPanelTabOrder,
         initialAgentScopeSet = seed.agentScopeSet
@@ -2361,6 +2366,7 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
             .ifBlank { payload.optString("kind") },
         sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") },
         initialAgentTab = payload.optNullableString("initialAgentTab"),
+        visualMode = payload.optNullableString("visualMode") ?: optNullableString("visualMode"),
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
@@ -2897,9 +2903,7 @@ private fun MembersDetailContent(
     var selectedTabOverride by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab)
     }
-    var managementMenuOpen by remember(member.id.value, initialVisualMode) {
-        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
-    }
+    var managementMenuOpen by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
     val lifecycleInFlight: String? = if (sharedAgentDetailStore != null) {
@@ -2932,9 +2936,7 @@ private fun MembersDetailContent(
             diagnosticActionState
         }
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
-    var showAvatarPicker by remember(member.id.value, initialVisualMode) {
-        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement)
-    }
+    var showAvatarPicker by remember(member.id.value, initialVisualMode) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
     }
@@ -2942,6 +2944,17 @@ private fun MembersDetailContent(
     var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<SlockWorkspaceNode>>>(emptyMap()) }
     var loadingWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
     var workspaceDirErrors by remember(member.id.value) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    LaunchedEffect(member.id.value, initialVisualMode) {
+        when (initialVisualMode) {
+            MembersAgentDetailVisualMode.LifecycleActions -> {
+                managementMenuOpen = true
+            }
+            MembersAgentDetailVisualMode.AvatarManagement -> {
+                showAvatarPicker = true
+            }
+            MembersAgentDetailVisualMode.Profile -> Unit
+        }
+    }
     val visibleTabs = remember(canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
             membersOrderedAgentTabs(
