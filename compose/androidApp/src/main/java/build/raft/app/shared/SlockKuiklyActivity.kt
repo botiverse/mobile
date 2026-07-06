@@ -121,6 +121,7 @@ import io.quiver.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -2140,10 +2141,10 @@ internal class SlockKuiklyBridgeModule(
             }
             return
         }
-        if (action == "sendFeedback") {
+        if (action == "sendFeedback" || action == "submitFeedback") {
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
-                callback?.invoke(submitFeedbackToQuiver())
+                callback?.invoke(submitFeedbackToQuiver(request.takeIf { action == "submitFeedback" }))
             }
             return
         }
@@ -2980,11 +2981,33 @@ internal class SlockKuiklyBridgeModule(
      * diagnostics archive attached. Returns status=ok when the ticket was
      * created so the settings UI can confirm.
      */
-    private suspend fun submitFeedbackToQuiver(): Map<String, Any> {
-        val description = promptFeedbackDescription()
+    private suspend fun submitFeedbackToQuiver(request: JSONObject? = null): Map<String, Any> {
+        val description = request?.optString("message")?.trim()?.takeIf { it.isNotBlank() }
+            ?: promptFeedbackDescription()
             ?: return mapOf("status" to "cancelled")
-        val diagnostics = withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile() }
-        val diagnosticsFile = diagnostics.file
+        val userFilesResult =
+                withContext(Dispatchers.IO) {
+                    runCatching { request?.optJSONArray("files").toFeedbackAttachmentFiles() }
+                }
+        val userFiles =
+                userFilesResult.getOrElse { throwable ->
+                    SlockDiagnosticsLogger.record(
+                            "SlockDiagnostics",
+                            "quiver_feedback_attachment_prepare_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                    )
+                    return mapOf<String, Any>(
+                            "status" to "error",
+                            "code" to "settings_feedback_attachment_read_failed",
+                            "message" to (throwable.message ?: "Unable to read feedback attachment")
+                    )
+                }
+        val diagnosticsFile =
+                if (userFiles.size < QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
+                    withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
+                } else {
+                    null
+                }
+        val attachments = (userFiles + listOfNotNull(diagnosticsFile)).take(QUIVER_FEEDBACK_MAX_ATTACHMENTS)
         return runCatching {
             val ticketId = QuiverFeedback(
                     context = appContext,
@@ -2997,7 +3020,7 @@ internal class SlockKuiklyBridgeModule(
             ).submit(
                     message = description,
                     kind = "bug",
-                    attachments = listOf(diagnosticsFile),
+                    attachments = attachments,
             )
             // Shareable reference the user can paste into the community channel.
             val shareText = buildString {
@@ -3021,6 +3044,7 @@ internal class SlockKuiklyBridgeModule(
             }
             mapOf<String, Any>(
                     "status" to "error",
+                    "code" to "settings_feedback_submit_failed",
                     "message" to (it.message ?: "feedback submission failed"),
             )
         }
@@ -3068,6 +3092,102 @@ internal class SlockKuiklyBridgeModule(
                 summary = "settings_feedback"
         )
         return DiagnosticsFeedbackFile(file = archive, summaryText = summaryText)
+    }
+
+    private fun JSONArray?.toFeedbackAttachmentFiles(): List<File> {
+        if (this == null) return emptyList()
+        val files = mutableListOf<File>()
+        for (index in 0 until length()) {
+            if (files.size >= QUIVER_FEEDBACK_MAX_ATTACHMENTS) break
+            val fileJson = optJSONObject(index) ?: continue
+            val fileName = fileJson.optString("fileName").ifBlank { "attachment-${index + 1}" }
+            val mimeType = fileJson.optString("mimeType").ifBlank { "application/octet-stream" }
+            val fileRef = fileJson.optString("fileRef").takeIf { it.isNotBlank() }
+            val bodyBase64 = fileJson.optString("bodyBase64").takeIf { it.isNotBlank() }
+            val file =
+                    when {
+                        bodyBase64 != null ->
+                            writeQuiverFeedbackTempFile(
+                                    fileName = fileName,
+                                    mimeType = mimeType,
+                                    bytes = Base64.decode(bodyBase64, Base64.DEFAULT),
+                                    index = index
+                            )
+                        fileRef != null ->
+                            copyQuiverFeedbackFileRef(
+                                    fileRef = fileRef,
+                                    fileName = fileName,
+                                    mimeType = mimeType,
+                                    index = index
+                            )
+                        else -> null
+                    }
+            if (file != null) files.add(file)
+        }
+        return files
+    }
+
+    private fun copyQuiverFeedbackFileRef(
+            fileRef: String,
+            fileName: String,
+            mimeType: String,
+            index: Int
+    ): File {
+        val uri = Uri.parse(fileRef)
+        val bytes =
+                openQuiverFeedbackFileRefStream(uri)
+                        .use { input -> input.readBytes() }
+        return writeQuiverFeedbackTempFile(fileName = fileName, mimeType = mimeType, bytes = bytes, index = index)
+    }
+
+    private fun openQuiverFeedbackFileRefStream(uri: Uri): java.io.InputStream {
+        if (uri.toString().isBlank()) throw IOException("No readable feedback attachment")
+        return if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: throw IOException("No file path")
+            File(path).takeIf { it.isFile }?.inputStream()
+                    ?: throw IOException("Unable to read feedback attachment")
+        } else {
+            appContext.contentResolver.openInputStream(uri)
+                    ?: throw IOException("Unable to read feedback attachment")
+        }
+    }
+
+    private fun writeQuiverFeedbackTempFile(
+            fileName: String,
+            mimeType: String,
+            bytes: ByteArray,
+            index: Int
+    ): File {
+        if (bytes.isEmpty()) throw IOException("Feedback attachment is empty")
+        if (bytes.size > QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES) {
+            throw IOException("Feedback attachment exceeds 10 MB")
+        }
+        val cacheDir = File(appContext.cacheDir, QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
+        cleanupQuiverFeedbackAttachmentCache(cacheDir)
+        val safeName = sanitizeQuiverFeedbackFileName(fileName, mimeType, index)
+        val target = File(cacheDir, "${System.currentTimeMillis()}-${System.nanoTime()}-$safeName")
+        target.outputStream().use { output -> output.write(bytes) }
+        return target
+    }
+
+    private fun sanitizeQuiverFeedbackFileName(fileName: String, mimeType: String, index: Int): String {
+        val cleaned = fileName.substringAfterLast('/').substringAfterLast('\\')
+                .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                .trim('_', '.', '-')
+                .take(80)
+        val extension =
+                cleaned.substringAfterLast('.', missingDelimiterValue = "")
+                        .takeIf { it.isNotBlank() }
+                        ?: MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType).orEmpty()
+        val base = cleaned.substringBeforeLast('.', missingDelimiterValue = cleaned).ifBlank { "attachment-${index + 1}" }
+        return if (extension.isBlank()) base else "$base.$extension"
+    }
+
+    private fun cleanupQuiverFeedbackAttachmentCache(cacheDir: File) {
+        val now = System.currentTimeMillis()
+        cacheDir.listFiles()
+                ?.filter { file -> now - file.lastModified() > QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS }
+                ?.forEach { file -> runCatching { file.delete() } }
     }
 
     private fun diagnosticsFeedbackMimeType(file: File): String =
@@ -3770,6 +3890,10 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+        private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
+        private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
         private const val ATTACHMENT_DOWNLOAD_EVENT_NAME = "slock.attachmentDownloadProgress"
         private const val QUIVER_INSTALL_OPENED = "opened"

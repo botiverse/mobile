@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.model.TaskStatus
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -12,6 +13,11 @@ class SettingsDiagnosticsFeedbackDraft(
     val mimeType: String,
     val sizeBytes: Long,
     val bytes: ByteArray
+)
+
+class SettingsQuiverFeedbackSubmission(
+    val ticketId: String,
+    val shareText: String
 )
 
 internal class BridgeSettingsPlatformCapabilities(
@@ -227,6 +233,50 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.settingsCapability(JSONObject().put("action", "prepareDiagnosticsFeedback"))
             ?.toDiagnosticsFeedbackDraft()
 
+    suspend fun pickFeedbackAttachment(imageOnly: Boolean): DataResult<List<PlatformFile>> {
+        val response = bridge.threadAttachmentUpload(channelId = "settings-quiver-feedback", imageOnly = imageOnly)
+        val code = response?.optInt("code", 0) ?: 0
+        if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (code !in 200..299) {
+            val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "settings_feedback_picker_failed" }
+            return DataResult.Error(ScreenError(errorCode, retryable = true))
+        }
+        val files = parseSharedThreadPickedPlatformFiles(response)
+        if (files.isEmpty()) {
+            return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        }
+        return DataResult.Content(files)
+    }
+
+    suspend fun submitQuiverFeedback(
+        message: String,
+        attachments: List<PlatformFile>
+    ): DataResult<SettingsQuiverFeedbackSubmission> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "submitFeedback")
+                    .put("message", message)
+                    .put("files", attachments.toFeedbackFilesJson())
+            )
+        return when (response?.optString("status")) {
+            "ok" ->
+                DataResult.Content(
+                    SettingsQuiverFeedbackSubmission(
+                        ticketId = response.optString("ticketId"),
+                        shareText = response.optString("shareText")
+                    )
+                )
+            "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            else -> {
+                val code = response?.optString("code").orEmpty()
+                    .ifBlank { response?.optString("message").orEmpty() }
+                    .ifBlank { "settings_feedback_submit_failed" }
+                DataResult.Error(ScreenError(code, retryable = true))
+            }
+        }
+    }
+
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
         systemNotificationAction("requestNotificationPermission")
 
@@ -367,6 +417,28 @@ internal class BridgeSettingsPlatformCapabilities(
             feedback = optString("feedback").takeIf { it.isNotBlank() }
         )
     }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun List<PlatformFile>.toFeedbackFilesJson(): JSONArray =
+        JSONArray().also { array ->
+            take(3).forEach { file ->
+                array.put(
+                    JSONObject()
+                        .put("id", file.id)
+                        .put("fileName", file.fileName)
+                        .put("mimeType", file.mimeType.orEmpty())
+                        .put("sizeBytes", file.sizeBytes ?: file.bytes.size.toLong())
+                        .put("previewUri", file.previewUri.orEmpty())
+                        .put("fileRef", file.fileRef.orEmpty())
+                        .put("source", file.source)
+                        .also { item ->
+                            if (file.bytes.isNotEmpty()) {
+                                item.put("bodyBase64", Base64.encode(file.bytes))
+                            }
+                        }
+                )
+            }
+        }
 
     @OptIn(ExperimentalEncodingApi::class)
     private fun JSONObject.toDiagnosticsFeedbackDraft(): SettingsDiagnosticsFeedbackDraft? {
