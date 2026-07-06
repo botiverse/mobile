@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
@@ -481,6 +482,101 @@ class SlockAppShellTest {
         assertEquals("foreground:server-1:message-1", resolved.id)
         assertEquals("message-1", resolved.focusedMessageId)
         assertEquals("channel-1", resolved.conversation.threadId.value)
+        assertEquals("Cindy", resolved.title)
+        assertEquals("#channel-1 - now", resolved.context)
+        assertNull(resolved.threadContext)
+        assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
+        assertEquals(SlockLucideIconName.Hash, resolved.iconName)
+    }
+
+    @Test
+    fun foregroundBannerProjectionUsesDirectoryContextForChannelAndThread() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "team-ops"
+                    ),
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "reply-stream",
+                        aliases = setOf("reply-stream", "parent-channel", "parent-message"),
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        channelKind = "thread",
+                        title = "deploy checklist",
+                        parentChannelId = "parent-channel",
+                        parentMessageId = "parent-message"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "parent-channel",
+                        threadChannelId = "reply-stream",
+                        parentMessageId = "parent-message"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("Cindy", resolved.title)
+        assertEquals("#team-ops - thread - now", resolved.context)
+        assertEquals("deploy checklist", resolved.threadContext)
+        assertEquals("Hello from another route", resolved.body)
+        assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
+        assertEquals(SlockLucideIconName.MessageSquare, resolved.iconName)
+    }
+
+    @Test
+    fun foregroundBannerProjectionUsesAvatarForDirectMessage() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "dm-1",
+                        aliases = setOf("dm-1", "agent-1"),
+                        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        channelKind = "directmessage",
+                        title = "Cindy",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "CI",
+                        peerMemberId = "agent-1"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        channelId = "dm-1",
+                        threadId = "dm-1"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("@Cindy - direct message - now", resolved.context)
+        assertNull(resolved.threadContext)
+        assertEquals(SlockForegroundMessageBannerIconKind.DirectMessage, resolved.iconKind)
+        assertNull(resolved.iconName)
+        assertEquals("C", resolved.avatarLabel)
     }
 
     @Test
