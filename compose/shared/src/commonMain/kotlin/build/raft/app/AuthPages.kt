@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
@@ -23,6 +24,7 @@ import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -566,12 +568,17 @@ private fun AuthDeveloperScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val bridgeCallScope = rememberCoroutineScope()
     val settingsDataSource =
-        remember {
+        remember(bridge, bridgeCallScope) {
             SharedSettingsDataSource(
                 sessionStore = sharedStores.authStore,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities = BridgeSettingsPlatformCapabilities(bridge),
+                platformCapabilities =
+                    BridgeSettingsPlatformCapabilities(
+                        bridge,
+                        bridgeCallScope.kuiklyBridgeCallContext()
+                    ),
                 diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") }
             )
         }
@@ -628,7 +635,11 @@ private fun AuthDiagnosticsScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val bridgeCallScope = rememberCoroutineScope()
+    val settingsCapabilities =
+        remember(bridge, bridgeCallScope) {
+            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
+        }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(

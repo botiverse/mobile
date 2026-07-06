@@ -169,6 +169,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
+import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.serverConfirmationItemId
 import build.raft.app.data.StoredAuthSession
@@ -726,7 +727,11 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
+    val bridgeCallScope = rememberCoroutineScope()
+    val settingsCapabilities =
+        remember(bridge, bridgeCallScope) {
+            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
+        }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
@@ -1695,7 +1700,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val authStore = sharedStores.authStore
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
-    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val appShellCoroutineScope = rememberCoroutineScope()
+    val settingsCapabilities =
+        remember(bridge, appShellCoroutineScope) {
+            BridgeSettingsPlatformCapabilities(bridge, appShellCoroutineScope.kuiklyBridgeCallContext())
+        }
     val memberRepository =
         remember {
             RealMemberRepository(
@@ -1828,7 +1837,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             kuiklyNotificationPreferenceRepository(notificationPreferenceEvents)
         }
     val notificationPreferenceScope = rememberCoroutineScope()
-    val appShellCoroutineScope = rememberCoroutineScope()
     DisposableEffect(authSessionEvents, authStore) {
         val callbackRef =
             authSessionEvents.addSessionClearedListener { signal ->
