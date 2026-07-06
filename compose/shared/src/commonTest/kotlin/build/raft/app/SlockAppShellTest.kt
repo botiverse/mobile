@@ -118,6 +118,44 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun childHostAppShellPagerTabsKeepMountedChildTabsInFixedOrder() {
+        assertEquals(
+            listOf("home", "tasks"),
+            childHostAppShellPagerTabs("tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("home", "tasks", "members"),
+            childHostAppShellPagerTabs("members", mountedTabs = setOf("home", "tasks", "members"))
+        )
+        assertEquals(
+            listOf("home", "tasks", "settings"),
+            childHostAppShellPagerTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
+        )
+        assertEquals(
+            listOf("home", "tasks"),
+            childHostAppShellPagerTabs("unknown", mountedTabs = setOf("tasks"))
+        )
+    }
+
+    @Test
+    fun childHostAppShellPagerTargetFollowsParentSelectedTab() {
+        val pagerTabs = listOf("home", "tasks", "members")
+
+        assertEquals("home", appShellActiveChildPagerTab("home"))
+        assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
+        assertEquals("members", appShellActiveChildPagerTab("members"))
+        assertEquals("settings", appShellActiveChildPagerTab("settings"))
+        assertEquals("home", appShellActiveChildPagerTab("unknown"))
+
+        assertEquals(0, appShellChildPagerTargetIndex("home", pagerTabs))
+        assertEquals(1, appShellChildPagerTargetIndex("tasks", pagerTabs))
+        assertEquals(2, appShellChildPagerTargetIndex("members", pagerTabs))
+        assertNull(appShellChildPagerTargetIndex("settings", pagerTabs))
+        assertEquals(3, appShellChildPagerTargetIndex("settings", pagerTabs + "settings"))
+        assertNull(appShellChildPagerTargetIndex("members", listOf("home", "tasks")))
+    }
+
+    @Test
     fun appShellActiveChildTabFollowsParentSelectedTab() {
         assertEquals("home", appShellActiveChildPagerTab("home"))
         assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
