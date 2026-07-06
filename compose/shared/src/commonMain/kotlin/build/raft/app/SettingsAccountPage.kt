@@ -94,9 +94,13 @@ internal data class KuiklySettingsAccountPayload(
     val avatarInProgress: Boolean = false,
     val avatarErrorCode: String? = null,
     val logoutTitle: String = "Log out",
-    val logoutDetail: String = "Sign out of this browser. Your account and data stay; you can sign back in any time.",
+    // Mobile-appropriate wording: react web says "this browser", but on the
+    // app the equivalent scope is the device — matches the app's existing
+    // "on this device" copy (SettingsStoragePage / AuthDataSource). Do NOT
+    // align this to react's "browser" (intentional platform copy divergence).
+    val logoutDetail: String = "Sign out on this device. Your account and data stay; you can sign back in any time.",
     val logoutLabel: String = "Log out",
-    val logoutConfirmMessage: String = "Sign out of this browser? Your account and data are kept; you can log back in any time.",
+    val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can log back in any time.",
     val logoutConfirmLabel: String = "Log out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
