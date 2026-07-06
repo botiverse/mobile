@@ -33,6 +33,8 @@ import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
 private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
+private const val SLOCK_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
+    "raft.build.markdown.inlineCodeTrailingMargin"
 private const val SLOCK_INLINE_CODE_EDGE_PADDING = '\u00A0'
 
 /**
@@ -374,7 +376,18 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     )
 
                     MarkdownTokenTypes.EOL -> if (eolAsNewLine) append('\n') else append(' ')
-                    MarkdownTokenTypes.WHITE_SPACE -> if (length > 0) append(' ')
+                    MarkdownTokenTypes.WHITE_SPACE -> if (length > 0) {
+                        val whitespaceStart = length
+                        append(' ')
+                        if (children.getOrNull(childIndex - 1)?.type == MarkdownElementTypes.CODE_SPAN) {
+                            addStringAnnotation(
+                                tag = SLOCK_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG,
+                                annotation = "true",
+                                start = whitespaceStart,
+                                end = length
+                            )
+                        }
+                    }
                     MarkdownTokenTypes.BLOCK_QUOTE -> {
                         skipIfNext = MarkdownTokenTypes.WHITE_SPACE
                     }

@@ -39,6 +39,7 @@ import kotlin.test.assertTrue
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
     private val slockInlineCodeAnnotationTag = "raft.build.markdown.inlineCode"
+    private val slockInlineCodeTrailingMarginAnnotationTag = "raft.build.markdown.inlineCodeTrailingMargin"
     private val inlineCodePadding = "\u00A0"
 
     @Test
@@ -303,6 +304,10 @@ class SlockMarkdownTest {
         assertEquals(
             listOf(inlineCodeSegment(command)),
             annotated.slockInlineCodeMarkerTextSegments()
+        )
+        assertEquals(
+            listOf(" "),
+            annotated.slockInlineCodeTrailingMarginSegments()
         )
     }
 
@@ -1307,6 +1312,11 @@ class SlockMarkdownTest {
 
     private fun AnnotatedString.slockInlineCodeMarkerTextSegments(): List<String> =
         getStringAnnotations(slockInlineCodeAnnotationTag, start = 0, end = length).map { range ->
+            text.substring(range.start, range.end)
+        }
+
+    private fun AnnotatedString.slockInlineCodeTrailingMarginSegments(): List<String> =
+        getStringAnnotations(slockInlineCodeTrailingMarginAnnotationTag, start = 0, end = length).map { range ->
             text.substring(range.start, range.end)
         }
 
