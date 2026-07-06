@@ -3237,9 +3237,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                     selectedTab = "settings"
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
                                     selectedSettingsDestination = SettingsDestinationComputers
-                                    settingsViewModel.dispatch(
-                                        SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers)
-                                    )
                                 },
                                 onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                 onCreateChannel = { openCreateChannelDialog() },
@@ -3530,6 +3527,7 @@ private fun SettingsAppShellContent(
         when (selectedDestination) {
             SettingsDestinationApiEnvironment ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+            SettingsDestinationComputers -> Unit
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
                     onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
@@ -3848,6 +3846,9 @@ private fun SettingsAppShellContent(
                     }
                 }
             SettingsDestinationComputers -> {
+                LaunchedEffect(selectedDestination) {
+                    onSettingsIntent(SharedSettingsIntent.RefreshComputers)
+                }
                 SettingsComputersContent(
                     settingsState.computers.toComputersPayload(
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),

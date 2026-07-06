@@ -266,6 +266,7 @@ sealed interface SharedSettingsIntent {
     data class OpenComputer(val machineId: String) : SharedSettingsIntent
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
+    data object RefreshComputers : SharedSettingsIntent
     data object Logout : SharedSettingsIntent
     data object RequestNotificationPermission : SharedSettingsIntent
     data object OpenNotificationSettings : SharedSettingsIntent
@@ -1340,6 +1341,7 @@ class SharedSettingsStore(
                 loadHome()
             }
             SharedSettingsIntent.Refresh -> loadCurrentRoute()
+            SharedSettingsIntent.RefreshComputers -> refreshComputers()
             SharedSettingsIntent.Logout ->
                 _state.value =
                     _state.value.copy(
@@ -1878,6 +1880,11 @@ class SharedSettingsStore(
                 dataSource.loadDiagnostics().applyToState(destination) { copy(diagnostics = it) }
             SharedSettingsDestination.Router -> loadHome()
         }
+    }
+
+    private suspend fun refreshComputers() {
+        dataSource.loadComputers(forceComputers = true)
+            .applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
     }
 
     private suspend fun loadComputerDetail(machineId: String) {
@@ -2525,6 +2532,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.OpenComputer,
             SharedSettingsIntent.Back,
             SharedSettingsIntent.Refresh,
+            SharedSettingsIntent.RefreshComputers,
             SharedSettingsIntent.RefreshStorage -> true
             SharedSettingsIntent.Logout,
             SharedSettingsIntent.RequestNotificationPermission,
