@@ -49,6 +49,7 @@ import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.data.map
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
 import build.raft.app.data.withExecutedAgent
@@ -2178,9 +2179,8 @@ internal class SharedThreadDataSource(
     ): ConversationAccessCandidate? {
         val lookupIds = basePayload.conversationHeaderFallbackIds()
         if (lookupIds.isEmpty()) return null
-        return (home.channels + home.directMessages)
-            .map { it.toConversationSummary() }
-            .firstOrNull { conversation -> conversation.matchesHeaderFallbackId(lookupIds) }
+        return home.toSharedConversationDirectoryState()
+            .let { directory -> lookupIds.firstNotNullOfOrNull(directory::resolve) }
             ?.toConversationAccessCandidate()
     }
 

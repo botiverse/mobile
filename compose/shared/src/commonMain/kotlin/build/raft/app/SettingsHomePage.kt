@@ -212,7 +212,6 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
-import build.raft.app.data.resolveHomeConversationSummary
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSavedStateCache
@@ -3244,8 +3243,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 },
                                 onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                 onCreateChannel = { openCreateChannelDialog() },
-                                onOpenConversation = { conversation ->
-                                    openHomeConversation(conversation.toThreadLaunchConversationIdentity(), "home")
+                                onOpenConversation = { conversationIdentity ->
+                                    openHomeConversation(conversationIdentity, "home")
                                 },
                                 serverMembersStore = sharedStores.serverMembersStore,
                                 bottomContentPadding = appShellBottomContentInset,
@@ -11083,7 +11082,7 @@ private fun SharedHomeScreen(
     onOpenComputers: () -> Unit = {},
     onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
-    onOpenConversation: (ConversationSummary) -> Unit,
+    onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
@@ -11369,7 +11368,7 @@ private fun SharedHomeScreen(
                     if (conversation == null) {
                         bridge.toast("Conversation is no longer available")
                     } else {
-                        onOpenConversation(conversation.toConversationSummary())
+                        onOpenConversation(conversation.toThreadLaunchConversationIdentity())
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 },
@@ -13904,17 +13903,6 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
         .distinctBy { it.id }
 }
 
-private fun SharedHomeState.systemNotificationConversation(message: Message): ConversationSummary? {
-    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
-    return snapshot.resolveHomeConversationSummary(
-        listOfNotNull(
-            message.threadId.value,
-            message.channelId?.value,
-            message.threadChannelId?.value
-        )
-    )
-}
-
 private enum class SearchEntityType {
     Channel,
     DirectMessage,
@@ -13929,7 +13917,7 @@ private data class SearchEntityResult(
     val subtitle: String,
     val threadId: String?,
     val memberId: String?,
-    val conversation: ConversationSummary?,
+    val conversationIdentity: ThreadLaunchConversationIdentity?,
     val avatarWireValue: String? = null,
     val showPresence: Boolean = false
 )
@@ -13997,11 +13985,11 @@ private fun homeSearchEntityResults(
         snapshot.directMessages
             .mapNotNull { conversation ->
                 val memberId = conversation.presenceMemberId?.value ?: return@mapNotNull null
-                memberId to conversation.toConversationSummary()
+                memberId to conversation.toThreadLaunchConversationIdentity()
             }
             .toMap()
     val conversationResults =
-        conversations.map { it.toConversationSummary() }.mapNotNull { conversation ->
+        conversations.mapNotNull { conversation ->
             if (!conversation.searchMatches(normalizedQuery)) return@mapNotNull null
             val type =
                 if (conversation.kind == ConversationKind.DirectMessage) {
@@ -14016,7 +14004,7 @@ private fun homeSearchEntityResults(
                 subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) "Channel" else "DM",
                 threadId = conversation.threadId.value,
                 memberId = conversation.presenceMemberId?.value,
-                conversation = conversation,
+                conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
                 avatarWireValue = null,
                 showPresence = conversation.isAgentDirectMessage()
             )
@@ -14037,7 +14025,7 @@ private fun homeSearchEntityResults(
                     },
                 threadId = conversation?.threadId?.value,
                 memberId = sender.id,
-                conversation = conversation,
+                conversationIdentity = conversation,
                 avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
                 showPresence = sender.kind == MemberKind.Agent
             )
@@ -14051,7 +14039,7 @@ private fun HomeDirectMessageRow.isAgentDirectMessage(): Boolean =
     kind == ConversationKind.DirectMessage &&
         directMessagePeerType.equals("agent", ignoreCase = true)
 
-private fun ConversationSummary.isAgentDirectMessage(): Boolean =
+private fun HomeConversationRow.isAgentDirectMessage(): Boolean =
     kind == ConversationKind.DirectMessage &&
         directMessagePeerType.equals("agent", ignoreCase = true)
 
@@ -14078,7 +14066,7 @@ private val SearchSort.searchKey: String
             SearchSort.Recent -> "recent"
         }
 
-internal fun ConversationSummary.searchMatches(query: String): Boolean =
+internal fun HomeConversationRow.searchMatches(query: String): Boolean =
     listOfNotNull(
         name,
         if (kind == ConversationKind.DirectMessage) null else "#${name.removePrefix("#")}",
@@ -14691,11 +14679,11 @@ private fun Pager.openHomeSearchEntity(
     compactConsecutiveMessages: Boolean,
     threadRowAffordances: Set<ThreadRowAffordancePreference>
 ) {
-    val conversation = entity.conversation
+    val conversation = entity.conversationIdentity
     if (conversation != null) {
         openStandaloneHomeConversation(
             bridge = bridge,
-            conversation = conversation.toThreadLaunchConversationIdentity(),
+            conversation = conversation,
             source = "home_search_entity",
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
