@@ -1643,8 +1643,10 @@ private fun AppShellTabs(
                     initialPage = targetPage ?: 0,
                     pageCount = { pagerTabs.size }
                 )
-            LaunchedEffect(targetPage, pagerTabs.size) {
-                if (targetPage != null && pagerState.currentPage != targetPage) {
+            LaunchedEffect(activeChildTab, targetPage, pagerTabs) {
+                // The Kuikly PageList can report the target page while the native visual page
+                // is still stale, so selectedTab must always re-issue the control command.
+                if (targetPage != null) {
                     pagerState.scrollToPage(targetPage)
                 }
             }

@@ -157,6 +157,17 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun childHostAppShellPagerTargetMovesBackToHomeWithTasksMounted() {
+        val mountedTabs = setOf("home", "tasks")
+        val tasksTabs = childHostAppShellPagerTabs("tasks", mountedTabs)
+        val homeTabs = childHostAppShellPagerTabs("home", mountedTabs)
+
+        assertEquals(tasksTabs, homeTabs)
+        assertEquals(1, appShellChildPagerTargetIndex("tasks", tasksTabs))
+        assertEquals(0, appShellChildPagerTargetIndex("home", homeTabs))
+    }
+
+    @Test
     fun appShellActiveChildTabFollowsParentSelectedTab() {
         assertEquals("home", appShellActiveChildPagerTab("home"))
         assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
