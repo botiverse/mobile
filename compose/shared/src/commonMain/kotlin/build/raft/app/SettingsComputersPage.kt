@@ -196,7 +196,7 @@ private fun SettingsComputersScreen() {
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
         bridge.log("settings_computers_open instanceId=${launchPayload.instanceId}")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     val computersPayload =

@@ -1288,6 +1288,36 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun refreshComputersForcesSharedComputersRefresh() = runBlocking {
+        // Home machine notifications can warm SharedComputersStore with an
+        // already-loaded slice. Once the Computers page is rendered, it must
+        // force-refresh its own data instead of rendering the stale slice.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val computersSource =
+            FakeSettingsComputersSource(
+                computersResult = DataResult.Content(computersSnapshot("machine-42"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = FakeSettingsRepository(),
+                        computersSource = computersSource
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.RefreshComputers)
+
+        assertEquals(listOf("sharedComputers:server-1:true"), computersSource.calls)
+        val computers = assertIs<ScreenLoadState.Content<SettingsComputersSnapshot>>(store.state.value.computers).data
+        assertEquals(listOf("machine-42"), computers.computers.map { it.id })
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.Home), store.state.value.route)
+        scope.cancel()
+    }
+
+    @Test
     fun addComputerRegisterBuildsTransientSetupCommandAndWaitingState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val registered =
