@@ -1597,6 +1597,10 @@ class ThreadPayloadTest {
         assertEquals(null, headerDisplay.dmPeerGravatarUrl)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
+        assertEquals(true, payload.memberScopedMentions)
+        assertEquals(false, payload.threadComposerMemberScopedMentions())
+        assertEquals(false, payload.threadComposerMemberSuggestionHeadersVisible())
+        assertEquals(true, payload.shouldPrioritizeThreadMentionParticipants())
     }
 
     @Test
@@ -2140,7 +2144,22 @@ class ThreadPayloadTest {
             )
 
         assertEquals(true, payload.memberScopedMentions)
+        assertEquals(true, payload.threadComposerMemberScopedMentions())
+        assertEquals(true, payload.threadComposerMemberSuggestionHeadersVisible())
         assertEquals("joint-1", payload.resolveThreadComposer().streamChannelId)
+    }
+
+    @Test
+    fun directMessageReplyThreadComposerUsesServerWideMemberSuggestions() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                memberScopedMentions = true
+            )
+
+        assertEquals(false, payload.threadComposerMemberScopedMentions())
+        assertEquals(false, payload.threadComposerMemberSuggestionHeadersVisible())
     }
 
     @Test
@@ -3818,6 +3837,7 @@ class ThreadPayloadTest {
         assertEquals("Reply in thread", composer.placeholder)
         assertEquals(false, composer.showAsTaskToggle)
         assertEquals(true, initialPayload.threadComposerMemberScopedMentions())
+        assertEquals(true, initialPayload.threadComposerMemberSuggestionHeadersVisible())
     }
 
     @Test

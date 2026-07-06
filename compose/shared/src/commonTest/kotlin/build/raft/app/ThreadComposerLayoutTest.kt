@@ -224,6 +224,30 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionPanelContentHeightCapsForLargeServerMemberLists() {
+        assertEquals(
+            240.dp,
+            composerSuggestionPanelContentHeight(
+                itemCount = 5_000,
+                rowMinHeight = 38.dp
+            )
+        )
+    }
+
+    @Test
+    fun suggestionPanelSlotHeightCanOmitMemberHeaderForDirectMessages() {
+        assertEquals(
+            114.dp,
+            composerSuggestionPanelSlotHeight(
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 3,
+                channelCount = 0,
+                includeMemberHeader = false
+            )
+        )
+    }
+
+    @Test
     fun suggestionPanelSlotHeightMatchesMemberPanelHeight() {
         assertEquals(
             240.dp,
@@ -386,6 +410,26 @@ class ThreadComposerLayoutTest {
         assertEquals(insideTwo, suggestions.composerMemberSuggestionCandidateAt(1))
         assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(2))
         assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(99))
+    }
+
+    @Test
+    fun selectedMemberSuggestionCandidateCanUseFlatDirectMessageOrder() {
+        val outside =
+            KuiklyComposerMemberItem(
+                displayName = "Outside",
+                handle = "outside",
+                inMentionChannel = false
+            )
+        val inside =
+            KuiklyComposerMemberItem(
+                displayName = "Inside",
+                handle = "inside",
+                inMentionChannel = true
+            )
+        val suggestions = listOf(outside, inside)
+
+        assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(0, groupByMentionChannel = false))
+        assertEquals(inside, suggestions.composerMemberSuggestionCandidateAt(1, groupByMentionChannel = false))
     }
 
     @Test
