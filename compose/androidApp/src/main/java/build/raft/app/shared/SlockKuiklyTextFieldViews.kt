@@ -35,6 +35,15 @@ internal open class SlockKuiklyTextFieldView(
 
     init {
         applySlockInputMetrics()
+        // Kuikly's BasicTextField does not forward the compose textStyle fontFamily
+        // to the native field, and the container-scoped applySlockInputTypeface()
+        // traversal (SlockKuiklyActivity) only reaches inputs under
+        // R.id.slock_kuikly_container — it misses fields rendered in dialog/popup
+        // roots (e.g. the create-channel dialog). Apply the brand input typeface
+        // (Space Grotesk) at construction so every field defaults to it regardless
+        // of where it is mounted; an explicit fontFamily prop still overrides via
+        // applyResolvedTypeface().
+        applyResolvedTypeface()
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =

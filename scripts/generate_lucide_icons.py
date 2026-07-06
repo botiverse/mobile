@@ -63,6 +63,7 @@ LUCIDE_ICONS = [
     "bell-ring",
     "blocks",
     "bookmark",
+    "bookmark-minus",
     "bot",
     "bug",
     "building-2",

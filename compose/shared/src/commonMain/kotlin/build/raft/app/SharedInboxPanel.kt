@@ -727,7 +727,7 @@ private fun SharedActivityRow(
                     )
                     Text(
                         text = item.activityTimeLabel(timeContext),
-                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = SlockMonoFamily),
                         color = SlockColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -912,7 +912,7 @@ private fun SharedActivityCountPill(
                 .widthIn(min = 22.dp)
                 .background(backgroundColor, pillShape)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack, pillShape)
-                .padding(horizontal = 6.dp, vertical = 2.dp),
+                .padding(horizontal = 6.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -924,7 +924,7 @@ private fun SharedActivityCountPill(
             }
             Text(
                 text = text,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = textColor,
                 maxLines = if (text.contains('\n')) 4 else 1,
                 overflow = TextOverflow.Ellipsis

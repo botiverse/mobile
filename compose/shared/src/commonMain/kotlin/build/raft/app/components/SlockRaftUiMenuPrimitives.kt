@@ -3,6 +3,7 @@ package build.raft.app.components
 import build.raft.app.SlockAnchoredPopover
 import build.raft.app.SlockColor
 import build.raft.app.SlockFloatingDefaultViewportGap
+import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
@@ -136,7 +137,7 @@ internal fun SlockSelectionPopover(
                         fieldMinHeight = 30.dp,
                         horizontalPadding = 8.dp,
                         verticalPadding = 5.dp,
-                        textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+                        textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
                         showShadow = true
                     )
                 }
@@ -146,7 +147,7 @@ internal fun SlockSelectionPopover(
                 Box(modifier = Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) {
                     Text(
                         text = emptyLabel,
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.40f)
                     )
                 }
@@ -242,7 +243,7 @@ internal fun SlockMenuItemRow(
             trailing?.let {
                 Text(
                     text = it,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.40f),
                     maxLines = 1
                 )

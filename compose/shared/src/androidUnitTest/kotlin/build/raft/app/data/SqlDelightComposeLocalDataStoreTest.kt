@@ -371,62 +371,6 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
-    fun writeThroughThreadRefreshDoesNotWriteConversationDirectoryRows() = runBlocking {
-        val database = createDatabase()
-        val store =
-            SqlDelightComposeLocalDataStore(
-                database = database,
-                fallback = InMemoryComposeLocalDataStore(),
-                currentServerId = { serverId },
-                clock = { 42L }
-            )
-        val writer = ComposeLocalWriteThrough(store)
-        store.writeHome(
-            HomeSnapshot(
-                server = ServerSummary(serverId, name = "Slock"),
-                currentMember = member,
-                channels =
-                    listOf(
-                        ConversationSummary(
-                            threadId = ThreadId("joint-1"),
-                            channelId = ChannelId("joint-1"),
-                            kind = ConversationKind.Joint,
-                            name = "raft-mobile",
-                            subtitle = "Mobile bridge"
-                        ).toHomeChannelRow()
-                    ),
-                directMessages = emptyList(),
-                unreadTotal = 0
-            )
-        )
-
-        writer.writeThreadResult(
-            DataResult.Content(
-                ThreadSnapshot(
-                    conversation =
-                        ConversationSummary(
-                            threadId = ThreadId("joint-1"),
-                            channelId = ChannelId("joint-1"),
-                            kind = ConversationKind.Channel,
-                            name = "joint-1"
-                        ),
-                    messages = emptyList()
-                )
-            ),
-            source = "messages_channel"
-        )
-
-        // The home snapshot blob cache was removed (fb845a19), so the earlier
-        // writeHome persisted nothing; the write-through thread refresh caches
-        // the thread but never writes conversation-directory rows (6358200b
-        // "fix(directory): keep channel metadata out of sqldelight").
-        assertNull(store.readHome(serverId))
-        val cachedThread = assertNotNull(store.readThread(ThreadId("joint-1")))
-        assertEquals("joint-1", cachedThread.conversation.name)
-        assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
-    }
-
-    @Test
     fun homeChannelReplyMetadataDoesNotPersistReplyThreadAliases() = runBlocking {
         val database = createDatabase()
         val store =
@@ -466,57 +410,6 @@ class SqlDelightComposeLocalDataStoreTest {
         // leak thread aliases or conversation-directory rows into SQLDelight.
         assertNull(store.readHome(serverId))
         assertNull(store.readThread(ThreadId("reply-thread-1")))
-        assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
-    }
-
-    @Test
-    fun writeThroughChannelReplyMetadataDoesNotPersistAsReplyThread() = runBlocking {
-        val database = createDatabase()
-        val store =
-            SqlDelightComposeLocalDataStore(
-                database = database,
-                fallback = InMemoryComposeLocalDataStore(),
-                currentServerId = { serverId },
-                clock = { 42L }
-            )
-        val writer = ComposeLocalWriteThrough(store)
-
-        writer.writeThreadResult(
-            DataResult.Content(
-                ThreadSnapshot(
-                    conversation =
-                        ConversationSummary(
-                            threadId = ThreadId("channel-1"),
-                            channelId = ChannelId("channel-1"),
-                            kind = ConversationKind.Channel,
-                            name = "general",
-                            thread =
-                                ThreadConversation(
-                                    parentChannelId = ChannelId("channel-1"),
-                                    parentMessageId = MessageId("parent-1"),
-                                    streamChannelId = ChannelId("reply-thread-1")
-                                )
-                        ),
-                    messages =
-                        listOf(
-                            Message(
-                                id = MessageId("message-1"),
-                                threadId = ThreadId("channel-1"),
-                                seq = 1,
-                                author = member,
-                                timestampLabel = "20:00",
-                                body = "hello"
-                            )
-                        )
-                )
-            ),
-            source = "messages_channel"
-        )
-
-        val restored = assertNotNull(store.readThread(ThreadId("channel-1")))
-        assertEquals(1, restored.messages.size)
-        assertEquals(ChannelId("channel-1"), restored.messages.single().channelId)
-        assertEquals(null, store.readThread(ThreadId("reply-thread-1")))
         assertEquals(emptyList(), database.queries.selectConversationDirectory(serverId.value).executeAsList())
     }
 

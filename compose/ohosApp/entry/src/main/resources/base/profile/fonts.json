@@ -27,6 +27,14 @@
     {
       "familyName": "space_grotesk",
       "fileName": "space_grotesk.ttf"
+    },
+    {
+      "familyName": "space_mono_regular",
+      "fileName": "space_mono_regular.ttf"
+    },
+    {
+      "familyName": "space_mono_bold",
+      "fileName": "space_mono_bold.ttf"
     }
   ]
 }

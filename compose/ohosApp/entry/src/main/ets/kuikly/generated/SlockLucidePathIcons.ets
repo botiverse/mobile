@@ -29,6 +29,7 @@ export const SlockLucidePathIconNames: string[] = [
   'bell-ring',
   'blocks',
   'bookmark',
+  'bookmark-minus',
   'bot',
   'bug',
   'building-2',
@@ -667,6 +668,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       ];
     case 'bookmark':
       return [
+    {
+      commands: 'M 17 3 a 2 2 0 0 1 2 2 v 15 a 1 1 0 0 1 -1.496 0.868 l -4.512 -2.578 a 2 2 0 0 0 -1.984 0 l -4.512 2.578 A 1 1 0 0 1 5 20 V 5 a 2 2 0 0 1 2 -2 z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'bookmark-minus':
+      return [
+    {
+      commands: 'M 15 10 H 9',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
     {
       commands: 'M 17 3 a 2 2 0 0 1 2 2 v 15 a 1 1 0 0 1 -1.496 0.868 l -4.512 -2.578 a 2 2 0 0 0 -1.984 0 l -4.512 2.578 A 1 1 0 0 1 5 20 V 5 a 2 2 0 0 1 2 -2 z',
       fillPaint: 'none',

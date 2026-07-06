@@ -31,20 +31,6 @@ val googleServerClientId =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
-val defaultBuglyAndroidAppId = "1277318f53"
-val defaultBuglyAndroidAppKey = "a1b03176-0694-4167-ad18-05755b0b36e4"
-
-val buglyAndroidAppId =
-    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_ID")
-        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_ID"))
-        .getOrElse(defaultBuglyAndroidAppId)
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-
-val buglyAndroidAppKey =
-    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_KEY")
-        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_KEY"))
-        .getOrElse(defaultBuglyAndroidAppKey)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
@@ -127,8 +113,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
-        buildConfigField("String", "BUGLY_ANDROID_APP_ID", "\"$buglyAndroidAppId\"")
-        buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
         buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver.oranix.io")}\"")
@@ -200,6 +184,26 @@ configurations
         }
     }
 
+// NetworkKMM (task #12, now on Android too) was compiled against the KBA
+// coroutines fork, whose kotlinx.coroutines.launch has an extra boolean
+// parameter. Stock coroutines wins conflict resolution here (1.8.1 > the
+// fork), so VBTransportService's launch$default(...,boolean,...) call is
+// missing at runtime -> NoSuchMethodError, crash on app open. The fork is a
+// SUPERSET (BuildersKt keeps the stock no-boolean launch$default AND adds the
+// boolean overload), so pinning the whole app's coroutines to it is safe:
+// stock callers (kuikly, androidx) still resolve, and NetworkKMM finds its
+// method. iOS/OHOS already resolve the fork via NetworkKMM's native variants.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlinx" &&
+            requested.name.startsWith("kotlinx-coroutines-")
+        ) {
+            useVersion("1.8.0-KBA-002")
+            because("NetworkKMM is built against the KBA coroutines fork (superset of stock); the app must run its BuildersKt so launch\$default resolves.")
+        }
+    }
+}
+
 dependencies {
     // Kuikly Compose shared module
     implementation(project(":shared"))
@@ -228,11 +232,6 @@ dependencies {
     implementation(libs.mmkv)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
-    implementation(libs.bugly.pro) {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
-    }
-    implementation(libs.bugly.diagnose.logger)
-    implementation(libs.bugly.diagnose)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

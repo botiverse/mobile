@@ -542,6 +542,44 @@ object LucideIcons {
                 }.build()
     }
 
+    val BookmarkMinus: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideBookmarkMinus",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 10.0f)
+                        horizontalLineTo(x = 9.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.0f, y = 3.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 15.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.496f, dy1 = 0.868f)
+                        lineToRelative(dx = -4.512f, dy = -2.578f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.984f, dy1 = 0.0f)
+                        lineToRelative(dx = -4.512f, dy = 2.578f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5.0f, y1 = 20.0f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                }.build()
+    }
+
     val Bot: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideBot",
@@ -9343,6 +9381,7 @@ object LucideIcons {
             "bell-ring" -> BellRing
             "blocks" -> Blocks
             "bookmark" -> Bookmark
+            "bookmark-minus" -> BookmarkMinus
             "bot" -> Bot
             "bug" -> Bug
             "building-2" -> Building2

@@ -72,6 +72,7 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentStatus
@@ -860,7 +861,11 @@ internal fun MembersPageContent() {
             decodedPayload.copy(instanceId = instanceId)
         }
     }
-    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val bridgeCallScope = rememberCoroutineScope()
+    val settingsCapabilities =
+        remember(bridge, bridgeCallScope) {
+            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
+        }
 
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Use the shared provider network client so request scheduling and transport swaps
@@ -1569,11 +1574,14 @@ private fun rememberMemberDetailRouteProvider(
                 logger = { message -> bridge.log("member_detail_settings_repository $message") }
             )
         }
-    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val agentDetailStore = sharedStores.agentDetailStore
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = sharedStores.serverMembersStore
     val scope = rememberCoroutineScope()
+    val settingsCapabilities =
+        remember(bridge, scope) {
+            BridgeSettingsPlatformCapabilities(bridge, scope.kuiklyBridgeCallContext())
+        }
     val computersApiClient = remember(networkClient) {
         SlockComputersApiClient(
             SlockComputersNetworkApi(networkClient)
@@ -6073,7 +6081,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                             Text(
                                 text = "$name=",
                                 style = SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),
@@ -6084,7 +6092,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                             Text(
                                 text = membersMaskedEnvValue(envVars[name]),
                                 style = SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     fontSize = 12.sp,
                                     lineHeight = 16.sp
                                 ),

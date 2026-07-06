@@ -3,6 +3,7 @@ package build.raft.app.components
 import build.raft.app.Button as SlockButton
 import build.raft.app.SlockAvatar
 import build.raft.app.SlockColor
+import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockStroke
@@ -162,7 +163,7 @@ internal fun SlockSectionHeader(
             count?.takeIf { it >= 0 }?.let {
                 Text(
                     text = it.toString(),
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1
                 )
@@ -264,7 +265,7 @@ internal fun SlockAvatarListRow(
                 subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 14.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.5f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis

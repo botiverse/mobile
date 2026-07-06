@@ -23,6 +23,7 @@ import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.runtime.Composable
@@ -78,7 +79,10 @@ internal fun rememberStandaloneSettingsEnvironment(
                 logger = { message -> bridge.log("settings_standalone_$message") }
             )
         }
-    val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
+    val settingsCapabilities =
+        remember(bridge, scope) {
+            BridgeSettingsPlatformCapabilities(bridge, scope.kuiklyBridgeCallContext())
+        }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val dataSource =
         remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {

@@ -2,6 +2,7 @@ package build.raft.app.components
 
 import build.raft.app.SlockAvatar
 import build.raft.app.SlockBrutalDropdownMenuItem
+import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockBrutalDropdownMenuSurface
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
@@ -345,7 +346,7 @@ internal fun SlockRaftUiTextMono(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         modifier = modifier,
-        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
         color = SlockColor.TextBlack.copy(alpha = 0.55f),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis
@@ -361,7 +362,7 @@ internal fun SlockRaftUiInlineCode(text: String, modifier: Modifier = Modifier) 
                 .background(SlockColor.BrandYellow.copy(alpha = 0.40f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 4.dp),
-        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp),
+        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 18.sp),
         color = SlockColor.TextBlack,
         maxLines = 1
     )

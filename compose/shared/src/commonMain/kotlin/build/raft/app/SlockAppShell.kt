@@ -30,8 +30,16 @@ internal data class SlockAppShellScope(
     fun bottomTabBarHostInset(includeBottomTabBar: Boolean): Dp =
         if (includeBottomTabBar && !bottomTabBarOverlaysContent) bottomTabBarContentInset - SlockSpacing.Lg else 0.dp
 
+    // Trailing space scrollable content must reserve so its last row clears the
+    // tab bar. When the bar overlays content (floating docks), the host pads
+    // nothing and content needs the renderer's full clearance; otherwise the
+    // host already reserves bottomTabBarContentInset - Lg and content adds Lg.
     fun contentBottomInset(includeBottomTabBar: Boolean): Dp =
-        if (includeBottomTabBar) SlockSpacing.Lg else bottomSafeArea + SlockSpacing.Lg
+        when {
+            !includeBottomTabBar -> bottomSafeArea + SlockSpacing.Lg
+            bottomTabBarOverlaysContent -> bottomTabBarContentInset
+            else -> SlockSpacing.Lg
+        }
 }
 
 @Composable

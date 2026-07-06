@@ -71,6 +71,7 @@ private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerVisualInputWidth = 321.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
+private val ThreadComposerTextFieldMaxHeight = 80.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerIconButtonSize = 26.dp
 private val ThreadComposerIconSize = 14.dp
@@ -1315,7 +1316,13 @@ internal fun ThreadComposerContent(
                                 onEvent("staleChangeIgnored", next.text, asTask, null)
                                 return@TextField
                             }
-                            if (next.text == fieldValue.text && next.text != state.seedText) {
+                            if (
+                                shouldDropThreadComposerDuplicateValue(
+                                    next = next,
+                                    current = fieldValue,
+                                    seedText = state.seedText
+                                )
+                            ) {
                                 return@TextField
                             }
                             fieldValue = next
@@ -1353,7 +1360,12 @@ internal fun ThreadComposerContent(
                         systemNewlineAction = true,
                         // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                         focusRequester = composerFocusRequester,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerTextFieldMinHeight)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(
+                                min = ThreadComposerTextFieldMinHeight,
+                                max = ThreadComposerTextFieldMaxHeight
+                            )
                     )
                     if (state.hookLabels.isNotEmpty()) {
                         Text(
@@ -1434,6 +1446,13 @@ internal fun ThreadComposerContent(
     }
     }
 }
+
+internal fun shouldDropThreadComposerDuplicateValue(
+    next: TextFieldValue,
+    current: TextFieldValue,
+    seedText: String
+): Boolean =
+    next == current && next.text != seedText
 
 @Composable
 private fun ComposerSuggestionSlot(
@@ -2005,7 +2024,7 @@ private fun ComposerMemberSuggestionRow(
             }
             Text(
                 text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                style = SlockType.Caption.copy(color = handleColor, fontFamily = SlockMonoFamily),
                 color = handleColor,
                 modifier = Modifier.padding(start = 6.dp),
                 maxLines = 1,

@@ -20,7 +20,6 @@ import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
@@ -136,10 +135,12 @@ import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -187,6 +188,7 @@ import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
@@ -433,6 +435,18 @@ private object ThreadReactionGlyphDiagnostics {
         val key = "$path:$emoji:$detail"
         if (loggedKeys.add(key)) {
             Utils.logToNative("thread_reaction_glyph path=$path emoji=$emoji $detail")
+        }
+    }
+
+    // task #379: one-shot readiness signal for the visual-testing capture harness.
+    // The reaction sprite atlas decodes asynchronously; in the headless capture
+    // environment the snapshot can be taken before it finishes, so every reaction
+    // renders as a raw-emoji fallback. Emitting this line once (when the hoisted
+    // atlas ImageBitmap first becomes non-null) gives the capture side a logcat
+    // token to wait on before snapshotting reaction-bearing cases.
+    fun logAtlasReadyOnce(width: Int, height: Int) {
+        if (loggedKeys.add("thread_reaction_atlas_ready")) {
+            Utils.logToNative("thread_reaction_atlas_ready imageWidth=$width imageHeight=$height")
         }
     }
 }
@@ -1648,24 +1662,6 @@ private fun ThreadPageScreen() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val threadPageCoroutineScope = rememberCoroutineScope()
-    val threadLocalStore =
-        remember(sharedStores, authStore) {
-            sharedStores.createThreadLocalDataStore(
-                currentServerId = {
-                    authStore.readSession()
-                        ?.currentServerId
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let(::ServerId)
-                }
-            )
-        }
-    val localWriteThrough =
-        remember(threadLocalStore) {
-            ComposeLocalWriteThrough(
-                threadLocalStore,
-                logger = { message -> bridge.logDebug("shared_thread_cache $message") }
-            )
-        }
     val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
         SlockAgentsApiClient(
@@ -1730,7 +1726,6 @@ private fun ThreadPageScreen() {
         remember(
             networkClient,
             authStore,
-            localWriteThrough,
             memberRepository,
             sharedStores.serverMembersStore,
             channelRepository,
@@ -1740,7 +1735,6 @@ private fun ThreadPageScreen() {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
-                localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 conversationRepository =
@@ -1896,6 +1890,13 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
 
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    ThreadReactionAtlasProvider {
+        ThreadMessageVisualScreenContent()
+    }
+}
+
+@Composable
+private fun ThreadMessageVisualScreenContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -2142,49 +2143,54 @@ internal fun ThreadHeaderVisualScreen() {
 
 @Composable
 internal fun ThreadReactionAtlasVisualScreen() {
-    Column(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-    ) {
-        ThreadReactionVisualSection("Atlas sprites") {
-            ThreadReactionAtlasImagePreview()
-        }
-        ThreadReactionVisualSection("Quick row") {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
-                        .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
-                        .padding(vertical = SlockSpacing.Xs)
-            ) {
-                ThreadMessageReactionRow(onReact = {})
+    // task #376 (Quiver 389d855b): this standalone visual screen renders reaction
+    // glyphs outside ThreadMessagesList, so it provides its own hoisted atlas
+    // image for LocalThreadReactionAtlasImage (glyphs no longer self-load).
+    ThreadReactionAtlasProvider {
+        Column(
+            modifier =
+                Modifier
+                    .width(342.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            ThreadReactionVisualSection("Atlas sprites") {
+                ThreadReactionAtlasImagePreview()
             }
-        }
-        ThreadReactionVisualSection("Chips") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
+            ThreadReactionVisualSection("Quick row") {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
+                            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                            .padding(vertical = SlockSpacing.Xs)
+                ) {
+                    ThreadMessageReactionRow(onReact = {})
+                }
             }
-        }
-        ThreadReactionVisualSection("Fallback") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-            ) {
-                ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
-                ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
+            ThreadReactionVisualSection("Chips") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
+                }
+            }
+            ThreadReactionVisualSection("Fallback") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                ) {
+                    ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
+                    ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
+                }
             }
         }
     }
@@ -2477,7 +2483,7 @@ private fun ThreadMessageVisualCard(
                             text = timestampLabel,
                             style =
                                 SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     color = SlockColor.TextBlack.copy(alpha = 0.4f)
                                 ),
                             color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -2559,9 +2565,18 @@ internal fun SharedThreadRouteContent(
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
-    val initialRouteIdentity = remember(initialPayload) {
+    val incomingRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
     }
+    var retainedRouteIdentity by remember {
+        mutableStateOf(incomingRouteIdentity)
+    }
+    LaunchedEffect(incomingRouteIdentity) {
+        if (!retainedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            retainedRouteIdentity = incomingRouteIdentity
+        }
+    }
+    val initialRouteIdentity = retainedRouteIdentity
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
             SharedThreadViewModel(
@@ -2739,7 +2754,7 @@ internal fun SharedThreadRouteContent(
     val latestCurrentSession by rememberUpdatedState(currentSession)
     val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
     val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
-    val threadInstanceKey = payloadRouteIdentity.instanceKey
+    val threadInstanceKey = initialThreadInstanceKey
     val threadTimelineKey =
         payloadRouteIdentity.timelineChannelId
             ?: initialRouteIdentity.timelineChannelId
@@ -2819,7 +2834,21 @@ internal fun SharedThreadRouteContent(
         createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
         createAgentComputerServerResolved = true
     }
-    LaunchedEffect(initialPayload) {
+    var startedRouteIdentity by remember(initialThreadInstanceKey) {
+        mutableStateOf<ThreadRouteIdentity?>(null)
+    }
+    LaunchedEffect(initialPayload, initialThreadInstanceKey) {
+        if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            return@LaunchedEffect
+        }
+        val alreadyStartedRouteIdentity = startedRouteIdentity
+        if (alreadyStartedRouteIdentity != null &&
+            alreadyStartedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)
+        ) {
+            threadViewModel.dispatch(SharedThreadIntent.ApplyRouteIntent(initialPayload))
+            return@LaunchedEffect
+        }
+        startedRouteIdentity = incomingRouteIdentity
         bridge.performanceMarker(
             phase = "thread_open_start",
             routeName = "kuikly_thread",
@@ -7767,6 +7796,7 @@ private fun ThreadPageContent(
                         channelId = taskPanelChannelId,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
+                        timeContext = payload.toSlockTimeContext(),
                         onOpenTask = { onThreadEvent("openTask", it, null, null) },
                         onIntent = onTasksIntent
                     )
@@ -9727,6 +9757,7 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = false
     }
+    ThreadReactionAtlasProvider {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -10232,6 +10263,7 @@ private fun ThreadMessagesList(
                 )
             }
         }
+    }
     }
     }
 }
@@ -11121,8 +11153,8 @@ private fun ThreadDateDivider(label: String) {
 
 internal fun threadDateDividerTextStyle(): TextStyle =
     SlockType.Caption.copy(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
+        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+        fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
         lineHeight = 14.sp,
         color = SlockColor.TextMutedGray,
@@ -12908,7 +12940,7 @@ private fun ThreadMessageTextSelectionDialog(
                 contentAlignment = Alignment.TopStart,
                 textStyle =
                     SlockType.Body.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = SlockMonoFamily,
                         fontSize = 16.sp,
                         lineHeight = 24.sp,
                         color = SlockColor.TextBlack
@@ -12991,6 +13023,38 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
 private fun threadDisplayReactionEmoji(emoji: String): String =
     emoji
 
+// task #376 (Quiver 389d855b): the decoded reaction sprite atlas is hoisted to
+// a stable ThreadPage mount point and provided here so glyphs consume the ready
+// ImageBitmap instead of each starting their own async `imageResource` load. A
+// null value means "not decoded yet" (temporary) and updates to the ready bitmap
+// via recomposition once the long-lived root finishes decoding — it must never
+// harden into a permanent raw-emoji fallback.
+internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
+
+@Composable
+private fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
+    // task #376/#380: decode the reaction sprite atlas once at a stable root and
+    // provide the ready ImageBitmap down so both Thread content and standalone
+    // visual fixtures resolve glyphs from the shared bitmap instead of each
+    // starting a short-lived async `imageResource` load. The visual fixtures also
+    // emit task #379's ready token so the capture harness can wait for the atlas
+    // before snapshotting reaction-bearing cases.
+    val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val readyThreadReactionAtlas =
+        threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
+    if (readyThreadReactionAtlas != null) {
+        SideEffect {
+            ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
+                readyThreadReactionAtlas.width,
+                readyThreadReactionAtlas.height
+            )
+        }
+    }
+    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
+        content()
+    }
+}
+
 @Composable
 private fun ThreadQuickReactionGlyph(
     emoji: String,
@@ -13014,13 +13078,20 @@ private fun ThreadReactionSpriteGlyph(
     sprite: ThreadReactionSprite,
     modifier: Modifier = Modifier
 ) {
-    val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
-    val imageReady = image.width > 0 && image.height > 0
-    if (!imageReady) {
+    // task #376 (Quiver 389d855b): consume the atlas image hoisted to the
+    // ThreadPage root via LocalThreadReactionAtlasImage instead of starting a
+    // fresh async `imageResource` load here. In a short-lived composition
+    // subtree (the long-press action-menu overlay) a per-glyph `imageResource`
+    // returned a 0x0 first frame and stuck on the raw-emoji fallback; reading
+    // the provided ready bitmap avoids that timing hole. A null value here is
+    // only a transient "not decoded yet" state — the root keeps the atlas
+    // mounted and this consumer recomposes to the sprite once it is ready.
+    val image = LocalThreadReactionAtlasImage.current
+    if (image == null) {
         ThreadReactionGlyphDiagnosticLog(
             path = "sprite_atlas_not_ready",
             emoji = sprite.value,
-            detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
+            detail = "sprite=${sprite.name} imageWidth=0 imageHeight=0"
         )
         ThreadTextReactionGlyph(emoji = sprite.value, modifier = modifier)
         return
@@ -13255,7 +13326,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
         text = description,
         style =
             SlockType.Caption.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = SlockMonoFamily,
                 color = SlockColor.TextBlack.copy(alpha = 0.4f)
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -13271,7 +13342,7 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
         text = timestampLabel,
         style =
             SlockType.Caption.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = SlockMonoFamily,
                 color = SlockColor.TextBlack.copy(alpha = 0.4f)
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -13325,7 +13396,7 @@ private fun ThreadMessageAvatarSlot(
                     text = timestampLabel,
                     style =
                         SlockType.Caption.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = SlockMonoFamily,
                             fontSize = 11.sp,
                             lineHeight = 14.sp,
                             color = SlockColor.TextBlack.copy(alpha = 0.38f)
@@ -14070,7 +14141,7 @@ private fun ThreadAttachmentCommentRow(
             comment.createdAt.takeIf { it.isNotBlank() }?.let { createdAt ->
                 Text(
                     text = createdAt,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, color = SlockColor.TextMutedGray),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -14277,6 +14348,7 @@ private fun ThreadTasksTab(
     channelId: ChannelId,
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
+    timeContext: SlockTimeContext? = null,
     onOpenTask: (String) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -14294,6 +14366,7 @@ private fun ThreadTasksTab(
         showChannelFilter = false,
         createTasksChannelId = channelId,
         draftProjection = draftProjection,
+        timeContext = timeContext,
         onOpenTask = if (openTaskEnabled) {
             { task -> onOpenTask(task.id.value) }
         } else {
@@ -14858,8 +14931,12 @@ private fun ThreadShareSelectionToolbar(
         ) {
             Text(
                 text = "$selectedCount selected",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
+                style = SlockType.Caption.copy(
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Normal
+                ),
                 color = SlockColor.TextBlack.copy(alpha = 0.70f),
                 maxLines = 1
             )

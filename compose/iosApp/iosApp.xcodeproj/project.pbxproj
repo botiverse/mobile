@@ -18,6 +18,8 @@
 		D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */; };
 		D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */; };
 		D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */; };
+		D49163062E14000100C0DE01 /* space_mono_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163162E14000100C0DE01 /* space_mono_regular.ttf */; };
+		D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D49163172E14000100C0DE01 /* space_mono_bold.ttf */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* SlockIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */; };
 		D41350062E140100100C0DE03 /* SlockIosAppScopeMMKV.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */; };
@@ -50,6 +52,8 @@
 		D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_medium.ttf; sourceTree = "<group>"; };
 		D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_semibold.ttf; sourceTree = "<group>"; };
 		D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_grotesk_bold.ttf; sourceTree = "<group>"; };
+		D49163162E14000100C0DE01 /* space_mono_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_regular.ttf; sourceTree = "<group>"; };
+		D49163172E14000100C0DE01 /* space_mono_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = space_mono_bold.ttf; sourceTree = "<group>"; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
 		D41350042E0F000100C0DE02 /* SlockIosRealtimeHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosRealtimeHost.swift; sourceTree = "<group>"; };
 		D41350052E140100100C0DE03 /* SlockIosAppScopeMMKV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlockIosAppScopeMMKV.swift; sourceTree = "<group>"; };
@@ -166,6 +170,8 @@
 				D49163132E14000100C0DE01 /* space_grotesk_medium.ttf */,
 				D49163142E14000100C0DE01 /* space_grotesk_semibold.ttf */,
 				D49163152E14000100C0DE01 /* space_grotesk_bold.ttf */,
+				D49163162E14000100C0DE01 /* space_mono_regular.ttf */,
+				D49163172E14000100C0DE01 /* space_mono_bold.ttf */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -297,6 +303,8 @@
 				D49163032E14000100C0DE01 /* space_grotesk_medium.ttf in Resources */,
 				D49163042E14000100C0DE01 /* space_grotesk_semibold.ttf in Resources */,
 				D49163052E14000100C0DE01 /* space_grotesk_bold.ttf in Resources */,
+				D49163062E14000100C0DE01 /* space_mono_regular.ttf in Resources */,
+				D49163072E14000100C0DE01 /* space_mono_bold.ttf in Resources */,
 				058557BB273AAA24004C7B11 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

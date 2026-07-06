@@ -38,9 +38,324 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Single upstream build of every fork artifact the platform jobs consume.
+  # Kuikly android/foundation + OHOS klibs and the stately/sqliter/sqldelight/
+  # ktor-ohos stack are published to mavenLocal ONCE here (ubuntu) and shared
+  # through os-less cache keys — the artifacts are jvm jars / klibs / .module
+  # metadata, all platform-neutral, so macos and container jobs restore the
+  # same entries instead of rebuilding per (job, os) combination.
+  kuikly-artifacts:
+    name: Kuikly fork artifacts (prebuild)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+    outputs:
+      kuikly-sha: ${{ steps.pins.outputs.kuikly }}
+    steps:
+      # The combined kuikly (android+ohos konan) + fork-deps build overflows the
+      # hosted runner's ~14GB free disk. Drop preinstalled toolchains we never
+      # touch (keep the Android SDK — the kuikly fork build needs it).
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/powershell /usr/local/graalvm \
+            /usr/local/share/chromium /usr/local/lib/node_modules
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 8 for Ktor toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "8"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Set up OpenHarmony SDK
+        id: setup-ohos-sdk
+        uses: openharmony-rs/setup-ohos-sdk@v1.0.1
+        with:
+          version: "6.0"
+          components: native
+          cache: true
+
+      - name: Export OpenHarmony SDK path
+        shell: bash
+        run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Resolve fork pins
+        id: pins
+        shell: bash
+        run: |
+          kuikly="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$kuikly"
+          echo "kuikly=$kuikly" >> "$GITHUB_OUTPUT"
+
+      # The android and ohos flavors publish OVERLAPPING coordinates (the ohos
+      # pass rewrites :core/:compose common metadata), so they are built and
+      # cached as two separate entries — never mixed in one directory.
+      # os-less keys: the artifacts are jars/klibs, consumable on any OS.
+      - name: Restore kuikly fork cache (android flavor)
+        id: kuikly-android-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ steps.pins.outputs.kuikly }}
+
+      - name: Build kuikly fork (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Save kuikly fork cache (android flavor)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ steps.pins.outputs.kuikly }}
+
+      # Legacy key kept warm so visual-testing.yml (separate workflow, android
+      # flavor, Linux-keyed) keeps hitting without changes.
+      - name: Save kuikly fork cache (legacy visual-testing key)
+        if: steps.kuikly-android-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-Linux-${{ steps.pins.outputs.kuikly }}
+
+      - name: Restore kuikly fork cache (ohos flavor)
+        id: kuikly-ohos-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
+
+      - name: Build kuikly fork (ohos flavor)
+        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          rm -rf ~/.m2/repository/com/tencent/kuikly-open
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --ohos-only
+
+      - name: Save kuikly fork cache (ohos flavor)
+        if: steps.kuikly-ohos-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ steps.pins.outputs.kuikly }}
+
+  # Parallel sibling of kuikly-artifacts: the stately/sqliter/sqldelight/ktor
+  # fork stack. Split per artin so neither job's disk/wall-clock includes the
+  # other's build.
+  fork-deps:
+    name: Shared fork dependencies (prebuild)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+    outputs:
+      forkdeps-key: ${{ steps.keys.outputs.forkdeps }}
+    steps:
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/powershell /usr/local/graalvm \
+            /usr/local/share/chromium /usr/local/lib/node_modules
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 8 for Ktor toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: "8"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Set up OpenHarmony SDK
+        id: setup-ohos-sdk
+        uses: openharmony-rs/setup-ohos-sdk@v1.0.1
+        with:
+          version: "6.0"
+          components: native
+          cache: true
+
+      - name: Export OpenHarmony SDK path
+        shell: bash
+        run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      # The fork projects' settings list only CN mirrors (mirrors.tencent.com /
+      # maven.eazytec-cloud.com), which are flaky from hosted runners. Fall back
+      # to the canonical repositories without touching the pinned submodules.
+      # Plugin repositories only: an allprojects{repositories{}} block here would
+      # give every project PROJECT-level repositories, which makes Gradle ignore
+      # the settings-level dependencyResolutionManagement repositories — i.e. it
+      # would hide the CN mirrors that the KBA kotlin artifacts resolve from.
+      - name: Add canonical repository fallbacks
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/init.gradle.kts <<'INIT'
+          settingsEvaluated {
+              pluginManagement {
+                  repositories {
+                      gradlePluginPortal()
+                      mavenCentral()
+                      google()
+                  }
+              }
+          }
+          INIT
+
+      - name: Compose cache key
+        id: keys
+        shell: bash
+        run: |
+          stately="$(git rev-parse HEAD:third_party/stately)"
+          sqliter="$(git rev-parse HEAD:third_party/sqliter)"
+          sqldelight="$(git rev-parse HEAD:third_party/sqldelight)"
+          test -n "$stately" && test -n "$sqliter" && test -n "$sqldelight"
+          echo "forkdeps=forkdeps-mavenlocal-$stately-$sqliter-$sqldelight-${{ hashFiles('scripts/prepare_ktor_ohos_fork.sh', 'third_party/ktor-ohos/**') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache shared fork dependencies mavenLocal artifacts
+        id: forkdeps-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository/co/touchlab
+            ~/.m2/repository/app/cash/sqldelight
+            ~/.m2/repository/io/ktor
+          key: ${{ steps.keys.outputs.forkdeps }}
+
+      # Retried: the KBA artifacts resolve only from CN mirrors
+      # (mirrors.tencent.com), whose reachability from hosted runners is
+      # flaky — every fork-deps failure so far has been this. Once one run
+      # succeeds, the os-less cache keeps everyone warm until pins change.
+      # The attempt runs as its own `bash` process: a shell function called from
+      # an `if` has errexit suppressed for its whole body, so one failing gradlew
+      # would silently fall through to the next command and the step would pass
+      # with a half-empty ~/.m2 (this shipped a 2.6MB ktor-only cache once).
+      - name: Publish shared fork dependencies
+        if: steps.forkdeps-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cat > /tmp/publish-forkdeps.sh <<'SCRIPT'
+          set -euo pipefail
+          git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
+          git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
+
+          pushd third_party/stately
+          ./gradlew --no-daemon --console=plain \
+            :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-strict:publishOhosArm64PublicationToMavenLocal \
+            :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
+            :stately-concurrency:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqliter
+          ./gradlew --no-daemon --console=plain \
+            :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
+            :sqliter-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          pushd third_party/sqldelight
+          ./gradlew --no-daemon --console=plain \
+            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
+            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
+            :sqlite-migrations:publishMavenPublicationToMavenLocal \
+            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
+            :sqldelight-gradle-plugin:publishToMavenLocal \
+            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
+            :runtime:publishOhosArm64PublicationToMavenLocal \
+            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
+          popd
+
+          scripts/prepare_ktor_ohos_fork.sh --publish
+          SCRIPT
+          for i in 1 2 3; do
+            if bash /tmp/publish-forkdeps.sh; then exit 0; fi
+            echo "fork-deps publish attempt $i failed; retrying in $((i*30))s" >&2
+            sleep $((i*30))
+          done
+          echo "fork-deps publish failed after 3 attempts" >&2
+          exit 1
+
+      # Guard against ever saving a half-empty cache again: assert the marker
+      # artifacts from each fork are present before the post-job cache save.
+      - name: Verify published fork dependencies
+        shell: bash
+        run: |
+          repo="$HOME/.m2/repository"
+          missing=0
+          for probe in \
+            "co/touchlab/stately-strict-ohosarm64" \
+            "co/touchlab/stately-concurrency-ohosarm64" \
+            "co/touchlab/sqliter-driver-ohosarm64" \
+            "app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" \
+            "app/cash/sqldelight/runtime-ohosarm64" \
+            "app/cash/sqldelight/native-driver-ohosarm64" \
+            "io/ktor/ktor-client-core-ohosarm64"; do
+            if ! find "$repo/$probe" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | grep -q .; then
+              echo "MISSING: $probe" >&2
+              missing=1
+            fi
+          done
+          exit $missing
+
   android:
     name: Android compile & tests
     runs-on: ubuntu-latest
+    needs: kuikly-artifacts
     timeout-minutes: 30
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -66,26 +381,12 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
-      # Cache key is shared with visual-testing.yml — keep in sync.
-      - name: Resolve kuikly fork submodule sha
-        id: kuikly-fork
-        shell: bash
-        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache kuikly fork mavenLocal artifacts
-        id: kuikly-cache
-        uses: actions/cache@v4
+      - name: Restore kuikly fork mavenLocal artifacts
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
-
-      - name: Publish Kuikly fork artifacts
-        if: steps.kuikly-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --android-only
+          key: kuikly-fork-mavenlocal-android-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          fail-on-cache-miss: true
 
       # Compiling the unit-test source set closes the gap where a broken
       # commonTest (or an API change that breaks tests) sailed through green
@@ -147,11 +448,15 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
-      # Cache key is shared with visual-testing.yml — keep in sync.
+      # iOS cannot consume the linux prebuild: apple-target klibs only publish
+      # from a mac host, so this job builds its own android-flavor artifacts.
       - name: Resolve kuikly fork submodule sha
         id: kuikly-fork
         shell: bash
-        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
+        run: |
+          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Cache kuikly fork mavenLocal artifacts
         id: kuikly-cache
@@ -214,6 +519,7 @@ jobs:
   ohos:
     name: OHOS shared compile
     runs-on: macos-latest
+    needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -221,12 +527,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Set up JDK 8 for Ktor toolchain
-        uses: actions/setup-java@v5
-        with:
-          distribution: zulu
-          java-version: "8"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -257,85 +557,50 @@ jobs:
             echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
           } > compose/github-packages.properties
 
-      # OHOS artifact set differs from the android one — separate cache key.
-      - name: Resolve kuikly fork submodule sha
-        id: kuikly-fork
-        shell: bash
-        run: echo "sha=$(git ls-tree HEAD third_party/kuikly-ui --object-only)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache kuikly fork mavenLocal artifacts
-        id: kuikly-cache
-        uses: actions/cache@v4
+      - name: Restore kuikly fork mavenLocal artifacts
+        uses: actions/cache/restore@v4
         with:
           path: ~/.m2/repository/com/tencent/kuikly-open
-          key: kuikly-fork-mavenlocal-ohos-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+          key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          fail-on-cache-miss: true
 
-      - name: Publish Kuikly fork artifacts
-        if: steps.kuikly-cache.outputs.cache-hit != 'true'
-        shell: bash
-        run: |
-          git submodule sync third_party/kuikly-ui
-          git submodule update --init third_party/kuikly-ui
-          scripts/build_kuikly_fork.sh --ohos-only
-
-      # stately/sqliter/sqldelight/ktor fork publishes dominate OHOS job time;
-      # cache their mavenLocal output keyed on the fork pins.
-      - name: Resolve OHOS shared fork pins
-        id: ohos-forks
-        shell: bash
-        run: |
-          {
-            echo "stately=$(git ls-tree HEAD third_party/stately --object-only)"
-            echo "sqliter=$(git ls-tree HEAD third_party/sqliter --object-only)"
-            echo "sqldelight=$(git ls-tree HEAD third_party/sqldelight --object-only)"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Cache OHOS shared fork mavenLocal artifacts
-        id: ohos-forks-cache
-        uses: actions/cache@v4
+      - name: Restore shared fork dependencies mavenLocal artifacts
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.m2/repository/co/touchlab
             ~/.m2/repository/app/cash/sqldelight
             ~/.m2/repository/io/ktor
-          key: ohos-forkdeps-mavenlocal-${{ runner.os }}-${{ steps.ohos-forks.outputs.stately }}-${{ steps.ohos-forks.outputs.sqliter }}-${{ steps.ohos-forks.outputs.sqldelight }}-${{ hashFiles('scripts/prepare_ktor_ohos_fork.sh', 'third_party/ktor-ohos/**') }}
+          key: ${{ needs.fork-deps.outputs.forkdeps-key }}
+          fail-on-cache-miss: true
 
-      - name: Publish OHOS shared fork dependencies
-        if: steps.ohos-forks-cache.outputs.cache-hit != 'true'
+      # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
+      # relative to the save-time workspace (../../../.m2 from
+      # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
+      # workspace — on the container that is /.m2. Relocate to the mavenLocal
+      # Gradle will actually consult: the BUILD JVM's user.home, which in the
+      # container comes from passwd (/root for root), not $HOME, and is not
+      # pinnable via GRADLE_OPTS (the forked daemon does not inherit client -D
+      # flags). Ask java itself, then verify content.
+      - name: Relocate restored mavenLocal caches
         shell: bash
         run: |
-          git submodule sync third_party/stately third_party/sqliter third_party/sqldelight
-          git submodule update --init third_party/stately third_party/sqliter third_party/sqldelight
-
-          pushd third_party/stately
-          ./gradlew --no-daemon --console=plain \
-            :stately-strict:publishKotlinMultiplatformPublicationToMavenLocal \
-            :stately-strict:publishOhosArm64PublicationToMavenLocal \
-            :stately-concurrency:publishKotlinMultiplatformPublicationToMavenLocal \
-            :stately-concurrency:publishOhosArm64PublicationToMavenLocal
-          popd
-
-          pushd third_party/sqliter
-          ./gradlew --no-daemon --console=plain \
-            :sqliter-driver:publishKotlinMultiplatformPublicationToMavenLocal \
-            :sqliter-driver:publishOhosArm64PublicationToMavenLocal
-          popd
-
-          pushd third_party/sqldelight
-          ./gradlew --no-daemon --console=plain \
-            :sqldelight-compiler:environment:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:dialect:publishMavenPublicationToMavenLocal \
-            :sqldelight-compiler:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:environment:publishMavenPublicationToMavenLocal \
-            :sqlite-migrations:publishMavenPublicationToMavenLocal \
-            :dialects:sqlite-3-18:publishMavenPublicationToMavenLocal \
-            :sqldelight-gradle-plugin:publishToMavenLocal \
-            :runtime:publishKotlinMultiplatformPublicationToMavenLocal \
-            :runtime:publishOhosArm64PublicationToMavenLocal \
-            :drivers:native-driver:publishOhosArm64PublicationToMavenLocal
-          popd
-
-          scripts/prepare_ktor_ohos_fork.sh --publish
+          src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          dst="$userhome/.m2/repository"
+          if [ -d "$src" ] && [ "$src" != "$dst" ]; then
+            mkdir -p "$userhome/.m2"
+            cp -a "$src" "$userhome/.m2/"
+            echo "relocated $src -> $dst"
+          else
+            echo "no relocation needed (src=$src dst=$dst)"
+          fi
+          test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
+            echo "restored cache is missing the sqldelight gradle plugin" >&2
+            find "$dst" -maxdepth 3 -mindepth 3 -type d >&2 || true
+            exit 1
+          }
 
       - name: Compile shared OHOS target and unit tests
         working-directory: compose
@@ -348,3 +613,125 @@ jobs:
             :shared:compileTestKotlinOhosArm64 \
             --no-daemon \
             --console=plain
+
+  # OHOS host (hvigor/ArkTS) gate — catches .ets compile errors that the
+  # KMP-only ohos job cannot see. Runs in artin's harmonyos-ci-image, which
+  # ships the full DevEco command-line-tools (ohpm/hvigorw/SDK/JDK17) that
+  # hosted runners cannot download (Huawei-login-gated). The hvigor build's
+  # kuikly plugin shells out to gradle to link the shared .so, so the same
+  # fork-dependency mavenLocal set as the ohos job is published first.
+  ohos-host:
+    name: OHOS host (hvigor/ArkTS) compile
+    runs-on: ubuntu-latest
+    needs: [kuikly-artifacts, fork-deps]
+    timeout-minutes: 90
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
+      DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
+      SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The workspace is provisioned by the host runner user while steps run
+      # as the container user, so git refuses it as "dubious ownership" ('*'
+      # also covers the submodule checkouts below).
+      - name: Mark workspace safe for git
+        shell: bash
+        run: git config --global --add safe.directory '*'
+
+      # zstd (actions/cache compression fingerprint) and curl (the SQLite
+      # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
+      # into harmonyos-ci-image, so the per-run apt-get install is gone.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Restore kuikly fork mavenLocal artifacts
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-ohos-${{ needs.kuikly-artifacts.outputs.kuikly-sha }}
+          fail-on-cache-miss: true
+
+      - name: Restore shared fork dependencies mavenLocal artifacts
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.m2/repository/co/touchlab
+            ~/.m2/repository/app/cash/sqldelight
+            ~/.m2/repository/io/ktor
+          key: ${{ needs.fork-deps.outputs.forkdeps-key }}
+          fail-on-cache-miss: true
+
+      # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
+      # relative to the save-time workspace (../../../.m2 from
+      # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
+      # workspace — on the container that is /.m2. Relocate to the mavenLocal
+      # Gradle will actually consult: the BUILD JVM's user.home, which in the
+      # container comes from passwd (/root for root), not $HOME, and is not
+      # pinnable via GRADLE_OPTS (the forked daemon does not inherit client -D
+      # flags). Ask java itself, then verify content.
+      - name: Relocate restored mavenLocal caches
+        shell: bash
+        run: |
+          src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          dst="$userhome/.m2/repository"
+          if [ -d "$src" ] && [ "$src" != "$dst" ]; then
+            mkdir -p "$userhome/.m2"
+            cp -a "$src" "$userhome/.m2/"
+            echo "relocated $src -> $dst"
+          else
+            echo "no relocation needed (src=$src dst=$dst)"
+          fi
+          test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
+            echo "restored cache is missing the sqldelight gradle plugin" >&2
+            find "$dst" -maxdepth 3 -mindepth 3 -type d >&2 || true
+            exit 1
+          }
+
+      # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
+      # cannot see (e.g. the tabbar host regression). It deliberately stops
+      # short of the full unsigned-HAP assembleHap: that would require linking
+      # the shared KMP libshared.so, whose konanc whole-program release -opt
+      # link does not fit this 7.8 GiB / 2-CPU container. Every attempt hit a
+      # hard wall — the konan compiler daemon has a large-enough thread stack
+      # but a too-small heap that is not raisable (kotlin.native.jvmArgs is
+      # ignored) and OOMs the -opt; running konanc in-process makes the heap
+      # settable via -Xmx but then the deep IR-lowering recursion overflows the
+      # worker thread's stack (which ignores -Xss); the debug variant instead
+      # bloats codegen with -g until clang OOM-kills the whole runner. The
+      # Kotlin content of libshared is already gated by the "OHOS shared
+      # compile" job, so the unique coverage here is the ArkTS compile, which
+      # needs no native link. (Revisit assembleHap if this job moves to a
+      # larger runner or the image gains headroom.)
+      - name: ohpm install
+        working-directory: compose/ohosApp
+        shell: bash
+        run: ohpm install --all
+
+      - name: hvigor sync
+        working-directory: compose/ohosApp
+        shell: bash
+        run: hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
+
+      - name: hvigor CompileArkTS (host .ets gate)
+        working-directory: compose/ohosApp
+        shell: bash
+        run: |
+          hvigorw --mode module \
+            -p module=entry@default -p product=default -p requiredDeviceType=phone \
+            default@CompileArkTS --analyze=normal --parallel --no-daemon

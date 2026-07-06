@@ -412,21 +412,31 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun taskReferenceUsesReactChipStyleFallback() {
+    fun referenceTagsUseUnderlineAndSelfMentionUsesSoftSignalChip() {
+        // React (MentionLink.tsx): task refs, #channels and non-self @mentions all render
+        // as the bold-black underline; only the self-mention gets the soft-signal chip.
         val taskStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Task)
         val channelStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
+        val threadStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.ChannelThread)
         val selfMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = true)
         val ordinaryMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = false)
 
         assertEquals(14.sp, SlockMarkdownTagFontSize)
-        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), taskStyle.background)
-        assertEquals(null, taskStyle.textDecoration)
+        assertEquals(Color.Unspecified, taskStyle.background)
+        assertEquals(TextDecoration.Underline, taskStyle.textDecoration)
+        assertEquals(SlockColor.BorderBlack.copy(alpha = 0.3f), taskStyle.textDecorationColor)
         assertEquals(SlockColor.TextBlack, taskStyle.color)
         assertEquals(SlockMarkdownTagFontSize, taskStyle.fontSize)
 
-        assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), channelStyle.background)
+        assertEquals(Color.Unspecified, channelStyle.background)
+        assertEquals(TextDecoration.Underline, channelStyle.textDecoration)
+        assertEquals(SlockColor.BorderBlack.copy(alpha = 0.3f), channelStyle.textDecorationColor)
         assertEquals(SlockMarkdownTagFontSize, channelStyle.fontSize)
 
+        assertEquals(Color.Unspecified, threadStyle.background)
+        assertEquals(TextDecoration.Underline, threadStyle.textDecoration)
+
+        assertEquals(SlockColor.SoftSignal, selfMentionStyle.background)
         assertEquals(SlockColor.BrandYellow, selfMentionStyle.background)
         assertEquals(null, selfMentionStyle.textDecoration)
         assertEquals(SlockMarkdownTagFontSize, selfMentionStyle.fontSize)
@@ -481,8 +491,9 @@ class SlockMarkdownTest {
             annotated.slockMarkdownTagChromeAnnotations()
                 .contains(SlockMarkdownTagChromeKind.Channel.wireValue)
         )
+        // Non-active task ref now renders as the react underline, so it carries no chip fill.
         assertEquals(
-            SlockColor.BrandYellow.copy(alpha = 0.4f),
+            Color.Unspecified,
             annotated.slockMarkdownClickableTagBackground(taskToken.id)
         )
         assertEquals(

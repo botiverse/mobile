@@ -159,7 +159,6 @@ internal class SlockSharedStoreProvider private constructor(
         readReceiptRepository: ReadReceiptRepository,
         conversationRepository: ConversationRepository,
         memberRepository: MemberRepository? = null,
-        localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
@@ -177,7 +176,6 @@ internal class SlockSharedStoreProvider private constructor(
                     serverMembersStore = serverMembersStore,
                     tasksDataStore = tasksDataStore,
                     persistSlices = listOf(activityPersistSlice),
-                    localWriteThrough = localWriteThrough,
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -192,7 +190,6 @@ internal class SlockSharedStoreProvider private constructor(
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
-            localWriteThrough = localWriteThrough,
             persistSlices = listOf(activityPersistSlice),
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
             scope = homeActivityStoreScope,

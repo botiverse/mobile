@@ -103,7 +103,7 @@ internal fun SharedInviteHumanDialog(
                         verticalPadding = 8.dp,
                         backgroundColor = SlockColor.SurfaceWhite,
                         borderColor = SlockColor.BorderBlack,
-                        textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+                        textStyle = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
                         textColor = SlockColor.TextBlack
                     )
                     SlockBrutalIconButton(

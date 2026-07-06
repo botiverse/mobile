@@ -13,6 +13,9 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 internal object SlockColor {
     val BrandYellow = Color(0xFFFFD440)
+    // Semantic alias for react `--color-soft-signal` (== brutal/brand yellow #FFD440),
+    // used for the self-mention chip highlight so callsites read intent, not hue.
+    val SoftSignal = BrandYellow
     val AccentPink = Color(0xFFFE7DA8)
     val AccentCyan = Color(0xFF27CCF3)
     val AccentOrange = Color(0xFFF8A16F)
@@ -101,6 +104,28 @@ private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
 
 internal fun slockFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
     spaceGroteskFamily(fontWeight ?: FontWeight.Normal)
+
+// Space Mono mirrors the Space Grotesk wiring above: one FontFamily per weight,
+// manually dispatched (Kuikly drops weight info from the serialized family name,
+// so the weight must be encoded in the font name). React renders mono text
+// (`font-mono`) in Space Mono, which ships only Regular (400) and Bold (700), so
+// semibold-or-heavier maps to Bold and everything lighter maps to Regular.
+private val SpaceMonoBold = FontFamily(KuiklyFont("SpaceMono-Bold", FontWeight.Bold, FontStyle.Normal))
+private val SpaceMonoRegular = FontFamily(KuiklyFont("SpaceMono-Regular", FontWeight.Normal, FontStyle.Normal))
+
+private fun spaceMonoFamily(fontWeight: FontWeight): FontFamily =
+    when {
+        fontWeight >= FontWeight.SemiBold -> SpaceMonoBold
+        else -> SpaceMonoRegular
+    }
+
+internal fun slockMonoFamilyForWeight(fontWeight: FontWeight?): FontFamily =
+    spaceMonoFamily(fontWeight ?: FontWeight.Normal)
+
+// Convenience token for the common regular-weight mono callsites (task numbers,
+// timestamps, counts, handles, codes). Use slockMonoFamilyForWeight() when a
+// callsite needs bold mono.
+internal val SlockMonoFamily: FontFamily = SpaceMonoRegular
 
 private fun TextStyle.withSlockRenderedFontWeight(): TextStyle =
     if (fontFamily in SpaceGroteskFamilies) {

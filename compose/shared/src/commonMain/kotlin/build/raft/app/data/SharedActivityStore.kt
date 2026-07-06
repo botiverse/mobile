@@ -39,7 +39,6 @@ class SharedActivityStore internal constructor(
     private var memberRepository: MemberRepository? = null,
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
-    localWriteThrough: ComposeLocalWriteThrough? = null,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
     private val scope: CoroutineScope,
@@ -49,7 +48,6 @@ class SharedActivityStore internal constructor(
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
-    private var localWriteThrough: ComposeLocalWriteThrough? = localWriteThrough
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
@@ -63,7 +61,6 @@ class SharedActivityStore internal constructor(
         serverMembersStore: SharedServerMembersStore? = this.serverMembersStore,
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
-        localWriteThrough: ComposeLocalWriteThrough? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ) {
@@ -75,9 +72,6 @@ class SharedActivityStore internal constructor(
         this.serverMembersStore = serverMembersStore
         this.tasksDataStore = tasksDataStore
         this.persistSlices = persistSlices
-        if (localWriteThrough != null) {
-            this.localWriteThrough = localWriteThrough
-        }
         if (onUnreadCountsChanged != null) {
             this.onUnreadCountsChanged = onUnreadCountsChanged
         }
@@ -415,7 +409,6 @@ class SharedActivityStore internal constructor(
         reduceState(SharedActivityIntent.MarkAllRead, previous.copy(snapshot = updatedSnapshot, errorCode = null))
         scope.launch {
             val serverId = currentServerId()
-            serverId?.let { localWriteThrough?.clearServerUnread(it, "shared_activity_mark_all_read") }
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
@@ -497,7 +490,6 @@ class SharedActivityStore internal constructor(
         )
         scope.launch {
             val serverId = currentServerId()
-            localWriteThrough?.clearConversationUnread(targetChannelId, "shared_activity_mark_read", serverId)
             val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
                 forgetUnreadCleared(key)

@@ -19,7 +19,7 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
-import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
+import { Quiver } from '@oranix/quiver';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
@@ -47,6 +47,8 @@ const SLOCK_FONTS: SlockFontResource[] = [
   { familyName: 'space_grotesk_bold', familySrc: $rawfile('fonts/space_grotesk_bold.ttf') },
   { familyName: 'space_grotesk_light', familySrc: $rawfile('fonts/space_grotesk_light.ttf') },
   { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
+  { familyName: 'space_mono_regular', familySrc: $rawfile('fonts/space_mono_regular.ttf') },
+  { familyName: 'space_mono_bold', familySrc: $rawfile('fonts/space_mono_bold.ttf') },
 ];
 const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
@@ -76,7 +78,17 @@ export default class EntryAbility extends UIAbility {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     this.setupKnoi();
     this.initBugly(launchParam);
-    SlockOhosCrashReporter.install(this.context);
+    // App-owned Quiver reporting config (client key is DSN-class: it
+    // identifies the app; rotate from the Quiver console if leaked).
+    Quiver.install(
+      {
+        baseUrl: 'https://quiver.oranix.io',
+        appSlug: 'raft-ohos',
+        channel: 'main',
+        clientKey: 'qk_425c2f5b28aae3d46037634665b99bc72605bb6e',
+      },
+      this.context,
+    );
   }
 
   onDestroy(): void {

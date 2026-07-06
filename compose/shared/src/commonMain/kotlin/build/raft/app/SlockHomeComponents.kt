@@ -1988,13 +1988,18 @@ internal fun List<SlockHomeNotificationItem>.homeNotificationTriggerIconName(): 
 
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
-    HardShadowPanel(modifier = modifier, minWidth = 280.dp, maxWidth = 340.dp) {
+    HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
         com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("NOTIFICATIONS", style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text("${notifications.size} ${if (notifications.size == 1) "item" else "items"}", style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 1)
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        notifications.forEach { notification -> HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) }) }
+        notifications.forEachIndexed { index, notification ->
+            if (index > 0) {
+                Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            }
+            HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
+        }
     }
 }
 
@@ -2009,7 +2014,7 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
         Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Text(title, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
             if (body.isNotBlank()) {
-                Text(body, style = SlockType.Button, color = SlockColor.TextMutedGray, overflow = TextOverflow.Ellipsis, maxLines = 3)
+                Text(body, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
             }
             com.tencent.kuikly.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                 if (notification.actionLabel.isNotBlank()) {
@@ -2216,7 +2221,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 "/${server.slug}",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
                 color = SlockColor.TextBlack.copy(alpha = 0.4f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2350,7 +2355,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
     Box(modifier = Modifier.height(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
         Text(
             text,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -2878,7 +2883,7 @@ private fun DimmedUnreadCount(text: String) {
     Box(modifier = Modifier.height(CountPillHeight).padding(horizontal = 6.dp), contentAlignment = Alignment.Center) {
         Text(
             text,
-            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = FontFamily.Monospace),
+            style = SlockType.Caption.copy(fontWeight = FontWeight.Medium, fontSize = 10.sp, lineHeight = 10.sp, fontFamily = SlockMonoFamily),
             color = SlockColor.TextBlack.copy(alpha = 0.5f),
             maxLines = 1,
             textAlign = TextAlign.Center

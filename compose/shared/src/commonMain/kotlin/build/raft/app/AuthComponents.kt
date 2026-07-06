@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -79,8 +80,9 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandWidth = 175.dp
-private val AuthTopBarBrandHeight = 43.dp
+private val AuthTopBarHeight = 62.dp
+private val AuthTopBarBrandWidth = 81.dp
+private val AuthTopBarBrandHeight = 20.dp
 private const val RaftLogoAssetSource = "assets://lucide/raft-logo.svg"
 private const val SlockIconAssetSource = "assets://lucide/slock-icon.svg"
 
@@ -91,10 +93,10 @@ private fun Modifier.authStaticTextFocus(): Modifier =
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
     onDiagnosticsShortcut: (() -> Unit)? = null,
-    contentTopPadding: Dp = 136.dp,
+    contentTopPadding: Dp = 40.dp,
     contentScrollable: Boolean = false,
     topBarHorizontalPadding: Dp = 16.dp,
-    topBarBrandImagePadding: Dp = 8.dp,
+    topBarBrandImagePadding: Dp = 0.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -125,14 +127,14 @@ internal fun AuthScaffold(
                     modifier = Modifier
                         .widthIn(max = 314.dp)
                         .fillMaxSize(),
-                    contentPadding = PaddingValues(top = contentTopPadding, bottom = 32.dp),
+                    contentPadding = PaddingValues(top = contentTopPadding, bottom = 40.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     item {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             content = content
                         )
@@ -144,7 +146,7 @@ internal fun AuthScaffold(
                         .fillMaxWidth()
                         .widthIn(max = 314.dp)
                         .padding(top = contentTopPadding),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     content = content
                 )
@@ -164,7 +166,7 @@ private fun AuthTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height((statusBarHeight + 52).dp)
+            .height(statusBarHeight.dp + AuthTopBarHeight)
             .background(SlockColor.BrandYellow)
     ) {
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
@@ -172,7 +174,7 @@ private fun AuthTopBar(
             modifier = Modifier
                 .padding(top = statusBarHeight.dp)
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(AuthTopBarHeight)
                 .padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -202,7 +204,7 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier, imagePadding: Dp = 8.d
         SlockCachedImage(
             source = RaftLogoAssetSource,
             contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding, vertical = 4.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding),
             contentScale = ContentScale.Fit
         )
     }
@@ -236,7 +238,7 @@ internal fun AuthCenterMark(modifier: Modifier = Modifier) {
     SlockCachedImage(
         source = SlockIconAssetSource,
         contentDescription = null,
-        modifier = modifier.width(48.dp).height(44.dp),
+        modifier = modifier.size(36.dp),
         contentScale = ContentScale.Fit
     )
 }
@@ -396,33 +398,38 @@ internal fun AuthActionButton(
     }
     val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     val disabledAlpha = 0.50f
-    val chromeAlpha = if (!enabled && preserveDisabledVisual) disabledAlpha else 1f
+    // React parity: disabled:opacity-50 dims the WHOLE element after compositing —
+    // the opaque face occludes the shadow first, then everything fades together.
+    // Applying per-color alpha instead let the black shadow bleed through the
+    // translucent face (muddy mauve instead of pale pink, task #372), so keep the
+    // colors full and dim the composited button with a group Modifier.alpha.
+    val dimWholeButton = !enabled && preserveDisabledVisual
     val contentColor = when {
-        enabled -> activeContentColor
-        preserveDisabledVisual -> activeContentColor.copy(alpha = disabledAlpha)
+        enabled || preserveDisabledVisual -> activeContentColor
         else -> SlockDisabledActionContent
     }
     val buttonBackground = when {
-        enabled -> background
-        preserveDisabledVisual -> background.copy(alpha = disabledAlpha)
+        enabled || preserveDisabledVisual -> background
         else -> slockDisabledActionBackgroundFor(background)
     }
-    val borderColor = when {
-        enabled -> SlockColor.BorderBlack
-        preserveDisabledVisual -> SlockColor.BorderBlack.copy(alpha = chromeAlpha)
-        else -> SlockDisabledActionBorder
-    }
-    val shadowColor = when {
-        enabled -> SlockColor.ShadowBlack
-        preserveDisabledVisual -> SlockColor.ShadowBlack.copy(alpha = chromeAlpha)
-        else -> SlockDisabledActionShadow
-    }
+    val borderColor = if (enabled || preserveDisabledVisual) SlockColor.BorderBlack else SlockDisabledActionBorder
+    val shadowColor = if (enabled || preserveDisabledVisual) SlockColor.ShadowBlack else SlockDisabledActionShadow
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
-    Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            // Group alpha must wrap the full footprint (face + offset shadow), so
+            // it sits BEFORE the shadow padding: Kuikly's Modifier.alpha renders
+            // into an intermediate layer clipped to this node's bounds, and after
+            // the padding the offset shadow would fall outside and get clipped.
+            .then(if (dimWholeButton) Modifier.alpha(disabledAlpha) else Modifier)
+            .padding(end = shadowOffset, bottom = shadowOffset)
+    ) {
         Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(shadowColor))
         Box(
             modifier = Modifier
@@ -443,7 +450,10 @@ internal fun AuthActionButton(
                     }
                 }
                 Text(
-                    text = if (loading && !text.endsWith("...")) "$text..." else text,
+                    // Labels like "Signing in…" already carry react's ellipsis
+                    // (U+2026); only append dots to loading labels without one
+                    // (e.g. "Opening Google" -> "Opening Google...").
+                    text = if (loading && !text.endsWith("...") && !text.endsWith("…")) "$text..." else text,
                     style = textStyle,
                     color = contentColor,
                     textAlign = TextAlign.Center
