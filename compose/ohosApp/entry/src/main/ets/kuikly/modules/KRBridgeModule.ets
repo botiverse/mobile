@@ -513,6 +513,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(await this.sendFeedbackToQuiverCapability());
           return;
         }
+        case "submitFeedback": {
+          callback(await this.submitFeedbackToQuiverCapability(records));
+          return;
+        }
         case "requestNotificationPermission": {
           callback(await this.requestNotificationPermissionCapability());
           return;
@@ -714,6 +718,51 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
       return { "status": "error", "code": "quiver_feedback_failed", "message": message };
     }
+  }
+
+  private async submitFeedbackToQuiverCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
+    try {
+      const message = ((records["message"] as string | undefined) ?? "").trim();
+      if (message.length === 0) {
+        return { "status": "error", "code": "settings_feedback_message_required", "message": "Feedback message is required" };
+      }
+      const context = getContext(this) as common.UIAbilityContext;
+      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 3);
+      const attachmentPaths = userAttachmentPaths.slice(0, 3);
+      if (attachmentPaths.length < 3) {
+        attachmentPaths.push(await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context));
+      }
+      const ticketId = await QuiverFeedbackClient.submit(
+        context,
+        message,
+        'bug',
+        attachmentPaths.slice(0, 3),
+        [],
+      );
+      const shortId = ticketId.slice(0, 8);
+      const shareText = `Quiver feedback ${shortId}\n${message}`;
+      SlockOhosClipboard.copyText(shareText);
+      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${shortId}`);
+      return { "status": "ok", "ticketId": ticketId, "shareText": shareText };
+    } catch (error) {
+      const message = String(error);
+      SlockOhosDiagnostics.record("Settings", `quiver_feedback_submit_failed ${message}`);
+      return { "status": "error", "code": "settings_feedback_submit_failed", "message": message };
+    }
+  }
+
+  private feedbackAttachmentPaths(value: Object | undefined): Array<string> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    const paths: Array<string> = [];
+    (value as Array<Record<string, Object>>).forEach((file: Record<string, Object>) => {
+      const fileRef = (file["fileRef"] as string | undefined) ?? "";
+      if (fileRef.length > 0) {
+        paths.push(fileRef);
+      }
+    });
+    return paths;
   }
 
   private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {

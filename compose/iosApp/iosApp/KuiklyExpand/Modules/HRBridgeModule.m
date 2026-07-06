@@ -849,6 +849,17 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
         SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
+    if ([action isEqualToString:@"submitFeedback"]) {
+        NSString *description = [SlockBridgeString(params[@"message"])
+            stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (description.length == 0) {
+            return [self slock_unsupportedResultWithCode:@"settings_feedback_message_required"
+                                                 message:@"Feedback message is required"];
+        }
+        [self slock_submitQuiverFeedbackWithDescription:description];
+        SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_submit_started");
+        return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
+    }
     if ([action isEqualToString:@"clearStorage"]) {
         return [self slock_unsupportedResultWithCode:@"settings_capability_unsupported"
                                              message:[NSString stringWithFormat:@"%@ is not wired on iOS P0", action]];

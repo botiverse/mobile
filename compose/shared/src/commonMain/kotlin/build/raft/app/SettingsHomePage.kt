@@ -6,6 +6,7 @@ import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
+import build.raft.app.components.SlockBrutalTextarea
 import build.raft.app.components.SlockAnchoredToolbarChip
 import build.raft.app.components.SlockBrutalPanelShell
 import build.raft.app.components.SlockBrutalReadOnlyField
@@ -234,6 +235,8 @@ import build.raft.app.data.AgentResetRequest
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.SettingsQuiverFeedbackSubmission
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ConnectedAccountStatus
@@ -468,6 +471,7 @@ private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
+private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
@@ -3535,12 +3539,7 @@ private fun SettingsAppShellContent(
                 }
             }
             SharedSettingsEffect.SendFeedback -> {
-                val draft = settingsCapabilities.prepareDiagnosticsFeedback()
-                if (draft != null) {
-                    onDiagnosticsFeedbackPrepared(draft)
-                } else if (settingsCapabilities.sendFeedback()) {
-                    onSettingsIntent(SharedSettingsIntent.Refresh)
-                }
+                onDestinationChange(SettingsDestinationQuiverFeedback)
             }
             SharedSettingsEffect.RequestNotificationPermission -> {
                 val result = settingsCapabilities.requestNotificationPermission()
@@ -3743,6 +3742,7 @@ private fun SettingsAppShellContent(
         onBack = {
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
+                SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationAbout)
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
                 else -> onDestinationChange(SettingsDestinationHome)
             }
@@ -4284,6 +4284,11 @@ private fun SettingsAppShellContent(
                         onSelectChannel = onDiagnosticsFeedbackChannelSelected
                     )
                 }
+            SettingsDestinationQuiverFeedback ->
+                SharedQuiverFeedbackContent(
+                    settingsCapabilities = settingsCapabilities,
+                    bottomContentPadding = bottomContentPadding
+                )
             else ->
         SettingsSharedPlaceholder(
             title = "Settings",
@@ -7706,6 +7711,208 @@ private fun SharedSettingsDiagnosticsContent(
 }
 
 @Composable
+private fun SharedQuiverFeedbackContent(
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    bottomContentPadding: Dp = SlockSpacing.Lg
+) {
+    val scope = rememberCoroutineScope()
+    var message by remember { mutableStateOf("") }
+    var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var submission by remember { mutableStateOf<SettingsQuiverFeedbackSubmission?>(null) }
+    val attachmentLimit = 3
+    val attachmentMaxBytes = 10L * 1024L * 1024L
+    val remainingSlots = attachmentLimit - attachments.size
+    val normalizedMessage = message.trim()
+    val canSubmit = normalizedMessage.isNotBlank() && !busy
+
+    fun pickAttachment(imageOnly: Boolean) {
+        if (busy) return
+        if (remainingSlots <= 0) {
+            error = "最多 3 个附件。"
+            return
+        }
+        busy = true
+        error = null
+        scope.launch {
+            when (val result = settingsCapabilities.pickFeedbackAttachment(imageOnly)) {
+                is DataResult.Content -> {
+                    val accepted = result.data.filter { file -> (file.sizeBytes ?: 0L) <= attachmentMaxBytes }
+                    val rejectedCount = result.data.size - accepted.size
+                    val merged =
+                        (attachments + accepted)
+                            .distinctBy { it.fileRef ?: it.id }
+                            .take(attachmentLimit)
+                    attachments = merged
+                    error = when {
+                        rejectedCount > 0 -> "Quiver 单个附件最大 10 MB，已跳过超限文件。"
+                        accepted.size > remainingSlots -> "Quiver 一次最多上传 3 个附件，已保留前 3 个。"
+                        else -> null
+                    }
+                }
+                is DataResult.Empty -> Unit
+                is DataResult.Error -> error = result.error.code
+                is DataResult.NoPermission -> error = result.blocker.code
+            }
+            busy = false
+        }
+    }
+
+    fun submitFeedback() {
+        if (!canSubmit) return
+        busy = true
+        error = null
+        submission = null
+        scope.launch {
+            when (val result = settingsCapabilities.submitQuiverFeedback(normalizedMessage, attachments.take(attachmentLimit))) {
+                is DataResult.Content -> {
+                    submission = result.data
+                    message = ""
+                    attachments = emptyList()
+                }
+                is DataResult.Empty -> error = "settings_feedback_submit_unavailable"
+                is DataResult.Error -> error = result.error.code
+                is DataResult.NoPermission -> error = result.blocker.code
+            }
+            busy = false
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquarePlus, title = "Feedback") {
+                SettingsFormDetailText("Send feedback to Quiver. Device diagnostics are attached automatically when there is room.")
+                SlockBrutalTextarea(
+                    value = message,
+                    onValueChange = {
+                        message = it
+                        submission = null
+                    },
+                    placeholder = "What happened?",
+                    hint = "Include the screen, expected result, and what you saw.",
+                    error = if (normalizedMessage.isBlank() && message.isNotEmpty()) "Message is required." else null,
+                    enabled = !busy,
+                    fieldHeight = 118.dp,
+                    maxLines = 6,
+                    showCounter = true,
+                    limit = 2000
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    SlockBrutalActionButton(
+                        label = "Image",
+                        onClick = { pickAttachment(imageOnly = true) },
+                        enabled = !busy && remainingSlots > 0,
+                        leadingIcon = SlockLucideIconName.Image,
+                        modifier = Modifier.weight(1f),
+                        minWidth = 0.dp
+                    )
+                    SlockBrutalActionButton(
+                        label = "File",
+                        onClick = { pickAttachment(imageOnly = false) },
+                        enabled = !busy && remainingSlots > 0,
+                        leadingIcon = SlockLucideIconName.Paperclip,
+                        modifier = Modifier.weight(1f),
+                        minWidth = 0.dp
+                    )
+                }
+            }
+        }
+        item {
+            SettingsFormSectionCard(iconName = SlockLucideIconName.Paperclip, title = "Attachments") {
+                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 10 MB per file")
+                if (attachments.isEmpty()) {
+                    SettingsFormEmptyText("No attachments selected.")
+                } else {
+                    attachments.forEach { file ->
+                        SharedQuiverFeedbackAttachmentRow(
+                            file = file,
+                            enabled = !busy,
+                            onRemove = { attachments = attachments.filterNot { it.id == file.id } }
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            SlockBrutalActionButton(
+                label = if (busy) "Sending" else "Send feedback",
+                onClick = ::submitFeedback,
+                enabled = canSubmit,
+                leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
+                backgroundColor = SlockColor.BrandYellow,
+                modifier = Modifier.fillMaxWidth()
+            )
+            error?.takeIf { it.isNotBlank() }?.let { SettingsFormErrorText(it) }
+            submission?.let { submitted ->
+                SettingsFormDetailText(
+                    listOf(
+                        "Submitted ${submitted.ticketId.take(8).ifBlank { "feedback" }}.",
+                        submitted.shareText.takeIf { it.isNotBlank() }?.let { "Reference copied for sharing." }
+                    ).filterNotNull().joinToString(" ")
+                )
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SharedQuiverFeedbackAttachmentRow(
+    file: PlatformFile,
+    enabled: Boolean,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            name = if (file.mimeType.orEmpty().startsWith("image/")) SlockLucideIconName.Image else SlockLucideIconName.File,
+            modifier = Modifier.size(18.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = file.fileName.ifBlank { "Attachment" },
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text =
+                    listOfNotNull(
+                        file.sizeBytes?.let(::formatAttachmentSizeLabel),
+                        file.mimeType?.takeIf { it.isNotBlank() }
+                    ).joinToString(" · ").ifBlank { "Selected file" },
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        SlockBrutalIconButton(
+            iconName = SlockLucideIconName.Trash2,
+            onClick = onRemove,
+            enabled = enabled,
+            size = 30.dp,
+            iconSize = 14.dp
+        )
+    }
+}
+
+@Composable
 private fun SettingsDetailShell(
     title: String,
     subtitle: String,
@@ -9300,6 +9507,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationApiEnvironment -> "API Environment"
         SettingsDestinationDiagnostics -> "Diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
+        SettingsDestinationQuiverFeedback -> "Send feedback"
         else -> "Settings"
     }
 
@@ -9321,6 +9529,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationApiEnvironment -> "Presets and custom server URLs"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
+        SettingsDestinationQuiverFeedback -> "Report a problem or suggestion"
         else -> ""
     }
 
@@ -9342,6 +9551,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
+        SettingsDestinationQuiverFeedback -> SlockLucideIconName.MessageSquarePlus
         else -> SlockLucideIconName.Settings
     }
 
