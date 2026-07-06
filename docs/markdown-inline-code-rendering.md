@@ -75,36 +75,43 @@ neighbour┘             └── border ───┘          └─── bor
 - Per-side reserved advance = `EDGE_PADDING + EDGE_MARGIN = 6/15` (this is `edgePadding()`
   / `startPadding` / the symmetric part of `endPadding`).
 
-The drawer keeps the border exactly `EDGE_PADDING` outside the glyphs on both sides:
+The atom reserves `edgePadding` (`6/15`) of advance on each padded side (`startPadding`
+on the first atom, `endPadding` on the last). `segmentLeft`/`segmentRight` from
+`getPrimaryHorizontal` are therefore the atom-box edges — `6/15` outside the glyphs. The
+drawer then pulls the border **in** by `horizontalMargin` on each side so it lands exactly
+`EDGE_PADDING` outside the glyphs — the two sides must MIRROR each other:
 
-- leading:  `left  = segmentLeft  + horizontalMargin`  (segmentLeft is the atom-box left,
-  which is `glyphLeft - 6/15`, so border = `glyphLeft - 4/15`).
-- trailing: `right = segmentRight - horizontalMargin - trailingExternalMargin`
-  (mirror of the leading side; see below).
+- leading:  `left  = segmentLeft  + horizontalMargin`  → `glyphLeft  - 6/15 + 2/15 = glyphLeft  - 4/15`.
+- trailing: `right = segmentRight - horizontalMargin`  → `glyphRight + 6/15 - 2/15 = glyphRight + 4/15`.
 
-### Trailing external margin
+Both give `EDGE_PADDING` (`4/15`) of inner room and leave `EDGE_MARGIN` (`2/15`) as outside
+gap. Continuation segments of a wrapped chip keep extending to the padding edge
+(`segmentLeft - horizontalPadding` / `segmentRight + horizontalPadding`); only the first
+and last segments carry the margin.
 
-Body text that follows a chip (e.g. a CJK `的`) should not be glued to it. That extra
-gap is reserved ONLY after the final atom and kept **outside** the border:
+### Trailing external margin (following body text)
 
-- `SLOCK_INLINE_CODE_TRAILING_EXTERNAL_MARGIN_RATIO = 2/15` (one knob, tune to taste).
-- final atom `endPadding = edgePadding + trailingExternalMargin` (`6/15 + 2/15 = 8/15`).
-- drawer subtracts both `horizontalMargin` and `trailingExternalMargin` for the final
-  segment, so the border still stops at `glyphRight + EDGE_PADDING` and the extra
-  `2/15` becomes pure outside gap before the following text.
+Text that follows a chip (e.g. a CJK `的`) should get a bit more breathing room than the
+`2/15` edge gap. This lives in the **markdown layer**, not the chrome: the existing plain
+space after the code span is tagged `slockInlineCodeTrailingMargin`, passed through, and
+rendered by `KRSlockInlineCodeTrailingMarginSpan` — an invisible `ReplacementSpan`
+(`draw` is empty) whose `getSize` is `SLOCK_INLINE_CODE_TRAILING_MARGIN_RATIO × textSize`
+(default `2/15`). No NBSP, no visible-text change. So the right-hand outside gap is
+`2/15` (edge) `+ 2/15` (this span) `= 4/15`. Tune the following gap with this one ratio.
 
-Net: border is symmetric (padding `4/15` both sides), outside gap is `2/15` on the left
-and `2/15 + 2/15 = 4/15` on the right (a touch more, since real text follows on the
-right). Increase/decrease only `TRAILING_EXTERNAL_MARGIN_RATIO`.
+### What went wrong before (the actual bug fixed in `6fa8a02`)
 
-### What went wrong before (anti-pattern)
-
-An earlier attempt set the trailing advance to `edge + (padding+margin) = 12/15` and drew
-the border at `segmentRight + horizontalPadding - (padding+margin)`, which lands the
-border ~`10/15` PAST the glyphs — a big empty area baked *inside* the chip. That reads as
-"the space is too big" even though the constant looked like a margin. Lesson: keep the
-two layers' arithmetic explicitly paired and reason about the border position **relative
-to the glyph edge**, not as an opaque offset.
+The trailing border was drawn unconditionally at `segmentRight + horizontalPadding` —
+pushing the border **out** — while the leading border pulls **in** with
+`segmentLeft + horizontalMargin`. Because the final atom already reserves `edgePadding`
+(`6/15`) after the glyphs, pushing out another `horizontalPadding` put the border at
+`glyphRight + 10/15` — a large empty pocket inside the chip (reported as "trailing padding
+too big, margin too small"). The fix is a one-line mirror: for the final segment draw
+`segmentRight - horizontalMargin`. Lesson: the trailing edge must MIRROR the leading edge;
+reason about the border position **relative to the glyph edge**, and check both sides
+match. (An even earlier detour tried to add the outside margin as extra `endPadding`
+advance in the render layer and revert it in the drawer — two coupled sources fighting;
+keeping the outside margin in the markdown layer and the border symmetric is cleaner.)
 
 ## 4. Principles for future markdown chrome fixes
 
@@ -112,9 +119,10 @@ to the glyph edge**, not as an opaque offset.
    layout advance (span `getSize`) and let the drawer exclude it from the chrome.
 2. **Change the right layer.** Spacing around a chip = render layer
    (`core-render-android`). Markdown structure/content = `kuikly-compose-markdown`.
-3. **Keep measurement and drawer in lockstep.** If you add advance in `getSize`, adjust
-   the matching rectangle in `drawSlockInlineCodeChrome`, and express both in terms of the
-   glyph edge so the relationship is auditable.
+3. **Mirror the two edges.** The leading and trailing borders must be symmetric: if the
+   leading side pulls in with `segmentLeft + horizontalMargin`, the trailing side pulls in
+   with `segmentRight - horizontalMargin`. Always express the border position relative to
+   the glyph edge and verify both sides match.
 4. **Bust the AAR cache and verify the APK** before trusting any screenshot (§2).
 5. Prefer symmetric geometry as the default; deviate only with an explicit, named knob.
 
@@ -126,5 +134,5 @@ to the glyph edge**, not as an opaque offset.
 | `startPadding` / `endPadding` | KRRichTextBuilder.kt | leading / trailing reserved advance |
 | `SLOCK_INLINE_CODE_EDGE_PADDING_RATIO` (4/15) | both | glyph → border |
 | `SLOCK_INLINE_CODE_EDGE_MARGIN_RATIO` (2/15) | both | border → neighbour |
-| `SLOCK_INLINE_CODE_TRAILING_EXTERNAL_MARGIN_RATIO` (2/15) | both | extra outside gap after the final atom |
-| `drawSlockInlineCodeChrome` | KRRichTextViewDrawer.kt | draws fill + border per line segment |
+| `KRSlockInlineCodeTrailingMarginSpan` / `SLOCK_INLINE_CODE_TRAILING_MARGIN_RATIO` (2/15) | KRRichTextBuilder.kt | invisible span on the trailing space = extra outside gap before following text |
+| `drawSlockInlineCodeChrome` | KRRichTextViewDrawer.kt | draws fill + border per line segment (final segment mirrors leading: `segmentRight - horizontalMargin`) |
