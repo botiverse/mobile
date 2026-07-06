@@ -2414,15 +2414,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         is SharedAuthGateState.Ready -> Unit
     }
 
-    fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) {
-        openHomeConversation(
-            conversation = request.conversationIdentity,
-            source = source,
-            anchorMessageId = request.anchorMessageId ?: fallbackAnchorMessageId,
-            originFallback = request.originFallback
-        )
-    }
-
     fun openHomeConversation(
         conversation: ThreadLaunchConversationIdentity,
         source: String,
@@ -2464,6 +2455,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
         pager.openStandaloneThreadLaunchPayload(launchPayload)
+    }
+
+    fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) {
+        openHomeConversation(
+            conversation = request.conversationIdentity,
+            source = source,
+            anchorMessageId = request.anchorMessageId ?: fallbackAnchorMessageId,
+            originFallback = request.originFallback
+        )
     }
 
     LaunchedEffect(
@@ -14669,7 +14669,8 @@ private fun Pager.openStandaloneHomeConversation(
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
     threadRowAffordances: Set<ThreadRowAffordancePreference>,
-    anchorMessageId: String? = null
+    anchorMessageId: String? = null,
+    originFallback: ThreadLaunchOriginFallback? = null
 ) {
     bridge.log(
         "home_open_conversation threadId=${conversation.threadId.value} " +
@@ -14694,7 +14695,8 @@ private fun Pager.openStandaloneHomeConversation(
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
             threadRowAffordances = threadRowAffordances,
-            anchorMessageId = anchorMessageId
+            anchorMessageId = anchorMessageId,
+            originFallback = originFallback
         )
     bridge.log(
         "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
