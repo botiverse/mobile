@@ -19,7 +19,6 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
-import { SlockOhosCrashReporter } from './SlockOhosCrashReporter';
 import { Quiver } from '@oranix/quiver';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
@@ -79,13 +78,15 @@ export default class EntryAbility extends UIAbility {
     this.initBugly(launchParam);
     // App-owned Quiver reporting config (client key is DSN-class: it
     // identifies the app; rotate from the Quiver console if leaked).
-    Quiver.start({
-      baseUrl: 'https://quiver.oranix.io',
-      appSlug: 'raft-ohos',
-      channel: 'main',
-      clientKey: 'qk_425c2f5b28aae3d46037634665b99bc72605bb6e',
-    });
-    SlockOhosCrashReporter.install(this.context);
+    Quiver.install(
+      {
+        baseUrl: 'https://quiver.oranix.io',
+        appSlug: 'raft-ohos',
+        channel: 'main',
+        clientKey: 'qk_425c2f5b28aae3d46037634665b99bc72605bb6e',
+      },
+      this.context,
+    );
   }
 
   onDestroy(): void {
