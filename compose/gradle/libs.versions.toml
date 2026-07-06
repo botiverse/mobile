@@ -25,8 +25,6 @@ sqldelight = "2.1.0"
 coil = "3.4.0"
 androidsvg = "1.4"
 mmkv = "2.4.0"
-buglyPro = "4.4.7.8"
-buglyDiagnose = "0.4.11"
 firebaseBom = "34.15.0"
 googleServices = "4.5.0"
 
@@ -61,9 +59,6 @@ sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coro
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
-bugly-pro = { group = "com.tencent.bugly_16kb", name = "bugly-pro", version.ref = "buglyPro" }
-bugly-diagnose-logger = { group = "com.tencent.tdos-diagnose", name = "logger", version.ref = "buglyDiagnose" }
-bugly-diagnose = { group = "com.tencent.tdos-diagnose", name = "diagnose", version.ref = "buglyDiagnose" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
 kuikly-core = { group = "com.tencent.kuikly-open", name = "core", version.ref = "kuiklyAndroid" }
