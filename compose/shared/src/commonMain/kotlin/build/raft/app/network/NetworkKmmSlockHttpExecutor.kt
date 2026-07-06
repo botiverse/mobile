@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.slockPlatformNeedsExplicitGzipAcceptEncoding
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkMultipartPart
 import com.tencent.kmm.network.export.NetworkPriority
@@ -90,6 +91,7 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             headers.forEach { (name, value) -> request.setHeader(name, value) }
+            request.applyGzipAcceptEncoding(headers)
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -135,6 +137,7 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             headers.forEach { (name, value) -> request.setHeader(name, value) }
+            request.applyGzipAcceptEncoding(headers)
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -185,3 +188,28 @@ private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
 
 internal fun String.sanitizeMultipartFileName(): String =
     replace("\"", "'").replace("\r", "").replace("\n", "")
+
+// OHOS only: NetworkKMM's libcurl wrapper decompresses gzip only when the
+// request opts in with this header; Android/iOS negotiate gzip transparently
+// and must NOT receive it (see slockPlatformNeedsExplicitGzipAcceptEncoding).
+private fun NetworkRequest.applyGzipAcceptEncoding(callerHeaders: Map<String, String>) {
+    resolveGzipAcceptEncoding(slockPlatformNeedsExplicitGzipAcceptEncoding(), callerHeaders)
+        ?.let { setHeader("Accept-Encoding", it) }
+}
+
+/**
+ * The Accept-Encoding value to inject, or null to leave the request untouched.
+ * Only injects on platforms that need the explicit opt-in, and never overrides
+ * an Accept-Encoding the caller already set (case-insensitive).
+ */
+internal fun resolveGzipAcceptEncoding(
+    platformNeedsExplicit: Boolean,
+    callerHeaders: Map<String, String>
+): String? =
+    if (platformNeedsExplicit &&
+        callerHeaders.keys.none { it.equals("Accept-Encoding", ignoreCase = true) }
+    ) {
+        "gzip"
+    } else {
+        null
+    }
