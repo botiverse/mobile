@@ -577,20 +577,24 @@ jobs:
       # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
       # relative to the save-time workspace (../../../.m2 from
       # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
-      # workspace. Where that lands relative to $HOME differs per runner (on the
-      # container it is /.m2, not the pinned /github/home/.m2) — relocate to the
-      # mavenLocal Gradle will actually consult, verifying content on the way.
+      # workspace — on the container that is /.m2. Relocate to the mavenLocal
+      # Gradle will actually consult: the BUILD JVM's user.home, which in the
+      # container comes from passwd (/root for root), not $HOME, and is not
+      # pinnable via GRADLE_OPTS (the forked daemon does not inherit client -D
+      # flags). Ask java itself, then verify content.
       - name: Relocate restored mavenLocal caches
         shell: bash
         run: |
           src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
-          dst="$HOME/.m2/repository"
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          dst="$userhome/.m2/repository"
           if [ -d "$src" ] && [ "$src" != "$dst" ]; then
-            mkdir -p "$HOME/.m2"
-            cp -a "$src" "$HOME/.m2/"
-            echo "relocated from $src"
+            mkdir -p "$userhome/.m2"
+            cp -a "$src" "$userhome/.m2/"
+            echo "relocated $src -> $dst"
           else
-            echo "no relocation needed (src=$src)"
+            echo "no relocation needed (src=$src dst=$dst)"
           fi
           test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
             echo "restored cache is missing the sqldelight gradle plugin" >&2
@@ -629,9 +633,6 @@ jobs:
       OHOS_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk/default/openharmony
       DEVECO_SDK_HOME: /opt/harmonyos-tools/command-line-tools/sdk
       SLOCK_SKIP_OHOS_LOCAL_DEP_PREP: "true"
-      # In the container the JVM's user.home (passwd) differs from $HOME —
-      # pin it so Gradle's mavenLocal matches the relocated cache.
-      GRADLE_OPTS: "-Duser.home=/github/home"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -683,20 +684,24 @@ jobs:
       # The prebuild saves ~/.m2 on ubuntu; actions/cache records the paths
       # relative to the save-time workspace (../../../.m2 from
       # /home/runner/work/mobile/mobile) and re-anchors them on the restore-time
-      # workspace. Where that lands relative to $HOME differs per runner (on the
-      # container it is /.m2, not the pinned /github/home/.m2) — relocate to the
-      # mavenLocal Gradle will actually consult, verifying content on the way.
+      # workspace — on the container that is /.m2. Relocate to the mavenLocal
+      # Gradle will actually consult: the BUILD JVM's user.home, which in the
+      # container comes from passwd (/root for root), not $HOME, and is not
+      # pinnable via GRADLE_OPTS (the forked daemon does not inherit client -D
+      # flags). Ask java itself, then verify content.
       - name: Relocate restored mavenLocal caches
         shell: bash
         run: |
           src="$(cd "$GITHUB_WORKSPACE/../../.." && pwd)/.m2/repository"
-          dst="$HOME/.m2/repository"
+          userhome="$(java -XshowSettings:properties -version 2>&1 | awk '/user.home/{print $3; exit}')"
+          test -n "$userhome"
+          dst="$userhome/.m2/repository"
           if [ -d "$src" ] && [ "$src" != "$dst" ]; then
-            mkdir -p "$HOME/.m2"
-            cp -a "$src" "$HOME/.m2/"
-            echo "relocated from $src"
+            mkdir -p "$userhome/.m2"
+            cp -a "$src" "$userhome/.m2/"
+            echo "relocated $src -> $dst"
           else
-            echo "no relocation needed (src=$src)"
+            echo "no relocation needed (src=$src dst=$dst)"
           fi
           test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin" || {
             echo "restored cache is missing the sqldelight gradle plugin" >&2
