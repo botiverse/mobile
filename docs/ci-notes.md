@@ -1,7 +1,7 @@
 # CI 踩坑指南（test.yml 统一预构建链路）
 
 PR #65 把 test.yml 重构为「两个并行预构建 job 发布 fork 产物到 mavenLocal 缓存，
-各平台 job 恢复消费」的架构。落地共踩了 14 轮坑，本文沉淀所有坑位与结论，
+各平台 job 恢复消费」的架构。落地共踩了十余轮坑（含 OHOS host 门禁的容器内存墙），本文沉淀所有坑位与结论，
 供后续改 CI 的人（和 agent）避雷。
 
 ## 架构现状
@@ -130,3 +130,38 @@ kuikly（konan）+ fork-deps 任一全量构建都能吃满 hosted runner 约 14
 commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段落**。
 `Signed-off-by` 与其他 trailer（如 Co-Authored-By）必须在同一段落，中间不能
 空行，否则前面的会被当成正文。
+
+## OHOS host 门禁（容器内存墙）
+
+### 13. harmonyos-ci-image 容器缺的运行时依赖
+
+`ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image` 是 Ubuntu
+基底但很精简，CI 里要现装：
+- `zstd`——见坑 3（缓存压缩指纹）。
+- `curl`——`scripts/prepare_ohos_sqlite_provider.sh` 用它下 SQLite amalgamation，
+  没有会 `exit 127`。
+（计划把这些预装进镜像，见 harmony-next-pipeline-docker。）
+
+### 14. 编译器 JVM 调参：-Xss 与 daemon 选择
+
+- Compose 编译器插件 `DeepCopyIrTreeWithRemappedComposableTypes` 按嵌套
+  `@Composable` 递归，容器默认线程栈比 macOS 小 → 编 `:shared` 的
+  ohosArm64 目标时 `StackOverflowError`。gradle.properties 全局加 `-Xss4m`
+  修复；`-Dkotlin.daemon.jvm.options` 里多个参数要**逗号分隔**
+  （`-Xmx4g,-Xss4m`），空格分隔会被当成一个非法 -Xmx 值导致 daemon 起不来。
+- **konanc 的堆/栈两难（这就是 assembleHap 放不进容器的原因）**：整程序
+  release `-opt` 链接 libshared.so 极吃内存。konan **守护进程**有够大的线程栈
+  （不 SOF）但堆是小默认值且**调不动**（`kotlin.native.jvmArgs` 无效）→ 堆 OOM；
+  改用**进程内**（`kotlin.native.disableCompilerDaemon=true`）堆能用 `-Xmx` 调大，
+  但深层 IR lowering 递归又爆 worker 线程栈（忽略 `-Xss`）→ SOF。debug 变体则
+  被 `-g` 调试信息撑出 2.4M 行 codegen，clang 把整个 7.8GiB runner OOM 杀掉
+  （`context canceled`）。
+
+### 15. 容器资源与门禁范围
+
+harmonyos-ci-image runner ≈ **7.8 GiB / 2 CPU，无 memory cgroup 上限**。这放不下
+libshared.so 的 native 链接（见坑 14），所以 ohos-host 门禁**只做 ArkTS/.ets 编译**
+（`ohpm install` → `hvigorw --sync` → `default@CompileArkTS`），拦住 host 侧 .ets
+编译错（如 tabbar 那类改动）。libshared 的 Kotlin 内容已由「OHOS shared compile」
+job 覆盖，所以放弃完整 unsigned-HAP 不丢覆盖面。换更大 runner 或镜像加内存后，
+可把 `assembleHap` 加回来（workflow 里留了注释）。
