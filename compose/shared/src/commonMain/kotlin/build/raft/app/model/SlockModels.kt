@@ -177,17 +177,20 @@ sealed class AvatarReference {
 
     @Serializable
     data class Random(val seed: String) : AvatarReference() {
-        override val wireValue: String = "random:$seed"
+        override val wireValue: String = "pixel:random:$seed"
     }
 
     companion object {
         fun fromWireValue(value: String?): AvatarReference? {
             val normalized = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
             return when {
+                normalized.startsWith("pixel:random:") ->
+                    normalized
+                        .removePrefix("pixel:random:")
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::Random)
                 normalized.startsWith("pixel:") ->
                     Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
-                normalized.startsWith("random:") ->
-                    Random(normalized.removePrefix("random:").ifBlank { "default" })
                 normalized.startsWith("http://") || normalized.startsWith("https://") ->
                     Url(normalized)
                 else -> null

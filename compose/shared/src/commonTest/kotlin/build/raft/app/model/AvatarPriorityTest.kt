@@ -113,6 +113,20 @@ class AvatarPriorityTest {
     }
 
     @Test
+    fun randomAvatarReferenceUsesReactCanonicalPixelWireValue() {
+        val random = AvatarReference.Random("agent-1")
+
+        assertEquals("pixel:random:agent-1", random.wireValue)
+        assertEquals(random, AvatarReference.fromWireValue("pixel:random:agent-1"))
+        assertNull(AvatarReference.fromWireValue("random:agent-1"))
+        assertNull(AvatarReference.fromWireValue("pixel:random:"))
+        assertEquals(
+            AvatarReference.Pixel("tree"),
+            AvatarReference.fromWireValue("pixel:tree")
+        )
+    }
+
+    @Test
     fun renderedAvatarProjectionAllowsAgentProfileGravatarBeforeRobotFallback() {
         assertEquals(
             "https://www.gravatar.com/avatar/hash?s=52&d=404",

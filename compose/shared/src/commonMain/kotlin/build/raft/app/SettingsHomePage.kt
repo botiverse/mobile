@@ -609,7 +609,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(
                     statusPulsing = status?.pulsing == true
                 ) {
                     SlockAvatar(
-                        avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: "random:${result.key}",
+                        avatarWireValue = memberAvatarWireValue ?: result.avatarWireValue ?: AvatarReference.Random(result.key).wireValue,
                         label = result.title.removePrefix("@").removePrefix("#")
                     )
                 }
@@ -630,7 +630,7 @@ private fun SharedHomeSearchSenderMeta(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockAvatar(
-            avatarWireValue = avatarWireValue ?: "random:${sender.searchAvatarSeed()}",
+            avatarWireValue = avatarWireValue ?: AvatarReference.Random(sender.searchAvatarSeed()).wireValue,
             label = sender,
             avatarSize = if (compact) 12.dp else 16.dp
         )
@@ -13510,7 +13510,7 @@ private fun homeSearchEntityResults(
                 threadId = conversation?.threadId?.value,
                 memberId = sender.id,
                 conversation = conversation,
-                avatarWireValue = sender.avatarWireValue ?: "random:${sender.id}",
+                avatarWireValue = sender.avatarWireValue ?: AvatarReference.Random(sender.id).wireValue,
                 showPresence = sender.kind == MemberKind.Agent
             )
         }

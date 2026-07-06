@@ -215,4 +215,16 @@ class SlockPixelAvatarRuntimeTest {
             SlockPixelAvatarRuntime.resetForTest()
         }
     }
+
+    @Test
+    fun pixelRandomWireValueUsesSeededRandomAvatar() {
+        val randomAvatar = assertNotNull(pixelAvatarSpecForWireValue("pixel:random:agent-1"))
+        val nestedRandomAvatar = assertNotNull(pixelAvatarSpecForWireValue("pixel:random:agent-1"))
+        val defaultAvatar = assertNotNull(pixelAvatarSpecForWireValue("pixel:robot"))
+
+        assertEquals(randomAvatar.nativeCacheKey, nestedRandomAvatar.nativeCacheKey)
+        assertFalse(nestedRandomAvatar.nativeCacheKey == defaultAvatar.nativeCacheKey)
+        assertNull(pixelAvatarSpecForWireValue("random:agent-1"))
+        assertNull(pixelAvatarSpecForWireValue("pixel:random:"))
+    }
 }

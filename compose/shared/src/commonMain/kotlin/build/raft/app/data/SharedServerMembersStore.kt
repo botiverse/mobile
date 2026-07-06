@@ -1624,7 +1624,8 @@ private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: Strin
     }
 
 private fun String?.isServerMembersAgentFallbackSuggestionAvatar(): Boolean =
-    this?.equals("pixel:robot", ignoreCase = true) == true || this?.startsWith("random:", ignoreCase = true) == true
+    this?.equals("pixel:robot", ignoreCase = true) == true ||
+        this?.startsWith("random:", ignoreCase = true) == true
 
 private fun MemberProfile.serverMembersSourceServerLabel(localServerId: String?): String? {
     val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null
