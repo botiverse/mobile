@@ -44,7 +44,8 @@ internal object SharedThreadHeaderContextStore {
         originMessage: KuiklyThreadMessageItem?,
         parentMessageId: String?,
         originFallback: ThreadLaunchOriginFallback? = null,
-        dmPeerName: String? = null
+        dmPeerName: String? = null,
+        originPending: Boolean = false
     ): SharedThreadHeaderContext {
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
         val routeIdentity = conversation.resolveThreadRouteIdentity()
@@ -95,6 +96,7 @@ internal object SharedThreadHeaderContextStore {
                     !isReplyThread -> "none"
                     originMessage != null -> "loaded"
                     resolvedOriginPreview != null -> "missing"
+                    originPending && resolvedOriginParentMessageId != null -> "loading"
                     resolvedOriginParentMessageId != null || validatedOriginFallback?.expected == true -> "missing"
                     else -> "none"
                 }

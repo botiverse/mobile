@@ -2832,6 +2832,59 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyConversationContextKeepsOriginLoadingWhileHydrationIsPending() {
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("thread-1"),
+                        channelId = ChannelId("parent-channel-1"),
+                        kind = ConversationKind.Thread,
+                        name = "Reply thread",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("parent-channel-1"),
+                                parentMessageId = MessageId("message-1"),
+                                streamChannelId = ChannelId("thread-1")
+                            )
+                    ),
+                originMessage = null,
+                parentMessageId = "message-1",
+                originPending = true
+            )
+
+        assertEquals("message-1", context.originParentMessageId)
+        assertEquals("loading", context.originStatus)
+    }
+
+    @Test
+    fun replyConversationContextStillMarksOriginMissingWhenNoHydrationIsPending() {
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("thread-1"),
+                        channelId = ChannelId("parent-channel-1"),
+                        kind = ConversationKind.Thread,
+                        name = "Reply thread",
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("parent-channel-1"),
+                                parentMessageId = MessageId("message-1"),
+                                streamChannelId = ChannelId("thread-1")
+                            )
+                    ),
+                originMessage = null,
+                parentMessageId = "message-1"
+            )
+
+        assertEquals("message-1", context.originParentMessageId)
+        assertEquals("missing", context.originStatus)
+    }
+
+    @Test
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
         val request =
             InboxItem(

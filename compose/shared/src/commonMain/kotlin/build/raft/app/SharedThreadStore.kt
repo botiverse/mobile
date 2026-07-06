@@ -1794,9 +1794,35 @@ internal class SharedThreadDataSource(
         }
         return DataResult.Content(
             context
+                .withCachedReplyParentMessage(basePayload)
                 .withConversationAccessFallback(accessFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
         )
+    }
+
+    private fun ThreadSnapshot.withCachedReplyParentMessage(
+        basePayload: KuiklyThreadScreenPayload
+    ): ThreadSnapshot {
+        val isReplyThread =
+            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                conversation.kind == ConversationKind.Thread
+        if (!isReplyThread) return this
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
+                ?: return this
+        val parentChannelId =
+            basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentChannelId?.value
+                ?: parentMessage?.channelId?.value
+                ?: return this
+        val parent =
+            getCachedReplyParentMessage(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId
+            ) ?: return this
+        return copy(parentMessage = parent)
     }
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
@@ -1980,6 +2006,16 @@ internal class SharedThreadDataSource(
             )
         }
         return parent?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
+    }
+
+    private fun getCachedReplyParentMessage(
+        parentChannelId: String,
+        parentMessageId: String
+    ): Message? {
+        val parentChannel = ChannelId(parentChannelId)
+        val parentMessage = MessageId(parentMessageId)
+        return messageResolver.get(parentChannel, parentMessage)
+            ?.takeIf { message -> message.matchesReplyOriginParent(parentChannel, parentMessage) }
     }
 
     private fun ThreadSnapshot.withReplyParentMessage(
@@ -5305,8 +5341,13 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             surfaceKind = surfaceKind,
             conversation = conversation,
             originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
-            parentMessageId = parentId
-    )
+            parentMessageId = parentId,
+            originPending =
+                surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                    resolvedParentMessage == null &&
+                    parentId != null &&
+                    base.originStatus == "loading"
+        )
     val resolvedComposer =
         if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
             base.composer.copy(
