@@ -527,7 +527,7 @@ private class AppShellChildTabEntry(
 
 private class AppShellChildPagerSwitchController {
     private var switchToTab: ((tab: String, commandEpoch: Int) -> Boolean)? = null
-    private var latestCommandEpoch: Int = 0
+    private var latestCommandEpoch: Int? = null
 
     fun updateSwitchHandler(handler: ((tab: String, commandEpoch: Int) -> Boolean)?) {
         switchToTab = handler
@@ -1709,7 +1709,8 @@ private fun AppShellTabs(
                         expectedEpoch = childTabSwitchEpoch,
                         currentEpoch = latestChildTabSwitchEpoch,
                         targetPage = targetPage
-                    )
+                    ) &&
+                        !switchController.isLatestCommand(childTabSwitchEpoch)
                 ) {
                     val scrollTarget = targetPage ?: return@LaunchedEffect
                     pagerState.scrollToPage(scrollTarget)
