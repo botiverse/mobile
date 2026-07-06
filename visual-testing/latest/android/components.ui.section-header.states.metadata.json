@@ -17,19 +17,19 @@
                 "systemBars": "hidden",
                 "validation": {
                   "uniqueColors": 184,
-                  "dominantRatio": 0.9458326
+                  "dominantRatio": 0.9459212
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
-    "rootHeightPx": 2414,
+    "rootHeightPx": 2532,
     "hardwareAccelerated": true,
     "totalViews": 22,
     "laidOutViews": 20,
     "visibleContentLeafViews": 0
 },
-              "capturedAt": "1783323896794"
+              "capturedAt": "1783328969612"
             }
