@@ -1864,6 +1864,13 @@ internal class ComposeThreadMessageRowVisualPage : build.raft.app.base.BasePager
 
 @Composable
 internal fun ThreadMessageVisualScreen() {
+    ThreadReactionAtlasProvider {
+        ThreadMessageVisualScreenContent()
+    }
+}
+
+@Composable
+private fun ThreadMessageVisualScreenContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
@@ -2110,55 +2117,53 @@ internal fun ThreadReactionAtlasVisualScreen() {
     // task #376 (Quiver 389d855b): this standalone visual screen renders reaction
     // glyphs outside ThreadMessagesList, so it provides its own hoisted atlas
     // image for LocalThreadReactionAtlasImage (glyphs no longer self-load).
-    val atlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
-    val readyAtlas = atlasImage.takeIf { it.width > 0 && it.height > 0 }
-    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyAtlas) {
-    Column(
-        modifier =
-            Modifier
-                .width(342.dp)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-    ) {
-        ThreadReactionVisualSection("Atlas sprites") {
-            ThreadReactionAtlasImagePreview()
-        }
-        ThreadReactionVisualSection("Quick row") {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
-                        .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
-                        .padding(vertical = SlockSpacing.Xs)
-            ) {
-                ThreadMessageReactionRow(onReact = {})
+    ThreadReactionAtlasProvider {
+        Column(
+            modifier =
+                Modifier
+                    .width(342.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            ThreadReactionVisualSection("Atlas sprites") {
+                ThreadReactionAtlasImagePreview()
+            }
+            ThreadReactionVisualSection("Quick row") {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF7F4EA), RoundedCornerShape(SlockRadius.Sm))
+                            .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
+                            .padding(vertical = SlockSpacing.Xs)
+                ) {
+                    ThreadMessageReactionRow(onReact = {})
+                }
+            }
+            ThreadReactionVisualSection("Chips") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
+                }
+            }
+            ThreadReactionVisualSection("Fallback") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                ) {
+                    ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
+                    ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
+                    ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
+                }
             }
         }
-        ThreadReactionVisualSection("Chips") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = true))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "❤️", count = 2, selected = false))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "✅", count = 1, selected = true))
-            }
-        }
-        ThreadReactionVisualSection("Fallback") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-            ) {
-                ThreadQuickReactionGlyph("☑️", modifier = Modifier.size(22.dp))
-                ThreadQuickReactionGlyph("🧪", modifier = Modifier.size(22.dp))
-                ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
-            }
-        }
-    }
     }
 }
 
@@ -9512,27 +9517,7 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = false
     }
-    // task #376 (Quiver 389d855b): decode the reaction sprite atlas once at this
-    // long-lived ThreadPage root and provide the ready ImageBitmap down so BOTH
-    // the timeline content AND the long-press action-menu overlay (the
-    // `actionMessageId?.let { ThreadMessageActionMenu(...) }` block below, which
-    // lives inside the same Box) resolve their reaction glyphs from the shared
-    // decoded bitmap instead of each starting a fresh async load. The
-    // `imageResource` value updates from a transient 0x0/null to the ready
-    // bitmap via recomposition, so a temporary null never hardens.
-    val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
-    val readyThreadReactionAtlas =
-        threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
-    if (readyThreadReactionAtlas != null) {
-        // task #379: signal capture harness once the atlas is decoded (see logAtlasReadyOnce).
-        SideEffect {
-            ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
-                readyThreadReactionAtlas.width,
-                readyThreadReactionAtlas.height
-            )
-        }
-    }
-    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
+    ThreadReactionAtlasProvider {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -12790,6 +12775,30 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // via recomposition once the long-lived root finishes decoding — it must never
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
+
+@Composable
+private fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
+    // task #376/#380: decode the reaction sprite atlas once at a stable root and
+    // provide the ready ImageBitmap down so both Thread content and standalone
+    // visual fixtures resolve glyphs from the shared bitmap instead of each
+    // starting a short-lived async `imageResource` load. The visual fixtures also
+    // emit task #379's ready token so the capture harness can wait for the atlas
+    // before snapshotting reaction-bearing cases.
+    val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val readyThreadReactionAtlas =
+        threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
+    if (readyThreadReactionAtlas != null) {
+        SideEffect {
+            ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
+                readyThreadReactionAtlas.width,
+                readyThreadReactionAtlas.height
+            )
+        }
+    }
+    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
+        content()
+    }
+}
 
 @Composable
 private fun ThreadQuickReactionGlyph(
