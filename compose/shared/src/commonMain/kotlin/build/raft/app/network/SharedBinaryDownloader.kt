@@ -19,11 +19,10 @@ data class SharedDownloadedBytes(
  * Binary downloads over NetworkKMM (task #12; formerly Ktor).
  *
  * [download] streams the response body chunk-by-chunk via
- * NetworkClient.downloadStream (fork #8, raft.5) — the whole payload is never
- * held in memory. Total size is not known up front (it would need the
- * response's Content-Length before the first chunk), so progress is
- * indeterminate for now; a later raft revision exposes response headers at
- * stream start for determinate progress.
+ * NetworkClient.downloadStream (fork #8) — the whole payload is never held in
+ * memory. The total size comes from the response Content-Length delivered at
+ * stream start (raft.6 onResponseStart), so progress is determinate whenever
+ * the server sends that header.
  */
 object SharedBinaryDownloader {
     private const val DOWNLOAD_TIMEOUT_MILLIS = 60_000L
@@ -50,11 +49,11 @@ object SharedBinaryDownloader {
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
     ): String? {
-        // Total is unknown until the stream completes, so progress is
-        // indeterminate for now (raft.5). Chunks are delivered straight off the
-        // transport without buffering the whole payload.
-        onStart(null)
+        // Chunks are delivered straight off the transport without buffering the
+        // whole payload; total comes from the response Content-Length at stream
+        // start (raft.6) so progress is determinate when the server sends it.
         var downloadedBytes = 0L
+        var totalBytes: Long? = null
         return suspendCancellableCoroutine { continuation ->
             val call =
                 client.downloadStream(
@@ -65,10 +64,14 @@ object SharedBinaryDownloader {
                             body = NetworkBody.Empty,
                             policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
                         ),
+                    onResponseStart = { _, contentLength, _ ->
+                        totalBytes = contentLength?.takeIf { it > 0L }
+                        onStart(totalBytes)
+                    },
                     onChunk = { chunk ->
                         beforeRead()
                         downloadedBytes += chunk.size.toLong()
-                        onChunk(chunk, downloadedBytes, null)
+                        onChunk(chunk, downloadedBytes, totalBytes)
                     },
                     onComplete = { response ->
                         if (!continuation.isActive) return@downloadStream
