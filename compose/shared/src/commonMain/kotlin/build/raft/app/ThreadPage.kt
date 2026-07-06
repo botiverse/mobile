@@ -73,6 +73,7 @@ import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
+import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
@@ -105,6 +106,7 @@ import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.isGravatarAvatarWireValue
+import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -2629,6 +2631,16 @@ internal fun SharedThreadRouteContent(
     val payloadRouteIdentity = remember(payload) {
         payload.resolveThreadRouteIdentity()
     }
+    val foregroundConversationDirectory =
+        remember(directoryConversationProjections) {
+            slockConversationDirectoryStateFromProjections(directoryConversationProjections.values)
+        }
+    var foregroundMessageBanner by remember(initialThreadInstanceKey) {
+        mutableStateOf<SlockForegroundMessageBanner?>(null)
+    }
+    val latestCurrentSession by rememberUpdatedState(currentSession)
+    val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
+    val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
     val threadInstanceKey = payloadRouteIdentity.instanceKey
     val threadTimelineKey =
         payloadRouteIdentity.timelineChannelId
@@ -2682,6 +2694,8 @@ internal fun SharedThreadRouteContent(
         }
     fun imageAnnotationEnabled(): Boolean =
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
+    fun foregroundMessageBannersEnabled(): Boolean =
+        chatLayoutPreferenceStore.readForegroundMessageBannersEnabledSync()
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -3066,10 +3080,34 @@ internal fun SharedThreadRouteContent(
                     if (currentSessionServerId != serverId) return@launch
                     if (!shouldDeliverToActiveThreadRealtimeSignal(event)) return@launch
                     latestThreadRealtimeEventHandler(event)
+                    if (event is MessageNew) {
+                        val session = latestCurrentSession
+                        foregroundMessageBanner =
+                            if (foregroundMessageBannersEnabled()) {
+                                slockForegroundMessageBannerProjection(
+                                    serverId = serverId,
+                                    currentServerId = session?.currentServerId ?: currentSessionServerId,
+                                    message = event.message,
+                                    currentMemberId = session?.user?.id,
+                                    visibleConversationKey = null,
+                                    visibleRouteIdentity = latestPayloadRouteIdentity,
+                                    conversationDirectory = latestForegroundConversationDirectory
+                                ) ?: foregroundMessageBanner
+                            } else {
+                                null
+                            }
+                    }
                 }
             }
         realtimeDomainEventOwner.registerActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterActiveThreadSink(sink) }
+    }
+    LaunchedEffect(foregroundMessageBanner?.id) {
+        val bannerId = foregroundMessageBanner?.id ?: return@LaunchedEffect
+        delay(slockForegroundBannerAutoDismissMs())
+        if (foregroundMessageBanner?.id == bannerId) {
+            foregroundMessageBanner = null
+        }
     }
     LaunchedEffect(threadTimelineKey, taskChannelId?.value, payload.status) {
         if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
@@ -3999,7 +4037,27 @@ internal fun SharedThreadRouteContent(
         refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    SlockForegroundBannerHost(
+        banner = foregroundMessageBanner,
+        topSafeArea = slockTopSafeAreaPadding(),
+        onBannerClick = { target ->
+            foregroundMessageBanner = null
+            onOpenThreadPayload(
+                buildAppShellThreadPayload(
+                    conversation = target.conversation,
+                    timeContext = renderedPayload.toSlockTimeContext(),
+                    alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
+                    compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
+                    threadRowAffordances =
+                        listOfNotNull(
+                            ThreadRowAffordancePreference.Reactions.takeIf { renderedPayload.showReactionActions },
+                            ThreadRowAffordancePreference.Saved.takeIf { renderedPayload.showInlineSaveAction }
+                        ).toSet(),
+                    anchorMessageId = target.focusedMessageId
+                )
+            )
+        }
+    ) {
         ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,

@@ -154,6 +154,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = true,
     val imageAnnotationEnabled: Boolean = false,
+    val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val supportedTranslationModes: List<TranslationModePreference> =
@@ -177,6 +178,9 @@ interface ChatLayoutPreferenceStore {
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
+    fun readForegroundMessageBannersEnabledSync(): Boolean
+    suspend fun readForegroundMessageBannersEnabled(): Boolean
+    suspend fun saveForegroundMessageBannersEnabled(enabled: Boolean)
     fun readActivityTaskStatusBadgesEnabledSync(): Boolean
     suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
     suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
@@ -235,6 +239,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_IMAGE_ANNOTATION_ENABLED, enabled)
     }
 
+    override fun readForegroundMessageBannersEnabledSync(): Boolean =
+        store.getBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false)
+
+    override suspend fun readForegroundMessageBannersEnabled(): Boolean =
+        readForegroundMessageBannersEnabledSync()
+
+    override suspend fun saveForegroundMessageBannersEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, enabled)
+    }
+
     override fun readActivityTaskStatusBadgesEnabledSync(): Boolean =
         store.getBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, false)
 
@@ -285,6 +299,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
+        const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
@@ -301,6 +316,7 @@ interface ChatLayoutPreferenceRepository {
     ): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
@@ -318,6 +334,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -332,6 +349,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -347,6 +365,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = navigation,
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -360,6 +379,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = enabled,
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -373,6 +393,21 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = enabled,
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            translationMode = store.readTranslationMode(),
+            threadRowAffordances = store.readThreadRowAffordances()
+        )
+    }
+
+    override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveForegroundMessageBannersEnabled(enabled)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -386,6 +421,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
@@ -399,6 +435,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = mode,
             threadRowAffordances = store.readThreadRowAffordances()
@@ -422,6 +459,7 @@ class PersistentChatLayoutPreferenceRepository(
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = next

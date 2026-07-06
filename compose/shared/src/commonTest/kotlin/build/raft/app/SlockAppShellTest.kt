@@ -6,15 +6,21 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.ThreadId
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class SlockAppShellTest {
@@ -424,6 +430,104 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerProjectionSuppressesOwnMessage() {
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = appShellForegroundTestMessage(authorId = "user-1"),
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(banner)
+    }
+
+    @Test
+    fun foregroundBannerProjectionShowsOnSettingsEvenWithSelectedHomeConversation() {
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = appShellForegroundTestMessage(channelId = "channel-1"),
+                currentMemberId = "user-1",
+                visibleConversationKey =
+                    appShellVisibleForegroundConversationKey(
+                        selectedTab = "settings",
+                        selectedHomeDestination = null,
+                        selectedConversationId = "channel-1"
+                    )
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("foreground:server-1:message-1", resolved.id)
+        assertEquals("message-1", resolved.focusedMessageId)
+        assertEquals("channel-1", resolved.conversation.threadId.value)
+    }
+
+    @Test
+    fun foregroundBannerProjectionSuppressesVisibleHomeConversation() {
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = appShellForegroundTestMessage(channelId = "channel-1"),
+                currentMemberId = "user-1",
+                visibleConversationKey =
+                    appShellVisibleForegroundConversationKey(
+                        selectedTab = "home",
+                        selectedHomeDestination = null,
+                        selectedConversationId = "channel-1"
+                    )
+            )
+
+        assertNull(banner)
+    }
+
+    @Test
+    fun foregroundBannerProjectionCarriesReplyThreadRouteIdentityOnly() {
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "parent-channel",
+                        threadChannelId = "reply-stream",
+                        parentMessageId = "parent-message"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals(ConversationKind.Thread, resolved.conversation.kind)
+        assertEquals("parent-channel", resolved.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", resolved.conversation.thread?.streamChannelId?.value)
+        assertEquals("reply-1", resolved.focusedMessageId)
+
+        val suppressed =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "parent-channel",
+                        threadChannelId = "reply-stream",
+                        parentMessageId = "parent-message"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                visibleRouteIdentity = resolved.conversation.resolveThreadRouteIdentity()
+            )
+
+        assertNull(suppressed)
+    }
+
+    @Test
     fun appShellPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, appShellPageDidAppearShouldRefresh(0))
         assertEquals(true, appShellPageDidAppearShouldRefresh(1))
@@ -578,3 +682,29 @@ class SlockAppShellTest {
     }
 
 }
+
+private fun appShellForegroundTestMessage(
+    id: String = "message-1",
+    authorId: String = "agent-1",
+    channelId: String? = "channel-1",
+    threadChannelId: String? = null,
+    threadId: String = threadChannelId ?: channelId ?: "thread-1",
+    parentMessageId: String? = null,
+    body: String = "Hello from another route"
+): Message =
+    Message(
+        id = MessageId(id),
+        threadId = ThreadId(threadId),
+        channelId = channelId?.let(::ChannelId),
+        threadChannelId = threadChannelId?.let(::ChannelId),
+        author =
+            MemberProfile(
+                id = MemberId(authorId),
+                displayName = "Cindy",
+                handle = "cindy",
+                kind = MemberKind.Agent
+            ),
+        timestampLabel = "now",
+        body = body,
+        parentMessageId = parentMessageId?.let(::MessageId)
+    )
