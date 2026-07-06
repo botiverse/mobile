@@ -172,6 +172,7 @@ import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.serverConfirmationItemId
+import build.raft.app.data.userFacingMessage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -2641,7 +2642,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     bridge.toast("Diagnostics draft ready")
                 }
                 is DataResult.Error -> {
-                    val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.code
+                    val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.settingsUserFacingMessage()
                     bridge.toast("Diagnostics attachment upload failed: $reason")
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
@@ -3214,9 +3215,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                             is DataResult.Empty ->
                                                 bridge.toast("App update is unavailable")
                                             is DataResult.Error ->
-                                                bridge.toast(result.error.code.ifBlank { "App update failed" })
+                                                bridge.toast(result.error.settingsUserFacingMessage())
                                             is DataResult.NoPermission ->
-                                                bridge.toast(result.blocker.code.ifBlank { "App update blocked" })
+                                                bridge.toast(result.blocker.settingsUserFacingMessage())
                                         }
                                     }
                                 },
@@ -3272,6 +3273,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
                             onContentLoaded = { membersListCachedContent = it },
+                            onRetry = { membersListRefreshKey += 1 },
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset,
                             initialListState = membersListState,
@@ -3933,7 +3935,7 @@ private fun SettingsAppShellContent(
                             )
                         }
                     },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion)) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
             SettingsDestinationAppearance ->
                 SettingsAppearanceContent(
@@ -3949,7 +3951,7 @@ private fun SettingsAppShellContent(
                             )
                         )
                     },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Appearance)) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
             SettingsDestinationServer ->
                 SharedSettingsServerContent(
@@ -4185,7 +4187,7 @@ private fun SettingsAppShellContent(
                         settingsCapabilities.openUrl(url)
                     },
                     onRefresh = {
-                        onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
+                        onSettingsIntent(SharedSettingsIntent.Refresh)
                     }
                 )
             SettingsDestinationNotifications ->
@@ -4214,7 +4216,7 @@ private fun SettingsAppShellContent(
                     onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
                     onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
                     onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
-                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications)) }
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.Refresh) }
                 )
             SettingsDestinationMobile ->
                 SettingsMobileContent(
@@ -4608,7 +4610,7 @@ private fun SettingsConnectedAppsContent(
             is ScreenLoadState.Error ->
                 item {
                     SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Connected Apps Error") {
-                        SettingsFormErrorText(state.error.code)
+                        SettingsFormErrorText(state.error.settingsUserFacingMessage())
                         SlockBrutalActionButton(
                             label = "Retry",
                             onClick = onRefresh,
@@ -4878,15 +4880,15 @@ private fun SettingsLanguageRegionContent(
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Languages, "Unavailable", state.reason.name, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Languages, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Language Error", state.error.code, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Language Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
@@ -5138,15 +5140,15 @@ private fun SettingsAppearanceContent(
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Type, "Unavailable", state.reason.name, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Type, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Appearance Error", state.error.code, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Appearance Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
                 }
             is ScreenLoadState.Content ->
                 item {
@@ -5607,15 +5609,15 @@ private fun SettingsNotificationsContent(
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Bell, "Unavailable", state.reason.name, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Bell, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Notification Error", state.error.code, "Retry", onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Notification Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
@@ -5811,6 +5813,18 @@ private fun SettingsLoadStateCard(
         }
     }
 }
+
+private fun ScreenError.settingsUserFacingMessage(): String =
+    userFacingMessage()
+
+private fun PermissionBlocker.settingsUserFacingMessage(): String =
+    userFacingMessage()
+
+private fun EmptyReason.settingsUserFacingMessage(): String =
+    userFacingMessage()
+
+private fun settingsUserFacingErrorCodeMessage(code: String): String =
+    ScreenError(code).settingsUserFacingMessage()
 
 private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalSelectOption> =
     options.map { SlockBrutalSelectOption(it.key, it.label) }
@@ -7584,7 +7598,7 @@ private fun SettingsFormEmptyText(text: String) {
 
 @Composable
 private fun SettingsFormErrorText(text: String) {
-    Text(text, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+    Text(settingsUserFacingErrorCodeMessage(text), style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
 }
 
 @Composable
@@ -8423,8 +8437,8 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing storage..." else "Loading storage..."
             is ScreenLoadState.Empty -> "Storage information is not available on this platform."
-            is ScreenLoadState.Error -> "Storage unavailable: ${this.error.code}"
-            is ScreenLoadState.NoPermission -> "Storage unavailable: ${this.blocker.code}"
+            is ScreenLoadState.Error -> "Storage unavailable: ${this.error.settingsUserFacingMessage()}"
+            is ScreenLoadState.NoPermission -> "Storage unavailable: ${this.blocker.settingsUserFacingMessage()}"
             is ScreenLoadState.Content -> storage?.feedback.orEmpty()
         }
     return KuiklySettingsStoragePayload(
@@ -8558,9 +8572,9 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing workspace settings..." else "Loading workspace settings..."
-            is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.code}"
-            is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.code}"
-            is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
+            is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.settingsUserFacingMessage()}"
+            is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.settingsUserFacingMessage()}"
+            is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.settingsUserFacingMessage()}"
             is ScreenLoadState.Content -> "Manage this workspace's profile. Admin actions live under Administration."
         }
     return KuiklySharedSettingsPayload(
@@ -8611,9 +8625,9 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing administration..." else "Loading administration..."
-            is ScreenLoadState.Error -> "Administration failed to load: ${error.code}"
-            is ScreenLoadState.NoPermission -> "Administration unavailable: ${blocker.code}"
-            is ScreenLoadState.Empty -> "Administration unavailable: ${reason.name}"
+            is ScreenLoadState.Error -> "Administration failed to load: ${error.settingsUserFacingMessage()}"
+            is ScreenLoadState.NoPermission -> "Administration unavailable: ${blocker.settingsUserFacingMessage()}"
+            is ScreenLoadState.Empty -> "Administration unavailable: ${reason.settingsUserFacingMessage()}"
             is ScreenLoadState.Content -> "Manage admins, invites, join links, and pre-join agreements."
         }
     val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
@@ -9141,9 +9155,9 @@ private fun appShellLanguageRegionPlaceholderPayload(
         }
     val detail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.code
-            is ScreenLoadState.NoPermission -> state.blocker.code
-            is ScreenLoadState.Empty -> state.reason.name
+            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
+            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
+            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
             else -> "Loading language and region settings."
         }
     return KuiklySharedSettingsPayload(
@@ -9186,9 +9200,9 @@ private fun appShellMobilePlaceholderPayload(
         }
     val detail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.code
-            is ScreenLoadState.NoPermission -> state.blocker.code
-            is ScreenLoadState.Empty -> state.reason.name
+            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
+            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
+            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
             else -> "Loading mobile settings."
         }
     return KuiklySharedSettingsPayload(
@@ -9488,9 +9502,9 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
 ): KuiklySharedSettingsPayload {
     val environmentDetail =
         when (state) {
-            is ScreenLoadState.Error -> state.error.code
-            is ScreenLoadState.Empty -> state.reason.name
-            is ScreenLoadState.NoPermission -> state.blocker.code
+            is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
+            is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
+            is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
             ScreenLoadState.Loading -> "Loading developer environment options."
             is ScreenLoadState.Content -> "Choose presets or edit API, socket, and web URLs."
         }
@@ -10494,6 +10508,7 @@ private fun SharedMembersScreen(
     membersRefreshKey: Int,
     initialContent: SharedMembersUiState.Content?,
     onContentLoaded: (SharedMembersUiState.Content) -> Unit,
+    onRetry: () -> Unit,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     initialListState: AppShellMembersListState = AppShellMembersListState(),
@@ -10614,7 +10629,8 @@ private fun SharedMembersScreen(
                 subtitle = "Workspace members",
                 iconName = SlockLucideIconName.Users,
                 message = "Could not load members",
-                code = current.code
+                code = current.code,
+                onRetry = onRetry
             )
         is SharedMembersUiState.Content -> {
             val serverId = current.server.id.value
@@ -10701,7 +10717,7 @@ private fun SharedMembersScreen(
                         is DataResult.NoPermission ->
                             bridge.toast("You do not have permission to manage invites.")
                         is DataResult.Error ->
-                            bridge.toast("Failed to load join link: ${result.error.code}")
+                            bridge.toast("Failed to load join link: ${result.error.settingsUserFacingMessage()}")
                         is DataResult.Empty -> Unit
                     }
                 }
@@ -11188,7 +11204,8 @@ private fun SharedHomeScreen(
                     subtitle = "Workspace",
                     iconName = SlockLucideIconName.House,
                     message = error.title,
-                    code = current.code
+                    code = current.code,
+                    onRetry = { onIntent(SharedHomeIntent.Refresh) }
                 )
             }
         is SharedHomeContentState.Content -> {
@@ -14974,7 +14991,9 @@ private fun PageErrorContent(
     subtitle: String,
     iconName: SlockLucideIconName,
     message: String,
-    code: String
+    code: String,
+    retryLabel: String? = "Retry",
+    onRetry: (() -> Unit)? = null
 ) {
     Column(
         modifier =
@@ -14995,7 +15014,15 @@ private fun PageErrorContent(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                 Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
-                Text(text = code, style = SlockType.Caption, color = SlockColor.AccentRed)
+                Text(text = settingsUserFacingErrorCodeMessage(code), style = SlockType.Caption, color = SlockColor.AccentRed)
+                if (retryLabel != null && onRetry != null) {
+                    SlockBrutalActionButton(
+                        label = retryLabel,
+                        onClick = onRetry,
+                        leadingIcon = SlockLucideIconName.RefreshCw,
+                        backgroundColor = SlockColor.SurfaceWhite
+                    )
+                }
             }
         }
     }

@@ -68,6 +68,7 @@ import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.data.userFacingMessage
 import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedServerMembersEntry
@@ -1142,7 +1143,7 @@ internal fun MembersPageContent() {
                 is DataResult.NoPermission ->
                     bridge.toast("You do not have permission to manage invites.")
                 is DataResult.Error ->
-                    bridge.toast("Failed to load join link: ${result.error.code}")
+                    bridge.toast("Failed to load join link: ${result.error.userFacingMessage()}")
                 is DataResult.Empty -> Unit
             }
         }
@@ -1941,7 +1942,7 @@ private fun MemberDetailPageContent() {
                                             source = "member_detail_user_reorder_save_error_rollback",
                                             logger = { message -> bridge.log(message) }
                                         )
-                                        bridge.toast("Failed to save tab order: ${result.error.code}")
+                                        bridge.toast("Failed to save tab order: ${result.error.userFacingMessage()}")
                                     }
                                     is DataResult.NoPermission -> {
                                         provider.agentPanelTabOrderStore.applyLoaded(

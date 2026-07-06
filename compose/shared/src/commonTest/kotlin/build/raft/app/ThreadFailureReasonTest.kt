@@ -44,6 +44,22 @@ class ThreadFailureReasonTest {
     }
 
     @Test
+    fun userFacingErrorCodeMapsRawThreadCodes() {
+        assertEquals(
+            "The server could not be reached. Check your connection and try again.",
+            threadUserFacingErrorCodeLabel("dns_lookup_failed")
+        )
+        assertEquals(
+            "The network connection failed. Check your connection and try again.",
+            threadUserFacingErrorCodeLabel("thread_network")
+        )
+        assertEquals(
+            "request timed out",
+            threadUserFacingErrorCodeLabel("thread_send_timeout")
+        )
+    }
+
+    @Test
     fun failureReasonParsesReadableMessageFromErrorBody() {
         assertEquals(
             "Body is too large",

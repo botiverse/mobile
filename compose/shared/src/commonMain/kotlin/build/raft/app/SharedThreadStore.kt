@@ -2423,6 +2423,7 @@ internal class SharedThreadStore(
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllAt: TimeMark? = null
+    private var lastRoutePayload: KuiklyThreadScreenPayload? = null
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
 
     fun dispatch(intent: SharedThreadIntent) {
@@ -2499,7 +2500,7 @@ internal class SharedThreadStore(
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
             is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
-            SharedThreadIntent.Refresh -> refresh(_state.value.payload)
+            SharedThreadIntent.Refresh -> refresh(lastRoutePayload ?: _state.value.payload)
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure ->
@@ -2553,6 +2554,7 @@ internal class SharedThreadStore(
         homeContextHydrationJob = null
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob = null
+        lastRoutePayload = null
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
@@ -2562,6 +2564,7 @@ internal class SharedThreadStore(
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val routeContextPayload = routeCandidatePayload.withoutTransientLocalSendingMessages()
+        lastRoutePayload = routeContextPayload
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
         val cached =
@@ -2612,16 +2615,21 @@ internal class SharedThreadStore(
 
     private fun applyRouteIntent(routePayload: KuiklyThreadScreenPayload) {
         val routeCandidatePayload = routePayload.withoutRouteCandidateContent()
+        val currentPayload = _state.value.payload
+        val currentIdentity = currentPayload.resolveThreadRouteIdentity()
+        val incomingIdentity = routeCandidatePayload.resolveThreadRouteIdentity()
+        if (!currentIdentity.canRetainThreadPageFor(incomingIdentity)) {
+            diagnosticsLogger?.invoke(
+                "thread_route_intent_drop reason=route_changed " +
+                    "current=${currentIdentity.instanceKey} incoming=${incomingIdentity.instanceKey}"
+            )
+            return
+        }
+        lastRoutePayload =
+            (lastRoutePayload ?: currentPayload)
+                .withRouteIntentFrom(routeCandidatePayload)
+                .withoutTransientLocalSendingMessages()
         reducePayloadPatch { currentPayload ->
-            val currentIdentity = currentPayload.resolveThreadRouteIdentity()
-            val incomingIdentity = routeCandidatePayload.resolveThreadRouteIdentity()
-            if (!currentIdentity.canRetainThreadPageFor(incomingIdentity)) {
-                diagnosticsLogger?.invoke(
-                    "thread_route_intent_drop reason=route_changed " +
-                        "current=${currentIdentity.instanceKey} incoming=${incomingIdentity.instanceKey}"
-                )
-                return@reducePayloadPatch currentPayload
-            }
             currentPayload.withRouteIntentFrom(routeCandidatePayload)
         }
     }
