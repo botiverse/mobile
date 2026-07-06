@@ -91,6 +91,8 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ForwardMessageBundle
+import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -808,6 +810,7 @@ internal data class KuiklyThreadMessageItem(
     val reactions: List<KuiklyThreadReactionItem> = emptyList(),
     val attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
     val commentRef: KuiklyThreadMessageCommentRef? = null,
+    val forwardBundle: ForwardMessageBundle? = null,
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: KuiklyThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,
@@ -7388,6 +7391,7 @@ private fun ThreadPageContent(
         onTasksIntent(SharedTasksRouteIntent.Start)
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var activeForwardBundle by remember(threadInstanceKey) { mutableStateOf<ForwardMessageBundle?>(null) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
@@ -7629,6 +7633,10 @@ private fun ThreadPageContent(
                                     selectedShareMessageIds + messageId
                                 }
                         },
+                        onOpenForwardBundle = { bundle ->
+                            activeForwardBundle = bundle
+                            activeModal = "forwardBundle"
+                        },
                         translationStore = translationStore,
                         onThreadContentReady = {}
                     )
@@ -7828,6 +7836,20 @@ private fun ThreadPageContent(
             )
         }
         when (activeModal) {
+            "forwardBundle" ->
+                activeForwardBundle?.let { bundle ->
+                    ThreadForwardBundleModal(
+                        bundle = bundle,
+                        memberAvatarResolver = memberAvatarResolver,
+                        onDismiss = {
+                            activeModal = null
+                            activeForwardBundle = null
+                        },
+                        onOpenMember = { item ->
+                            onOpenMemberProfile(item.authorId, item.forwardMemberKind(), null)
+                        }
+                    )
+                }
             "members" ->
                 ThreadMembersModal(
                     members = payload.members,
@@ -8368,6 +8390,7 @@ private fun ThreadChatTab(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
+    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
@@ -8437,6 +8460,7 @@ private fun ThreadChatTab(
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onToggleShareSelection = onToggleShareSelection,
+                    onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
                     onThreadContentReady = onThreadContentReady
                 )
@@ -8488,6 +8512,7 @@ private fun ThreadChatTab(
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
                     onToggleShareSelection = onToggleShareSelection,
+                    onOpenForwardBundle = onOpenForwardBundle,
                     translationStore = translationStore,
                     onThreadContentReady = onThreadContentReady
                 )
@@ -8532,6 +8557,7 @@ private fun ThreadChatTab(
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
                 onToggleShareSelection = onToggleShareSelection,
+                onOpenForwardBundle = onOpenForwardBundle,
                 translationStore = translationStore,
                 onThreadContentReady = onThreadContentReady
             )
@@ -8804,6 +8830,7 @@ private fun ThreadMessagesList(
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
     onToggleShareSelection: (String) -> Unit = {},
+    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
@@ -9798,7 +9825,8 @@ private fun ThreadMessagesList(
                                 },
                                 onRetryTranslation = {
                                     translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
-                                }
+                                },
+                                onOpenForwardBundle = onOpenForwardBundle
                             )
                         }
                     }
@@ -10938,6 +10966,7 @@ private fun ThreadMessageCard(
     translation: ThreadMessageTranslationUi? = null,
     onToggleTranslationOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
+    onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -11104,6 +11133,7 @@ private fun ThreadMessageCard(
                                 }
                             }
                         }
+                        val forwardBundle = message.forwardBundle
                         if (richContentEnabled && actionCard != null) {
                             ThreadActionCardView(
                                 card = actionCard,
@@ -11112,6 +11142,12 @@ private fun ThreadMessageCard(
                                 performanceKey = messagePerformanceKey,
                                 diagnosticsLogger = diagnosticsLogger,
                                 onCommit = { onCommitActionCard(message.id) }
+                            )
+                        } else if (richContentEnabled && forwardBundle != null) {
+                            ThreadForwardBundleCard(
+                                bundle = forwardBundle,
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                onOpen = { onOpenForwardBundle(forwardBundle) }
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -14075,6 +14111,196 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
         )
     }
 }
+
+@Composable
+private fun ThreadForwardBundleCard(
+    bundle: ForwardMessageBundle,
+    modifier: Modifier = Modifier,
+    onOpen: () -> Unit
+) {
+    Button(
+        onClick = onOpen,
+        pressFeedback = false,
+        modifier = modifier
+            .background(SlockColor.SurfaceCream)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(modifier = Modifier.width(3.dp).height(20.dp).background(SlockColor.BrandYellow))
+                Text(
+                    text = bundle.forwardTitle(),
+                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 19.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(15.dp), color = "#FF000000")
+            }
+            bundle.messages.take(4).forEach { item ->
+                Text(
+                    text = item.forwardPreviewLine(),
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            val hiddenCount = (bundle.displayCount() - bundle.messages.take(4).size).coerceAtLeast(0)
+            if (hiddenCount > 0) {
+                Text(
+                    text = "$hiddenCount more messages",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadForwardBundleModal(
+    bundle: ForwardMessageBundle,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    onDismiss: () -> Unit,
+    onOpenMember: (ForwardMessageItem) -> Unit
+) {
+    SlockUnifiedDialog(
+        title = bundle.forwardTitle(),
+        onDismiss = onDismiss,
+        minWidth = 320.dp,
+        maxWidth = 420.dp,
+        contentPadding = 0.dp,
+        titleFontSize = 16,
+        titleLineHeight = 20,
+        contentSpacing = 0.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = "${bundle.displayCount()} messages",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
+            )
+            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
+                    contentPadding = PaddingValues(bottom = 12.dp)
+                ) {
+                    items(bundle.messages.size, key = { bundle.messages[it].id }) { index ->
+                        ThreadForwardBundleMessageRow(
+                            item = bundle.messages[index],
+                            memberAvatarResolver = memberAvatarResolver,
+                            onOpenMember = onOpenMember
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadForwardBundleMessageRow(
+    item: ForwardMessageItem,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    onOpenMember: (ForwardMessageItem) -> Unit
+) {
+    val avatarWireValue =
+        rememberSlockMemberAvatarWireValue(memberAvatarResolver, item.authorId)
+            ?: item.avatarWireValue
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Button(
+            onClick = { onOpenMember(item) },
+            pressFeedback = false,
+            modifier = Modifier.size(32.dp).background(Color.Transparent)
+        ) {
+            SlockAvatar(
+                avatarWireValue = avatarWireValue,
+                label = item.avatarLabel.ifBlank { item.authorName.take(1) },
+                avatarSize = 32.dp,
+                gravatarUrl = item.gravatarHash?.toGravatarAvatarUrl()
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = item.authorName.ifBlank { "Unknown" },
+                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable { onOpenMember(item) }.weight(1f, fill = false)
+                )
+                item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
+                    Text(
+                        text = timestamp,
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (item.body.isNotBlank()) {
+                Text(
+                    text = item.body,
+                    style = ThreadMessageBodyTextStyle,
+                    color = SlockColor.TextBlack
+                )
+            }
+            if (item.attachmentCount > 0) {
+                Text(
+                    text = item.forwardAttachmentLabel(),
+                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        }
+    }
+}
+
+private fun ForwardMessageBundle.forwardTitle(): String =
+    title.takeIf { it.isNotBlank() }
+        ?: sourceTitle.takeIf { it.isNotBlank() }?.let { "$it chat history" }
+        ?: "Chat history"
+
+private fun ForwardMessageBundle.displayCount(): Int =
+    totalCount?.takeIf { it > 0 } ?: messages.size
+
+private fun ForwardMessageItem.forwardPreviewLine(): String {
+    val text = body.trim().ifBlank { forwardAttachmentLabel() }
+    return "${authorName.ifBlank { "Unknown" }}: $text"
+}
+
+private fun ForwardMessageItem.forwardAttachmentLabel(): String =
+    when (attachmentCount) {
+        0 -> ""
+        1 -> "[1 attachment]"
+        else -> "[$attachmentCount attachments]"
+    }
+
+private fun ForwardMessageItem.forwardMemberKind(): MemberKind =
+    when (authorKind.trim().lowercase()) {
+        "agent" -> MemberKind.Agent
+        "system" -> MemberKind.System
+        else -> MemberKind.Human
+    }
 
 @Composable
 private fun ThreadShareSelectionToolbar(

@@ -273,7 +273,31 @@ data class Message(
     val updatedAtLabel: String? = null,
     val reactions: List<MessageReaction>? = null,
     val senderMembershipStatus: String? = null,
-    val commentRef: MessageCommentRef? = null
+    val commentRef: MessageCommentRef? = null,
+    val forwardBundle: ForwardMessageBundle? = null
+)
+
+@Serializable
+data class ForwardMessageBundle(
+    val id: String? = null,
+    val title: String = "",
+    val sourceTitle: String = "",
+    val totalCount: Int? = null,
+    val messages: List<ForwardMessageItem> = emptyList()
+)
+
+@Serializable
+data class ForwardMessageItem(
+    val id: String,
+    val authorId: String,
+    val authorName: String,
+    val authorKind: String = "",
+    val avatarLabel: String = "",
+    val avatarWireValue: String? = null,
+    val gravatarHash: String? = null,
+    val timestampLabel: String = "",
+    val body: String = "",
+    val attachmentCount: Int = 0
 )
 
 @Serializable

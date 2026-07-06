@@ -98,6 +98,7 @@ internal data class WireMessage(
     val taskClaimedByName: String? = null,
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: WireCommentRef? = null,
+    val forwardBundle: WireForwardMessageBundle? = null,
 )
 
 @Serializable
@@ -282,7 +283,8 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName),
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
-        commentRef = commentRef?.toMessageCommentRef()
+        commentRef = commentRef?.toMessageCommentRef(),
+        forwardBundle = forwardBundle.toForwardMessageBundle()
     )
 }
 

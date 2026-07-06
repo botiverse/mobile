@@ -5521,6 +5521,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         },
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
         commentRef = commentRef?.toKuiklyThreadCommentRef(),
+        forwardBundle = forwardBundle,
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
         pendingSendErrorMessage = metadata[ThreadLocalSendErrorMessageMetadataKey]?.takeIf { it.isNotBlank() }

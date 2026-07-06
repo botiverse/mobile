@@ -111,6 +111,7 @@ private data class MessagesWireMessage(
     val firstUnreadReplyMessageId: String? = null,
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: MessagesWireCommentRef? = null,
+    val forwardBundle: WireForwardMessageBundle? = null,
 )
 
 @Serializable
@@ -374,6 +375,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         attachments = attachments.map { it.toDomain() },
         reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },
         senderMembershipStatus = senderMembershipStatus,
+        forwardBundle = forwardBundle.toForwardMessageBundle(),
         deliveryState = MessageDeliveryState.Sent,
         task = task,
         replyCount = replyCount ?: summary?.replyCount ?: 0,

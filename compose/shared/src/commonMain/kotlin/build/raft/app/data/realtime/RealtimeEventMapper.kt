@@ -40,7 +40,9 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.WireForwardMessageBundle
 import build.raft.app.data.toThreadActionCard
+import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -319,6 +321,7 @@ private data class MessageWireDto(
     val reactions: List<MessageReactionWireDto>? = null,
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: CommentRefWireDto? = null,
+    val forwardBundle: WireForwardMessageBundle? = null,
 )
 
 @Serializable
@@ -492,6 +495,7 @@ private fun MessageWireDto.toDomain(): Message {
         updatedAtLabel = updatedAt,
         reactions = reactions?.mapNotNull { it.toDomain() },
         commentRef = commentRef?.toDomain(),
+        forwardBundle = forwardBundle.toForwardMessageBundle(),
     )
 }
 
