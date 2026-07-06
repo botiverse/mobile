@@ -10,6 +10,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
+import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import androidx.compose.runtime.Composable
@@ -142,6 +143,16 @@ internal fun TasksPanelVisualContent() {
                 TasksPresentationState.Default.copy(
                     selectedMode = TasksViewMode.List,
                     collapsedStatuses = setOf(TaskStatus.Closed)
+                ),
+            // #373: deterministic clock so the card timestamps render as relative
+            // labels ("Just now"/"Yesterday"/…) in the capture, matching the fixed
+            // fixture "now" the other visual pages use.
+            timeContext =
+                SlockTimeContext(
+                    localOffsetMinutes = VisualFixtureData.Locale.UTC_OFFSET_MINUTES,
+                    todayEpochDay = VisualFixtureData.Locale.TODAY_EPOCH_DAY.toLong(),
+                    nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS,
+                    timeFormat = VisualFixtureData.Locale.TIME_FORMAT
                 )
         )
     }

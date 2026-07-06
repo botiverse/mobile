@@ -3118,6 +3118,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             draftProjection = draftProjection,
                             initialListPosition = tasksListPosition,
                             onListPositionSnapshot = { tasksListPosition = it },
+                            timeContext = threadTimeContext,
                             onOpenTask = { task ->
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
@@ -12732,16 +12733,10 @@ private fun SharedHomeSavedUnsaveButton(
                     .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                SlockLucideIcon(SlockLucideIconName.Bookmark, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
-                Box(
-                    modifier =
-                        Modifier
-                            .width(9.dp)
-                            .height(2.dp)
-                            .background(SlockColor.TextBlack)
-                )
-            }
+            // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
+            // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
+            // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
+            SlockLucideIcon(SlockLucideIconName.BookmarkMinus, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
         }
     }
 }

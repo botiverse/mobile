@@ -26,8 +26,10 @@ import build.raft.app.data.tasksSourceLabel
 import build.raft.app.data.visibleContent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.formatSlockRelativeTimestampLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,7 +94,8 @@ internal fun SharedTasksScreen(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
+    timeContext: SlockTimeContext? = null
 ) {
     SharedTasksPanel(
         state = state,
@@ -104,7 +107,8 @@ internal fun SharedTasksScreen(
         bottomContentPadding = bottomContentPadding,
         draftProjection = draftProjection,
         initialListPosition = initialListPosition,
-        onListPositionSnapshot = onListPositionSnapshot
+        onListPositionSnapshot = onListPositionSnapshot,
+        timeContext = timeContext
     )
 }
 
@@ -128,7 +132,8 @@ internal fun SharedTasksPanel(
      *  [TasksPresentationState.Default] + the persisted view-mode preference. The
      *  components.tasks.panel.states visual case starts in List mode with Done expanded,
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
-    initialPresentationOverride: TasksPresentationState? = null
+    initialPresentationOverride: TasksPresentationState? = null,
+    timeContext: SlockTimeContext? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -176,7 +181,8 @@ internal fun SharedTasksPanel(
                     draftProjection = draftProjection,
                     initialListPosition = initialListPosition,
                     onListPositionSnapshot = onListPositionSnapshot,
-                    initialPresentationOverride = initialPresentationOverride
+                    initialPresentationOverride = initialPresentationOverride,
+                    timeContext = timeContext
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
@@ -322,7 +328,8 @@ private fun SharedTasksLoadedBody(
     draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
-    initialPresentationOverride: TasksPresentationState?
+    initialPresentationOverride: TasksPresentationState?,
+    timeContext: SlockTimeContext?
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -338,7 +345,8 @@ private fun SharedTasksLoadedBody(
             draftProjection = draftProjection,
             initialListPosition = initialListPosition,
             onListPositionSnapshot = onListPositionSnapshot,
-            initialPresentationOverride = initialPresentationOverride
+            initialPresentationOverride = initialPresentationOverride,
+            timeContext = timeContext
         )
     }
 }
@@ -357,7 +365,8 @@ private fun SharedTasksLoadedBodyContent(
     draftProjection: SharedThreadComposerDraftProjection,
     initialListPosition: AppShellLazyListPosition,
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit,
-    initialPresentationOverride: TasksPresentationState?
+    initialPresentationOverride: TasksPresentationState?,
+    timeContext: SlockTimeContext?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -559,6 +568,7 @@ private fun SharedTasksLoadedBodyContent(
                                             )
                                     },
                                     onOpenTask = onOpenTask,
+                                    timeContext = timeContext,
                                     onStatusBadgeClick = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
@@ -639,6 +649,7 @@ private fun SharedTasksLoadedBodyContent(
                                                 updating = state.statusUpdatingTaskId == task.id.value,
                                                 hasDraft = draftProjection.hasDraftForTask(task),
                                                 captureLongPressAnchor = !listModeListState.isScrollInProgress,
+                                                timeContext = timeContext,
                                                 onClick = { onOpenTask?.invoke(task) },
                                                 onStatusBadgeClick = { anchor ->
                                                     statusMenuTask = task
@@ -841,6 +852,8 @@ private fun SharedTasksToolbar(
         SlockAnchoredToolbarChip(
             label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
             iconName = SlockLucideIconName.Hash,
+            // react filter chips are Title case (no uppercase transform) — task #373.
+            uppercase = false,
             active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
             enabled = channelOptions.isNotEmpty(),
             onClick = onChannelChipClick
@@ -850,6 +863,7 @@ private fun SharedTasksToolbar(
         SlockAnchoredToolbarChip(
             label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
             iconName = SlockLucideIconName.CircleUser,
+            uppercase = false,
             active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
             enabled = creatorOptions.isNotEmpty(),
             onClick = onCreatorChipClick
@@ -859,6 +873,7 @@ private fun SharedTasksToolbar(
         SlockAnchoredToolbarChip(
             label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
             iconName = SlockLucideIconName.User,
+            uppercase = false,
             active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
             enabled = assigneeOptions.isNotEmpty(),
             onClick = onAssigneeChipClick
@@ -868,6 +883,7 @@ private fun SharedTasksToolbar(
         SlockToolbarChip(
             label = "Clear all",
             iconName = SlockLucideIconName.X,
+            uppercase = false,
             active = false,
             onClick = onClearAll
         )
@@ -988,6 +1004,7 @@ private fun SharedTasksBoardColumn(
     updatingTaskId: String?,
     onToggleCollapsed: () -> Unit,
     onOpenTask: ((TaskSummary) -> Unit)?,
+    timeContext: SlockTimeContext?,
     onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
     onLongPressTask: (TaskSummary, Offset) -> Unit,
     bottomContentPadding: Dp,
@@ -1048,6 +1065,7 @@ private fun SharedTasksBoardColumn(
                             updating = updatingTaskId == task.id.value,
                             hasDraft = draftProjection.hasDraftForTask(task),
                             captureLongPressAnchor = !columnListState.isScrollInProgress,
+                            timeContext = timeContext,
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, taskMenuAnchor(anchor)) },
                             onLongPress = { anchor -> onLongPressTask(task, taskMenuAnchor(anchor)) }
@@ -1094,6 +1112,7 @@ private fun SharedTaskCard(
     updating: Boolean,
     hasDraft: Boolean,
     captureLongPressAnchor: Boolean = true,
+    timeContext: SlockTimeContext? = null,
     onClick: () -> Unit,
     onStatusBadgeClick: (Offset) -> Unit,
     onLongPress: (Offset) -> Unit
@@ -1176,7 +1195,11 @@ private fun SharedTaskCard(
                 Spacer(Modifier.weight(1f))
                 task.updatedAtLabel.takeIf { it.isNotBlank() }?.let { updatedAt ->
                     Text(
-                        text = updatedAt,
+                        // #373: keep the android-only card timestamp but render it as
+                        // relative time ("2 hours ago", "Yesterday") via the shared
+                        // formatter used by inbox/activity rows, instead of raw ISO-UTC.
+                        // Falls back to the raw value when no time context is supplied.
+                        text = timeContext?.let { ctx -> formatSlockRelativeTimestampLabel(updatedAt, ctx) } ?: updatedAt,
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
@@ -1223,10 +1246,13 @@ private fun SharedTaskCard(
                     onClick = if (updating) null else onStatusBadgeClick,
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
                     trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
-                    minHeight = 22.dp,
+                    // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
+                    // py-0.5 + border-2) measures a 24dp box / 20dp fill; 22dp min + 14sp
+                    // line rendered ~22dp box / 18dp fill. 24dp min + 16sp line matches (#373).
+                    minHeight = 24.dp,
                     horizontalPadding = 8.dp,
                     labelFontSize = 12.sp,
-                    labelLineHeight = 14.sp,
+                    labelLineHeight = 16.sp,
                     borderWidth = SlockStroke.Default,
                     anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
