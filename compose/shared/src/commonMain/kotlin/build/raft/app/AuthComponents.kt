@@ -79,8 +79,9 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandWidth = 175.dp
-private val AuthTopBarBrandHeight = 43.dp
+private val AuthTopBarHeight = 62.dp
+private val AuthTopBarBrandWidth = 81.dp
+private val AuthTopBarBrandHeight = 20.dp
 private const val RaftLogoAssetSource = "assets://lucide/raft-logo.svg"
 private const val SlockIconAssetSource = "assets://lucide/slock-icon.svg"
 
@@ -91,10 +92,10 @@ private fun Modifier.authStaticTextFocus(): Modifier =
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
     onDiagnosticsShortcut: (() -> Unit)? = null,
-    contentTopPadding: Dp = 136.dp,
+    contentTopPadding: Dp = 40.dp,
     contentScrollable: Boolean = false,
     topBarHorizontalPadding: Dp = 16.dp,
-    topBarBrandImagePadding: Dp = 8.dp,
+    topBarBrandImagePadding: Dp = 0.dp,
     topLeadingContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -125,14 +126,14 @@ internal fun AuthScaffold(
                     modifier = Modifier
                         .widthIn(max = 314.dp)
                         .fillMaxSize(),
-                    contentPadding = PaddingValues(top = contentTopPadding, bottom = 32.dp),
+                    contentPadding = PaddingValues(top = contentTopPadding, bottom = 40.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     item {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             content = content
                         )
@@ -144,7 +145,7 @@ internal fun AuthScaffold(
                         .fillMaxWidth()
                         .widthIn(max = 314.dp)
                         .padding(top = contentTopPadding),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     content = content
                 )
@@ -164,7 +165,7 @@ private fun AuthTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height((statusBarHeight + 52).dp)
+            .height(statusBarHeight.dp + AuthTopBarHeight)
             .background(SlockColor.BrandYellow)
     ) {
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack).align(Alignment.BottomCenter))
@@ -172,7 +173,7 @@ private fun AuthTopBar(
             modifier = Modifier
                 .padding(top = statusBarHeight.dp)
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(AuthTopBarHeight)
                 .padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -202,7 +203,7 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier, imagePadding: Dp = 8.d
         SlockCachedImage(
             source = RaftLogoAssetSource,
             contentDescription = null,
-            modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding, vertical = 4.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = imagePadding),
             contentScale = ContentScale.Fit
         )
     }
@@ -236,7 +237,7 @@ internal fun AuthCenterMark(modifier: Modifier = Modifier) {
     SlockCachedImage(
         source = SlockIconAssetSource,
         contentDescription = null,
-        modifier = modifier.width(48.dp).height(44.dp),
+        modifier = modifier.size(36.dp),
         contentScale = ContentScale.Fit
     )
 }
