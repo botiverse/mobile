@@ -121,6 +121,12 @@ private data class ReplyThreadResolveKey(
     val parentMessageId: String
 )
 
+private data class PendingReactionRealtimeGuard(
+    val messageId: String,
+    val emoji: String,
+    val selected: Boolean
+)
+
 internal data class SharedThreadMessageKey(
     val channelId: ChannelId,
     val messageId: MessageId
@@ -2413,6 +2419,7 @@ internal class SharedThreadStore(
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllAt: TimeMark? = null
+    private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
 
     fun dispatch(intent: SharedThreadIntent) {
         when (intent) {
@@ -2423,6 +2430,7 @@ internal class SharedThreadStore(
                 secondaryTimelineRefreshJob = null
                 backgroundMembersHydrationJob?.cancel()
                 backgroundMembersHydrationJob = null
+                pendingReactionRealtimeGuards.clear()
                 loadJob =
                     scope.launch {
                         accept(intent)
@@ -2859,7 +2867,10 @@ internal class SharedThreadStore(
             existing.applyRealtimeEvent(
                 event = event,
                 currentUserId = dataSource.readSession()?.user?.id,
-                activeReplyParentMessageId = activeReplyParentMessageId
+                activeReplyParentMessageId = activeReplyParentMessageId,
+                shouldPreserveReactionsForRealtime = { message, currentUserId ->
+                    shouldPreserveReactionsForRealtime(message, currentUserId)
+                }
             )
         val rawReplyCountGap =
             rawMerged.realtimeReplyCountGap(
@@ -3336,12 +3347,21 @@ internal class SharedThreadStore(
     }
 
     private fun applyMessageReactionSelection(messageId: String, emoji: String, selected: Boolean) {
+        val guard = PendingReactionRealtimeGuard(
+            messageId = messageId.trim(),
+            emoji = emoji,
+            selected = selected
+        )
+        if (guard.messageId.isNotBlank() && guard.emoji.isNotBlank()) {
+            pendingReactionRealtimeGuards[guard.key] = guard
+        }
         reducePayloadPatch { payload ->
             payload.withMessageReaction(messageId, emoji, selected)
         }
     }
 
     private fun applyMessageReactions(messageId: String, reactions: List<KuiklyThreadReactionItem>) {
+        clearReactionRealtimeGuards(messageId)
         reducePayloadPatch { payload ->
             payload.withMessageReactions(messageId, reactions)
         }
@@ -3366,6 +3386,7 @@ internal class SharedThreadStore(
 
     private suspend fun applyMessageMutation(summary: MessageMutationSummary) {
         val currentUserId = dataSource.readSession()?.user?.id
+        confirmReactionRealtimeGuards(summary, currentUserId)
         val currentPayload = _state.value.payload
         val canonicalPayload = currentPayload.withMessageMutationSummary(summary, currentUserId)
         val selected =
@@ -3379,6 +3400,55 @@ internal class SharedThreadStore(
             }
             payload.withThreadContentProjectionFrom(selected)
         }
+    }
+
+    private fun shouldPreserveReactionsForRealtime(message: Message, currentUserId: String?): Boolean {
+        val messageId = message.id.value
+        if (message.reactions == null || pendingReactionRealtimeGuards.none { it.value.messageId == messageId }) {
+            return false
+        }
+        val incomingReactions = message.reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty()
+        var preserveReactions = false
+        pendingReactionRealtimeGuards
+            .values
+            .filter { guard -> guard.messageId == messageId }
+            .forEach { guard ->
+                val incomingSelected = incomingReactions.selectedForEmoji(guard.emoji)
+                if (incomingSelected == guard.selected) {
+                    pendingReactionRealtimeGuards.remove(guard.key)
+                } else {
+                    preserveReactions = true
+                    pendingReactionRealtimeGuards.remove(guard.key)
+                    diagnosticsLogger?.invoke(
+                        "thread_realtime_reaction_frame_stale messageId=$messageId emoji=${guard.emoji} " +
+                            "expectedSelected=${guard.selected} incomingSelected=$incomingSelected"
+                    )
+                }
+            }
+        return preserveReactions
+    }
+
+    private fun confirmReactionRealtimeGuards(summary: MessageMutationSummary, currentUserId: String?) {
+        val messageId = summary.messageId.trim()
+        if (messageId.isBlank()) return
+        val canonicalReactions = summary.reactions.toThreadReactionItems(currentUserId)
+        pendingReactionRealtimeGuards
+            .values
+            .filter { guard -> guard.messageId == messageId }
+            .forEach { guard ->
+                if (canonicalReactions.selectedForEmoji(guard.emoji) != guard.selected) {
+                    pendingReactionRealtimeGuards.remove(guard.key)
+                }
+            }
+    }
+
+    private fun clearReactionRealtimeGuards(messageId: String) {
+        val cleanMessageId = messageId.trim()
+        if (cleanMessageId.isBlank()) return
+        pendingReactionRealtimeGuards
+            .values
+            .filter { guard -> guard.messageId == cleanMessageId }
+            .forEach { guard -> pendingReactionRealtimeGuards.remove(guard.key) }
     }
 
     private suspend fun applyActionCard(messageId: String, card: ThreadActionCard) {
@@ -4414,13 +4484,19 @@ private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {
 private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
     event: RealtimeEvent,
     currentUserId: String?,
-    activeReplyParentMessageId: MessageId? = null
+    activeReplyParentMessageId: MessageId? = null,
+    shouldPreserveReactionsForRealtime: (Message, String?) -> Boolean = { _, _ -> false }
 ): KuiklyThreadScreenPayload =
     when (event) {
         is MessageNew ->
             applyRealtimeMessages(listOf(event.message), currentUserId, activeReplyParentMessageId)
         is MessageUpdated ->
-            applyRealtimeMessageUpdate(event.message, currentUserId, activeReplyParentMessageId)
+            applyRealtimeMessageUpdate(
+                message = event.message,
+                currentUserId = currentUserId,
+                activeReplyParentMessageId = activeReplyParentMessageId,
+                preserveExistingReactions = shouldPreserveReactionsForRealtime(event.message, currentUserId)
+            )
         is SyncResumeResponse ->
             applyRealtimeMessages(event.messages, currentUserId, activeReplyParentMessageId)
         is ThreadUpdated ->
@@ -4642,7 +4718,8 @@ private fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyT
 private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     message: Message,
     currentUserId: String?,
-    activeReplyParentMessageId: MessageId?
+    activeReplyParentMessageId: MessageId?,
+    preserveExistingReactions: Boolean = false
 ): KuiklyThreadScreenPayload {
     val incoming = message.toKuiklyThreadMessageItem(currentUserId)
     val matchesTimeline = messages.any { it.id == incoming.id }
@@ -4669,7 +4746,15 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     val updatedMessages =
         if (shouldUpdateTimeline) {
             messages.map { item ->
-                if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming, reactionUpdate) else item
+                if (item.id == incoming.id) {
+                    item.mergeRealtimeUpdate(
+                        update = incoming,
+                        reactionUpdate = reactionUpdate,
+                        preserveExistingReactions = preserveExistingReactions
+                    )
+                } else {
+                    item
+                }
             }
         } else {
             messages
@@ -4682,7 +4767,11 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
         }
     val updatedOrigin =
         if (matchesOrigin) {
-            originMessage.mergeRealtimeUpdate(incoming, reactionUpdate)
+            originMessage.mergeRealtimeUpdate(
+                update = incoming,
+                reactionUpdate = reactionUpdate,
+                preserveExistingReactions = preserveExistingReactions
+            )
         } else {
             originMessage
         }
@@ -4967,6 +5056,12 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: St
         )
     }
 
+private val PendingReactionRealtimeGuard.key: String
+    get() = "$messageId\u0000$emoji"
+
+private fun List<KuiklyThreadReactionItem>.selectedForEmoji(emoji: String): Boolean =
+    any { reaction -> reaction.emoji == emoji && reaction.selected && reaction.count > 0 }
+
 private fun List<MessageReaction>?.toRealtimeThreadReactionItems(currentUserId: String?): List<KuiklyThreadReactionItem>? =
     this?.mapNotNull { reaction ->
         val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -5001,7 +5096,8 @@ private fun Message.matchesSharedThread(
 
 private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
     update: KuiklyThreadMessageItem,
-    reactionUpdate: List<KuiklyThreadReactionItem>? = null
+    reactionUpdate: List<KuiklyThreadReactionItem>? = null,
+    preserveExistingReactions: Boolean = false
 ): KuiklyThreadMessageItem =
     copy(
         authorId = update.authorId.ifBlank { authorId },
@@ -5027,7 +5123,12 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         taskStatus = update.taskStatus ?: taskStatus,
         taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
-        reactions = reactionUpdate?.orderedLike(reactions) ?: update.reactions.ifEmpty { reactions },
+        reactions =
+            when {
+                preserveExistingReactions -> reactions
+                reactionUpdate != null -> reactionUpdate.orderedLike(reactions)
+                else -> update.reactions.ifEmpty { reactions }
+            },
         attachments = mergeAttachmentCommentMetadata(update.attachments),
         commentRef = update.commentRef ?: commentRef
     )
