@@ -8,7 +8,7 @@ class NetworkPriorityCallSiteTest {
     @Test
     fun mainActivityRepositoryCallsArePriorityScoped() {
         val root = findRepoRoot()
-        val file = File(root, "compose/androidApp/src/main/java/ai/slock/android/MainActivity.kt")
+        val file = File(root, "compose/androidApp/src/main/java/build/raft/app/MainActivity.kt")
         val lines = file.readLines()
         val offenders =
                 lines.mapIndexedNotNull { index, line ->
@@ -78,19 +78,17 @@ class NetworkPriorityCallSiteTest {
     }
 
     @Test
-    fun sharedSlockApiClientRequiresExplicitPriorityAndDoesNotUseRuntimeGuard() {
+    fun sharedHttpExecutorRequiresExplicitPriorityAndDoesNotUseRuntimeGuard() {
         val root = findRepoRoot()
-        val file = File(root, "compose/shared/src/androidMain/kotlin/build/raft/app/network/SlockApiClient.android.kt")
+        val file = File(root, "compose/shared/src/commonMain/kotlin/build/raft/app/network/SlockHttpExecutor.kt")
         val text = file.readText()
-        val publicClientMethods =
-                Regex("""^\s*suspend fun (\w+)\(([^)]*)\): KmpHttpResponse""", RegexOption.MULTILINE)
+        val executorMethods =
+                Regex("""^\s*suspend fun (\w+)\(([^)]*)\): SlockHttpExecutorResponse""", RegexOption.MULTILINE)
                         .findAll(text)
                         .mapNotNull { match ->
                             val name = match.groupValues[1]
                             val params = match.groupValues[2]
-                            if (name in setOf("get", "post", "patch", "delete", "request", "multipart")) {
-                                null
-                            } else if (params.contains("priority: SlockRequestPriority")) {
+                            if (params.contains("priority: SlockRequestPriority")) {
                                 null
                             } else {
                                 "${file.relativeTo(root).path}: $name($params)"
@@ -99,12 +97,12 @@ class NetworkPriorityCallSiteTest {
                         .toList()
 
         assertTrue(
-                "Shared SlockApiClient methods must require explicit priority at compile time.\n" +
-                        publicClientMethods.joinToString("\n"),
-                publicClientMethods.isEmpty()
+                "Shared SlockHttpExecutor methods must require explicit priority at compile time.\n" +
+                        executorMethods.joinToString("\n"),
+                executorMethods.isEmpty()
         )
         assertTrue(
-                "Shared SlockApiClient must not fail at runtime via coroutine-context priority guard.",
+                "Shared SlockHttpExecutor must not fail at runtime via coroutine-context priority guard.",
                 !text.contains("requireRequestPriority") &&
                         !text.contains("SlockRequestPriorityElement") &&
                         !text.contains("coroutineContext")
@@ -253,7 +251,7 @@ class NetworkPriorityCallSiteTest {
         val root = findRepoRoot()
         val hostFiles =
                 listOf(
-                        "compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt",
+                        "compose/androidApp/src/main/java/build/raft/app/shared/SlockKuiklyActivity.kt",
                         "compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets"
                 )
         val bannedSymbols =
