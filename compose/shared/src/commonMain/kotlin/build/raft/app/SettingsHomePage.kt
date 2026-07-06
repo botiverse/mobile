@@ -4625,6 +4625,13 @@ private fun SettingsConnectedAppsContent(
                 }
             is ScreenLoadState.Content -> {
                 item {
+                    SettingsConnectedAppsOverviewCard(
+                        snapshot = snapshot,
+                        loading = false,
+                        onRegister = { onSelectedTabChange("myapps") }
+                    )
+                }
+                item {
                     SettingsConnectedAppsTabControl(
                         selectedValue = selectedTab,
                         snapshot = snapshot,
@@ -4693,7 +4700,7 @@ private fun SettingsConnectedAppsContent(
                     }
                     else -> {
                         item {
-                            SettingsConnectedAppsBuiltInCard(
+                            SettingsConnectedAppsBuiltInBand(
                                 apps = snapshot?.builtIn.orEmpty(),
                                 onOpenDetail = onOpenBuiltInDetail
                             )
@@ -4709,11 +4716,61 @@ private fun SettingsConnectedAppsContent(
                                 onOpenDetail = onOpenMarketplaceDetail
                             )
                         }
+                        item {
+                            SettingsConnectedAppsMarketplaceFrameworkCard()
+                        }
                     }
                 }
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsOverviewCard(
+    snapshot: SettingsConnectedAppsSnapshot?,
+    loading: Boolean,
+    onRegister: () -> Unit
+) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = "Connected Apps") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    "Third-party apps for this server",
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    "Browse reviewed marketplace apps, see apps installed on this server, and manage apps registered by this server.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SettingsConnectedAppsBadge("EXPERIMENTAL", SlockColor.BrandYellow)
+                    if (loading) SettingsConnectedAppsBadge("Loading", SlockColor.EmptyStateGray)
+                }
+            }
+            SlockBrutalActionButton(
+                label = "Register app",
+                onClick = onRegister,
+                leadingIcon = SlockLucideIconName.Plus,
+                backgroundColor = SlockColor.AccentPink,
+                minWidth = 118.dp
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SettingsConnectedAppsMetric("Marketplace", (snapshot?.builtIn.orEmpty().size + snapshot?.marketplace.orEmpty().size).toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric("Installed", snapshot?.installed.orEmpty().size.toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric("My apps", snapshot?.registered.orEmpty().size.toString(), Modifier.weight(1f))
+        }
     }
 }
 
@@ -4748,6 +4805,48 @@ private fun SettingsConnectedAppsTabControl(
             ),
         onValueSelected = onValueSelected
     )
+}
+
+@Composable
+private fun SettingsConnectedAppsMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(value, style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 20.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(label, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsBadge(
+    label: String,
+    backgroundColor: Color
+) {
+    Box(
+        modifier =
+            Modifier
+                .background(backgroundColor)
+                .border(1.dp, SlockColor.BorderBlack)
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -5926,21 +6025,26 @@ private fun SettingsConnectedAppDetailField(label: String, value: String?) {
 }
 
 @Composable
-private fun SettingsConnectedAppsBuiltInCard(
+private fun SettingsConnectedAppsBuiltInBand(
     apps: List<SettingsConnectedAppBuiltInSnapshot>,
     onOpenDetail: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in") {
+        Text(
+            "Available to all Raft users and agents.",
+            style = SlockType.Button.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
         if (apps.isEmpty()) {
             SettingsFormEmptyText("No built-in apps are available.")
         } else {
             apps.forEach { app ->
                 SettingsConnectedAppActionRow(
                     title = app.name,
-                    detail = listOfNotNull(app.description, app.homepageDomain).joinToString(" · "),
-                    buttonLabel = "Details",
-                    buttonIcon = SlockLucideIconName.Eye,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    detail = listOfNotNull("Available to all users & agents", app.description, app.homepageDomain).joinToString(" · "),
+                    buttonLabel = "Open",
+                    buttonIcon = SlockLucideIconName.ExternalLink,
+                    buttonColor = SlockColor.AccentPink,
                     enabled = true,
                     onClick = { onOpenDetail(app.id) }
                 )
@@ -6000,6 +6104,27 @@ private fun SettingsConnectedAppsMarketplaceCard(
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_INSTALL, app.id)?.let { SettingsFormErrorText(it) }
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)?.let { SettingsFormErrorText(it) }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsMarketplaceFrameworkCard() {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Storage Sync") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Marketplace framework", style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(
+                    "Third-party listings appear here after review. Server installs stay isolated from built-in Raft apps.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            SettingsConnectedAppsBadge("Review required", SlockColor.SurfaceWhite)
         }
     }
 }
@@ -15735,8 +15860,7 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
                     callbackDomain = "example.com",
                     agentManifestUrl = "https://example.com/manifest.json"
                 )
-            ),
-        oneTimeClientSecret = SettingsConnectedAppSecretSnapshot("client_slack_bridge", "client_secret_visible_once")
+            )
     )
 
 private fun settingsVisualSelection(
