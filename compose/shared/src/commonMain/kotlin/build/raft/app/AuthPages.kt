@@ -1132,9 +1132,7 @@ internal fun RegisterContent(
     }
     AuthScaffold(
         onDiagnosticsShortcut = onOpenDiagnostics,
-        contentTopPadding = 40.dp,
-        contentScrollable = true,
-        topBarBrandImagePadding = 44.dp
+        contentScrollable = true
     ) {
         AuthCenterMark()
         Text(
