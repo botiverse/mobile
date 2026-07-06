@@ -711,33 +711,21 @@ jobs:
             exit 1
           }
 
-      # entry/src/main/cpp links pbcurlwrapper; the runtime .so set is not
-      # committed — it is copied out of the NetworkKMM ohos-runtime artifact.
-      - name: Copy NetworkKMM OHOS runtime libs
-        working-directory: compose
-        shell: bash
-        run: |
-          ./gradlew -c settings.ohos.gradle.kts \
-            copyNetworkOhosRuntimeLibs \
-            --no-daemon --console=plain
-
-      # The kuikly hvigor compile plugin registers no tasks off-macOS
-      # (os.platform() !== 'darwin' → early return), so the shared KMP .so it
-      # would build never appears here and the entry ninja link fails on a
-      # missing libs/arm64-v8a/libshared.so. Replicate exactly what the plugin
-      # does on a Mac: link the debug shared library, copy the .so and the
-      # generated API header into the entry module.
-      - name: Build shared KMP library (kuikly plugin skips on linux)
-        working-directory: compose
-        shell: bash
-        run: |
-          ./gradlew -c settings.ohos.gradle.kts \
-            :shared:linkDebugSharedOhosArm64 \
-            --no-daemon --console=plain
-          mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
-          cp shared/build/bin/ohosArm64/debugShared/libshared.so ohosApp/entry/libs/arm64-v8a/
-          cp shared/build/bin/ohosArm64/debugShared/libshared_api.h ohosApp/entry/src/main/cpp/
-
+      # This gate compiles the host ArkTS/.ets — the layer the KMP-only jobs
+      # cannot see (e.g. the tabbar host regression). It deliberately stops
+      # short of the full unsigned-HAP assembleHap: that would require linking
+      # the shared KMP libshared.so, whose konanc whole-program release -opt
+      # link does not fit this 7.8 GiB / 2-CPU container. Every attempt hit a
+      # hard wall — the konan compiler daemon has a large-enough thread stack
+      # but a too-small heap that is not raisable (kotlin.native.jvmArgs is
+      # ignored) and OOMs the -opt; running konanc in-process makes the heap
+      # settable via -Xmx but then the deep IR-lowering recursion overflows the
+      # worker thread's stack (which ignores -Xss); the debug variant instead
+      # bloats codegen with -g until clang OOM-kills the whole runner. The
+      # Kotlin content of libshared is already gated by the "OHOS shared
+      # compile" job, so the unique coverage here is the ArkTS compile, which
+      # needs no native link. (Revisit assembleHap if this job moves to a
+      # larger runner or the image gains headroom.)
       - name: ohpm install
         working-directory: compose/ohosApp
         shell: bash
@@ -748,17 +736,10 @@ jobs:
         shell: bash
         run: hvigorw --sync -p product=default --analyze=normal --parallel --no-daemon
 
-      - name: hvigor assembleHap (unsigned)
+      - name: hvigor CompileArkTS (host .ets gate)
         working-directory: compose/ohosApp
         shell: bash
         run: |
           hvigorw --mode module \
             -p module=entry@default -p product=default -p requiredDeviceType=phone \
-            assembleHap --analyze=normal --parallel --no-daemon
-
-      - name: Assert unsigned HAP produced
-        shell: bash
-        run: |
-          hap="compose/ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap"
-          test -f "$hap" || { echo "unsigned HAP not produced at $hap" >&2; exit 1; }
-          ls -la "$(dirname "$hap")"
+            default@CompileArkTS --analyze=normal --parallel --no-daemon
