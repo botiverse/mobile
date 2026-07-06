@@ -3,8 +3,13 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.withContext
 
 class SettingsDiagnosticsFeedbackDraft(
     val message: String,
@@ -15,7 +20,8 @@ class SettingsDiagnosticsFeedbackDraft(
 )
 
 internal class BridgeSettingsPlatformCapabilities(
-    private val bridge: BridgeModule
+    private val bridge: BridgeModule,
+    private val bridgeCallContext: CoroutineContext = EmptyCoroutineContext
 ) : SharedSettingsPlatformCapabilities {
     fun bridgeCopyToClipboard(content: String) {
         bridge.copyToPasteboard(content)
@@ -28,7 +34,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "mobileOAuthLink")
                     .put("providerId", providerId)
@@ -45,7 +51,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
-        val response = bridge.threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
+        val response = threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (code !in 200..299) {
@@ -58,7 +64,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<PlatformFile> {
-        val response = bridge.threadAttachmentUpload(channelId = "settings-connected-app-logo-$clientRecordId", imageOnly = true)
+        val response = threadAttachmentUpload(channelId = "settings-connected-app-logo-$clientRecordId", imageOnly = true)
         val code = response?.optInt("code", 0) ?: 0
         if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (code !in 200..299) {
@@ -71,7 +77,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", "loadStorage"))
+        val response = settingsCapability(JSONObject().put("action", "loadStorage"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_storage_unavailable" }))
         }
@@ -80,7 +86,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "clearStorage")
                     .put("target", target)
@@ -92,7 +98,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", "loadAbout"))
+        val response = settingsCapability(JSONObject().put("action", "loadAbout"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_about_unavailable" }))
         }
@@ -117,7 +123,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", "loadDeveloper"))
+        val response = settingsCapability(JSONObject().put("action", "loadDeveloper"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_unavailable" }))
         }
@@ -125,7 +131,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun checkQuiverUpdate(): DataResult<SharedSettingsDeveloperSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", "quiverUpdateCheck"))
+        val response = settingsCapability(JSONObject().put("action", "quiverUpdateCheck"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_check_failed" }))
         }
@@ -140,7 +146,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "setApiEnvironment")
                     .put("environmentKey", environmentKey)
@@ -153,7 +159,7 @@ internal class BridgeSettingsPlatformCapabilities(
 
     override suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "setApiEnvironment")
                     .put("environmentKey", request.key)
@@ -173,7 +179,7 @@ internal class BridgeSettingsPlatformCapabilities(
         after: SharedSettingsApiEnvironmentOption
     ): DataResult<Unit> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "apiEnvironmentChanged")
                     .put("beforeEnvironmentKey", before.key)
@@ -189,7 +195,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", "loadDiagnostics"))
+        val response = settingsCapability(JSONObject().put("action", "loadDiagnostics"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_diagnostics_unavailable" }))
         }
@@ -197,17 +203,17 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     suspend fun copyDiagnostics(): Boolean =
-        bridge.settingsCapability(JSONObject().put("action", "copyDiagnostics"))?.optString("status") == "ok"
+        settingsCapability(JSONObject().put("action", "copyDiagnostics"))?.optString("status") == "ok"
 
     suspend fun shareDiagnostics(): Boolean =
-        bridge.settingsCapability(JSONObject().put("action", "shareDiagnostics"))?.optString("status") == "ok"
+        settingsCapability(JSONObject().put("action", "shareDiagnostics"))?.optString("status") == "ok"
 
     suspend fun clearDiagnostics(): Boolean =
-        bridge.settingsCapability(JSONObject().put("action", "clearDiagnostics"))?.optString("status") == "ok"
+        settingsCapability(JSONObject().put("action", "clearDiagnostics"))?.optString("status") == "ok"
 
     override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "setRecompositionProfilerEnabled")
                     .put("enabled", enabled)
@@ -221,10 +227,10 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     suspend fun sendFeedback(): Boolean =
-        bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
+        settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
 
     suspend fun prepareDiagnosticsFeedback(): SettingsDiagnosticsFeedbackDraft? =
-        bridge.settingsCapability(JSONObject().put("action", "prepareDiagnosticsFeedback"))
+        settingsCapability(JSONObject().put("action", "prepareDiagnosticsFeedback"))
             ?.toDiagnosticsFeedbackDraft()
 
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
@@ -250,18 +256,37 @@ internal class BridgeSettingsPlatformCapabilities(
                 .put("title", request.title)
                 .put("body", request.body)
                 .put("notificationKey", request.notificationKey)
-        val response = bridge.settingsCapability(command)
+        val response = settingsCapability(command)
             ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
         return response.toSystemNotificationActionResult()
     }
 
     private suspend fun quiverUpdateAction(action: String): DataResult<SharedSettingsUpdateCheckSnapshot> {
-        val response = bridge.settingsCapability(JSONObject().put("action", action))
+        val response = settingsCapability(JSONObject().put("action", action))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_quiver_update_failed" }))
         }
         return DataResult.Content(response.toDeveloperSnapshot().updateCheck)
     }
+
+    private suspend fun settingsCapability(command: JSONObject): JSONObject? =
+        onBridgeCallContext {
+            bridge.settingsCapability(command)
+        }
+
+    private suspend fun threadAttachmentUpload(channelId: String, imageOnly: Boolean): JSONObject? =
+        onBridgeCallContext {
+            bridge.threadAttachmentUpload(channelId = channelId, imageOnly = imageOnly)
+        }
+
+    private suspend fun <T> onBridgeCallContext(block: suspend () -> T): T =
+        if (bridgeCallContext == EmptyCoroutineContext) {
+            block()
+        } else {
+            withContext(bridgeCallContext) {
+                block()
+            }
+        }
 
     private fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
         val rowsJson = optJSONArray("rows")
@@ -385,7 +410,7 @@ internal class BridgeSettingsPlatformCapabilities(
     }
 
     private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
-        val response = bridge.settingsCapability(JSONObject().put("action", action))
+        val response = settingsCapability(JSONObject().put("action", action))
             ?: return SystemNotificationActionResult(SystemNotificationActionStatus.Unsupported, code = "settings_capability_missing")
         return response.toSystemNotificationActionResult()
     }
@@ -409,6 +434,9 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 }
+
+internal fun CoroutineScope.kuiklyBridgeCallContext(): CoroutineContext =
+    coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext
 
 internal interface SharedThreadNetworkApi {
     suspend fun channelMessages(
