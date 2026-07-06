@@ -13180,12 +13180,20 @@ private val ThreadPixelAvatarRandomOptions = listOf(
 )
 
 private fun String.toThreadPixelAvatarSpec(): ThreadPixelAvatarSpec? =
-    removeThreadPrefixOrNull(ThreadPixelAvatarProtocolPrefix)?.let {
-        ThreadPixelAvatarFixedSpecs[it] ?: ThreadPixelAvatarFixedSpecs.getValue(ThreadPixelAvatarDefaultKey)
-    } ?: removeThreadPrefixOrNull(ThreadPixelAvatarRandomPrefix)?.let(::randomThreadPixelAvatar)
+    trim()
+        .takeIf { it.isNotBlank() }
+        ?.toThreadPixelAvatarSpecFromNormalized()
+
+private fun String.toThreadPixelAvatarSpecFromNormalized(): ThreadPixelAvatarSpec? =
+    removeThreadPrefixOrNull(ThreadPixelAvatarProtocolPrefix)?.let { key ->
+        key.removeThreadPrefixOrNull(ThreadPixelAvatarRandomPrefix)?.let { seed ->
+            return seed.takeIf { it.isNotBlank() }?.let(::randomThreadPixelAvatar)
+        }
+        ThreadPixelAvatarFixedSpecs[key] ?: ThreadPixelAvatarFixedSpecs.getValue(ThreadPixelAvatarDefaultKey)
+    }
 
 private fun String.removeThreadPrefixOrNull(prefix: String): String? =
-    takeIf { startsWith(prefix) }?.removePrefix(prefix)?.ifBlank { null }
+    takeIf { startsWith(prefix) }?.removePrefix(prefix)
 
 private fun randomThreadPixelAvatar(seed: String): ThreadPixelAvatarSpec {
     val random = ThreadPixelAvatarRandom(threadPixelHash(seed))

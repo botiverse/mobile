@@ -3379,7 +3379,21 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('O') to 'K',
     PixelAvatarPalette.getValue('C') to 'W'
 )
-private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { key -> SlockPixelAvatarRuntime.current.let { data -> data.specs[key] ?: data.specs.getValue(data.defaultKey) } } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
+private fun String.toPixelAvatarSpec(): PixelAvatarSpec? =
+    pixelAvatarSpecForWireValue(this)
+
+internal fun pixelAvatarSpecForWireValue(value: String): PixelAvatarSpec? {
+    val normalized = value.trim().takeIf { it.isNotBlank() } ?: return null
+    normalized.removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { key ->
+        key.removePrefixOrNull(PixelAvatarRandomPrefix)?.let { seed ->
+            return seed.takeIf { it.isNotBlank() }?.let(::randomPixelAvatar)
+        }
+        return SlockPixelAvatarRuntime.current.let { data ->
+            data.specs[key] ?: data.specs.getValue(data.defaultKey)
+        }
+    }
+    return null
+}
 
 /**
  * Returns the picker keys in display order, mirroring React
