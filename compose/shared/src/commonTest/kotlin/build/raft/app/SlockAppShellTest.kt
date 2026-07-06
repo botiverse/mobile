@@ -14,6 +14,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -512,6 +513,26 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerProjectionSuppressesSystemMessage() {
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        authorId = "system",
+                        authorKind = MemberKind.System,
+                        messageType = MessageType.System,
+                        body = "Cindy joined the channel"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(banner)
+    }
+
+    @Test
     fun foregroundBannerProjectionShowsOnSettingsEvenWithSelectedHomeConversation() {
         val banner =
             slockForegroundMessageBannerProjection(
@@ -532,7 +553,7 @@ class SlockAppShellTest {
         assertEquals("message-1", resolved.focusedMessageId)
         assertEquals("channel-1", resolved.conversation.threadId.value)
         assertEquals("Cindy", resolved.title)
-        assertEquals("#channel-1 - now", resolved.context)
+        assertEquals("now", resolved.context)
         assertNull(resolved.threadContext)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.Hash, resolved.iconName)
@@ -608,6 +629,72 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentChannelKind)
         assertEquals("Parent message preview", launchPayload.originPreview)
+    }
+
+    @Test
+    fun foregroundBannerProjectionDoesNotRenderIdentityLikeChannelTitle() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
+                        aliases = setOf("a8ebbc3c-a3d6-4b6e-8714-123456789abc"),
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "a8ebbc3c-a3d6-4b6e-8714-123456789abc"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        channelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
+                        threadId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("now", resolved.context)
+    }
+
+    @Test
+    fun foregroundBannerProjectionUsesSafeChannelNameInsteadOfId() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
+                        aliases = setOf("a8ebbc3c-a3d6-4b6e-8714-123456789abc"),
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        channelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
+                        threadId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("#home-fixes - now", resolved.context)
     }
 
     @Test
@@ -873,11 +960,13 @@ class SlockAppShellTest {
 private fun appShellForegroundTestMessage(
     id: String = "message-1",
     authorId: String = "agent-1",
+    authorKind: MemberKind = MemberKind.Agent,
     channelId: String? = "channel-1",
     threadChannelId: String? = null,
     threadId: String = threadChannelId ?: channelId ?: "thread-1",
     parentMessageId: String? = null,
-    body: String = "Hello from another route"
+    body: String = "Hello from another route",
+    messageType: MessageType = MessageType.Chat
 ): Message =
     Message(
         id = MessageId(id),
@@ -889,9 +978,10 @@ private fun appShellForegroundTestMessage(
                 id = MemberId(authorId),
                 displayName = "Cindy",
                 handle = "cindy",
-                kind = MemberKind.Agent
+                kind = authorKind
             ),
         timestampLabel = "now",
         body = body,
+        messageType = messageType,
         parentMessageId = parentMessageId?.let(::MessageId)
     )

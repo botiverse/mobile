@@ -37,7 +37,9 @@ internal fun ForegroundBannerVisualContent() {
                     threadContext = null,
                     body = "Updated the capture manifest and fixture seed.",
                     iconKind = SlockForegroundMessageBannerIconKind.Channel,
-                    iconName = SlockLucideIconName.Hash
+                    iconName = SlockLucideIconName.Hash,
+                    avatarWireValue = "pixel:agent-cindy",
+                    avatarLabel = "CI"
                 ),
             topSafeArea = 10.dp,
             onClick = {}
@@ -66,9 +68,11 @@ internal fun ForegroundBannerVisualContent() {
                     threadContext = "Retry Quiver OHPM publish after package-group auth",
                     body = "HAR ref bump is ready; waiting on device validation.",
                     iconKind = SlockForegroundMessageBannerIconKind.Channel,
-                    iconName = SlockLucideIconName.MessageSquare
+                    iconName = SlockLucideIconName.MessageSquare,
+                    avatarWireValue = "pixel:agent-jingke",
+                    avatarLabel = "JK"
                 ),
-            topSafeArea = 112.dp,
+            topSafeArea = 86.dp,
             onClick = {}
         )
         SlockForegroundMessageBannerView(
@@ -91,7 +95,7 @@ internal fun ForegroundBannerVisualContent() {
                     avatarWireValue = "pixel:robot",
                     avatarLabel = "AR"
                 ),
-            topSafeArea = 214.dp,
+            topSafeArea = 162.dp,
             onClick = {}
         )
     }
