@@ -372,8 +372,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
-import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -1478,21 +1476,8 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
     }
 }
 
-internal fun childHostAppShellPagerTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
-    val activeTab = retainedAppShellSelectedTab(selectedTab)
-    return AppShellChildPageTabKeys.filter { tab ->
-        tab in mountedTabs || tab == activeTab
-    }
-}
-
 internal fun appShellActiveChildPagerTab(selectedTab: String): String? =
     retainedAppShellSelectedTab(selectedTab).takeIf { it in AppShellChildPageTabKeys }
-
-internal fun appShellChildPagerTargetIndex(selectedTab: String, pagerTabs: List<String>): Int? {
-    val activeChildTab = appShellActiveChildPagerTab(selectedTab) ?: return null
-    val index = pagerTabs.indexOf(activeChildTab)
-    return index.takeIf { it >= 0 }
-}
 
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
@@ -1627,40 +1612,18 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 private fun AppShellTabs(
     selectedTab: String,
     childHostShellId: String,
-    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     val activeChildTab = appShellActiveChildPagerTab(activeTab)
-    val pagerTabs = childHostAppShellPagerTabs(activeTab, mountedTabs)
-    val targetPage = appShellChildPagerTargetIndex(activeTab, pagerTabs)
     Box(modifier = Modifier.fillMaxSize()) {
-        if (pagerTabs.isNotEmpty()) {
-            val pagerState =
-                rememberPagerState(
-                    initialPage = targetPage ?: 0,
-                    pageCount = { pagerTabs.size }
+        if (activeChildTab != null) {
+            key("app-shell-$activeChildTab") {
+                SlockAppShellChildTabHost(
+                    shellId = childHostShellId,
+                    tab = activeChildTab,
+                    active = true
                 )
-            LaunchedEffect(targetPage, pagerTabs.size) {
-                if (targetPage != null && pagerState.currentPage != targetPage) {
-                    pagerState.scrollToPage(targetPage)
-                }
-            }
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = false,
-                key = { page -> pagerTabs[page] },
-                keepItemAlive = true
-            ) { page ->
-                val tab = pagerTabs[page]
-                key("app-shell-$tab") {
-                    SlockAppShellChildTabHost(
-                        shellId = childHostShellId,
-                        tab = tab,
-                        active = tab == activeChildTab
-                    )
-                }
             }
         }
         if (activeTab !in AppShellChildPageTabKeys) {
@@ -3391,8 +3354,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     AppShellTabs(
                         selectedTab = selectedTab,
-                        childHostShellId = childTabShellId,
-                        mountedTabs = retainedAppShellTabs
+                        childHostShellId = childTabShellId
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
