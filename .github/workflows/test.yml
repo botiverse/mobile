@@ -731,8 +731,22 @@ jobs:
         working-directory: compose
         shell: bash
         run: |
+          echo "== container resources =="
+          nproc || true
+          free -h || true
+          cat /sys/fs/cgroup/memory.max 2>/dev/null \
+            || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null \
+            || true
+          # The debug link (konanc's LLVM backend) is memory-heavy and the
+          # container's memory cgroup killed the Gradle daemon last time. Run
+          # both the JVM (in-process strategy) and the Native (disable the
+          # konan compiler daemon) compiles inside the single Gradle JVM so one
+          # -Xmx4g process does the work instead of three JVMs competing for
+          # the cgroup at once.
           ./gradlew -c settings.ohos.gradle.kts \
             :shared:linkDebugSharedOhosArm64 \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Pkotlin.native.disableCompilerDaemon=true \
             --no-daemon --console=plain
           mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
           cp shared/build/bin/ohosArm64/debugShared/libshared.so ohosApp/entry/libs/arm64-v8a/
