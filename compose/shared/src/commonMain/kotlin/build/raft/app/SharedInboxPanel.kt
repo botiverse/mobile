@@ -27,7 +27,6 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.SlockTimeContext
-import build.raft.app.model.formatSlockRelativeTimestampLabel
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
@@ -1133,11 +1132,10 @@ private fun InboxItem.senderDisplayName(
     }
 
 internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String =
-    if (timeContext != null) {
-        formatSlockRelativeTimestampLabel(latestActivityAt ?: lastMessageAt, timeContext)
-    } else {
-        latestActivityAt ?: lastMessageAt ?: ""
-    }
+    timeContext?.formatTimestampLabel(latestActivityAt ?: lastMessageAt)
+        ?: latestActivityAt
+        ?: lastMessageAt
+        ?: ""
 
 private fun InboxItem.previewText(): String =
     when (kind) {
