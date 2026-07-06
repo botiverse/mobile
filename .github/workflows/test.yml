@@ -719,6 +719,23 @@ jobs:
             copyNetworkOhosRuntimeLibs \
             --no-daemon --console=plain
 
+      # The kuikly hvigor compile plugin registers no tasks off-macOS
+      # (os.platform() !== 'darwin' → early return), so the shared KMP .so it
+      # would build never appears here and the entry ninja link fails on a
+      # missing libs/arm64-v8a/libshared.so. Replicate exactly what the plugin
+      # does on a Mac: link the debug shared library, copy the .so and the
+      # generated API header into the entry module.
+      - name: Build shared KMP library (kuikly plugin skips on linux)
+        working-directory: compose
+        shell: bash
+        run: |
+          ./gradlew -c settings.ohos.gradle.kts \
+            :shared:linkDebugSharedOhosArm64 \
+            --no-daemon --console=plain
+          mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
+          cp shared/build/bin/ohosArm64/debugShared/libshared.so ohosApp/entry/libs/arm64-v8a/
+          cp shared/build/bin/ohosArm64/debugShared/libshared_api.h ohosApp/entry/src/main/cpp/
+
       - name: ohpm install
         working-directory: compose/ohosApp
         shell: bash
