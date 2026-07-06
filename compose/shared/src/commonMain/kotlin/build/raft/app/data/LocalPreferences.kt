@@ -154,7 +154,7 @@ data class ChatLayoutPreferenceSnapshot(
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = true,
     val imageAnnotationEnabled: Boolean = false,
-    val foregroundMessageBannersEnabled: Boolean = false,
+    val foregroundMessageBannersEnabled: Boolean = true,
     val activityTaskStatusBadgesEnabled: Boolean = false,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val supportedTranslationModes: List<TranslationModePreference> =
@@ -240,7 +240,7 @@ class KeyValueChatLayoutPreferenceStore(
     }
 
     override fun readForegroundMessageBannersEnabledSync(): Boolean =
-        store.getBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false)
+        store.getBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, true)
 
     override suspend fun readForegroundMessageBannersEnabled(): Boolean =
         readForegroundMessageBannersEnabledSync()

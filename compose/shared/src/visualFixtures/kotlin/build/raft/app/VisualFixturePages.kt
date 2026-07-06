@@ -141,6 +141,14 @@ internal class ComposeBottomTabBarVisualPage : BasePager() {
     }
 }
 
+@Page("compose_foreground_banner_visual", supportInLocal = true)
+internal class ComposeForegroundBannerVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ForegroundBannerVisualContent() }
+    }
+}
+
 @Page("compose_settings_row_visual", supportInLocal = true)
 internal class ComposeSettingsRowVisualPage : BasePager() {
     override fun willInit() {

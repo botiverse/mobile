@@ -132,6 +132,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureForegroundBannerContextVariants() {
+        captureKmpComponentCase(
+            caseId = "components.shell.foreground-banner.context-variants",
+            pageName = "compose_foreground_banner_visual",
+            crop = FOREGROUND_BANNER_CONTEXT_CROP
+        )
+    }
+
+    @Test
     fun captureUiSegmentedControlStates() {
         captureKmpComponentCase(
             caseId = "components.ui.segmented-control.states",
@@ -2157,6 +2166,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 53
+            )
+        private val FOREGROUND_BANNER_CONTEXT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 322
             )
         private val THREAD_REACTION_ATLAS_CROP =
             VisualCrop(
