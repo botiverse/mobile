@@ -15,7 +15,6 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
-import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.slockEpochDayForDate
 import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -225,11 +224,10 @@ class SharedInboxPanelTest {
         val context =
             SlockTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 18),
-                nowEpochMillis = checkNotNull(parseSlockTimestampEpochMillisOrNull("2026-06-18T09:42:00Z"))
+                todayEpochDay = slockEpochDayForDate(2026, 6, 18)
             )
 
-        assertEquals("30 minutes ago", item.activityTimeLabel(context))
+        assertEquals("17:12", item.activityTimeLabel(context))
     }
 
     @Test
@@ -242,10 +240,10 @@ class SharedInboxPanelTest {
         val context =
             SlockTimeContext(
                 localOffsetMinutes = 480,
-                nowEpochMillis = checkNotNull(parseSlockTimestampEpochMillisOrNull("2026-06-18T09:42:00Z"))
+                nowEpochMillis = 1781760000000L
             )
 
-        assertEquals("30 minutes ago", item.activityTimeLabel(context))
+        assertEquals("17:12", item.activityTimeLabel(context))
     }
 
     @Test
@@ -258,28 +256,10 @@ class SharedInboxPanelTest {
         val context =
             SlockTimeContext(
                 localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 18),
-                nowEpochMillis = checkNotNull(parseSlockTimestampEpochMillisOrNull("2026-06-18T02:05:00Z"))
+                todayEpochDay = slockEpochDayForDate(2026, 6, 18)
             )
 
-        assertEquals("3 hours ago", item.activityTimeLabel(context))
-    }
-
-    @Test
-    fun activityTimeLabelUsesRelativeDayNamesForOlderRows() {
-        val item =
-            activityItem(
-                latestActivityAt = "2026-06-17T09:12:00Z",
-                lastMessageAt = "2026-06-17T08:05:00Z"
-            )
-        val context =
-            SlockTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = slockEpochDayForDate(2026, 6, 18),
-                nowEpochMillis = checkNotNull(parseSlockTimestampEpochMillisOrNull("2026-06-18T09:42:00Z"))
-            )
-
-        assertEquals("Yesterday", item.activityTimeLabel(context))
+        assertEquals("07:05", item.activityTimeLabel(context))
     }
 
     @Test

@@ -1174,6 +1174,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startAndInitialContentDoNotBlockOnHomeSnapshotFallback() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val homeRequested = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository { _ ->
+                homeRequested.complete(Unit)
+                releaseHome.await()
+                DataResult.Content(emptyHomeSnapshot())
+            }
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.firstOrNull()?.body != "network body") {
+                delay(1)
+            }
+        }
+        assertTrue(homeRequested.isCompleted)
+        releaseHome.complete(Unit)
+        scope.cancel()
+    }
+
+    @Test
     fun startAndPagingUseConfiguredThreadPageSize() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -2672,6 +2704,74 @@ class SharedThreadStoreTest {
         assertNull(cached)
         assertEquals("network body", dataSource.cachedPayload("channel-1")?.messages?.single()?.body)
         assertEquals("Artin", dataSource.cachedPayload("channel-1")?.messages?.single()?.authorName)
+    }
+
+    @Test
+    fun focusedReplyContextRestoresOriginFromCachedParentMessage() = runBlocking {
+        val repository =
+            replyHintRepository().also { fake ->
+                fake.messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = emptyList(),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+                        )
+                    )
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+        )
+        val firstOpen = dataSource.fetchThreadPayload(unresolvedReplyPayload(parentMessageId = "m1"))
+        val firstPayload = (firstOpen as? DataResult.Content)?.data
+
+        assertNotNull(firstPayload)
+        assertEquals("parent body", firstPayload.originMessage?.body)
+
+        repository.messageContextResult =
+            DataResult.Content(
+                threadSnapshot(
+                    threadId = "thread-m1",
+                    messages =
+                        listOf(
+                            message(
+                                threadId = "thread-m1",
+                                channelId = "thread-m1",
+                                id = "reply-1",
+                                seq = 2,
+                                body = "focused reply"
+                            )
+                        ),
+                    parentMessage = null,
+                    conversation =
+                        conversationSummary("thread-m1").copy(
+                            kind = ConversationKind.Thread,
+                            channelId = ChannelId("thread-m1"),
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("m1"),
+                                    streamChannelId = ChannelId("thread-m1")
+                                )
+                        )
+                )
+            )
+
+        val secondOpen =
+            dataSource.fetchThreadPayload(
+                replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                    .copy(focusedMessageId = "reply-1")
+            )
+        val secondPayload = (secondOpen as? DataResult.Content)?.data
+
+        assertNotNull(secondPayload)
+        assertEquals("loaded", secondPayload.originStatus)
+        assertEquals("m1", secondPayload.originMessage?.id)
+        assertEquals("parent body", secondPayload.originMessage?.body)
+        assertEquals(listOf("focused reply"), secondPayload.messages.map { it.body })
     }
 
     @Test
@@ -6813,10 +6913,13 @@ class SharedThreadStoreTest {
         }
     }
 
-    private class FakeChannelRepository : ChannelRepository {
+    private class FakeChannelRepository(
+        private val homeResult: (suspend (ServerId) -> DataResult<HomeSnapshot>)? = null
+    ) : ChannelRepository {
         val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
 
-        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> = error("unused")
+        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
+            homeResult?.invoke(serverId) ?: error("unused")
         override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> = error("unused")
         override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> = error("unused")
         override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
@@ -7345,6 +7448,15 @@ class SharedThreadStoreTest {
         SharedThreadDataSource(
             networkApi = FakeThreadApi(failChannelMessages = true),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        )
+
+    private fun emptyHomeSnapshot(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels = emptyList(),
+            directMessages = emptyList(),
+            unreadTotal = 0
         )
 
     private fun sentPage(

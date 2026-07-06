@@ -1,9 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputersSnapshot
+import build.raft.app.data.ScreenError
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -29,6 +33,34 @@ class SettingsComputersPayloadTest {
 
         assertEquals(false, payload.canOpenAgents)
         assertEquals("agent-1", payload.agents.single().id)
+    }
+
+    @Test
+    fun computersListStatusPresentationDistinguishesLoadingErrorPermissionAndEmpty() {
+        val loadingState: ScreenLoadState<SettingsComputersSnapshot> = ScreenLoadState.Loading
+        val loading = loadingState.toComputersPayload(refreshing = false, timeContext = null)
+        assertEquals("loading", loading.status)
+        assertEquals(SlockLucideIconName.LoaderCircle, loading.statusPresentation().iconName)
+        assertEquals("Loading computers", loading.statusPresentation().title)
+
+        val errorState: ScreenLoadState<SettingsComputersSnapshot> =
+            ScreenLoadState.Error(ScreenError(code = "server_unavailable", retryable = true))
+        val error = errorState.toComputersPayload(refreshing = false, timeContext = null)
+        assertEquals("error", error.status)
+        assertEquals(SlockLucideIconName.TriangleAlert, error.statusPresentation().iconName)
+        assertEquals("Unable to load computers", error.statusPresentation().title)
+
+        val noPermissionState: ScreenLoadState<SettingsComputersSnapshot> =
+            ScreenLoadState.NoPermission(PermissionBlocker(code = "server_forbidden"))
+        val noPermission = noPermissionState.toComputersPayload(refreshing = false, timeContext = null)
+        assertEquals("blocked", noPermission.status)
+        assertEquals(SlockLucideIconName.Lock, noPermission.statusPresentation().iconName)
+
+        val emptyState: ScreenLoadState<SettingsComputersSnapshot> =
+            ScreenLoadState.Empty(EmptyReason.NoSettingsAvailable)
+        val empty = emptyState.toComputersPayload(refreshing = false, timeContext = null)
+        assertEquals("empty", empty.status)
+        assertEquals(SlockLucideIconName.Monitor, empty.statusPresentation().iconName)
     }
 
     @Test

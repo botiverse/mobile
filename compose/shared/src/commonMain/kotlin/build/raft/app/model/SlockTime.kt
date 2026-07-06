@@ -26,13 +26,6 @@ data class SlockTimeContext(
 
     fun formatTimestampClockWithSeconds(value: String?): String =
         formatSlockTimestampClockWithSeconds(value, localOffsetMinutes, timeFormat)
-
-    fun formatRelativeTimestampLabel(value: String?): String {
-        val trimmed = value?.trim().orEmpty()
-        if (trimmed.isEmpty()) return ""
-        val today = todayEpochDay ?: nowEpochMillis?.toLocalEpochDay(localOffsetMinutes) ?: return trimmed
-        return formatSlockRelativeTimestampLabel(trimmed, localOffsetMinutes, today, nowEpochMillis, timeFormat)
-    }
 }
 
 fun normalizeSlockTimeFormatPreference(value: String?): String =
@@ -53,12 +46,6 @@ fun formatSlockTimestampClockWithSeconds(
 ): String =
     context?.formatTimestampClockWithSeconds(value)
         ?: formatSlockTimestampClockWithSeconds(value, localOffsetMinutes = 0)
-
-fun formatSlockRelativeTimestampLabel(
-    value: String?,
-    context: SlockTimeContext?
-): String =
-    context?.formatRelativeTimestampLabel(value) ?: value?.trim().orEmpty()
 
 fun parseSlockTimestampEpochMillisOrNull(
     value: String?,
@@ -119,59 +106,6 @@ fun formatSlockTimestampEpochMillis(
         localEpochDay == todayEpochDay -> time
         date.year == today.year -> "${date.month.twoDigits()}-${date.day.twoDigits()} $time"
         else -> "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()} $time"
-    }
-}
-
-fun formatSlockRelativeTimestampLabel(
-    value: String?,
-    localOffsetMinutes: Int,
-    todayEpochDay: Long,
-    nowEpochMillis: Long? = null,
-    timeFormat: String = SlockTimeFormat24Hour
-): String {
-    val trimmed = value?.trim().orEmpty()
-    if (trimmed.isEmpty()) return ""
-    val epochMillis =
-        parseSlockTimestampEpochMillisOrNull(trimmed, localOffsetMinutes) ?: return trimmed
-    return formatSlockRelativeTimestampEpochMillis(
-        epochMillis = epochMillis,
-        localOffsetMinutes = localOffsetMinutes,
-        todayEpochDay = todayEpochDay,
-        nowEpochMillis = nowEpochMillis,
-        timeFormat = timeFormat
-    )
-}
-
-fun formatSlockRelativeTimestampEpochMillis(
-    epochMillis: Long,
-    localOffsetMinutes: Int,
-    todayEpochDay: Long,
-    nowEpochMillis: Long? = null,
-    timeFormat: String = SlockTimeFormat24Hour
-): String {
-    val localMillis = epochMillis + localOffsetMinutes.toLong() * MillisPerMinute
-    val localEpochDay = floorDiv(localMillis, MillisPerDay)
-    val date = civilDateFromEpochDay(localEpochDay)
-    val today = civilDateFromEpochDay(todayEpochDay)
-    if (localEpochDay == todayEpochDay && nowEpochMillis != null) {
-        val elapsedMillis = nowEpochMillis - epochMillis
-        if (elapsedMillis >= 0) {
-            val elapsedMinutes = elapsedMillis / MillisPerMinute
-            val elapsedHours = elapsedMillis / MillisPerHour
-            return when {
-                elapsedMinutes < 1L -> "Just now"
-                elapsedMinutes < 60L -> pluralizeSlockTimeUnit(elapsedMinutes, "minute")
-                elapsedHours < 24L -> pluralizeSlockTimeUnit(elapsedHours, "hour")
-                else -> formatSlockTimestampEpochMillis(epochMillis, localOffsetMinutes, todayEpochDay, timeFormat)
-            }
-        }
-    }
-    return when {
-        localEpochDay == todayEpochDay -> formatSlockTimestampEpochMillis(epochMillis, localOffsetMinutes, todayEpochDay, timeFormat)
-        localEpochDay == todayEpochDay - 1L -> "Yesterday"
-        localEpochDay in (todayEpochDay - 6L)..(todayEpochDay - 2L) -> SlockWeekdayNames[weekdayIndex(localEpochDay)]
-        date.year == today.year -> "${SlockShortMonthNames[date.month - 1]} ${date.day}"
-        else -> "${SlockShortMonthNames[date.month - 1]} ${date.day}, ${date.year}"
     }
 }
 
@@ -288,9 +222,6 @@ private fun formatSlockClock(
     }
 }
 
-private fun pluralizeSlockTimeUnit(value: Long, unit: String): String =
-    "$value $unit${if (value == 1L) "" else "s"} ago"
-
 private fun isValidDateTime(
     year: Int,
     month: Int,
@@ -340,15 +271,6 @@ private fun civilDateFromEpochDay(epochDay: Long): SlockCivilDate {
     val adjustedYear = year + if (month <= 2L) 1L else 0L
     return SlockCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
 }
-
-private fun weekdayIndex(epochDay: Long): Int =
-    floorMod(epochDay + 4L, 7L).toInt()
-
-private val SlockWeekdayNames =
-    listOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-
-private val SlockShortMonthNames =
-    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 private fun floorDiv(value: Int, divisor: Int): Int {
     val quotient = value / divisor

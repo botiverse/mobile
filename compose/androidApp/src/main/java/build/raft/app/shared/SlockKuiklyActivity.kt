@@ -3160,7 +3160,7 @@ internal class SlockKuiklyBridgeModule(
     ): File {
         if (bytes.isEmpty()) throw IOException("Feedback attachment is empty")
         if (bytes.size > QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES) {
-            throw IOException("Feedback attachment exceeds 10 MB")
+            throw IOException("Feedback attachment exceeds 200 MB")
         }
         val cacheDir = File(appContext.cacheDir, QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
         cleanupQuiverFeedbackAttachmentCache(cacheDir)
@@ -3890,8 +3890,8 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 9
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 200L * 1024L * 1024L
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"

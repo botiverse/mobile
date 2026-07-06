@@ -176,6 +176,9 @@ jobs:
   # other's build.
   fork-deps:
     name: Shared fork dependencies (prebuild)
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -405,23 +408,29 @@ jobs:
             --console=plain
 
       # Hard run gate since #215 cleared the legacy failures: the shared JVM
-      # suite must pass. Reports upload on failure for diagnosis.
-      - name: Run shared unit tests
+      # suite must pass. Run androidApp unit tests in the same gate so stale
+      # Android host tests cannot stay hidden until a local developer run.
+      - name: Run shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest --continue --no-daemon --console=plain
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain
 
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: shared-unit-test-reports
+          name: android-unit-test-reports
           path: |
             compose/shared/build/reports/tests/testDebugUnitTest/
             compose/shared/build/test-results/testDebugUnitTest/
+            compose/androidApp/build/reports/tests/testDebugUnitTest/
+            compose/androidApp/build/test-results/testDebugUnitTest/
           retention-days: 7
 
   ios:
     name: iOS compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: macos-latest
     timeout-minutes: 75
     env:
@@ -518,6 +527,9 @@ jobs:
 
   ohos:
     name: OHOS shared compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: macos-latest
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
@@ -622,6 +634,9 @@ jobs:
   # fork-dependency mavenLocal set as the ohos job is published first.
   ohos-host:
     name: OHOS host (hvigor/ArkTS) compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: ubuntu-latest
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
@@ -644,17 +659,9 @@ jobs:
         shell: bash
         run: git config --global --add safe.directory '*'
 
-      # actions/cache keys include a compression-tool "version": the ubuntu
-      # prebuild saves zstd-compressed entries, which a gzip-only client can
-      # never restore (same key, different version). The image lacks zstd.
-      # curl is likewise absent and prepare_ohos_sqlite_provider.sh downloads
-      # the SQLite amalgamation with it.
-      - name: Install container build prerequisites
-        shell: bash
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends zstd curl
-
+      # zstd (actions/cache compression fingerprint) and curl (the SQLite
+      # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
+      # into harmonyos-ci-image, so the per-run apt-get install is gone.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 

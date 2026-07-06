@@ -666,7 +666,8 @@ class SharedMembersParserTest {
                   {"timestamp":1710000004000,"entry":{"kind":"slock_action","title":"Claimed task","text":"task #32 in #members专修:fbd27c76"}},
                   {"timestamp":1710000005000,"entry":{"kind":"system","title":"Reminder","text":"Check #all:aa97eb79"}},
                   {"timestamp":1710000006000,"entry":{"kind":"status","activity":"offline","detail":"Machine disconnected"}},
-                  {"timestamp":1710000007000,"entry":{"kind":"compaction_started"}}
+                  {"timestamp":1710000007000,"entry":{"kind":"compaction_started"}},
+                  {"timestamp":1710000008000,"entry":{"kind":"subagent.started","message":"Visual checker started"}}
                 ]
                 """.trimIndent(),
                 MemberId("agent-1")
@@ -674,7 +675,7 @@ class SharedMembersParserTest {
 
         val entries = snapshot?.activity.orEmpty()
 
-        assertEquals(7, entries.size)
+        assertEquals(8, entries.size)
         assertTrue(entries.none { it.toolName == "mcp__slock__send_message" })
         assertEquals("Thinking", entries[0].title)
         assertEquals("Read file", entries[1].title)
@@ -685,5 +686,6 @@ class SharedMembersParserTest {
         assertEquals(true, entries[3].refTextEnabled)
         assertEquals("Disconnected", entries[5].title)
         assertEquals("Context Compaction Started", entries[6].title)
+        assertEquals("Subagent started", entries[7].title)
     }
 }

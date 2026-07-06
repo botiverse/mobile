@@ -12,7 +12,7 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
 import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
-import { QuiverFeedbackClient } from '../../quiver/QuiverFeedbackClient';
+import { QuiverFeedbackClient } from '@oranix/quiver';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
@@ -727,16 +727,16 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return { "status": "error", "code": "settings_feedback_message_required", "message": "Feedback message is required" };
       }
       const context = getContext(this) as common.UIAbilityContext;
-      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 3);
-      const attachmentPaths = userAttachmentPaths.slice(0, 3);
-      if (attachmentPaths.length < 3) {
+      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 9);
+      const attachmentPaths = userAttachmentPaths.slice(0, 9);
+      if (attachmentPaths.length < 9) {
         attachmentPaths.push(await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context));
       }
       const ticketId = await QuiverFeedbackClient.submit(
         context,
         message,
         'bug',
-        attachmentPaths.slice(0, 3),
+        attachmentPaths.slice(0, 9),
         [],
       );
       const shortId = ticketId.slice(0, 8);

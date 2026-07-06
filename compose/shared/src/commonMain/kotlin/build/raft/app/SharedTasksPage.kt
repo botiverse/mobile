@@ -29,7 +29,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
-import build.raft.app.model.formatSlockRelativeTimestampLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1195,11 +1194,7 @@ private fun SharedTaskCard(
                 Spacer(Modifier.weight(1f))
                 task.updatedAtLabel.takeIf { it.isNotBlank() }?.let { updatedAt ->
                     Text(
-                        // #373: keep the android-only card timestamp but render it as
-                        // relative time ("2 hours ago", "Yesterday") via the shared
-                        // formatter used by inbox/activity rows, instead of raw ISO-UTC.
-                        // Falls back to the raw value when no time context is supplied.
-                        text = timeContext?.let { ctx -> formatSlockRelativeTimestampLabel(updatedAt, ctx) } ?: updatedAt,
+                        text = timeContext?.formatTimestampLabel(updatedAt) ?: updatedAt,
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
@@ -1271,7 +1266,10 @@ private fun SharedTasksStatusLabel(
         modifier = Modifier
             .then(modifier)
             .background(status.color)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            // React's section-header status pill uses a 1px border; android's 2dp
+            // read as "too black / heavier" vs react's thinner (lighter-looking)
+            // line. Same black color, just match the 1px stroke (task #384).
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)

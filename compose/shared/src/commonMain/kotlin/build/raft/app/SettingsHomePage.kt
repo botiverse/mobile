@@ -331,7 +331,6 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.model.formatSlockRelativeTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
@@ -376,6 +375,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.pager.HorizontalPager
+import com.tencent.kuikly.compose.foundation.pager.rememberPagerState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -1480,8 +1481,21 @@ internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: S
     }
 }
 
+internal fun childHostAppShellPagerTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return AppShellChildPageTabKeys.filter { tab ->
+        tab in mountedTabs || tab == activeTab
+    }
+}
+
 internal fun appShellActiveChildPagerTab(selectedTab: String): String? =
     retainedAppShellSelectedTab(selectedTab).takeIf { it in AppShellChildPageTabKeys }
+
+internal fun appShellChildPagerTargetIndex(selectedTab: String, pagerTabs: List<String>): Int? {
+    val activeChildTab = appShellActiveChildPagerTab(selectedTab) ?: return null
+    val index = pagerTabs.indexOf(activeChildTab)
+    return index.takeIf { it >= 0 }
+}
 
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
@@ -1616,18 +1630,40 @@ internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
 private fun AppShellTabs(
     selectedTab: String,
     childHostShellId: String,
+    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     val activeChildTab = appShellActiveChildPagerTab(activeTab)
+    val pagerTabs = childHostAppShellPagerTabs(activeTab, mountedTabs)
+    val targetPage = appShellChildPagerTargetIndex(activeTab, pagerTabs)
     Box(modifier = Modifier.fillMaxSize()) {
-        if (activeChildTab != null) {
-            key("app-shell-$activeChildTab") {
-                SlockAppShellChildTabHost(
-                    shellId = childHostShellId,
-                    tab = activeChildTab,
-                    active = true
+        if (pagerTabs.isNotEmpty()) {
+            val pagerState =
+                rememberPagerState(
+                    initialPage = targetPage ?: 0,
+                    pageCount = { pagerTabs.size }
                 )
+            LaunchedEffect(targetPage, pagerTabs.size) {
+                if (targetPage != null && pagerState.currentPage != targetPage) {
+                    pagerState.scrollToPage(targetPage)
+                }
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = false,
+                key = { page -> pagerTabs[page] },
+                keepItemAlive = true
+            ) { page ->
+                val tab = pagerTabs[page]
+                key("app-shell-$tab") {
+                    SlockAppShellChildTabHost(
+                        shellId = childHostShellId,
+                        tab = tab,
+                        active = tab == activeChildTab
+                    )
+                }
             }
         }
         if (activeTab !in AppShellChildPageTabKeys) {
@@ -3407,7 +3443,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     AppShellTabs(
                         selectedTab = selectedTab,
-                        childHostShellId = childTabShellId
+                        childHostShellId = childTabShellId,
+                        mountedTabs = retainedAppShellTabs
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
@@ -4588,6 +4625,13 @@ private fun SettingsConnectedAppsContent(
                 }
             is ScreenLoadState.Content -> {
                 item {
+                    SettingsConnectedAppsOverviewCard(
+                        snapshot = snapshot,
+                        loading = false,
+                        onRegister = { onSelectedTabChange("myapps") }
+                    )
+                }
+                item {
                     SettingsConnectedAppsTabControl(
                         selectedValue = selectedTab,
                         snapshot = snapshot,
@@ -4656,7 +4700,7 @@ private fun SettingsConnectedAppsContent(
                     }
                     else -> {
                         item {
-                            SettingsConnectedAppsBuiltInCard(
+                            SettingsConnectedAppsBuiltInBand(
                                 apps = snapshot?.builtIn.orEmpty(),
                                 onOpenDetail = onOpenBuiltInDetail
                             )
@@ -4672,11 +4716,61 @@ private fun SettingsConnectedAppsContent(
                                 onOpenDetail = onOpenMarketplaceDetail
                             )
                         }
+                        item {
+                            SettingsConnectedAppsMarketplaceFrameworkCard()
+                        }
                     }
                 }
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsOverviewCard(
+    snapshot: SettingsConnectedAppsSnapshot?,
+    loading: Boolean,
+    onRegister: () -> Unit
+) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = "Connected Apps") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(
+                    "Third-party apps for this server",
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    "Browse reviewed marketplace apps, see apps installed on this server, and manage apps registered by this server.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SettingsConnectedAppsBadge("EXPERIMENTAL", SlockColor.BrandYellow)
+                    if (loading) SettingsConnectedAppsBadge("Loading", SlockColor.EmptyStateGray)
+                }
+            }
+            SlockBrutalActionButton(
+                label = "Register app",
+                onClick = onRegister,
+                leadingIcon = SlockLucideIconName.Plus,
+                backgroundColor = SlockColor.AccentPink,
+                minWidth = 118.dp
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SettingsConnectedAppsMetric("Marketplace", (snapshot?.builtIn.orEmpty().size + snapshot?.marketplace.orEmpty().size).toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric("Installed", snapshot?.installed.orEmpty().size.toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric("My apps", snapshot?.registered.orEmpty().size.toString(), Modifier.weight(1f))
+        }
     }
 }
 
@@ -4711,6 +4805,48 @@ private fun SettingsConnectedAppsTabControl(
             ),
         onValueSelected = onValueSelected
     )
+}
+
+@Composable
+private fun SettingsConnectedAppsMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(value, style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 20.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(label, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsBadge(
+    label: String,
+    backgroundColor: Color
+) {
+    Box(
+        modifier =
+            Modifier
+                .background(backgroundColor)
+                .border(1.dp, SlockColor.BorderBlack)
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
@@ -5532,6 +5668,16 @@ private fun SettingsPushStatusCard(
     onTest: () -> Unit
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Show system notifications") {
+        SettingsNotificationActionRow(
+            title = "Notification permission",
+            detail = snapshot.notificationPermission.detail,
+            status = snapshot.notificationPermission.statusLabel,
+            buttonLabel = actionState.statusFor(MOBILE_ACTION_PERMISSION, "Request permission"),
+            enabled = snapshot.notificationPermission.available && actionState?.inProgress != true,
+            iconName = SlockLucideIconName.BellRing,
+            onClick = onPermission
+        )
+        SettingsFormDivider()
         SettingsSegmentedControlField(
             detail = "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build.",
             selectedValue = if (notificationPreferenceSnapshot.enabled) "enabled" else "disabled",
@@ -5569,13 +5715,54 @@ private fun SettingsPushStatusCard(
             leadingIcon = SlockLucideIconName.Settings,
             backgroundColor = SlockColor.SurfaceWhite
         )
+        SettingsFormDivider()
+        SettingsNotificationActionRow(
+            title = "Test notification",
+            detail = snapshot.testNotification.detail,
+            status = snapshot.testNotification.statusLabel,
+            buttonLabel = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, snapshot.testNotification.statusLabel.ifBlank { "Send test" }),
+            enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && actionState?.inProgress != true,
+            iconName = SlockLucideIconName.Send,
+            onClick = onTest
+        )
         if (actionState?.let {
-                it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS) &&
+                it.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS, MOBILE_ACTION_TEST_NOTIFICATION) &&
                     it.errorCode != null
             } == true
         ) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
+    }
+}
+
+@Composable
+private fun SettingsNotificationActionRow(
+    title: String,
+    detail: String,
+    status: String,
+    buttonLabel: String,
+    enabled: Boolean,
+    iconName: SlockLucideIconName,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            Text(status, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            detail.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        }
+        SlockBrutalActionButton(
+            label = buttonLabel,
+            onClick = onClick,
+            enabled = enabled,
+            leadingIcon = iconName,
+            backgroundColor = SlockColor.SurfaceWhite,
+            minWidth = 108.dp
+        )
     }
 }
 
@@ -5838,21 +6025,26 @@ private fun SettingsConnectedAppDetailField(label: String, value: String?) {
 }
 
 @Composable
-private fun SettingsConnectedAppsBuiltInCard(
+private fun SettingsConnectedAppsBuiltInBand(
     apps: List<SettingsConnectedAppBuiltInSnapshot>,
     onOpenDetail: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in") {
+        Text(
+            "Available to all Raft users and agents.",
+            style = SlockType.Button.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
         if (apps.isEmpty()) {
             SettingsFormEmptyText("No built-in apps are available.")
         } else {
             apps.forEach { app ->
                 SettingsConnectedAppActionRow(
                     title = app.name,
-                    detail = listOfNotNull(app.description, app.homepageDomain).joinToString(" · "),
-                    buttonLabel = "Details",
-                    buttonIcon = SlockLucideIconName.Eye,
-                    buttonColor = SlockColor.SurfaceWhite,
+                    detail = listOfNotNull("Available to all users & agents", app.description, app.homepageDomain).joinToString(" · "),
+                    buttonLabel = "Open",
+                    buttonIcon = SlockLucideIconName.ExternalLink,
+                    buttonColor = SlockColor.AccentPink,
                     enabled = true,
                     onClick = { onOpenDetail(app.id) }
                 )
@@ -5912,6 +6104,27 @@ private fun SettingsConnectedAppsMarketplaceCard(
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_INSTALL, app.id)?.let { SettingsFormErrorText(it) }
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)?.let { SettingsFormErrorText(it) }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsMarketplaceFrameworkCard() {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Storage Sync") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Marketplace framework", style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(
+                    "Third-party listings appear here after review. Server installs stay isolated from built-in Raft apps.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            SettingsConnectedAppsBadge("Review required", SlockColor.SurfaceWhite)
         }
     }
 }
@@ -7719,16 +7932,15 @@ private fun SharedQuiverFeedbackContent(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var submission by remember { mutableStateOf<SettingsQuiverFeedbackSubmission?>(null) }
-    val attachmentLimit = 3
-    val attachmentMaxBytes = 10L * 1024L * 1024L
+    val attachmentLimit = 9
+    val attachmentMaxBytes = 200L * 1024L * 1024L
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
-    val canSubmit = normalizedMessage.isNotBlank() && !busy
 
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "最多 3 个附件。"
+            error = "最多 9 个附件。"
             return
         }
         busy = true
@@ -7744,8 +7956,8 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Quiver 单个附件最大 10 MB，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Quiver 一次最多上传 3 个附件，已保留前 3 个。"
+                        rejectedCount > 0 -> "Quiver 单个附件最大 200 MB，已跳过超限文件。"
+                        accepted.size > remainingSlots -> "Quiver 一次最多上传 9 个附件，已保留前 9 个。"
                         else -> null
                     }
                 }
@@ -7758,7 +7970,12 @@ private fun SharedQuiverFeedbackContent(
     }
 
     fun submitFeedback() {
-        if (!canSubmit) return
+        if (busy) return
+        if (normalizedMessage.isBlank()) {
+            error = "Message is required."
+            submission = null
+            return
+        }
         busy = true
         error = null
         submission = null
@@ -7822,7 +8039,7 @@ private fun SharedQuiverFeedbackContent(
         }
         item {
             SettingsFormSectionCard(iconName = SlockLucideIconName.Paperclip, title = "Attachments") {
-                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 10 MB per file")
+                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 200 MB per file")
                 if (attachments.isEmpty()) {
                     SettingsFormEmptyText("No attachments selected.")
                 } else {
@@ -7840,7 +8057,7 @@ private fun SharedQuiverFeedbackContent(
             SlockBrutalActionButton(
                 label = if (busy) "Sending" else "Send feedback",
                 onClick = ::submitFeedback,
-                enabled = canSubmit,
+                enabled = !busy,
                 leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
                 backgroundColor = SlockColor.BrandYellow,
                 modifier = Modifier.fillMaxWidth()
@@ -8259,7 +8476,8 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
 
 internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     session: StoredAuthSession?,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    actionState: build.raft.app.data.SharedSettingsActionState? = null
 ): KuiklySettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
     val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
@@ -8308,13 +8526,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
             }.orEmpty(),
         actions =
             billing?.actions?.map { action ->
-                KuiklySettingsBillingAction(
-                    key = action.key,
-                    label = action.label,
-                    detail = action.detail,
-                    enabled = action.enabled,
-                    style = action.style
-                )
+                action.toBillingActionPayload(actionState)
             }.orEmpty(),
         comparePlansUrl = billing?.comparePlansUrl.orEmpty().ifBlank { "https://raft.build/#pricing" },
         plans =
@@ -8417,7 +8629,13 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                     "Admins" ->
                         KuiklySharedSettingsSection(
                             title = title,
-                            rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
+                            rows =
+                                settingsAdministrationAdminRows(
+                                    members = snapshot?.admins,
+                                    section = sectionsByKey["admins"],
+                                    actorRole = server?.role,
+                                    actionState = actionState
+                                )
                         )
                     "System Channels" ->
                         KuiklySharedSettingsSection(
@@ -8478,42 +8696,56 @@ internal fun settingsAdministrationSectionTitles(): List<String> =
         "Sidebar Order"
     )
 
+internal fun settingsAdministrationAdminRows(
+    members: List<SettingsServerAdminSnapshot>?,
+    section: SettingsServerSectionSnapshot?,
+    actorRole: String?,
+    actionState: build.raft.app.data.SharedSettingsActionState?
+): List<KuiklySharedSettingsRow> =
+    members.toAdminRows(section = section, actorRole = actorRole, actionState = actionState)
+
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
+    actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> {
-    val admins = this.orEmpty()
+    val members = this.orEmpty()
+    val admins =
+        members
+            .filter { it.isPrivilegedServerMember() }
+            .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Admins", "No workspace admins are available."))
+        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Owners & Admins", "No owners or admins are available."))
     }
+    val normalizedActorRole = actorRole.normalizedServerRole()
+    val ownerCount = admins.count { it.normalizedRole() == "owner" }
     return admins.flatMap { admin ->
-        val nextRole = if (admin.role?.lowercase() == "admin") "member" else "admin"
+        val targetRole = admin.normalizedRole()
+        val canDemote = canChangeServerMemberRole(normalizedActorRole, targetRole, "member") && !(targetRole == "owner" && ownerCount <= 1)
+        val fallback = if (targetRole == "owner") "Remove Owner" else "Remove Admin"
+        val disabledLabel =
+            if (targetRole == "owner" && ownerCount <= 1) {
+                "Last owner"
+            } else {
+                "Owner only"
+            }
         listOf(
             KuiklySharedSettingsRow(
                 key = "admin:${admin.id}",
                 iconName = SlockLucideIconName.Shield,
                 title = admin.name,
-                detail = admin.detail.orEmpty().ifBlank { "Workspace administrator" },
-                status = admin.role?.replaceFirstChar { it.uppercase() }.orEmpty(),
+                detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
+                status = targetRole.replaceFirstChar { it.uppercase() },
                 enabled = false
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_ROLE,
-                iconName = SlockLucideIconName.ShieldCheck,
-                title = "Change ${admin.name}'s role",
-                detail = "Switch this member between admin and member access.",
-                value = "${admin.id}:$nextRole",
-                status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Set ${nextRole.replaceFirstChar { it.uppercase() }}", admin.id),
-                enabled = actionState?.inProgress != true
-            ),
-            KuiklySharedSettingsRow(
-                key = SERVER_ACTION_MEMBER_REMOVE,
                 iconName = SlockLucideIconName.UserMinus,
-                title = "Remove ${admin.name}",
-                detail = "Remove this member from the workspace after confirmation.",
-                value = admin.id,
-                status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_REMOVE, "Remove", admin.id),
-                enabled = actionState?.inProgress != true
+                title = "Remove ${admin.name}'s ${targetRole.ifBlank { "admin" }} role",
+                detail = "Demote this member back to regular member access.",
+                value = "${admin.id}:member",
+                status = if (canDemote) actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
+                enabled = canDemote && actionState?.inProgress != true
             )
         )
     }
@@ -14017,7 +14249,7 @@ internal typealias AppShellTimeContext = SlockTimeContext
 internal typealias AppShellThreadTimeContext = SlockTimeContext
 
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
-    formatSlockRelativeTimestampLabel(this, timeContext)
+    timeContext?.formatTimestampLabel(this) ?: this
 
 internal fun formatSettingsTimestampLabel(
     value: String?,
@@ -15359,9 +15591,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
             ),
         admins =
             listOf(
-                SettingsServerAdminSnapshot(fixture.ownerId, fixture.ownerDisplayName, fixture.ownerAdminDetail, fixture.ownerRole),
-                SettingsServerAdminSnapshot("user_cindy", "Cindy", "Admin · onboarding", "admin"),
-                SettingsServerAdminSnapshot("user_qa", "QA Tester", "Member · validation", "member")
+                SettingsServerAdminSnapshot(fixture.ownerId, fixture.ownerDisplayName, fixture.ownerAdminDetail, fixture.ownerRole)
             ),
         usageRows =
             listOf(
@@ -15485,9 +15715,9 @@ private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapsh
             ),
         browserLanguage =
             settingsVisualSelection(
-                selectedKey = "zh-CN",
-                selectedLabel = "Chinese (Simplified)",
-                statusLabel = "Chinese",
+                selectedKey = "en",
+                selectedLabel = "English",
+                statusLabel = "English",
                 detail = "Stored on this account."
             ),
         timezone =
@@ -15630,8 +15860,7 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
                     callbackDomain = "example.com",
                     agentManifestUrl = "https://example.com/manifest.json"
                 )
-            ),
-        oneTimeClientSecret = SettingsConnectedAppSecretSnapshot("client_slack_bridge", "client_secret_visible_once")
+            )
     )
 
 private fun settingsVisualSelection(

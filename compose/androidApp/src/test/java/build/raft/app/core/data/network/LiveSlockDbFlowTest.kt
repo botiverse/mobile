@@ -5,7 +5,6 @@ import build.raft.app.data.SlockAuthSessionStore as AuthSessionStore
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryComposeLocalDataStore
@@ -35,7 +34,6 @@ class LiveSlockDbFlowTest {
         assumeTrue("Set SLOCK_LIVE_TESTS=true to run live Slock API tests.", env("SLOCK_LIVE_TESTS") == "true")
         val fixture = createFixture()
         val localStore = InMemoryComposeLocalDataStore()
-        val localWriteThrough = ComposeLocalWriteThrough(localStore)
 
         val suffix = System.currentTimeMillis().toString(36)
         var cleanupChannelId: ChannelId? = null
@@ -82,13 +80,10 @@ class LiveSlockDbFlowTest {
                 fixture.conversationRepository.getThread(ThreadId(threadAction.threadChannelId.value))
             }
             val threadSnapshot = threadSnapshotResult.contentOrThrow("load reply thread")
-            val wroteLocalSnapshot = runSuspend {
-                localWriteThrough.writeThreadResult(threadSnapshotResult, source = "live_reply_thread")
-            }
-            assertTrue("Expected shared local cache write to succeed.", wroteLocalSnapshot)
+            runSuspend { localStore.writeThread(threadSnapshot) }
 
             val localSnapshot = runSuspend {
-                localWriteThrough.readThreadSnapshot(threadSnapshot.conversation.threadId)
+                localStore.readThread(threadSnapshot.conversation.threadId)
             }
             assertNotNull(localSnapshot)
             assertEquals(threadSnapshot.conversation.threadId, localSnapshot?.conversation?.threadId)

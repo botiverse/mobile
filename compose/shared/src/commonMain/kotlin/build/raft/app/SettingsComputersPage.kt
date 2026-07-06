@@ -595,7 +595,15 @@ internal fun SettingsComputersContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (payload.computers.isEmpty()) {
-            item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
+            item {
+                val presentation = payload.statusPresentation()
+                SettingsComputerStatusMessage(
+                    iconName = presentation.iconName,
+                    title = presentation.title,
+                    detail = presentation.detail,
+                    accentColor = presentation.accentColor
+                )
+            }
         } else {
             items(payload.computers.size, key = { index -> "computer-$index-${payload.computers[index].id}" }) { index ->
                 SettingsComputerCard(
@@ -612,6 +620,49 @@ internal fun SettingsComputersContent(
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
+
+internal data class SettingsComputersStatusPresentation(
+    val iconName: SlockLucideIconName,
+    val title: String,
+    val detail: String?,
+    val accentColor: String
+)
+
+internal fun KuiklySettingsComputersPayload.statusPresentation(): SettingsComputersStatusPresentation =
+    when (status) {
+        "loading" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.LoaderCircle,
+                title = emptyTitle.ifBlank { "Loading computers" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextBlackArgb
+            )
+        "error" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.TriangleAlert,
+                title = emptyTitle.ifBlank { "Unable to load computers" },
+                detail =
+                    listOfNotNull(
+                        emptyDetail.takeIf { it.isNotBlank() },
+                        addComputerUnavailableReason?.takeIf { it.isNotBlank() }?.let { settingsComputerErrorCopy(it) }
+                    ).joinToString(" ").ifBlank { null },
+                accentColor = "#FFF97264"
+            )
+        "blocked", "noPermission" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.Lock,
+                title = emptyTitle.ifBlank { "No access to computers" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextMutedGrayArgb
+            )
+        else ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.Monitor,
+                title = emptyTitle.ifBlank { "No computers yet" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextMutedGrayArgb
+            )
+    }
 
 @Composable
 internal fun SettingsComputerDetailContent(
@@ -1312,7 +1363,7 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
                 KuiklySettingsComputerItem(
                     id = "computer-studio",
                     name = "Studio Test Rig",
-                    daemonVersion = "0.61.1",
+                    daemonVersion = "0.65.0",
                     computerVersion = "0.0.50",
                     isComputer = true,
                     online = false,
@@ -1341,7 +1392,7 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
             ),
         canAddComputer = true,
         addComputerUnavailableReason = null,
-        latestDaemonVersion = "0.63.7",
+        latestDaemonVersion = "0.65.0",
         latestComputerVersion = "0.0.50"
     )
 
@@ -1353,8 +1404,8 @@ private fun visualSettingsComputerDetailPayload(
             SettingsComputerSnapshot(
                 id = "computer-mbp",
                 name = "Jiachengs-MacBook-Pro",
-                daemonVersion = "0.0.50",
-                computerVersion = "0.0.50",
+                daemonVersion = "0.0.48",
+                computerVersion = "0.0.48",
                 isComputer = true,
                 online = true,
                 hostname = "Jiachengs-MacBook-Pro.local",
@@ -1376,6 +1427,14 @@ private fun visualSettingsComputerDetailPayload(
                     runtime = "codex",
                     avatarUrl = "pixel:paint",
                     description = "Reviews visual parity across surfaces."
+                ),
+                SettingsComputerAgentSnapshot(
+                    id = "agent-cindy",
+                    name = "Cindy",
+                    statusLabel = "online",
+                    runtime = "codex",
+                    avatarUrl = "pixel:robot",
+                    description = "Keeps visual testing release notes aligned."
                 )
             ),
         sections = emptyList(),
@@ -1384,7 +1443,7 @@ private fun visualSettingsComputerDetailPayload(
         payload.copy(
             agents =
                 payload.agents.map { agent ->
-                    if (agent.id == "agent-product-ux") {
+                    if (agent.id == "agent-product-ux" || agent.id == "agent-cindy") {
                         agent.copy(presenceLabel = "online", activityLabel = "Online")
                     } else {
                         agent
@@ -1397,8 +1456,8 @@ private fun visualPrimaryComputer(): KuiklySettingsComputerItem =
     KuiklySettingsComputerItem(
         id = "computer-mbp",
         name = "Jiachengs-MacBook-Pro",
-        daemonVersion = "0.63.7",
-        computerVersion = "0.0.50",
+        daemonVersion = "0.65.0",
+        computerVersion = "0.0.48",
         isComputer = true,
         online = true,
         hostname = null,
@@ -1761,6 +1820,28 @@ private fun SettingsEmptyMessage(title: String, detail: String?) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         detail?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        }
+    }
+}
+
+@Composable
+private fun SettingsComputerStatusMessage(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String?,
+    accentColor: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(17.dp), color = accentColor)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            detail?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            }
         }
     }
 }

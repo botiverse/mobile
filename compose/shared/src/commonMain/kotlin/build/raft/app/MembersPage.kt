@@ -195,10 +195,10 @@ private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
-private val MembersActionSize = 32.dp
-private val MembersHeaderMessageButtonWidth = 116.dp
-private val MembersAgentActivityTimeColumnWidth = 60.dp
-private val MembersAgentActivityIndicatorLaneWidth = 13.dp
+private val MembersActionSize = 28.dp
+private val MembersHeaderMessageButtonWidth = 92.dp
+private val MembersAgentActivityTimeColumnWidth = 74.dp
+private val MembersAgentActivityIndicatorLaneWidth = 12.dp
 private val MembersAgentActivityContentGap = 6.dp
 
 internal enum class MembersAgentDetailTab(
@@ -3533,10 +3533,17 @@ private fun MembersDetailHeader(
     val summary = detail?.summary
     val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
-    val headerMetaLabel = if (deleted) "Deleted" else member.detailHandle
+    val headerMetaLabel =
+        when {
+            deleted -> "Deleted"
+            member.kind == MemberKind.Agent ->
+                summary?.description?.takeIf { it.isNotBlank() }
+                    ?: member.description?.takeIf { it.isNotBlank() }
+            else -> member.detailHandle
+        }
     val avatarClick = onAvatarClick
     val topSafeArea = slockTopSafeAreaPadding()
-    val messageButtonWidth = if (member.kind == MemberKind.Human) 104.dp else MembersHeaderMessageButtonWidth
+    val messageButtonWidth = if (member.kind == MemberKind.Human) 92.dp else MembersHeaderMessageButtonWidth
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -3558,7 +3565,7 @@ private fun MembersDetailHeader(
             )
             MembersAvatar(
                 member = member,
-                avatarSize = 42.dp,
+                avatarSize = 36.dp,
                 statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
                 statusIndicatorState = agentStatusIndicatorState,
@@ -3582,18 +3589,20 @@ private fun MembersDetailHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = headerMetaLabel,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+                if (!headerMetaLabel.isNullOrBlank()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = headerMetaLabel,
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                    }
                 }
             }
             SlockBrutalActionButton(
@@ -4116,11 +4125,11 @@ private fun MembersAgentTabBar(
                                 dragOffsetX += dragAmount.x
                             }
                         }
-                        .padding(horizontal = SlockSpacing.Sm + SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
+                        .padding(horizontal = 10.dp, vertical = SlockSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally)
                 ) {
-                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
+                    SlockLucideIcon(spec.iconName, modifier = Modifier.size(14.dp), color = SlockColor.TextBlackArgb)
                     Text(
                         text = spec.label,
                         style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
@@ -4150,10 +4159,10 @@ private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDet
             when (this) {
                 MembersAgentDetailTab.Profile,
                 MembersAgentDetailTab.Activity,
-                MembersAgentDetailTab.Apps -> 98.dp
-                MembersAgentDetailTab.Chat -> 98.dp
+                MembersAgentDetailTab.Apps -> 84.dp
+                MembersAgentDetailTab.Chat -> 78.dp
                 MembersAgentDetailTab.Reminders,
-                MembersAgentDetailTab.Workspace -> 126.dp
+                MembersAgentDetailTab.Workspace -> 112.dp
             }
     )
 
@@ -7457,7 +7466,7 @@ private fun MembersAgentActivityRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .padding(SlockSpacing.Sm),
+            .padding(horizontal = 12.dp, vertical = 5.dp),
         verticalAlignment = Alignment.Top
     ) {
         Text(
@@ -7474,9 +7483,9 @@ private fun MembersAgentActivityRow(
         ) {
             SlockStatusIndicator(
                 color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
-                size = 9.dp,
+                size = 8.dp,
                 pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
-                modifier = Modifier.padding(top = 3.dp)
+                modifier = Modifier.padding(top = 5.dp)
             )
         }
         Column(
@@ -8779,11 +8788,12 @@ private const val MembersReminderMillisPerDay = 86_400_000L
 
 private fun String.membersActivityAccentColor(): Color =
     when (membersActivityStatusKey()) {
-        "error", "failed", "failure" -> SlockColor.AccentOrange
-        "tool_start", "tool", "thinking", "working", "busy" -> SlockColor.BrandYellow
-        "running", "active", "online", "compaction_finished" -> SlockColor.AccentLime
+        "error", "failed", "failure", "subagent_failed" -> SlockColor.AccentOrange
+        "tool_start", "tool", "thinking", "working", "busy", "subagent_spawned", "subagent_started" ->
+            SlockColor.BrandYellow
+        "running", "active", "online", "compaction_finished", "subagent_completed" -> SlockColor.AccentLime
         "text", "message", "output" -> SlockColor.AccentCyan
-        "offline", "disconnected" -> SlockColor.EmptyStateGray
+        "offline", "disconnected", "subagent_suspended" -> SlockColor.EmptyStateGray
         "system", "slock_action", "compaction_started" -> SlockColor.AccentOrange
         else -> SlockColor.BrandYellow
     }
@@ -8795,12 +8805,14 @@ private fun String.membersActivityPulsing(): Boolean =
         "thinking",
         "working",
         "running",
-        "busy" -> true
+        "busy",
+        "subagent_spawned",
+        "subagent_started" -> true
         else -> false
     }
 
 private fun String.membersActivityStatusKey(): String =
-    trim().lowercase().replace('-', '_')
+    trim().lowercase().replace('-', '_').replace('.', '_')
 
 private fun String.normalizedMembersToolName(): String =
     trim()

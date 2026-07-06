@@ -6,6 +6,9 @@ import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.service.NetworkClient
 import com.tencent.kmm.network.service.NetworkClientConfig
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 data class SharedDownloadedBytes(
     val bytes: ByteArray,
@@ -15,12 +18,13 @@ data class SharedDownloadedBytes(
 /**
  * Binary downloads over NetworkKMM (task #12; formerly Ktor).
  *
- * NOTE: NetworkKMM does not stream response bodies yet (fork issue #8), so
- * [download] receives the full payload and re-emits it in chunks to preserve
- * the caller's progress contract. True incremental streaming lands with #8.
+ * [download] streams the response body chunk-by-chunk via
+ * NetworkClient.downloadStream (fork #8) — the whole payload is never held in
+ * memory. The total size comes from the response Content-Length delivered at
+ * stream start (raft.6 onResponseStart), so progress is determinate whenever
+ * the server sends that header.
  */
 object SharedBinaryDownloader {
-    private const val DOWNLOAD_BUFFER_SIZE = 8 * 1024
     private const val DOWNLOAD_TIMEOUT_MILLIS = 60_000L
 
     private val client: NetworkClient by lazy {
@@ -45,21 +49,47 @@ object SharedBinaryDownloader {
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
     ): String? {
-        val response = fetch(url, failurePrefix = "Attachment download failed")
-        val bytes = response.bytes
-        val totalBytes = bytes.size.toLong().takeIf { it > 0L }
-        onStart(totalBytes)
-        var offset = 0
+        // Chunks are delivered straight off the transport without buffering the
+        // whole payload; total comes from the response Content-Length at stream
+        // start (raft.6) so progress is determinate when the server sends it.
         var downloadedBytes = 0L
-        while (offset < bytes.size) {
-            beforeRead()
-            val end = minOf(offset + DOWNLOAD_BUFFER_SIZE, bytes.size)
-            val chunk = bytes.copyOfRange(offset, end)
-            downloadedBytes += chunk.size.toLong()
-            onChunk(chunk, downloadedBytes, totalBytes)
-            offset = end
+        var totalBytes: Long? = null
+        return suspendCancellableCoroutine { continuation ->
+            val call =
+                client.downloadStream(
+                    request =
+                        NetworkRequest(
+                            method = VBTransportMethod.GET,
+                            url = url,
+                            body = NetworkBody.Empty,
+                            policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
+                        ),
+                    onResponseStart = { _, contentLength, _ ->
+                        totalBytes = contentLength?.takeIf { it > 0L }
+                        onStart(totalBytes)
+                    },
+                    onChunk = { chunk ->
+                        beforeRead()
+                        downloadedBytes += chunk.size.toLong()
+                        onChunk(chunk, downloadedBytes, totalBytes)
+                    },
+                    onComplete = { response ->
+                        if (!continuation.isActive) return@downloadStream
+                        val status = response.statusCode
+                        if (status == null || status !in 200..299) {
+                            continuation.resumeWithException(
+                                IllegalStateException(
+                                    "Attachment download failed: HTTP ${status ?: 0}" +
+                                        (response.error?.message?.let { " ($it)" } ?: "")
+                                )
+                            )
+                        } else {
+                            continuation.resume(response.contentTypeHeader())
+                        }
+                    }
+                )
+            continuation.invokeOnCancellation { call.cancel() }
         }
-        return response.contentType
     }
 
     private class FetchedBytes(val bytes: ByteArray, val contentType: String?)
