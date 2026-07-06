@@ -4,8 +4,10 @@ import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
 import build.raft.app.data.SharedSettingsDestination
+import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -125,7 +127,10 @@ internal data class KuiklySettingsBillingAction(
     val label: String = "",
     val detail: String = "",
     val enabled: Boolean = false,
-    val style: String = "secondary"
+    val style: String = "secondary",
+    val status: String = "",
+    val errorCode: String? = null,
+    val inProgress: Boolean = false
 )
 
 internal val settingsBillingSmokePayload =
@@ -620,15 +625,43 @@ private fun BillingActions(
 private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockBrutalActionButton(
-            label = action.label,
+            label = action.status.ifBlank { action.label },
             onClick = onClick,
-            enabled = action.enabled,
+            enabled = action.enabled && !action.inProgress,
             modifier = Modifier,
             minWidth = 0.dp,
             minHeight = 34.dp,
             shadowOffset = 2.dp
         )
+        action.detail.takeIf { it.isNotBlank() }?.let { detail ->
+            Text(detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        }
+        action.errorCode?.takeIf { it.isNotBlank() }?.let { errorCode ->
+            Text(errorCode, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+        }
     }
+}
+
+internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
+    actionState: SharedSettingsActionState?
+): KuiklySettingsBillingAction {
+    val isCurrentAction = actionState?.action == key
+    return KuiklySettingsBillingAction(
+        key = key,
+        label = label,
+        detail = detail,
+        enabled = enabled && actionState?.inProgress != true,
+        style = style,
+        status =
+            when {
+                !isCurrentAction -> ""
+                actionState?.inProgress == true -> "Loading"
+                actionState?.errorCode != null -> "Error"
+                else -> "Saved"
+            },
+        errorCode = actionState?.errorCode?.takeIf { isCurrentAction },
+        inProgress = actionState?.inProgress == true && isCurrentAction
+    )
 }
 
 @Composable

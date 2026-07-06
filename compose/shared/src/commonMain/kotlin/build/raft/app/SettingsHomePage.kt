@@ -5569,6 +5569,16 @@ private fun SettingsPushStatusCard(
     onTest: () -> Unit
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Show system notifications") {
+        SettingsNotificationActionRow(
+            title = "Notification permission",
+            detail = snapshot.notificationPermission.detail,
+            status = snapshot.notificationPermission.statusLabel,
+            buttonLabel = actionState.statusFor(MOBILE_ACTION_PERMISSION, "Request permission"),
+            enabled = snapshot.notificationPermission.available && actionState?.inProgress != true,
+            iconName = SlockLucideIconName.BellRing,
+            onClick = onPermission
+        )
+        SettingsFormDivider()
         SettingsSegmentedControlField(
             detail = "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build.",
             selectedValue = if (notificationPreferenceSnapshot.enabled) "enabled" else "disabled",
@@ -5606,13 +5616,54 @@ private fun SettingsPushStatusCard(
             leadingIcon = SlockLucideIconName.Settings,
             backgroundColor = SlockColor.SurfaceWhite
         )
+        SettingsFormDivider()
+        SettingsNotificationActionRow(
+            title = "Test notification",
+            detail = snapshot.testNotification.detail,
+            status = snapshot.testNotification.statusLabel,
+            buttonLabel = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, snapshot.testNotification.statusLabel.ifBlank { "Send test" }),
+            enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && actionState?.inProgress != true,
+            iconName = SlockLucideIconName.Send,
+            onClick = onTest
+        )
         if (actionState?.let {
-                it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS) &&
+                it.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS, MOBILE_ACTION_TEST_NOTIFICATION) &&
                     it.errorCode != null
             } == true
         ) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
+    }
+}
+
+@Composable
+private fun SettingsNotificationActionRow(
+    title: String,
+    detail: String,
+    status: String,
+    buttonLabel: String,
+    enabled: Boolean,
+    iconName: SlockLucideIconName,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            Text(status, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            detail.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        }
+        SlockBrutalActionButton(
+            label = buttonLabel,
+            onClick = onClick,
+            enabled = enabled,
+            leadingIcon = iconName,
+            backgroundColor = SlockColor.SurfaceWhite,
+            minWidth = 108.dp
+        )
     }
 }
 
@@ -8300,7 +8351,8 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
 
 internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     session: StoredAuthSession?,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    actionState: build.raft.app.data.SharedSettingsActionState? = null
 ): KuiklySettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
     val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
@@ -8349,13 +8401,7 @@ internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
             }.orEmpty(),
         actions =
             billing?.actions?.map { action ->
-                KuiklySettingsBillingAction(
-                    key = action.key,
-                    label = action.label,
-                    detail = action.detail,
-                    enabled = action.enabled,
-                    style = action.style
-                )
+                action.toBillingActionPayload(actionState)
             }.orEmpty(),
         comparePlansUrl = billing?.comparePlansUrl.orEmpty().ifBlank { "https://raft.build/#pricing" },
         plans =
@@ -8458,7 +8504,13 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                     "Admins" ->
                         KuiklySharedSettingsSection(
                             title = title,
-                            rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
+                            rows =
+                                settingsAdministrationAdminRows(
+                                    members = snapshot?.admins,
+                                    section = sectionsByKey["admins"],
+                                    actorRole = server?.role,
+                                    actionState = actionState
+                                )
                         )
                     "System Channels" ->
                         KuiklySharedSettingsSection(
@@ -8519,42 +8571,56 @@ internal fun settingsAdministrationSectionTitles(): List<String> =
         "Sidebar Order"
     )
 
+internal fun settingsAdministrationAdminRows(
+    members: List<SettingsServerAdminSnapshot>?,
+    section: SettingsServerSectionSnapshot?,
+    actorRole: String?,
+    actionState: build.raft.app.data.SharedSettingsActionState?
+): List<KuiklySharedSettingsRow> =
+    members.toAdminRows(section = section, actorRole = actorRole, actionState = actionState)
+
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
+    actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> {
-    val admins = this.orEmpty()
+    val members = this.orEmpty()
+    val admins =
+        members
+            .filter { it.isPrivilegedServerMember() }
+            .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Admins", "No workspace admins are available."))
+        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Owners & Admins", "No owners or admins are available."))
     }
+    val normalizedActorRole = actorRole.normalizedServerRole()
+    val ownerCount = admins.count { it.normalizedRole() == "owner" }
     return admins.flatMap { admin ->
-        val nextRole = if (admin.role?.lowercase() == "admin") "member" else "admin"
+        val targetRole = admin.normalizedRole()
+        val canDemote = canChangeServerMemberRole(normalizedActorRole, targetRole, "member") && !(targetRole == "owner" && ownerCount <= 1)
+        val fallback = if (targetRole == "owner") "Remove Owner" else "Remove Admin"
+        val disabledLabel =
+            if (targetRole == "owner" && ownerCount <= 1) {
+                "Last owner"
+            } else {
+                "Owner only"
+            }
         listOf(
             KuiklySharedSettingsRow(
                 key = "admin:${admin.id}",
                 iconName = SlockLucideIconName.Shield,
                 title = admin.name,
-                detail = admin.detail.orEmpty().ifBlank { "Workspace administrator" },
-                status = admin.role?.replaceFirstChar { it.uppercase() }.orEmpty(),
+                detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
+                status = targetRole.replaceFirstChar { it.uppercase() },
                 enabled = false
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_ROLE,
-                iconName = SlockLucideIconName.ShieldCheck,
-                title = "Change ${admin.name}'s role",
-                detail = "Switch this member between admin and member access.",
-                value = "${admin.id}:$nextRole",
-                status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Set ${nextRole.replaceFirstChar { it.uppercase() }}", admin.id),
-                enabled = actionState?.inProgress != true
-            ),
-            KuiklySharedSettingsRow(
-                key = SERVER_ACTION_MEMBER_REMOVE,
                 iconName = SlockLucideIconName.UserMinus,
-                title = "Remove ${admin.name}",
-                detail = "Remove this member from the workspace after confirmation.",
-                value = admin.id,
-                status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_REMOVE, "Remove", admin.id),
-                enabled = actionState?.inProgress != true
+                title = "Remove ${admin.name}'s ${targetRole.ifBlank { "admin" }} role",
+                detail = "Demote this member back to regular member access.",
+                value = "${admin.id}:member",
+                status = if (canDemote) actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
+                enabled = canDemote && actionState?.inProgress != true
             )
         )
     }

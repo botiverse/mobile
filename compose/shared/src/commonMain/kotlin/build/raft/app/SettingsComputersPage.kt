@@ -595,7 +595,15 @@ internal fun SettingsComputersContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         if (payload.computers.isEmpty()) {
-            item { SettingsEmptyMessage(payload.emptyTitle, payload.emptyDetail) }
+            item {
+                val presentation = payload.statusPresentation()
+                SettingsComputerStatusMessage(
+                    iconName = presentation.iconName,
+                    title = presentation.title,
+                    detail = presentation.detail,
+                    accentColor = presentation.accentColor
+                )
+            }
         } else {
             items(payload.computers.size, key = { index -> "computer-$index-${payload.computers[index].id}" }) { index ->
                 SettingsComputerCard(
@@ -612,6 +620,49 @@ internal fun SettingsComputersContent(
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
+
+internal data class SettingsComputersStatusPresentation(
+    val iconName: SlockLucideIconName,
+    val title: String,
+    val detail: String?,
+    val accentColor: String
+)
+
+internal fun KuiklySettingsComputersPayload.statusPresentation(): SettingsComputersStatusPresentation =
+    when (status) {
+        "loading" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.LoaderCircle,
+                title = emptyTitle.ifBlank { "Loading computers" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextBlackArgb
+            )
+        "error" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.TriangleAlert,
+                title = emptyTitle.ifBlank { "Unable to load computers" },
+                detail =
+                    listOfNotNull(
+                        emptyDetail.takeIf { it.isNotBlank() },
+                        addComputerUnavailableReason?.takeIf { it.isNotBlank() }?.let { settingsComputerErrorCopy(it) }
+                    ).joinToString(" ").ifBlank { null },
+                accentColor = "#FFF97264"
+            )
+        "blocked", "noPermission" ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.Lock,
+                title = emptyTitle.ifBlank { "No access to computers" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextMutedGrayArgb
+            )
+        else ->
+            SettingsComputersStatusPresentation(
+                iconName = SlockLucideIconName.Monitor,
+                title = emptyTitle.ifBlank { "No computers yet" },
+                detail = emptyDetail.takeIf { it.isNotBlank() },
+                accentColor = SlockColor.TextMutedGrayArgb
+            )
+    }
 
 @Composable
 internal fun SettingsComputerDetailContent(
@@ -1769,6 +1820,28 @@ private fun SettingsEmptyMessage(title: String, detail: String?) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
         detail?.takeIf { it.isNotBlank() }?.let {
             Text(it, style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        }
+    }
+}
+
+@Composable
+private fun SettingsComputerStatusMessage(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String?,
+    accentColor: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(17.dp), color = accentColor)
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            detail?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            }
         }
     }
 }

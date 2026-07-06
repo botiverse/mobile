@@ -5,11 +5,15 @@ import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
+import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
+import build.raft.app.data.SERVER_ACTION_MEMBER_REMOVE
+import build.raft.app.data.SERVER_ACTION_MEMBER_ROLE
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
+import build.raft.app.data.SettingsServerAdminSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,6 +45,60 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals(listOf("admin"), settingsAdminRoleOptions("admin", "member"))
         assertEquals(emptyList(), settingsAdminRoleOptions("admin", "admin"))
         assertEquals(emptyList(), settingsAdminRoleOptions("member", "member"))
+    }
+
+    @Test
+    fun administrationPayloadRowsFilterAdminActionsByActorRole() {
+        val rowsForAdmin =
+            settingsAdministrationAdminRows(
+                members =
+                    listOf(
+                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
+                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin"),
+                        SettingsServerAdminSnapshot(id = "member-1", name = "Member", role = "member")
+                    ),
+                section = null,
+                actorRole = "admin",
+                actionState = null
+            )
+
+        assertEquals(listOf("owner-1", "admin-1"), rowsForAdmin.filter { it.key.startsWith("admin:") }.map { it.key.removePrefix("admin:") })
+        assertEquals(false, rowsForAdmin.first { it.value == "owner-1:member" }.enabled)
+        assertEquals("Last owner", rowsForAdmin.first { it.value == "owner-1:member" }.status)
+        assertEquals(false, rowsForAdmin.first { it.value == "admin-1:member" }.enabled)
+        assertEquals("Owner only", rowsForAdmin.first { it.value == "admin-1:member" }.status)
+        assertEquals(false, rowsForAdmin.any { it.key == SERVER_ACTION_MEMBER_REMOVE })
+
+        val rowsForOwner =
+            settingsAdministrationAdminRows(
+                members =
+                    listOf(
+                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
+                        SettingsServerAdminSnapshot(id = "owner-2", name = "Second Owner", role = "owner"),
+                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
+                    ),
+                section = null,
+                actorRole = "owner",
+                actionState = null
+            )
+
+        assertEquals(true, rowsForOwner.first { it.value == "owner-1:member" }.enabled)
+        assertEquals(false, rowsForOwner.any { it.key == SERVER_ACTION_MEMBER_REMOVE })
+
+        val rowsForOwnerWhileSaving =
+            settingsAdministrationAdminRows(
+                members =
+                    listOf(
+                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
+                        SettingsServerAdminSnapshot(id = "owner-2", name = "Second Owner", role = "owner"),
+                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
+                    ),
+                section = null,
+                actorRole = "owner",
+                actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, "admin-1", inProgress = true)
+            )
+        assertEquals("Loading", rowsForOwnerWhileSaving.first { it.value == "admin-1:member" }.status)
+        assertEquals(false, rowsForOwnerWhileSaving.first { it.value == "owner-1:member" }.enabled)
     }
 
     @Test
