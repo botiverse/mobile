@@ -1503,19 +1503,53 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     /**
+     * Run [block] on the main thread via runOnMainSync, but bound the wait so a
+     * wedged/ANR'd main thread can't hang the case (task #370). runOnMainSync
+     * POSTS the runnable to the main looper and blocks the caller on an internal
+     * monitor until it runs — but if the main thread itself is stuck (e.g. the
+     * member-detail LazyColumn never composes in headless because it has no
+     * measurable viewport → main spins → "System UI isn't responding" ANR), the
+     * runnable never executes and runOnMainSync blocks FOREVER. That monitor
+     * wait is not interruptible by the JUnit per-case Timeout, so a wedged main
+     * would otherwise burn the case toward the 150s backstop — and if it tips
+     * over, drop every case MethodSorter-ordered after it (the tail-drop root
+     * cause). Running runOnMainSync on a daemon thread and bounding the join
+     * turns "main unresponsive" into a fast, clean AssertionError → the
+     * TestWatcher emits CASE_END status=FAIL, so the case is visibly failed
+     * (CC-Wow2's #167 tail-drop guard stays quiet on it) instead of hanging.
+     */
+    private fun runOnMainSyncBounded(maxMs: Long = MAIN_SYNC_TIMEOUT_MS, block: () -> Unit) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val done = CountDownLatch(1)
+        Thread {
+            instrumentation.runOnMainSync { block() }
+            done.countDown()
+        }.apply {
+            isDaemon = true
+            name = "visual-run-on-main"
+        }.start()
+        if (!done.await(maxMs, TimeUnit.MILLISECONDS)) {
+            throw AssertionError(
+                "main thread unresponsive: runOnMainSync exceeded ${maxMs}ms " +
+                    "(likely ANR — page never idle/composed in headless capture)"
+            )
+        }
+    }
+
+    /**
      * Run [block] against the current RESUMED activity on the main thread
      * WITHOUT ActivityScenario.onActivity's internal waitForIdleSync (task
      * #364). onActivity() blocks on waitForIdleSync, which never returns on a
      * never-idle screen (animation/loading) — the same unbounded wait #362
-     * fixed for the standalone calls but which stayed hidden inside onActivity,
-     * so those screens still burned the full 120s per-case backstop.
-     * runOnMainSync posts the runnable and waits for it to execute but does NOT
-     * wait for idle, so it always makes progress. If the activity already died
-     * (e.g. a page that crashes on render, like wip-list-panels), there is no
-     * RESUMED activity — skip instead of NPE-cascading on a destroyed scenario.
+     * fixed for the standalone calls but which stayed hidden inside onActivity.
+     * The main-thread post is bounded ([runOnMainSyncBounded], task #370) so a
+     * wedged/ANR'd main fails the case fast instead of hanging. If the activity
+     * already died (e.g. a page that crashes on render, like wip-list-panels),
+     * there is no RESUMED activity — skip instead of NPE-cascading on a
+     * destroyed scenario.
      */
     private fun onActivityNoIdle(block: (Activity) -> Unit) {
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        runOnMainSyncBounded {
             val activity =
                 ActivityLifecycleMonitorRegistry.getInstance()
                     .getActivitiesInStage(Stage.RESUMED)
@@ -2627,6 +2661,13 @@ class KmpVisualScreenshotCaptureTest {
         // Ceiling for a single idle-sync. Healthy cases idle in well under a
         // second; an animating/never-idle screen would otherwise block forever.
         private const val IDLE_WAIT_TIMEOUT_MS = 8_000L
+
+        // Ceiling for a single main-thread post (runOnMainSyncBounded, task
+        // #370). A healthy runOnMainSync completes in milliseconds; only a
+        // wedged/ANR'd main (Android declares ANR at 5s) blocks longer, so 8s
+        // fast-fails a genuinely unresponsive main without false-tripping a
+        // legitimately slow (but progressing) draw.
+        private const val MAIN_SYNC_TIMEOUT_MS = 8_000L
 
         // Ceiling for ActivityScenario.close() teardown (its moveToState does an
         // unbounded waitForIdleSync). Normal close is sub-second.
