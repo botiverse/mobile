@@ -1901,20 +1901,46 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     private fun Bitmap.visualStats(): VisualBitmapStats {
-        val counts = linkedMapOf<Int, Int>()
-        val pixels = IntArray(width)
-        for (y in 0 until height) {
-            getPixels(pixels, 0, width, 0, y, width, 1)
-            for (pixel in pixels) {
+        // Bounded sampling (task #370): a FULL_VIEWPORT frame is 1170x2532 ≈ 3M
+        // pixels, and putting every one into a boxed HashMap<Int,Int> took
+        // 88-150s per call on a degraded CI runner — and visualStats runs every
+        // stable-capture iteration + again in visualMetadata, so member cases
+        // blew past the 150s per-case timeout (TestTimedOutException in
+        // HashMap.put, the real tail-drop hang; NOT launch/runOnMainSync). The
+        // stats only feed the blank check (uniqueColors<=2, dominantRatio>=0.985
+        // in visualValidationProblems; #393 also keys blank off uniqueColors=1),
+        // for which a bounded sample is statistically equivalent. INVARIANT
+        // preserved: a pure/blank frame samples uniqueColors=1 at ANY stride
+        // (every sample is the same color), so the blank signal is exact; only
+        // the absolute uniqueColors of a RICH frame is sample-relative (a rich
+        // frame still samples >2 distinct colors, so the <=2 threshold — the sole
+        // consumer — is unaffected). dominantRatio is accurate to <0.1% here.
+        // Stride so total samples cap at ~SAMPLE_TARGET (small crops fall through
+        // to stride 1 = exact, unchanged).
+        val totalPixels = width.toLong() * height.toLong()
+        val stride =
+            if (totalPixels <= VISUAL_STATS_SAMPLE_TARGET) 1
+            else maxOf(1, kotlin.math.sqrt(totalPixels.toDouble() / VISUAL_STATS_SAMPLE_TARGET).toInt())
+        val counts = HashMap<Int, Int>()
+        val row = IntArray(width)
+        var sampled = 0L
+        var y = 0
+        while (y < height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            var x = 0
+            while (x < width) {
+                val pixel = row[x]
                 val opaque = Color.rgb(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
                 counts[opaque] = (counts[opaque] ?: 0) + 1
+                sampled++
+                x += stride
             }
+            y += stride
         }
-        val total = width * height
         val dominant = counts.values.maxOrNull() ?: 0
         return VisualBitmapStats(
             uniqueColors = counts.size,
-            dominantRatio = if (total == 0) 1f else dominant.toFloat() / total.toFloat()
+            dominantRatio = if (sampled == 0L) 1f else dominant.toFloat() / sampled.toFloat()
         )
     }
 
@@ -2657,6 +2683,12 @@ class KmpVisualScreenshotCaptureTest {
 
         // Cap the diagnostics view-tree walk so it never dominates a capture.
         private const val DIAGNOSTICS_MAX_VIEWS = 2_000
+
+        // Cap visualStats pixel sampling (task #370). A FULL_VIEWPORT frame is
+        // ~3M pixels; hashing every one took 88-150s on degraded CI runners and
+        // tripped the per-case timeout. 200k samples keep the blank check
+        // accurate while cutting the work ~15x (small crops stay exact).
+        private const val VISUAL_STATS_SAMPLE_TARGET = 200_000L
 
         // Ceiling for a single idle-sync. Healthy cases idle in well under a
         // second; an animating/never-idle screen would otherwise block forever.
