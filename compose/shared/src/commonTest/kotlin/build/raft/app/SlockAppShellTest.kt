@@ -41,6 +41,24 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun overlayTabBarContentReservesFullClearanceForLastRow() {
+        // Floating docks (Android floating, iOS liquid glass, OHOS HDS) overlay
+        // content and the host pads nothing — scrollable content must reserve
+        // the renderer's full clearance or its last row hides under the dock.
+        val scope =
+            SlockAppShellScope(
+                topSafeArea = 24.dp,
+                bottomSafeArea = 18.dp,
+                bottomTabBarContentInset = 110.dp,
+                bottomTabBarOverlaysContent = true
+            )
+
+        assertEquals(0.dp, scope.bottomTabBarHostInset(includeBottomTabBar = true))
+        assertEquals(110.dp, scope.contentBottomInset(includeBottomTabBar = true))
+        assertEquals(18.dp + SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = false))
+    }
+
+    @Test
     fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
         assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
