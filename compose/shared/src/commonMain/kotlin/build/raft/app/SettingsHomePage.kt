@@ -3547,6 +3547,8 @@ private fun SettingsAppShellContent(
         when (selectedDestination) {
             SettingsDestinationApiEnvironment ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+            SettingsDestinationReleaseNotes ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
             SettingsDestinationComputers -> Unit
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
@@ -7741,6 +7743,19 @@ private fun SharedSettingsReleaseNotesContent(
     versionCode: String,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
+    if (versionCode.isBlank()) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "加载中… / Loading…",
+                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        return
+    }
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
