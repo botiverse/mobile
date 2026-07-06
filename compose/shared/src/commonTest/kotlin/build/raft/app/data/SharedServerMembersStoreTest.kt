@@ -203,6 +203,80 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun applyAgentActivitySnapshotBecomesCanonicalStatusFact() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Offline,
+                        presence = Presence.Offline
+                    )
+                )
+            )
+        )
+
+        store.applyAgentActivitySnapshot(
+            MemberId("agent-1"),
+            listOf(
+                AgentActivityEntry(
+                    id = "activity-1",
+                    type = "status",
+                    title = "Working",
+                    statusActivity = "working",
+                    statusDetail = "Building"
+                )
+            )
+        )
+
+        assertEquals(
+            SharedServerMemberStatus(
+                status = AgentStatus.Working,
+                presence = Presence.Active,
+                statusLabel = "Building"
+            ),
+            store.state.value.memberStatus(ServerId("server-1"), "agent-1")
+        )
+        assertEquals(AgentStatus.Offline, store.state.value.entryFor(ServerId("server-1"))?.members?.single()?.agentStatus)
+    }
+
+    @Test
+    fun applyAgentActivitySnapshotDoesNotOverwriteSequencedRealtimeFact() {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working,
+                statusLabel = "Running command...",
+                serverSeq = 10L
+            )
+        )
+        store.applyAgentActivitySnapshot(
+            MemberId("agent-1"),
+            listOf(
+                AgentActivityEntry(
+                    id = "activity-1",
+                    type = "status",
+                    title = "Offline",
+                    statusActivity = "offline",
+                    statusDetail = "Stopped"
+                )
+            )
+        )
+
+        assertEquals(AgentStatus.Working, store.state.value.presenceFor("agent-1")?.agentStatus)
+        assertEquals("Running command...", store.state.value.presenceFor("agent-1")?.statusLabel)
+        assertEquals(10L, store.state.value.presenceFor("agent-1")?.serverSeq)
+    }
+
+    @Test
     fun loadChannelMembersCachesPerChannelAndSeedsProfiles() = runBlocking {
         val repository = FakeMemberRepository()
         repository.channelMembersByChannel["channel-1"] =

@@ -137,7 +137,8 @@ data class SharedServerMembersState(
         ) {
             return SharedServerMemberStatus(
                 status = presenceFact.agentStatus ?: member?.agentStatus,
-                presence = presenceFact.presence
+                presence = presenceFact.presence,
+                statusLabel = presenceFact.statusLabel
             )
         }
         if (member?.kind != MemberKind.Agent) return null
@@ -173,7 +174,8 @@ data class SharedServerMembersState(
 
 data class SharedServerMemberStatus(
     val status: AgentStatus?,
-    val presence: Presence
+    val presence: Presence,
+    val statusLabel: String? = null
 )
 
 /**
@@ -546,6 +548,37 @@ class SharedServerMembersStore(
         _state.value =
             current.copy(
                 presenceByMemberId = nextPresenceFacts
+            )
+    }
+
+    fun applyAgentActivitySnapshot(agentId: MemberId, activity: List<AgentActivityEntry>) {
+        val projection = activity.latestAgentActivityStatusProjection() ?: return
+        applyAgentActivityProjection(agentId, projection)
+    }
+
+    fun applyAgentDetailSnapshot(detail: AgentDetailSnapshot) {
+        val projection =
+            detail.activity.latestAgentActivityStatusProjection()
+                ?: detail.summary.agentActivityStatusFallbackProjection()
+                ?: return
+        applyAgentActivityProjection(detail.agentId, projection)
+    }
+
+    private fun applyAgentActivityProjection(
+        agentId: MemberId,
+        projection: AgentActivityStatusProjection
+    ) {
+        val memberId = agentId.value.trim()
+        if (memberId.isBlank()) return
+        val current = _state.value
+        val previousFact = current.presenceByMemberId[memberId]
+        if (previousFact?.serverSeq != null) return
+        val event = projection.toMemberPresenceUpdated(agentId)
+        if (!event.shouldReplacePresenceFact(previousFact)) return
+        if (previousFact != null && event.hasSameVisiblePresenceAs(previousFact)) return
+        _state.value =
+            current.copy(
+                presenceByMemberId = current.presenceByMemberId + (memberId to event)
             )
     }
 

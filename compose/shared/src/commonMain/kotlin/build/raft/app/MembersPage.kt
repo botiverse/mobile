@@ -1333,6 +1333,7 @@ private class MemberDetailRouteProvider(
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
+                serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
                 return MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = session.user.id
@@ -1363,13 +1364,15 @@ private class MemberDetailRouteProvider(
 
     suspend fun refreshAgentActivity(agentId: MemberId) {
         when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetAgentActivity(
                         agentId = agentId,
                         activity = activityResult.data.activity
                     )
                 )
+                serverMembersStore.applyAgentActivitySnapshot(agentId, activityResult.data.activity)
+            }
             is DataResult.Empty -> Unit
             is DataResult.Error ->
                 bridge.log("member_detail_agent_activity_load_failed agentId=${agentId.value} code=${activityResult.error.code}")
@@ -8415,9 +8418,9 @@ internal fun membersLiveAgentStatusLabel(
     if (summaryResolved == liveStatus) {
         return summaryActivityDetail?.takeIf { it.isNotBlank() }
             ?: summaryActivity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
-            ?: liveStatus.label
+            ?: indicatorState.label
     }
-    return liveStatus.label
+    return indicatorState.label
 }
 
 private fun MemberProfile.membersAgentRuntimeErrorText(
