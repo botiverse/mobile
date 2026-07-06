@@ -7,7 +7,8 @@ package build.raft.app.network
 internal data class SlockHttpExecutorResponse(
     val code: Int,
     val bodyText: String?,
-    val errorBodyText: String?
+    val errorBodyText: String?,
+    val transportDiagnostics: String? = null
 ) {
     val isSuccessful: Boolean get() = code in 200..299
 }
@@ -46,4 +47,3 @@ internal interface SlockHttpExecutor {
         headers: Map<String, String>
     ): SlockHttpExecutorResponse
 }
-

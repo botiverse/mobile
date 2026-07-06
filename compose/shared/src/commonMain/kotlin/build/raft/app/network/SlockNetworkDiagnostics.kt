@@ -27,7 +27,7 @@ internal fun Throwable.safeDiagnosticsSummary(): String =
             }
     }
 
-private fun String.toSafeDiagnosticsToken(): String {
+internal fun String.toSafeDiagnosticsToken(): String {
     val redacted =
         SensitiveNetworkDiagnosticsPatterns.fold(this) { current, pattern ->
             current.replace(pattern, "$1[redacted]")

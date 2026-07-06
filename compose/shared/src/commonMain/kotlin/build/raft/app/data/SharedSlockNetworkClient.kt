@@ -378,6 +378,7 @@ class SharedSlockAuthTransport internal constructor(
         authorization: String? = null,
         bodyText: String? = null
     ): AuthNetworkResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
         val response =
             executor.execute(
                 priority = SlockRequestPriority.Foreground,
@@ -388,7 +389,14 @@ class SharedSlockAuthTransport internal constructor(
                 jsonBody = bodyText != null
             )
         if (response.code == 0) {
-            warningLogger("slock_auth_transport_failed path=$path method=$method")
+            warningLogger(
+                "slock_auth_transport_failed path=$path method=$method " +
+                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none")
+            )
         }
         return response.toAuthNetworkResponse()
     }
