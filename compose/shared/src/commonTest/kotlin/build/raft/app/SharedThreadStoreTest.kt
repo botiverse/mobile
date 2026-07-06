@@ -2675,6 +2675,74 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun focusedReplyContextRestoresOriginFromCachedParentMessage() = runBlocking {
+        val repository =
+            replyHintRepository().also { fake ->
+                fake.messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "channel-1",
+                            messages = emptyList(),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+                        )
+                    )
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+        )
+        val firstOpen = dataSource.fetchThreadPayload(unresolvedReplyPayload(parentMessageId = "m1"))
+        val firstPayload = (firstOpen as? DataResult.Content)?.data
+
+        assertNotNull(firstPayload)
+        assertEquals("parent body", firstPayload.originMessage?.body)
+
+        repository.messageContextResult =
+            DataResult.Content(
+                threadSnapshot(
+                    threadId = "thread-m1",
+                    messages =
+                        listOf(
+                            message(
+                                threadId = "thread-m1",
+                                channelId = "thread-m1",
+                                id = "reply-1",
+                                seq = 2,
+                                body = "focused reply"
+                            )
+                        ),
+                    parentMessage = null,
+                    conversation =
+                        conversationSummary("thread-m1").copy(
+                            kind = ConversationKind.Thread,
+                            channelId = ChannelId("thread-m1"),
+                            thread =
+                                ThreadConversation(
+                                    parentChannelId = ChannelId("channel-1"),
+                                    parentMessageId = MessageId("m1"),
+                                    streamChannelId = ChannelId("thread-m1")
+                                )
+                        )
+                )
+            )
+
+        val secondOpen =
+            dataSource.fetchThreadPayload(
+                replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+                    .copy(focusedMessageId = "reply-1")
+            )
+        val secondPayload = (secondOpen as? DataResult.Content)?.data
+
+        assertNotNull(secondPayload)
+        assertEquals("loaded", secondPayload.originStatus)
+        assertEquals("m1", secondPayload.originMessage?.id)
+        assertEquals("parent body", secondPayload.originMessage?.body)
+        assertEquals(listOf("focused reply"), secondPayload.messages.map { it.body })
+    }
+
+    @Test
     fun fetchedThreadPayloadUsesHomeDirectMessageAvatarBeforeMemoryCacheWrite() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
