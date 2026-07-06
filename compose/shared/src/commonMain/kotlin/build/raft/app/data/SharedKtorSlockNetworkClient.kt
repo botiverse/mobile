@@ -10,6 +10,7 @@ import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
+import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import kotlin.time.TimeSource
 
@@ -34,42 +35,54 @@ internal class SharedKtorSlockNetworkClient(
         query: List<Pair<String, String>>,
         serverIdOverride: ServerId?,
         bodyText: String?
-    ): HomeNetworkResponse =
-        requestScheduler.run(
-            priority = priority.toNetworkPriority(),
-            key = path,
-            reason = method.uppercase()
-        ) {
-            val startedAt = TimeSource.Monotonic.markNow()
-            val category = path.networkDiagnosticsCategory()
-            val normalizedPath = path.networkDiagnosticsPath()
-            val response =
-                authMiddleware.request(serverIdOverride) { auth ->
-                    executor.execute(
-                        priority = priority.toNetworkPriority(),
-                        url = absoluteUrl(path, query),
-                        method = method.uppercase(),
-                        headers =
-                            buildMap {
-                                put(HEADER_AUTHORIZATION, auth.authorization)
-                                put(HEADER_SERVER_ID, auth.serverId)
-                            },
-                        bodyText = bodyText,
-                        jsonBody = bodyText != null
-                    ).toHomeNetworkResponse()
-                }
-            warningLogger(
-                "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
-                    "queryKeys=${query.networkDiagnosticsQueryKeys()} " +
-                    "queryMeta=${query.networkDiagnosticsQueryMeta()} " +
-                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                    "result=${response.networkDiagnosticsResult()}"
+    ): HomeNetworkResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val category = path.networkDiagnosticsCategory()
+        val normalizedPath = path.networkDiagnosticsPath()
+        return try {
+            requestScheduler.run(
+                priority = priority.toNetworkPriority(),
+                key = path,
+                reason = method.uppercase()
+            ) {
+                val response =
+                    authMiddleware.request(serverIdOverride) { auth ->
+                        executor.execute(
+                            priority = priority.toNetworkPriority(),
+                            url = absoluteUrl(path, query),
+                            method = method.uppercase(),
+                            headers =
+                                buildMap {
+                                    put(HEADER_AUTHORIZATION, auth.authorization)
+                                    put(HEADER_SERVER_ID, auth.serverId)
+                                },
+                            bodyText = bodyText,
+                            jsonBody = bodyText != null
+                        ).toHomeNetworkResponse()
+                    }
+                warningLogger(
+                    "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
+                        "queryKeys=${query.networkDiagnosticsQueryKeys()} " +
+                        "queryMeta=${query.networkDiagnosticsQueryMeta()} " +
+                        "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                        "result=${response.networkDiagnosticsResult()}"
+                )
+                response
+            }
+        } catch (timeout: SlockRequestTimeoutException) {
+            timeout.toTimeoutNetworkResponse(
+                category = category,
+                path = normalizedPath,
+                method = method.uppercase(),
+                requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong(),
+                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                warningLogger = warningLogger
             )
-            response
         }
+    }
 
     override suspend fun requestRawAbsoluteUrl(
         priority: DataRequestPriority,
@@ -77,32 +90,45 @@ internal class SharedKtorSlockNetworkClient(
         method: String,
         headers: Map<String, String>,
         bodyText: String?
-    ): HomeNetworkResponse =
-        requestScheduler.run(
-            priority = priority.toNetworkPriority(),
-            key = url.substringBefore('?'),
-            reason = "raw:${method.uppercase()}"
-        ) {
-            val startedAt = TimeSource.Monotonic.markNow()
-            val response =
-                executor.execute(
-                    priority = priority.toNetworkPriority(),
-                    url = url,
-                    method = method.uppercase(),
-                    headers = headers,
-                    bodyText = bodyText,
-                    jsonBody = false
-                ).toHomeNetworkResponse()
-            warningLogger(
-                "endpoint category=raw_absolute_url path=${url.substringBefore('?')} method=${method.uppercase()} " +
-                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                    "result=${response.networkDiagnosticsResult()}"
+    ): HomeNetworkResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val diagnosticPath = url.substringBefore('?')
+        return try {
+            requestScheduler.run(
+                priority = priority.toNetworkPriority(),
+                key = diagnosticPath,
+                reason = "raw:${method.uppercase()}"
+            ) {
+                val response =
+                    executor.execute(
+                        priority = priority.toNetworkPriority(),
+                        url = url,
+                        method = method.uppercase(),
+                        headers = headers,
+                        bodyText = bodyText,
+                        jsonBody = false
+                    ).toHomeNetworkResponse()
+                warningLogger(
+                    "endpoint category=raw_absolute_url path=$diagnosticPath method=${method.uppercase()} " +
+                        "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                        "result=${response.networkDiagnosticsResult()}"
+                )
+                response
+            }
+        } catch (timeout: SlockRequestTimeoutException) {
+            timeout.toTimeoutNetworkResponse(
+                category = "raw_absolute_url",
+                path = diagnosticPath,
+                method = method.uppercase(),
+                requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong(),
+                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                warningLogger = warningLogger
             )
-            response
         }
+    }
 
     override suspend fun uploadAttachments(
         priority: DataRequestPriority,
@@ -221,37 +247,49 @@ internal class SharedKtorSlockNetworkClient(
         files: List<MultipartFile>,
         requestBytes: Long,
         key: String
-    ): HomeNetworkResponse =
-        requestScheduler.run(
-            priority = priority.toNetworkPriority(),
-            key = key,
-            reason = "multipart"
-        ) {
-            val startedAt = TimeSource.Monotonic.markNow()
-            val response =
-                authMiddleware.request { auth ->
-                    executor.executeMultipart(
-                        priority = priority.toNetworkPriority(),
-                        url = absoluteUrl(path),
-                        fields = fields,
-                        files = files,
-                        headers =
-                            mapOf(
-                                HEADER_AUTHORIZATION to auth.authorization,
-                                HEADER_SERVER_ID to auth.serverId
-                            )
-                    ).toHomeNetworkResponse()
-                }
-            warningLogger(
-                "endpoint category=$category path=$diagnosticPath method=POST " +
-                    "fileCount=${files.size} requestBytes=$requestBytes " +
-                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                    "result=${response.networkDiagnosticsResult()}"
+    ): HomeNetworkResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        return try {
+            requestScheduler.run(
+                priority = priority.toNetworkPriority(),
+                key = key,
+                reason = "multipart"
+            ) {
+                val response =
+                    authMiddleware.request { auth ->
+                        executor.executeMultipart(
+                            priority = priority.toNetworkPriority(),
+                            url = absoluteUrl(path),
+                            fields = fields,
+                            files = files,
+                            headers =
+                                mapOf(
+                                    HEADER_AUTHORIZATION to auth.authorization,
+                                    HEADER_SERVER_ID to auth.serverId
+                                )
+                        ).toHomeNetworkResponse()
+                    }
+                warningLogger(
+                    "endpoint category=$category path=$diagnosticPath method=POST " +
+                        "fileCount=${files.size} requestBytes=$requestBytes " +
+                        "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                        "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                        "result=${response.networkDiagnosticsResult()}"
+                )
+                response
+            }
+        } catch (timeout: SlockRequestTimeoutException) {
+            timeout.toTimeoutNetworkResponse(
+                category = category,
+                path = diagnosticPath,
+                method = "POST",
+                requestBytes = requestBytes,
+                durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                warningLogger = warningLogger
             )
-            response
         }
+    }
 
     private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
         val url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
@@ -358,6 +396,25 @@ class SharedKtorSlockAuthTransport internal constructor(
 
 private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkResponse =
     HomeNetworkResponse(code = code, bodyText = bodyText, errorBodyText = errorBodyText)
+
+private fun SlockRequestTimeoutException.toTimeoutNetworkResponse(
+    category: String,
+    path: String,
+    method: String,
+    requestBytes: Long,
+    durationMs: Long,
+    warningLogger: (String) -> Unit
+): HomeNetworkResponse {
+    val errorBody =
+        """{"error":"network_timeout","message":"${message.orEmpty().jsonString()}"}"""
+    warningLogger(
+        "endpoint category=$category path=$path method=$method " +
+            "requestBytes=$requestBytes responseBytes=0 " +
+            "errorBytes=${errorBody.encodeToByteArray().size} " +
+            "code=0 durationMs=$durationMs result=network_error"
+    )
+    return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = errorBody)
+}
 
 private fun SlockHttpExecutorResponse.toAuthNetworkResponse(): AuthNetworkResponse =
     AuthNetworkResponse(
