@@ -1668,9 +1668,18 @@ class KmpVisualScreenshotCaptureTest {
      * I/O. The tag filter is only a volume optimization; the [token] content
      * match stays the correctness gate (the tag is shared with other bridge
      * output, per CC-Wow2), and the token line is confirmed to ride this tag
-     * (#137: recordLog(level, "SlockKuikly", content)). Reads our OWN process
-     * logs, so no READ_LOGS needed. Any failure returns false so the caller
-     * falls through to its deadline rather than throwing.
+     * (#137: recordLog(level, "SlockKuikly", content)).
+     *
+     * ASSUMPTION — test and app share one process: the instrumented test runs
+     * in the SAME process/UID as the app under test, so an unprivileged
+     * `logcat -d` returns this process's own logs, which include the Kuikly
+     * bridge's token — no READ_LOGS needed. If the capture is ever split into a
+     * separate instrumentation process from the app, this read would no longer
+     * see the app's token (the settle would just time out non-fatally); route
+     * the signal cross-process (or grant READ_LOGS) before doing that.
+     *
+     * Any failure returns false so the caller falls through to its deadline
+     * rather than throwing.
      */
     private fun logcatContainsToken(token: String): Boolean {
         var process: Process? = null
