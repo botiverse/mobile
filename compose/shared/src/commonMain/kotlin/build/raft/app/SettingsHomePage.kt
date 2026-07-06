@@ -536,7 +536,15 @@ private class AppShellChildPagerSwitchController {
 
     fun switchTo(tab: String, commandEpoch: Int): Boolean {
         latestCommandEpoch = commandEpoch
-        return switchToTab?.invoke(tab, commandEpoch) == true
+        val handled = switchToTab?.invoke(tab, commandEpoch) == true
+        if (!handled) {
+            // The target child page isn't mounted yet, so no direct scroll was
+            // issued for this epoch. Release ownership: the fallback effect is
+            // skipped while a direct command owns the current epoch, so leaving
+            // this set would make the tab never scroll once the page mounts.
+            latestCommandEpoch = null
+        }
+        return handled
     }
 
     fun isLatestCommand(commandEpoch: Int): Boolean =
@@ -1673,6 +1681,7 @@ private fun AppShellTabs(
     mountedTabs: Set<String>,
     childTabSwitchEpoch: Int,
     switchController: AppShellChildPagerSwitchController,
+    log: (String) -> Unit = {},
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
@@ -1691,9 +1700,17 @@ private fun AppShellTabs(
                 )
             SideEffect {
                 switchController.updateSwitchHandler { tab, commandEpoch ->
-                    val page = appShellChildPagerTargetIndex(tab, pagerTabs) ?: return@updateSwitchHandler false
+                    val page = appShellChildPagerTargetIndex(tab, pagerTabs)
+                    if (page == null) {
+                        // Target not mounted in the pager yet — defer to the fallback effect.
+                        log("app_shell_direct_switch tab=$tab epoch=$commandEpoch page=unmounted scheduled=false pagerTabs=$pagerTabs")
+                        return@updateSwitchHandler false
+                    }
+                    log("app_shell_direct_switch tab=$tab epoch=$commandEpoch page=$page scheduled=true")
                     appShellTabsCoroutineScope.launch {
-                        if (switchController.isLatestCommand(commandEpoch)) {
+                        val isLatest = switchController.isLatestCommand(commandEpoch)
+                        log("app_shell_direct_scroll tab=$tab epoch=$commandEpoch page=$page isLatest=$isLatest")
+                        if (isLatest) {
                             pagerState.scrollToPage(page)
                         }
                     }
@@ -1703,16 +1720,20 @@ private fun AppShellTabs(
             LaunchedEffect(activeChildTab, childTabSwitchEpoch, targetPage, pagerTabs) {
                 // Fallback for mount/recomposition or non-click routes. Direct bottom-tab clicks
                 // issue the pager command through switchController before relying on this effect.
-                if (
+                val canApply =
                     appShellChildPagerScrollEpochCanApply(
                         expectedTab = activeChildTab,
                         currentTab = latestActiveChildTab,
                         expectedEpoch = childTabSwitchEpoch,
                         currentEpoch = latestChildTabSwitchEpoch,
                         targetPage = targetPage
-                    ) &&
-                        !switchController.isLatestCommand(childTabSwitchEpoch)
-                ) {
+                    )
+                val directOwnsEpoch = switchController.isLatestCommand(childTabSwitchEpoch)
+                log(
+                    "app_shell_fallback_scroll tab=$activeChildTab epoch=$childTabSwitchEpoch targetPage=$targetPage " +
+                        "canApply=$canApply directOwnsEpoch=$directOwnsEpoch scrolled=${canApply && !directOwnsEpoch && targetPage != null}"
+                )
+                if (canApply && !directOwnsEpoch) {
                     val scrollTarget = targetPage ?: return@LaunchedEffect
                     pagerState.scrollToPage(scrollTarget)
                 }
@@ -2269,9 +2290,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
+        val direct = directChildSwitch && retainedTab in AppShellChildPageTabKeys
+        bridge.log(
+            "app_shell_select_tab next=$nextTab retained=$retainedTab from=$selectedTab " +
+                "epoch=$childTabSwitchEpoch->$nextEpoch direct=$direct"
+        )
         childTabSwitchEpoch = nextEpoch
-        if (directChildSwitch && retainedTab in AppShellChildPageTabKeys) {
-            childTabSwitchController.switchTo(retainedTab, nextEpoch)
+        if (direct) {
+            val handled = childTabSwitchController.switchTo(retainedTab, nextEpoch)
+            bridge.log("app_shell_select_tab_direct retained=$retainedTab epoch=$nextEpoch handled=$handled")
         }
         selectedTab = retainedTab
     }
@@ -3539,7 +3566,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         childHostShellId = childTabShellId,
                         mountedTabs = retainedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
-                        switchController = childTabSwitchController
+                        switchController = childTabSwitchController,
+                        log = { bridge.log(it) }
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
