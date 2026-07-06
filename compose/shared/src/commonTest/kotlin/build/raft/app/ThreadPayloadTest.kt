@@ -3720,7 +3720,8 @@ class ThreadPayloadTest {
             buildStandaloneConversationThreadLaunchPayload(
                 conversation = request.conversationIdentity,
                 timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
-                anchorMessageId = request.anchorMessageId
+                anchorMessageId = request.anchorMessageId,
+                originFallback = request.originFallback
             )
         val initialPayload =
             parseThreadScreenPayload(
@@ -3735,10 +3736,14 @@ class ThreadPayloadTest {
         assertEquals("message-1", launch.parentMessageId)
         assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
         assertEquals("message-1", launch.originParentMessageId)
+        assertEquals("message-1", launch.originFallbackParentMessageId)
+        assertEquals("Parent message preview", launch.originFallbackPreview)
         assertEquals("reply-message-1", launch.focusedMessageId)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.parentSurfaceKind)
         assertEquals("message-1", initialPayload.originParentMessageId)
+        assertEquals("missing", initialPayload.originStatus)
+        assertEquals("Parent message preview", initialPayload.originPreview)
         assertEquals("reply-message-1", initialPayload.focusedMessageId)
         assertEquals(false, initialPayload.showModeTabs)
         assertEquals(false, initialPayload.showMembersAction)

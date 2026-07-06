@@ -2414,7 +2414,22 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         is SharedAuthGateState.Ready -> Unit
     }
 
-    fun openHomeConversation(conversation: ThreadLaunchConversationIdentity, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
+    fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) {
+        openHomeConversation(
+            conversation = request.conversationIdentity,
+            source = source,
+            anchorMessageId = request.anchorMessageId ?: fallbackAnchorMessageId,
+            originFallback = request.originFallback
+        )
+    }
+
+    fun openHomeConversation(
+        conversation: ThreadLaunchConversationIdentity,
+        source: String,
+        anchorMessageId: String? = null,
+        pushCurrent: Boolean = true,
+        originFallback: ThreadLaunchOriginFallback? = null
+    ) {
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -2439,7 +2454,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 threadRowAffordances = threadRowAffordances,
-                anchorMessageId = anchorMessageId
+                anchorMessageId = anchorMessageId,
+                originFallback = originFallback
             )
         bridge.log(
             "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
@@ -2514,8 +2530,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
             return@LaunchedEffect
         }
-        val conversation = homeState.notificationThreadLaunchIdentity(launchRequest)
-        if (conversation == null) {
+        val openRequest = homeState.notificationThreadLaunchRequest(launchRequest)
+        if (openRequest == null) {
             consumedNotificationLaunchKey = launchKey
             bridge.logWarn(
                 "app_shell_notification_launch_drop reason=conversation_not_found " +
@@ -2526,19 +2542,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         consumedNotificationLaunchKey = launchKey
-        val anchorMessageId = conversation.notificationAnchorMessageId(launchRequest)
         selectedTab = "home"
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
         bridge.log(
             "app_shell_notification_thread_open " +
-                "threadId=${conversation.threadId.value} focusedMessageId=$anchorMessageId"
+                "threadId=${openRequest.conversationIdentity.threadId.value} focusedMessageId=${openRequest.anchorMessageId.orEmpty()}"
         )
-        openHomeConversation(
-            conversation = conversation,
-            source = "notification",
-            anchorMessageId = anchorMessageId
-        )
+        openHomeMessageRequest(openRequest, source = "notification")
     }
     LaunchedEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -3475,11 +3486,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             topSafeArea = shellScope.topSafeArea,
             onBannerClick = { target ->
                 foregroundMessageBanner = null
-                openHomeConversation(
-                    conversation = target.conversation,
+                openHomeMessageRequest(
+                    request = target.openRequest,
                     source = "foreground_banner",
-                    anchorMessageId = target.focusedMessageId
+                    fallbackAnchorMessageId = target.focusedMessageId
                 )
+            },
+            onBannerDismiss = {
+                foregroundMessageBanner = null
             }
         ) {
             key("route-main") { mainRouteContent() }
@@ -14313,16 +14327,21 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
 
-private fun SharedHomeState.notificationThreadLaunchIdentity(
+private fun SharedHomeState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest
-): ThreadLaunchConversationIdentity? {
+): HomeMessageOpenRequest? {
     val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
     val projection =
         snapshot
             .toSharedConversationDirectoryState()
             .resolveNotificationThreadProjection(request)
             ?: return null
-    return projection.toThreadLaunchConversationIdentity()
+    val conversation = projection.toThreadLaunchConversationIdentity()
+    return HomeMessageOpenRequest(
+        conversationIdentity = conversation,
+        anchorMessageId = conversation.notificationAnchorMessageId(request),
+        originFallback = projection.toNotificationThreadLaunchOriginFallback()
+    )
 }
 
 private fun SharedConversationDirectoryState.resolveNotificationThreadProjection(
@@ -14375,6 +14394,19 @@ private fun SharedConversationDirectoryProjection.toThreadLaunchConversationIden
                 KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
                 else -> if (channelKind.equals("joint", ignoreCase = true)) ConversationKind.Joint else ConversationKind.Channel
             }
+    )
+}
+
+private fun SharedConversationDirectoryProjection.toNotificationThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = parentId,
+        preview = subtitle?.takeIf { it.isNotBlank() },
+        senderId = null,
+        senderKind = null,
+        expected = true
     )
 }
 
@@ -14624,7 +14656,8 @@ private fun Pager.openStandaloneHomeMessageRequest(
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         threadRowAffordances = threadRowAffordances,
-        anchorMessageId = request.anchorMessageId
+        anchorMessageId = request.anchorMessageId,
+        originFallback = request.originFallback
     )
 }
 
@@ -14719,7 +14752,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
-    anchorMessageId: String? = null
+    anchorMessageId: String? = null,
+    originFallback: ThreadLaunchOriginFallback? = null
 ): WireThreadLaunchPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
@@ -14765,7 +14799,13 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
+        originFallbackParentChannelId = originFallback?.parentChannelId,
+        originFallbackParentMessageId = originFallback?.parentMessageId,
+        originFallbackPreview = originFallback?.preview,
+        originFallbackSenderId = originFallback?.senderId,
+        originFallbackSenderKind = originFallback?.senderKind,
+        originFallbackExpected = originFallback?.expected ?: true
     )
 }
 

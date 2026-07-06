@@ -4169,9 +4169,10 @@ internal fun SharedThreadRouteContent(
         topSafeArea = slockTopSafeAreaPadding(),
         onBannerClick = { target ->
             foregroundMessageBanner = null
+            val request = target.openRequest
             onOpenThreadPayload(
                 buildAppShellThreadPayload(
-                    conversation = target.conversation,
+                    conversation = request.conversationIdentity,
                     timeContext = renderedPayload.toSlockTimeContext(),
                     alignOwnMessagesRight = renderedPayload.alignOwnMessagesRight,
                     compactConsecutiveMessages = renderedPayload.compactConsecutiveMessages,
@@ -4180,9 +4181,13 @@ internal fun SharedThreadRouteContent(
                             ThreadRowAffordancePreference.Reactions.takeIf { renderedPayload.showReactionActions },
                             ThreadRowAffordancePreference.Saved.takeIf { renderedPayload.showInlineSaveAction }
                         ).toSet(),
-                    anchorMessageId = target.focusedMessageId
+                    anchorMessageId = request.anchorMessageId ?: target.focusedMessageId,
+                    originFallback = request.originFallback
                 )
             )
+        },
+        onBannerDismiss = {
+            foregroundMessageBanner = null
         }
     ) {
         ThreadPageContent(

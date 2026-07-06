@@ -547,6 +547,7 @@ class SlockAppShellTest {
                         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                         channelKind = "thread",
                         title = "deploy checklist",
+                        subtitle = "Parent message preview",
                         parentChannelId = "parent-channel",
                         parentMessageId = "parent-message"
                     )
@@ -575,6 +576,27 @@ class SlockAppShellTest {
         assertEquals("Hello from another route", resolved.body)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.MessageSquare, resolved.iconName)
+        assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
+        assertEquals("parent-channel", resolved.openRequest.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.openRequest.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", resolved.openRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.openRequest.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.openRequest.conversationIdentity.thread?.parentChannelKind)
+        assertEquals(null, resolved.openRequest.conversationIdentity.channelType)
+        assertEquals("reply-1", resolved.openRequest.anchorMessageId)
+        assertEquals("parent-channel", resolved.openRequest.originFallback?.parentChannelId)
+        assertEquals("parent-message", resolved.openRequest.originFallback?.parentMessageId)
+        assertEquals("Parent message preview", resolved.openRequest.originFallback?.preview)
+
+        val launchPayload =
+            buildAppShellThreadPayload(
+                conversation = resolved.openRequest.conversationIdentity,
+                anchorMessageId = resolved.openRequest.anchorMessageId,
+                originFallback = resolved.openRequest.originFallback
+            )
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentChannelKind)
+        assertEquals("Parent message preview", launchPayload.originPreview)
     }
 
     @Test
@@ -659,6 +681,8 @@ class SlockAppShellTest {
         assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
         assertEquals("reply-stream", resolved.conversation.thread?.streamChannelId?.value)
         assertEquals("reply-1", resolved.focusedMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.openRequest.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(null, resolved.openRequest.conversationIdentity.channelType)
 
         val suppressed =
             slockForegroundMessageBannerProjection(
