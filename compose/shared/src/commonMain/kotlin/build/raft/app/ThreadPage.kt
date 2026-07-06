@@ -2969,7 +2969,8 @@ internal fun SharedThreadRouteContent(
             composer
                 .toThreadComposerSurface(
                     channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                    parentChannelId = renderedPayload.parentChannelId
+                    parentChannelId = renderedPayload.parentChannelId,
+                    memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
                 )
                 .threadComposerDraftKey()
         composerDraftViewModel.dispatch(
@@ -3128,12 +3129,14 @@ internal fun SharedThreadRouteContent(
             renderedPayload.parentChannelId,
             headerDisplayModel.title,
             headerDisplayModel.subtitle,
-            renderedPayload.surfaceKind
+            renderedPayload.surfaceKind,
+            renderedPayload.parentSurfaceKind
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
-                mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel()
+                mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
+                memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
             )
         }
     fun currentComposerPayload(): KuiklyThreadComposerPayload =
@@ -6988,9 +6991,20 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
 }
 
 internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
-    memberScopedMentions ||
-        surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
-        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> false
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
+        else -> memberScopedMentions
+    }
+
+internal fun KuiklyThreadScreenPayload.threadComposerMemberSuggestionHeadersVisible(): Boolean =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> false
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
+        else -> true
+    }
 
 internal fun RealtimeEvent.refreshesThreadMemberSuggestions(mentionChannelId: String?): Boolean =
     when (this) {
@@ -8043,7 +8057,8 @@ private fun ThreadComposerContentWithSuggestions(
 }
 
 internal fun KuiklyThreadScreenPayload.shouldPrioritizeThreadMentionParticipants(): Boolean =
-    parentChannelId.nonBlank() != null && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
+    surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+        parentChannelId.nonBlank() != null
 
 internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants(
     threadMessages: List<KuiklyThreadMessageItem>,

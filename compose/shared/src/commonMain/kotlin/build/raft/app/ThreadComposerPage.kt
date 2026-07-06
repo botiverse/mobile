@@ -171,6 +171,7 @@ internal data class ThreadComposerSurface(
     val parentMessageId: String? = null,
     val mentionChannelId: String? = null,
     val mentionChannelLabel: String? = null,
+    val memberSuggestionHeadersVisible: Boolean = kind != KuiklyThreadSurfaceKind.DirectMessage,
     val showTaskButton: Boolean = true
 ) {
     val sendChannelId: String?
@@ -846,7 +847,8 @@ internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
 internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
     channelId: String,
     parentChannelId: String? = null,
-    mentionChannelLabel: String? = null
+    mentionChannelLabel: String? = null,
+    memberSuggestionHeadersVisible: Boolean = surfaceKind != KuiklyThreadSurfaceKind.DirectMessage
 ): ThreadComposerSurface =
     ThreadComposerSurface(
         kind = surfaceKind,
@@ -856,6 +858,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
         parentMessageId = parentMessageId,
         mentionChannelId = mentionChannelId,
         mentionChannelLabel = mentionChannelLabel,
+        memberSuggestionHeadersVisible = memberSuggestionHeadersVisible,
         showTaskButton = showAsTaskToggle
     )
 
@@ -1201,7 +1204,10 @@ internal fun ThreadComposerContent(
         ) {
             ThreadComposerEnterAction.AcceptMemberSuggestion ->
                 filteredMemberSuggestions
-                    .composerMemberSuggestionCandidateAt(memberSuggestionSelectedIndex)
+                    .composerMemberSuggestionCandidateAt(
+                        selectedIndex = memberSuggestionSelectedIndex,
+                        groupByMentionChannel = surface.memberSuggestionHeadersVisible
+                    )
                     ?.let(::applyMemberSuggestion)
             ThreadComposerEnterAction.AcceptChannelSuggestion ->
                 filteredChannelSuggestions
@@ -1443,11 +1449,12 @@ private fun ComposerSuggestionSlot(
 ) {
     if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
     val slotHeight =
-        remember(panelState, memberSuggestions.size, channelSuggestions.size) {
+        remember(panelState, surface.memberSuggestionHeadersVisible, memberSuggestions.size, channelSuggestions.size) {
             composerSuggestionPanelSlotHeight(
                 panelState = panelState,
                 memberCount = memberSuggestions.size,
-                channelCount = channelSuggestions.size
+                channelCount = channelSuggestions.size,
+                includeMemberHeader = surface.memberSuggestionHeadersVisible
             )
         }
     Box(
@@ -1477,25 +1484,43 @@ private fun ComposerSuggestionSlot(
 internal fun composerSuggestionPanelSlotHeight(
     panelState: ThreadComposerSuggestionPanelState,
     memberCount: Int,
-    channelCount: Int
+    channelCount: Int,
+    includeMemberHeader: Boolean = true
 ): Dp {
     val estimated =
         when (panelState) {
             ThreadComposerSuggestionPanelState.MemberItems ->
-                ComposerSuggestionHeaderEstimatedHeight + ComposerMemberSuggestionRowMinHeight * memberCount.coerceAtLeast(1)
+                composerSuggestionPanelContentHeight(
+                    itemCount = memberCount,
+                    rowMinHeight = ComposerMemberSuggestionRowMinHeight,
+                    includeHeader = includeMemberHeader
+                )
             ThreadComposerSuggestionPanelState.ChannelItems ->
-                ComposerChannelSuggestionRowMinHeight * channelCount.coerceAtLeast(1)
+                composerSuggestionPanelContentHeight(
+                    itemCount = channelCount,
+                    rowMinHeight = ComposerChannelSuggestionRowMinHeight,
+                    includeHeader = false
+                )
             ThreadComposerSuggestionPanelState.MemberLoading,
             ThreadComposerSuggestionPanelState.MemberEmpty,
-            ThreadComposerSuggestionPanelState.MemberError,
+            ThreadComposerSuggestionPanelState.MemberError ->
+                composerSuggestionPanelContentHeight(
+                    itemCount = 1,
+                    rowMinHeight = ComposerSuggestionStatusRowMinHeight,
+                    includeHeader = includeMemberHeader
+                )
             ThreadComposerSuggestionPanelState.ChannelLoading,
             ThreadComposerSuggestionPanelState.ChannelEmpty,
             ThreadComposerSuggestionPanelState.ChannelError ->
-                ComposerSuggestionHeaderEstimatedHeight + ComposerSuggestionStatusRowMinHeight
+                composerSuggestionPanelContentHeight(
+                    itemCount = 1,
+                    rowMinHeight = ComposerSuggestionStatusRowMinHeight,
+                    includeHeader = false
+                )
             ThreadComposerSuggestionPanelState.Hidden ->
                 0.dp
     }
-    return if (estimated > ComposerSuggestionPanelMaxHeight) ComposerSuggestionPanelMaxHeight else estimated
+    return estimated
 }
 
 internal fun composerSuggestionPanelContentHeight(
@@ -1526,6 +1551,7 @@ private fun ComposerSuggestionPanelContent(
         ThreadComposerSuggestionPanelState.MemberItems -> {
             ComposerMemberSuggestionPanel(
                 title = surface.memberSuggestionTitle(),
+                showMembershipSections = surface.memberSuggestionHeadersVisible,
                 members = memberSuggestions,
                 selectedIndex = memberSelectedIndex,
                 agentStatusResolver = agentStatusResolver,
@@ -1603,11 +1629,14 @@ private fun ComposerSuggestionPanelContent(
     }
 }
 
-private fun ThreadComposerSurface.memberSuggestionTitle(): String =
-    when (kind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> "IN THIS DM"
-        KuiklyThreadSurfaceKind.ReplyThread -> "IN PARENT CHANNEL"
-        else -> "IN THIS CHANNEL"
+private fun ThreadComposerSurface.memberSuggestionTitle(): String? =
+    if (!memberSuggestionHeadersVisible) {
+        null
+    } else {
+        when (kind) {
+            KuiklyThreadSurfaceKind.ReplyThread -> "IN PARENT CHANNEL"
+            else -> "IN THIS CHANNEL"
+        }
     }
 
 internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
@@ -1626,9 +1655,13 @@ internal fun List<KuiklyComposerMemberItem>.firstComposerMemberSuggestionCandida
     composerMemberSuggestionCandidateAt(0)
 
 internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionCandidateAt(
-    selectedIndex: Int
+    selectedIndex: Int,
+    groupByMentionChannel: Boolean = true
 ): KuiklyComposerMemberItem? {
     if (isEmpty()) return null
+    if (!groupByMentionChannel) {
+        return getOrNull(threadComposerSuggestionSelectedIndex(selectedIndex, size))
+    }
     val inChannel = filter { it.inMentionChannel }
     val notInChannel = filterNot { it.inMentionChannel }
     val index = threadComposerSuggestionSelectedIndex(selectedIndex, size)
@@ -1727,12 +1760,38 @@ internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(
 
 @Composable
 private fun ComposerMemberSuggestionPanel(
-    title: String,
+    title: String?,
+    showMembershipSections: Boolean,
     members: List<KuiklyComposerMemberItem>,
     selectedIndex: Int,
     agentStatusResolver: SlockAgentStatusResolver,
     onClick: (KuiklyComposerMemberItem) -> Unit
 ) {
+    if (!showMembershipSections) {
+        val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, members.size)
+        ComposerSuggestionPanel(
+            title = null,
+            showTitleDivider = false,
+            panelHeight =
+                composerSuggestionPanelContentHeight(
+                    itemCount = members.size,
+                    rowMinHeight = ComposerMemberSuggestionRowMinHeight,
+                    includeHeader = false
+                ),
+            itemCount = members.size,
+            itemKey = { index -> "member-${members[index].handle}" }
+        ) { index ->
+            val member = members[index]
+            ComposerMemberSuggestionRow(
+                member = member,
+                inChannel = true,
+                selected = clampedSelectedIndex == index,
+                agentStatusResolver = agentStatusResolver,
+                onClick = { onClick(member) }
+            )
+        }
+        return
+    }
     val inChannel = members.filter { it.inMentionChannel }
     val notInChannel = members.filterNot { it.inMentionChannel }
     val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, members.size)
