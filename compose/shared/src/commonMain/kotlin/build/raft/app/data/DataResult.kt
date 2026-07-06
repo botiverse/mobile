@@ -80,6 +80,10 @@ internal fun String?.userFacingErrorCodeMessage(
             "This item could not be found. It may have been moved or deleted."
         "permission" in lower || "forbidden" in lower || "admin_required" in lower || "no_permission" in lower ->
             permissionMessage
+        "too_large" in lower || "attachment_size" in lower ->
+            "The attachment is too large. Choose a smaller file and try again."
+        "rate" in lower || "too_many" in lower ->
+            "Too many attempts. Please wait a moment and try again."
         "contract" in lower || "parse" in lower || "mismatch" in lower ->
             "The response could not be read. Please try again."
         else -> "Something went wrong. Please try again."
