@@ -1,25 +1,25 @@
 # Raft Visual Testing
 
-Generated: 2026-07-05 22:21:49 UTC
-Latest run: 911fdb1-20260705222119
-Latest commit: 911fdb1-20260705222119
-Commit subject: fix(visual): component crops + fixture geometry for tabbar/message-row/header/list-items (#370) (#103)
+Generated: 2026-07-06 07:56:10 UTC
+Latest run: 876435d-20260706075548
+Latest commit: 876435d-20260706075548
+Commit subject: fix(ui): batch 2 — dialog font, notif borders, bookmark glyph, chip centering, tasks.panel time/chips (#370 #373) (#125)
 Providers: react vs android
-Summary: total 83, same 0, pass 0, basic-pass 4, different 77, missing 2
-AI analysis: ready 0 / total 83, pending 83
-Visual coverage matrix: active 84 / total 103, pending 16, skipped 3
+Summary: total 84, same 0, pass 0, basic-pass 5, different 58, missing 21
+AI analysis: ready 0 / total 84, pending 84
+Visual coverage matrix: active 85 / total 104, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Capture Type Coverage
 
 - Components Parity (component-fixture): active 73, pending 2, total 77
-- Screens Parity (real-screen): active 11, pending 14, total 26
+- Screens Parity (real-screen): active 12, pending 14, total 27
 
 ## Provider Coverage
 
-- react: active 86, pending 13, unsupported 0
-- android: active 81, pending 18, unsupported 0
-- harmony: active 0, pending 79, unsupported 0
+- react: active 87, pending 13, unsupported 0
+- android: active 81, pending 19, unsupported 0
+- harmony: active 0, pending 80, unsupported 0
 
 ## Pending Coverage Rows
 
@@ -80,6 +80,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.header.states: React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.
 - screens.auth.forgot-password: Missing forgot-password route parity for the auth recovery flow.
 - screens.auth.login: Missing true login route parity; old auth.login inputs are not active in the canonical manifest.
+- screens.auth.login.signing: In-flight sign-in state: email + password filled and Sign In clicked, auth request still pending, so the button reads 'Signing in…' at disabled:opacity-50 while the inputs stay enabled with normal white styling. Paired with screens.home.loading as the Android parity target for the sign-in transition (task #372).
 - screens.home.activity: Existing components.home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.
 - screens.home.index: Missing true Home channel/thread list screen parity with realistic server/channel data.
 - screens.home.loading: Post-sign-in loading transition: MainLayout mounted at the server home with channels/DMs/agents/computers still fetching, so the mobile home surface shows Sidebar skeleton rows. Parity target for replacing the Android app's gray home loading state (task #372).
@@ -106,6 +107,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 876435d-20260706075548: react vs android, total 84, pass 0, basic-pass 5, different 58, matrix runs/876435d-20260706075548/component-matrix.json, page runs/876435d-20260706075548/
 - 911fdb1-20260705222119: react vs android, total 83, pass 0, basic-pass 4, different 77, matrix runs/911fdb1-20260705222119/component-matrix.json, page runs/911fdb1-20260705222119/
 - 911fdb1-20260705214455: react vs android, total 82, pass 0, basic-pass 4, different 73, matrix runs/911fdb1-20260705214455/component-matrix.json, page runs/911fdb1-20260705214455/
 - 8c4406b-20260705164052: react vs android, total 82, pass 0, basic-pass 6, different 73, matrix runs/8c4406b-20260705164052/component-matrix.json, page runs/8c4406b-20260705164052/
