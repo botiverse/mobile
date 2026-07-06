@@ -92,7 +92,6 @@ class SharedActivityStoreTest {
                 scope,
                 inbox,
                 readReceiptRepository = read,
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
 
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
@@ -101,8 +100,8 @@ class SharedActivityStoreTest {
         assertEquals(emptyList(), store.state.value.items)
         assertEquals(0, store.state.value.totalUnreadCount)
         assertEquals(listOf(ChannelId("channel-1")), read.readAllChannelIds)
-        assertEquals(0, localStore.readHome(ServerId("server-1"))?.channels?.single()?.unreadCount)
-        assertEquals(0, localStore.readHome(ServerId("server-1"))?.unreadTotal)
+        assertEquals(2, localStore.readHome(ServerId("server-1"))?.channels?.single()?.unreadCount)
+        assertEquals(2, localStore.readHome(ServerId("server-1"))?.unreadTotal)
         scope.cancel()
     }
 
@@ -873,7 +872,6 @@ class SharedActivityStoreTest {
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
-        localWriteThrough: ComposeLocalWriteThrough? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -887,7 +885,6 @@ class SharedActivityStoreTest {
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
-            localWriteThrough = localWriteThrough,
             persistSlices = persistSlices,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope

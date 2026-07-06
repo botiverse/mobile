@@ -434,7 +434,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = ThrowingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { _, _ -> error("network failure should not parse") }
                 ),
             scope = scope
@@ -990,7 +989,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { _, _ -> DataResult.Content(networkHome) }
                 ),
             scope = scope,
@@ -1344,7 +1342,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
             scope = scope,
@@ -1383,7 +1380,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
             scope = scope,
@@ -1420,7 +1416,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
             scope = scope,
@@ -1458,7 +1453,6 @@ class SharedHomeStoreTest {
                 SharedHomeDataSource(
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = api,
-                    localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
             scope = scope,
@@ -2212,7 +2206,6 @@ class SharedHomeStoreTest {
             sessionStore = sessionStore,
             api = api,
             serverMembersStore = serverMembersStore,
-            localWriteThrough = localStore?.let { ComposeLocalWriteThrough(it, logger = logger) },
             parseHome = { _, _ -> DataResult.Content(snapshot) }
         )
 

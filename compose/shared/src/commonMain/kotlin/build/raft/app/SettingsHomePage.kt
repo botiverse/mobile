@@ -30,7 +30,6 @@ import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.slockDisabledActionBackgroundFor
 import build.raft.app.data.NetworkSlockHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.KeyValueRecompositionProfilerPreferenceStore
@@ -704,7 +703,6 @@ private data class HomeSecondaryRouteEnvironment(
     val bridge: build.raft.app.base.BridgeModule,
     val authStore: SlockAuthSessionStore,
     val networkClient: SlockNetworkClient,
-    val localWriteThrough: ComposeLocalWriteThrough,
     val serverMembersStore: SharedServerMembersStore,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
@@ -727,13 +725,6 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
     val authStore = sharedStores.authStore
     val networkClient = sharedStores.networkClient
-    val localWriteThrough =
-        remember(sharedStores.localDataStore, bridge) {
-            ComposeLocalWriteThrough(
-                sharedStores.localDataStore,
-                logger = slockLogger("SlockHomeSecondaryCache", "home_secondary_cache", SlockLogLevel.Debug)
-            )
-        }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -762,7 +753,6 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         bridge,
         authStore,
         networkClient,
-        localWriteThrough,
         settingsCapabilities,
         sharedStores.serverMembersStore,
         sharedStores.composerDraftPersistSlice,
@@ -780,7 +770,6 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             bridge = bridge,
             authStore = authStore,
             networkClient = networkClient,
-            localWriteThrough = localWriteThrough,
             serverMembersStore = sharedStores.serverMembersStore,
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,

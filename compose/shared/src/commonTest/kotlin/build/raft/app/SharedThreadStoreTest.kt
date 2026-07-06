@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ComposeLocalDataStore
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.AgentActivitySnapshot
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDmSnapshot
@@ -1089,7 +1088,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -1284,7 +1282,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -1347,7 +1344,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -1371,7 +1367,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val base =
@@ -1444,7 +1439,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val route =
             basePayload().copy(
@@ -1470,7 +1464,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val freshPayload = contentPayload("fresh memory body")
 
@@ -1529,7 +1522,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val payload =
             replyPayload(parentMessageId = "parent-1", threadId = "thread-parent-1")
@@ -1571,7 +1563,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -1608,7 +1599,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -1641,7 +1631,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val basePayload =
             basePayload().copy(
@@ -1699,7 +1688,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -1724,7 +1712,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -1748,7 +1735,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val localMessageId = "local-send-channel-1-1"
@@ -2410,7 +2396,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2455,7 +2440,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
 
@@ -2497,7 +2481,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2556,7 +2539,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         val gravatarSeed =
@@ -2596,7 +2578,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2617,7 +2598,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
 
         dataSource.fetchThreadPayload(basePayload())
@@ -2653,7 +2633,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
 
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
@@ -2722,7 +2701,6 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 memberRepository = memberRepository,
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
@@ -2868,7 +2846,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 conversationRepository = repository
             )
         val base =
@@ -3088,7 +3065,6 @@ class SharedThreadStoreTest {
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
             )
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3497,7 +3473,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 conversationRepository = repository
             )
 
@@ -4020,7 +3995,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 conversationRepository = repository
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -4064,7 +4038,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 conversationRepository = repository
             )
         dataSource.cachePayload(wrongReplyCachedPayload())
@@ -4396,7 +4369,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -4434,7 +4406,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = null
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -4543,7 +4514,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -4674,7 +4644,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(FailingThreadWriteStore(backingStore))
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -4711,7 +4680,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
@@ -5212,7 +5180,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5233,7 +5200,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5341,7 +5307,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
             )
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5463,7 +5428,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("saveable body"))
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -5488,7 +5452,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("reactable body"))
 
@@ -5509,7 +5472,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5533,7 +5495,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         dataSource.cachePayload(contentPayload("reactable body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -5580,7 +5541,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
@@ -5610,7 +5570,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(failChannelMessages = true),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val message =
             contentPayload("reactable body").messages.single().copy(
@@ -5750,7 +5709,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
 
         val result = dataSource.updateTaskStatus("task-1", TaskStatus.Done)
@@ -5982,7 +5940,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchThreadPayloadUsesVerifiedLocalReplyOriginBeforeParentContext() = runBlocking {
+    fun fetchThreadPayloadUsesParentContextRepositoryForReplyOrigin() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val localParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "local parent body")
         localStore.writeThread(
@@ -6027,76 +5985,6 @@ class SharedThreadStoreTest {
                 networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 conversationRepository = repository,
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
-            )
-        val base =
-            basePayload().copy(
-                title = ThreadReplyPageTitle,
-                sourceThreadId = "thread-m1",
-                streamChannelId = "thread-m1",
-                parentChannelId = "channel-1",
-                parentMessageId = "m1",
-                originParentMessageId = "m1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                showModeTabs = false,
-                originStatus = "loading"
-            )
-
-        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
-
-        assertEquals("local parent body", payload.originMessage?.body)
-        assertEquals("m1", payload.originParentMessageId)
-        assertEquals("loaded", payload.originStatus)
-        assertEquals(listOf("reply body"), payload.messages.map { it.body })
-        assertEquals(emptyList(), repository.getMessageContextRequests)
-    }
-
-    @Test
-    fun fetchThreadPayloadRejectsLocalReplyOriginWhenParentChannelDiffers() = runBlocking {
-        val localStore = InMemoryComposeLocalDataStore()
-        localStore.writeThread(
-            threadSnapshot(
-                threadId = "channel-1",
-                messages = listOf(message(threadId = "wrong-channel", channelId = "wrong-channel", id = "m1", seq = 1, body = "wrong local body")),
-                conversation = conversationSummary("channel-1")
-            )
-        )
-        val networkParent = message(threadId = "channel-1", id = "m1", seq = 1, body = "network parent body")
-        val repository =
-            FakeConversationRepository(
-                threadResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            threadId = "thread-m1",
-                            messages = emptyList(),
-                            conversation =
-                                conversationSummary("thread-m1").copy(
-                                    kind = ConversationKind.Thread,
-                                    channelId = ChannelId("thread-m1"),
-                                    thread =
-                                        ThreadConversation(
-                                            parentChannelId = ChannelId("channel-1"),
-                                            parentMessageId = MessageId("m1"),
-                                            streamChannelId = ChannelId("thread-m1")
-                                        )
-                                )
-                        )
-                    ),
-                messageContextResult =
-                    DataResult.Content(
-                        threadSnapshot(
-                            threadId = "channel-1",
-                            messages = listOf(networkParent),
-                            conversation = conversationSummary("channel-1")
-                        )
-                    )
-            )
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                conversationRepository = repository,
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val base =
             basePayload().copy(
@@ -6116,7 +6004,9 @@ class SharedThreadStoreTest {
         assertEquals("network parent body", payload.originMessage?.body)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("loaded", payload.originStatus)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
         assertEquals(listOf(MessageId("m1")), repository.getMessageContextRequests)
+        assertEquals(listOf<ChannelId?>(ChannelId("channel-1")), repository.getMessageContextChannelIdRequests)
     }
 
     @Test
@@ -6346,7 +6236,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 conversationRepository = repository
             )
         val base = contentPayload("parent body")
@@ -6383,7 +6272,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -6536,7 +6424,6 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = api,
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-                localWriteThrough = ComposeLocalWriteThrough(localStore)
             )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -7321,7 +7208,6 @@ class SharedThreadStoreTest {
         SharedThreadDataSource(
             networkApi = FakeThreadApi(failChannelMessages = true),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
-            localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
         )
 
     private fun sentPage(
