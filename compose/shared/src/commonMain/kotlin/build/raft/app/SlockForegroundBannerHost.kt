@@ -4,11 +4,14 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
+import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -31,12 +34,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.semantics.Role
-import com.tencent.kuikly.compose.ui.text.AnnotatedString
-import com.tencent.kuikly.compose.ui.text.SpanStyle
-import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -45,8 +44,9 @@ import com.tencent.kuikly.compose.ui.zIndex
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
 private const val ForegroundBannerZIndex = SlockFloatingOverlayHostZIndex + 10f
-private val ForegroundBannerIconTileSize = 28.dp
-private val ForegroundBannerIconGlyphSize = 13.dp
+private val ForegroundBannerAvatarSize = 30.dp
+private val ForegroundBannerTypeBadgeSize = 20.dp
+private val ForegroundBannerTypeGlyphSize = 11.dp
 
 internal fun slockForegroundBannerAutoDismissMs(): Long = ForegroundBannerAutoDismissMs
 
@@ -112,7 +112,7 @@ internal fun SlockForegroundMessageBannerView(
                     .fillMaxWidth()
                     .widthIn(max = 640.dp)
                     .align(Alignment.TopCenter)
-                    .height(86.dp)
+                    .height(62.dp)
         ) {
             Box(
                 modifier =
@@ -127,7 +127,7 @@ internal fun SlockForegroundMessageBannerView(
                         .matchParentSize()
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp),
+                        .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
@@ -137,7 +137,7 @@ internal fun SlockForegroundMessageBannerView(
                             .clickable(role = Role.Button, onClick = onClick),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockForegroundBannerIcon(banner)
+                    SlockForegroundBannerAvatar(banner)
                     Spacer(Modifier.width(10.dp))
                     SlockForegroundBannerText(banner, modifier = Modifier.weight(1f))
                 }
@@ -167,45 +167,52 @@ private fun SlockForegroundBannerText(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
-        Text(
-            text = banner.titleLine(),
-            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        banner.threadContext?.takeIf { it.isNotBlank() }?.let { threadContext ->
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                SlockLucideIcon(
-                    SlockLucideIconName.MessageSquare,
-                    modifier = Modifier.size(13.dp),
-                    color = "#FFFF4B9B"
-                )
-                Text(
-                    text = threadContext,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
+        SlockForegroundBannerTitleRow(banner)
         Text(
             text = banner.body,
             style =
                 SlockType.Caption
-                    .copy(fontSize = 12.sp, lineHeight = 15.sp, color = SlockColor.TextMutedGray)
+                    .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
                     .withSlockFontWeight(FontWeight.Medium),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+    }
+}
+
+@Composable
+private fun SlockForegroundBannerTitleRow(banner: SlockForegroundMessageBanner) {
+    val inlineContext = banner.inlineContextLabel()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = banner.title,
+            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (inlineContext.isNotBlank()) {
+            Spacer(Modifier.width(6.dp))
+            SlockForegroundBannerTypeBadge(banner)
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = inlineContext,
+                style =
+                    SlockType.ButtonBold
+                        .copy(fontSize = 13.sp, lineHeight = 17.sp, color = SlockColor.TextMutedGray)
+                        .withSlockFontWeight(FontWeight.Medium),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
@@ -280,6 +287,7 @@ internal fun slockForegroundMessageBannerProjection(
     val normalizedServerId = serverId.takeIf { it.isNotBlank() } ?: return null
     if (!currentServerId.isNullOrBlank() && currentServerId != normalizedServerId) return null
     if (!currentMemberId.isNullOrBlank() && message.author.id.value == currentMemberId) return null
+    if (message.messageType == MessageType.System || message.author.kind == MemberKind.System) return null
     val projection = message.resolveForegroundBannerProjection(conversationDirectory)
     val conversation = message.resolveForegroundBannerConversation(conversationDirectory) ?: return null
     if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) return null
@@ -307,26 +315,6 @@ internal fun slockForegroundMessageBannerProjection(
     )
 }
 
-private fun SlockForegroundMessageBanner.titleLine(): AnnotatedString =
-    buildAnnotatedString {
-        withStyle(slockSpanStyleForWeight(FontWeight.Bold)) {
-            append(title)
-        }
-        val inlineContext = inlineContextLabel()
-        if (inlineContext.isNotBlank()) {
-            append(" ")
-            withStyle(
-                SpanStyle(
-                    color = SlockColor.TextBlack.copy(alpha = 0.55f),
-                    fontFamily = slockFontFamilyForWeight(FontWeight.Medium),
-                    fontWeight = FontWeight.Normal
-                )
-            ) {
-                append(inlineContext)
-            }
-        }
-    }
-
 private fun SlockForegroundMessageBanner.inlineContextLabel(): String {
     if (iconKind == SlockForegroundMessageBannerIconKind.DirectMessage) return ""
     val parts = context.split(" - ").map { it.trim() }.filter { it.isNotBlank() }
@@ -351,27 +339,28 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerThread
 }
 
 @Composable
-private fun SlockForegroundBannerIcon(banner: SlockForegroundMessageBanner) {
-    if (banner.iconKind == SlockForegroundMessageBannerIconKind.DirectMessage) {
-        SlockAvatar(
-            avatarWireValue = banner.avatarWireValue,
-            label = banner.avatarLabel,
-            avatarSize = ForegroundBannerIconTileSize,
-            borderWidth = SlockStroke.Default
-        )
-        return
-    }
+private fun SlockForegroundBannerAvatar(banner: SlockForegroundMessageBanner) {
+    SlockAvatar(
+        avatarWireValue = banner.avatarWireValue,
+        label = banner.avatarLabel,
+        avatarSize = ForegroundBannerAvatarSize,
+        borderWidth = SlockStroke.Default
+    )
+}
+
+@Composable
+private fun SlockForegroundBannerTypeBadge(banner: SlockForegroundMessageBanner) {
     Box(
         modifier =
             Modifier
-                .size(ForegroundBannerIconTileSize)
+                .size(ForegroundBannerTypeBadgeSize)
                 .background(SlockColor.BrandYellow)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
             banner.iconName ?: SlockLucideIconName.Hash,
-            modifier = Modifier.size(ForegroundBannerIconGlyphSize),
+            modifier = Modifier.size(ForegroundBannerTypeGlyphSize),
             color = "#FF141111"
         )
     }
@@ -417,7 +406,6 @@ private fun Message.resolveForegroundBannerContext(
     val source =
         projection
             ?.toForegroundBannerSourceLabel(directory)
-            ?: fallbackForegroundBannerSourceLabel()
     val surface = projection?.toForegroundBannerSurfaceLabel() ?: fallbackForegroundBannerSurfaceLabel()
     return listOfNotNull(
         source,
@@ -431,17 +419,24 @@ private fun SharedConversationDirectoryProjection.toForegroundBannerSourceLabel(
 ): String? =
     when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage ->
-            title.takeIf { it.isNotBlank() }?.let { "@$it" }
+            safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId, peerMemberId.orEmpty()) + aliases)
+                ?.let { "@$it" }
         KuiklyThreadSurfaceKind.ReplyThread ->
             parentChannelId
                 ?.let(directory::resolve)
-                ?.title
-                ?.takeIf { it.isNotBlank() }
+                ?.safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
                 ?.let { "#$it" }
-                ?: title.takeIf { it.isNotBlank() }?.let { "#$it" }
+                ?: safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
+                    ?.let { "#$it" }
         else ->
-            title.takeIf { it.isNotBlank() }?.let { "#$it" }
+            safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId) + aliases)
+                ?.let { "#$it" }
     }
+
+private fun SharedConversationDirectoryProjection.safeForegroundBannerTitle(
+    identityIds: Set<String> = emptySet()
+): String? =
+    conversationSafeDisplayTitleOrNull(title, identityIds + canonicalChannelId + aliases)
 
 private fun SharedConversationDirectoryProjection.toForegroundBannerSurfaceLabel(): String? =
     when (surfaceKind) {
@@ -468,14 +463,6 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerIconNa
         this?.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> SlockLucideIconName.MessageSquare
         conversation.kind == ConversationKind.Thread -> SlockLucideIconName.MessageSquare
         else -> this?.channelKind.threadChannelHeaderIcon()
-    }
-
-private fun Message.fallbackForegroundBannerSourceLabel(): String =
-    when {
-        parentMessageId != null -> (channelId ?: threadChannelId)?.value?.let { "#$it" } ?: "#${threadId.value}"
-        channelId != null -> "#${channelId.value}"
-        threadChannelId != null -> "#${threadChannelId.value}"
-        else -> "#${threadId.value}"
     }
 
 private fun Message.fallbackForegroundBannerSurfaceLabel(): String? =
