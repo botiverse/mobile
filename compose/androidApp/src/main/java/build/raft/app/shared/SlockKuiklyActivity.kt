@@ -1198,6 +1198,8 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
             "SpaceGrotesk-Light", "space_grotesk_light" -> SlockFontSpec(R.font.space_grotesk_light, FontStyle.FONT_WEIGHT_LIGHT)
             "SpaceGrotesk-Variable", "space_grotesk_variable" -> SlockFontSpec(R.font.space_grotesk_variable, FontStyle.FONT_WEIGHT_NORMAL)
             "Space Grotesk", "space_grotesk" -> SlockFontSpec(R.font.space_grotesk, FontStyle.FONT_WEIGHT_NORMAL)
+            "SpaceMono-Regular", "space_mono_regular" -> SlockFontSpec(R.font.space_mono_regular, FontStyle.FONT_WEIGHT_NORMAL)
+            "SpaceMono-Bold", "space_mono_bold" -> SlockFontSpec(R.font.space_mono_bold, FontStyle.FONT_WEIGHT_BOLD)
             else -> null
         }
         return if (fontSpec != null) {

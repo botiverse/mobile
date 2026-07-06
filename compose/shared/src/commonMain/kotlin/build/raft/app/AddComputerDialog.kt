@@ -272,7 +272,7 @@ private fun AddComputerConnectedStep(
                         style = SlockType.Input.copy(
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = SlockMonoFamily,
                             color = SlockColor.TextMutedGray
                         ),
                         color = SlockColor.TextMutedGray,
@@ -371,7 +371,7 @@ private fun AddComputerCommandRow(
             Text(
                 command,
                 style = SlockType.Input.copy(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = SlockMonoFamily,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
                     color = SlockColor.AccentLime

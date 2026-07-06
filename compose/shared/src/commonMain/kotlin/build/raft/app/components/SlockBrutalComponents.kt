@@ -3,6 +3,7 @@ package build.raft.app.components
 import build.raft.app.Button as SlockAnchorButton
 import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
+import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIconName
 import build.raft.app.SlockMutableOffsetRef
 import build.raft.app.SlockShadow
@@ -826,7 +827,7 @@ private fun SegmentedControlItem(
             option.count?.takeIf { it > 0 }?.let { count ->
                 Text(
                     text = count.toString(),
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
                     color = SlockColor.TextBlack.copy(alpha = if (selected) 0.6f else 0.4f),
                     maxLines = 1
                 )
@@ -917,7 +918,7 @@ internal fun SlockToolbarChip(
                 count?.let {
                     Text(
                         text = it.toString(),
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
                         color = SlockColor.TextBlack,
                         modifier =
                             Modifier

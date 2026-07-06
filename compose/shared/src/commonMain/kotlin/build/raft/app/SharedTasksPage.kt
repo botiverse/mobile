@@ -1092,7 +1092,7 @@ private fun BoardSectionHeader(
         SharedTasksStatusLabel(status)
         Text(
             text = count.toString(),
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily),
             color = SlockColor.TextBlack.copy(alpha = 0.5f),
             maxLines = 1
         )
@@ -1180,7 +1180,7 @@ private fun SharedTaskCard(
                 task.taskNumber?.let { taskNumber ->
                     Text(
                         text = "#$taskNumber",
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.35f),
                         maxLines = 1
                     )

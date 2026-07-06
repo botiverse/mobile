@@ -115,7 +115,7 @@ internal fun SlockTopPageHeader(
                 subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.55f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -205,8 +205,12 @@ internal fun SlockCenteredLoading(
             Text(
                 text = message,
                 style = SlockType.Caption
-                    .copy(fontFamily = FontFamily.Monospace, fontSize = 14.sp, lineHeight = 18.sp)
-                    .withSlockFontWeight(FontWeight.SemiBold),
+                    .copy(
+                        fontFamily = slockMonoFamilyForWeight(FontWeight.SemiBold),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Normal
+                    ),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

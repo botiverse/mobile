@@ -793,14 +793,14 @@ private fun AuthDiagnosticsValue(label: String, value: String) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = label,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = value,
-            style = SlockType.Body.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            style = SlockType.Body.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
             color = SlockColor.TextBlack,
             modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
         )
@@ -812,14 +812,14 @@ private fun AuthDiagnosticsLogEntry(entry: SharedSettingsDiagnosticsEntry) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = "${entry.timestampLabel} ${entry.tag}",
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 14.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
             text = entry.message,
-            style = SlockType.Body.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+            style = SlockType.Body.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
             color = SlockColor.TextBlack,
             modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
         )

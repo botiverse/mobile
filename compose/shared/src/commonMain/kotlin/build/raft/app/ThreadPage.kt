@@ -2458,7 +2458,7 @@ private fun ThreadMessageVisualCard(
                             text = timestampLabel,
                             style =
                                 SlockType.Caption.copy(
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = SlockMonoFamily,
                                     color = SlockColor.TextBlack.copy(alpha = 0.4f)
                                 ),
                             color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -10898,8 +10898,8 @@ private fun ThreadDateDivider(label: String) {
 
 internal fun threadDateDividerTextStyle(): TextStyle =
     SlockType.Caption.copy(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
+        fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+        fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
         lineHeight = 14.sp,
         color = SlockColor.TextMutedGray,
@@ -12677,7 +12677,7 @@ private fun ThreadMessageTextSelectionDialog(
                 contentAlignment = Alignment.TopStart,
                 textStyle =
                     SlockType.Body.copy(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = SlockMonoFamily,
                         fontSize = 16.sp,
                         lineHeight = 24.sp,
                         color = SlockColor.TextBlack
@@ -13039,7 +13039,7 @@ private fun ThreadMessageAuthorSubtitle(description: String, modifier: Modifier 
         text = description,
         style =
             SlockType.Caption.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = SlockMonoFamily,
                 color = SlockColor.TextBlack.copy(alpha = 0.4f)
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -13055,7 +13055,7 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
         text = timestampLabel,
         style =
             SlockType.Caption.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = SlockMonoFamily,
                 color = SlockColor.TextBlack.copy(alpha = 0.4f)
             ),
         color = SlockColor.TextBlack.copy(alpha = 0.4f),
@@ -13109,7 +13109,7 @@ private fun ThreadMessageAvatarSlot(
                     text = timestampLabel,
                     style =
                         SlockType.Caption.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = SlockMonoFamily,
                             fontSize = 11.sp,
                             lineHeight = 14.sp,
                             color = SlockColor.TextBlack.copy(alpha = 0.38f)
@@ -13854,7 +13854,7 @@ private fun ThreadAttachmentCommentRow(
             comment.createdAt.takeIf { it.isNotBlank() }?.let { createdAt ->
                 Text(
                     text = createdAt,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, color = SlockColor.TextMutedGray),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -14143,8 +14143,12 @@ private fun ThreadShareSelectionToolbar(
         ) {
             Text(
                 text = selectedCount.toString(),
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
+                style = SlockType.Caption.copy(
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Normal
+                ),
                 color = SlockColor.TextBlack.copy(alpha = 0.70f),
                 maxLines = 1
             )
