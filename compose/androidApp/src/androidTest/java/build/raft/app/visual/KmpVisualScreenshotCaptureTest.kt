@@ -103,6 +103,10 @@ class KmpVisualScreenshotCaptureTest {
     // flaky short-window run, NOT a regression.
     private var lastCaptureClampedToShortWindow = false
 
+    private var lastCaptureMethod: String? = null
+    private var lastCaptureRouteWarmUp = false
+    private var lastCaptureLaunchMethod = VisualLaunchMethod.ACTIVITY_SCENARIO.metadataValue
+
 
     @Test
     fun captureTokenPalette() {
@@ -915,7 +919,9 @@ class KmpVisualScreenshotCaptureTest {
     fun captureMembersAgentDetailProfileScreen() {
         captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.profile",
-            tab = "profile"
+            tab = "profile",
+            warmUpRouteLaunch = true,
+            launchMethod = VisualLaunchMethod.DIRECT_ACTIVITY_NO_IDLE
         )
     }
 
@@ -976,19 +982,32 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun captureMembersAgentDetailScreen(
         caseId: String,
-        tab: String
+        tab: String,
+        warmUpRouteLaunch: Boolean = false,
+        launchMethod: VisualLaunchMethod = VisualLaunchMethod.ACTIVITY_SCENARIO
     ) {
-        captureKmpComponentCase(
-            caseId = caseId,
-            pageName = "compose_member_detail",
-            pageData = memberDetailVisualPageData(
+        val pageData =
+            memberDetailVisualPageData(
                 instanceId = "visual-members-agent-$tab",
                 memberId = "agent-product-ux",
                 memberKind = "agent",
                 initialAgentTab = tab
-            ),
+            )
+        if (warmUpRouteLaunch) {
+            warmUpKmpRouteLaunch(
+                pageName = "compose_member_detail",
+                pageData = pageData,
+                settleMs = 1_500
+            )
+        }
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_member_detail",
+            pageData = pageData,
             crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
+            settleMs = 2_500,
+            routeWarmUp = warmUpRouteLaunch,
+            launchMethod = launchMethod
         )
     }
 
@@ -1381,6 +1400,8 @@ class KmpVisualScreenshotCaptureTest {
             Thread.sleep(2_500)
             onActivityNoIdle { suppressVisualKeyboard(it) }
             waitForIdleBounded()
+            lastCaptureRouteWarmUp = false
+            lastCaptureLaunchMethod = VisualLaunchMethod.ACTIVITY_SCENARIO.metadataValue
             val normalized = captureStableVisualBitmap(context, caseId, crop)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
@@ -1415,7 +1436,9 @@ class KmpVisualScreenshotCaptureTest {
         pageData: JSONObject? = null,
         settleMs: Long = 1_500,
         requireReactionAtlas: Boolean = false,
-        beforeScreenshot: (() -> Unit)? = null
+        beforeScreenshot: (() -> Unit)? = null,
+        routeWarmUp: Boolean = false,
+        launchMethod: VisualLaunchMethod = VisualLaunchMethod.ACTIVITY_SCENARIO
     ) {
         currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -1424,8 +1447,9 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", pageName)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
-        try {
+        fun captureBody() {
+            lastCaptureRouteWarmUp = routeWarmUp
+            lastCaptureLaunchMethod = launchMethod.metadataValue
             onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
             Thread.sleep(settleMs)
@@ -1455,8 +1479,80 @@ class KmpVisualScreenshotCaptureTest {
             mirrorFileForAdbPull(context, imageFile)
             mirrorFileForAdbPull(context, metadataFile)
             normalized.recycle()
+        }
+        if (launchMethod == VisualLaunchMethod.DIRECT_ACTIVITY_NO_IDLE) {
+            startKmpActivityNoIdle(context, intent)
+            try {
+                captureBody()
+            } finally {
+                finishCurrentKmpActivityBounded()
+            }
+            return
+        }
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            captureBody()
         } finally {
             closeScenarioBounded(scenario)
+        }
+    }
+
+    private fun warmUpKmpRouteLaunch(
+        pageName: String,
+        pageData: JSONObject?,
+        settleMs: Long
+    ) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val intent =
+            Intent(context, SlockKuiklyActivity::class.java)
+                .putExtra("pageName", pageName)
+                .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
+                .putExtra("pageData", withVisualCaptureParams(pageData).toString())
+        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        try {
+            onActivityNoIdle { applyVisualFullscreen(it) }
+            waitForIdleBounded()
+            Thread.sleep(settleMs)
+            onActivityNoIdle { suppressVisualKeyboard(it) }
+            waitForIdleBounded()
+        } finally {
+            closeScenarioBounded(scenario)
+        }
+    }
+
+    private fun startKmpActivityNoIdle(context: Context, intent: Intent) {
+        finishCurrentKmpActivityBounded()
+        val launchIntent = Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(launchIntent)
+        waitForResumedKmpActivityBounded()
+    }
+
+    private fun waitForResumedKmpActivityBounded(maxMs: Long = DIRECT_LAUNCH_RESUMED_TIMEOUT_MS) {
+        val deadline = SystemClock.uptimeMillis() + maxMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            var resumed = false
+            runOnMainSyncBounded {
+                resumed =
+                    ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(Stage.RESUMED)
+                        .any { it is SlockKuiklyActivity }
+            }
+            if (resumed) return
+            Thread.sleep(100)
+        }
+        Log.w(VISUAL_LOG_TAG, "direct activity launch exceeded ${maxMs}ms waiting for RESUMED activity")
+    }
+
+    private fun finishCurrentKmpActivityBounded() {
+        try {
+            onActivityNoIdle { activity ->
+                if (activity is SlockKuiklyActivity) {
+                    activity.finish()
+                }
+            }
+            waitForIdleBounded(DIRECT_FINISH_IDLE_TIMEOUT_MS)
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "finishCurrentKmpActivityBounded failed: ${t.message}")
         }
     }
 
@@ -1578,6 +1674,37 @@ class KmpVisualScreenshotCaptureTest {
             }
     }
 
+    private fun captureUiAutomationFallbackBitmap(caseId: String, crop: VisualCrop): Bitmap? {
+        val screenshot =
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                ?: return null
+        val boundsProblem = cropBoundsProblem(screenshot, crop)
+        if (boundsProblem != null) {
+            Log.w(VISUAL_LOG_TAG, "$caseId UiAutomation fallback $boundsProblem")
+            screenshot.recycle()
+            return null
+        }
+        val cropped = screenshot.cropDp(crop)
+        val stats = cropped.visualStats()
+        val problems = visualValidationProblems(cropped, stats)
+        if (problems.isEmpty()) {
+            if (cropped !== screenshot) {
+                screenshot.recycle()
+            }
+            Log.i(VISUAL_LOG_TAG, "$caseId using UiAutomation screenshot after root-draw blank frame")
+            return cropped
+        }
+        Log.w(
+            VISUAL_LOG_TAG,
+            "$caseId UiAutomation fallback also failed validation: ${problems.joinToString("; ")}"
+        )
+        cropped.recycle()
+        if (cropped !== screenshot) {
+            screenshot.recycle()
+        }
+        return null
+    }
+
     private fun captureStableVisualBitmap(
         context: Context,
         caseId: String,
@@ -1585,6 +1712,7 @@ class KmpVisualScreenshotCaptureTest {
         requireReactionAtlas: Boolean = false
     ): Bitmap {
         lastCaptureClampedToShortWindow = false
+        lastCaptureMethod = crop.captureMethod
         if (requireReactionAtlas) {
             awaitReactionAtlasReady(caseId)
         }
@@ -1614,6 +1742,24 @@ class KmpVisualScreenshotCaptureTest {
             val normalized = cropped
             val stats = normalized.visualStats()
             val problems = visualValidationProblems(normalized, stats)
+            val uiAutomationFallback =
+                if (problems.isNotEmpty() && shouldTryUiAutomationFallback(stats)) {
+                    captureUiAutomationFallbackBitmap(caseId, crop)
+                } else {
+                    null
+                }
+            if (uiAutomationFallback != null) {
+                if (cropped !== screenshot && cropped !== normalized) {
+                    cropped.recycle()
+                }
+                if (screenshot !== normalized) {
+                    screenshot.recycle()
+                }
+                normalized.recycle()
+                lastBitmap?.recycle()
+                lastCaptureMethod = UI_AUTOMATION_CAPTURE_METHOD
+                return uiAutomationFallback
+            }
             if (problems.isEmpty()) {
                 if (cropped !== screenshot && cropped !== normalized) {
                     cropped.recycle()
@@ -1900,6 +2046,9 @@ class KmpVisualScreenshotCaptureTest {
         return problems
     }
 
+    private fun shouldTryUiAutomationFallback(stats: VisualBitmapStats): Boolean =
+        stats.uniqueColors <= 2 || stats.dominantRatio >= 0.985f
+
     private fun Bitmap.visualStats(): VisualBitmapStats {
         // Bounded sampling (task #370): a FULL_VIEWPORT frame is 1170x2532 ≈ 3M
         // pixels, and putting every one into a boxed HashMap<Int,Int> took
@@ -2026,9 +2175,11 @@ class KmpVisualScreenshotCaptureTest {
                 "rect": { "x": ${crop.leftDp}, "y": ${crop.topDp}, "width": ${crop.widthDp}, "height": ${crop.heightDp} }
               },
               "capture": {
-                "method": "$captureMethod",
+                "method": "${lastCaptureMethod ?: captureMethod}",
                 "fullscreen": true,
                 "systemBars": "hidden",
+                "launchMethod": "$lastCaptureLaunchMethod",
+                "routeWarmUp": $lastCaptureRouteWarmUp,
                 "validation": {
                   "uniqueColors": ${stats.uniqueColors},
                   "dominantRatio": ${stats.dominantRatio}
@@ -2190,7 +2341,15 @@ class KmpVisualScreenshotCaptureTest {
         val dominantRatio: Float
     )
 
+    private enum class VisualLaunchMethod(val metadataValue: String) {
+        ACTIVITY_SCENARIO("activity-scenario"),
+        DIRECT_ACTIVITY_NO_IDLE("direct-activity-no-idle")
+    }
+
     companion object {
+        private const val UI_AUTOMATION_CAPTURE_METHOD =
+            "ui-automation-take-screenshot-viewport-crop"
+
         private val FULL_VIEWPORT_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -2704,6 +2863,8 @@ class KmpVisualScreenshotCaptureTest {
         // Ceiling for ActivityScenario.close() teardown (its moveToState does an
         // unbounded waitForIdleSync). Normal close is sub-second.
         private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
+        private const val DIRECT_LAUNCH_RESUMED_TIMEOUT_MS = 8_000L
+        private const val DIRECT_FINISH_IDLE_TIMEOUT_MS = 1_000L
 
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
