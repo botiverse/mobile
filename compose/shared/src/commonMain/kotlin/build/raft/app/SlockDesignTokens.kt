@@ -13,6 +13,9 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 internal object SlockColor {
     val BrandYellow = Color(0xFFFFD440)
+    // Semantic alias for react `--color-soft-signal` (== brutal/brand yellow #FFD440),
+    // used for the self-mention chip highlight so callsites read intent, not hue.
+    val SoftSignal = BrandYellow
     val AccentPink = Color(0xFFFE7DA8)
     val AccentCyan = Color(0xFF27CCF3)
     val AccentOrange = Color(0xFFF8A16F)

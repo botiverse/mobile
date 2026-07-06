@@ -1633,52 +1633,48 @@ private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
             fontSize = SlockMarkdownTagFontSize
         )
 
+// Mention/ref visual styling mirrors react (packages/web/src/components/message/MentionLink.tsx):
+// every non-self reference — a normal @mention, a #channel, a channel-thread and a task
+// ref — renders as bold black text with a 2sp underline in black-at-30%-opacity offset
+// ~2sp below the baseline (react: `underline decoration-black/30 decoration-2
+// underline-offset-2`). Only the current-user self-mention gets the soft-signal chip
+// (react: `MSG_REF_CHIP bg-soft-signal`). A text SpanStyle can express the chip fill but
+// not react's 1px black border / px-1 padding / square corners, so the fill is the closest
+// platform match; a bordered inline chip would require a dedicated composable.
 internal fun slockMarkdownTagSpanStyle(
     kind: ThreadMarkdownTagKind,
     highlighted: Boolean = false,
     active: Boolean = false
 ): SpanStyle {
     if (active) {
-        return slockMarkdownTagBaseSpanStyle()
-            .copy(
-                color = SlockColor.TextBlack,
-                textDecoration = null,
-                background = SlockColor.BrandYellow
-            )
+        return slockMarkdownSelfMentionChipSpanStyle()
     }
-    return when (kind) {
-        ThreadMarkdownTagKind.UserMention ->
-            if (highlighted) {
-                slockMarkdownTagBaseSpanStyle()
-                    .copy(
-                        color = SlockColor.TextBlack,
-                        background = SlockColor.BrandYellow
-                    )
-            } else {
-                slockMarkdownTagBaseSpanStyle()
-                    .copy(
-                        color = SlockColor.TextBlack,
-                        textDecoration = TextDecoration.Underline,
-                        textDecorationColor = SlockMarkdownPlainMentionUnderlineColor,
-                        textDecorationThickness = SlockMarkdownPlainMentionUnderlineThickness,
-                        textDecorationOffset = SlockMarkdownPlainMentionUnderlineOffset,
-                        background = Color.Unspecified
-                    )
-            }
-        ThreadMarkdownTagKind.Task ->
-            slockMarkdownTagBaseSpanStyle()
-                .copy(
-                    color = SlockColor.TextBlack,
-                    background = slockMarkdownTagColor(kind, highlighted = highlighted)
-                )
-        else ->
-            slockMarkdownTagBaseSpanStyle()
-                .copy(
-                    color = SlockColor.TextBlack,
-                    background = slockMarkdownTagColor(kind, highlighted = highlighted)
-                )
+    val isSelfMention = kind == ThreadMarkdownTagKind.UserMention && highlighted
+    return if (isSelfMention) {
+        slockMarkdownSelfMentionChipSpanStyle()
+    } else {
+        slockMarkdownTagUnderlineSpanStyle()
     }
 }
+
+private fun slockMarkdownTagUnderlineSpanStyle(): SpanStyle =
+    slockMarkdownTagBaseSpanStyle()
+        .copy(
+            color = SlockColor.TextBlack,
+            textDecoration = TextDecoration.Underline,
+            textDecorationColor = SlockMarkdownPlainMentionUnderlineColor,
+            textDecorationThickness = SlockMarkdownPlainMentionUnderlineThickness,
+            textDecorationOffset = SlockMarkdownPlainMentionUnderlineOffset,
+            background = Color.Unspecified
+        )
+
+private fun slockMarkdownSelfMentionChipSpanStyle(): SpanStyle =
+    slockMarkdownTagBaseSpanStyle()
+        .copy(
+            color = SlockColor.TextBlack,
+            textDecoration = null,
+            background = SlockColor.SoftSignal
+        )
 
 internal fun slockMarkdownTagLinkStyles(
     kind: ThreadMarkdownTagKind,
