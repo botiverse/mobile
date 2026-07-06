@@ -23,6 +23,7 @@ import androidx.test.runner.lifecycle.Stage
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.BeforeClass
@@ -1362,6 +1363,56 @@ class KmpVisualScreenshotCaptureTest {
         }
     }
 
+    /**
+     * Launch the scenario with a wall-clock ceiling (task #370). This is the
+     * LAST unbounded idle-wait in the capture path: ActivityScenario.launch()
+     * blocks until the activity reaches RESUMED, and on a page that ANRs at
+     * first composition (member-detail LazyColumn never composes in headless →
+     * main wedges → "System UI isn't responding") that wait hangs ~100s, fully
+     * silent — the observed 76-146s member-case durations were spent HERE, not
+     * in runOnMainSync (#177's bound never tripped) nor the bounded capture
+     * loop. #364 bounded onActivity + close but left launch unbounded, so a
+     * wedged launch pushed lifecycle to 146s (4s from the 150s per-case backstop
+     * — a tail-drop tip-over on a slow runner). Run launch on a daemon thread
+     * and bound the join; on timeout throw so the case fast-fails cleanly
+     * (CASE_END status=FAIL) instead of hanging toward the backstop and dropping
+     * the shard tail. On success log the launch duration to confirm where the
+     * time goes. 45s cleanly separates a genuine ANR launch (100s+) from a
+     * merely slow-but-progressing launch on a degraded runner (seen ~15-25s).
+     */
+    private fun launchScenarioBounded(
+        intent: Intent,
+        maxMs: Long = SCENARIO_LAUNCH_TIMEOUT_MS
+    ): ActivityScenario<SlockKuiklyActivity> {
+        val start = SystemClock.uptimeMillis()
+        val scenarioRef = AtomicReference<ActivityScenario<SlockKuiklyActivity>?>(null)
+        val errorRef = AtomicReference<Throwable?>(null)
+        val launched = CountDownLatch(1)
+        Thread {
+            try {
+                scenarioRef.set(ActivityScenario.launch<SlockKuiklyActivity>(intent))
+            } catch (t: Throwable) {
+                errorRef.set(t)
+            } finally {
+                launched.countDown()
+            }
+        }.apply {
+            isDaemon = true
+            name = "visual-scenario-launch"
+        }.start()
+        if (!launched.await(maxMs, TimeUnit.MILLISECONDS)) {
+            throw AssertionError(
+                "ActivityScenario.launch exceeded ${maxMs}ms — activity never reached " +
+                    "RESUMED (likely ANR at first composition in headless capture)"
+            )
+        }
+        errorRef.get()?.let { throw it }
+        val scenario = scenarioRef.get()
+            ?: throw AssertionError("ActivityScenario.launch returned null")
+        Log.i(VISUAL_LOG_TAG, "ACTIVITY_LAUNCHED durationMs=${SystemClock.uptimeMillis() - start}")
+        return scenario
+    }
+
     private fun captureKmpHomeCase(
         caseId: String,
         pageData: JSONObject,
@@ -1374,7 +1425,7 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", SlockKuiklyActivity.PAGE_HOME)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = launchScenarioBounded(intent)
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
@@ -1424,7 +1475,7 @@ class KmpVisualScreenshotCaptureTest {
                 .putExtra("pageName", pageName)
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
                 .putExtra("pageData", withVisualCaptureParams(pageData).toString())
-        val scenario = ActivityScenario.launch<SlockKuiklyActivity>(intent)
+        val scenario = launchScenarioBounded(intent)
         try {
             onActivityNoIdle { applyVisualFullscreen(it) }
             waitForIdleBounded()
@@ -2672,6 +2723,14 @@ class KmpVisualScreenshotCaptureTest {
         // Ceiling for ActivityScenario.close() teardown (its moveToState does an
         // unbounded waitForIdleSync). Normal close is sub-second.
         private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
+
+        // Ceiling for ActivityScenario.launch() (task #370). launch() blocks
+        // until RESUMED via an unbounded idle-wait; a page that ANRs at first
+        // composition hangs it ~100s (silent). 45s separates a genuine ANR
+        // launch (100s+) from a slow-but-progressing launch on a degraded runner
+        // (~15-25s), and keeps a wedged case well under the 150s per-case
+        // backstop so it fast-fails instead of tipping into a tail-drop.
+        private const val SCENARIO_LAUNCH_TIMEOUT_MS = 45_000L
 
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
