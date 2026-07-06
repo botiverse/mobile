@@ -116,6 +116,7 @@ import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import io.quiver.update.QuiverDeviceId
 import io.quiver.update.QuiverFeedback
+import io.quiver.update.QuiverFeedbackException
 import io.quiver.update.internal.QuiverClient
 import io.quiver.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
@@ -2142,9 +2143,19 @@ internal class SlockKuiklyBridgeModule(
             return
         }
         if (action == "sendFeedback" || action == "submitFeedback") {
+            SlockDiagnosticsLogger.record(
+                    "SlockDiagnostics",
+                    "settings_capability_feedback_action action=$action hasMessage=${request.optString("message").isNotBlank()} " +
+                            "fileCount=${request.optJSONArray("files")?.length() ?: 0}"
+            )
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
-                callback?.invoke(submitFeedbackToQuiver(request.takeIf { action == "submitFeedback" }))
+                val result = submitFeedbackToQuiver(request.takeIf { action == "submitFeedback" })
+                SlockDiagnosticsLogger.record(
+                        "SlockDiagnostics",
+                        "settings_capability_feedback_result action=$action status=${result["status"]} code=${result["code"] ?: "-"}"
+                )
+                callback?.invoke(result)
             }
             return
         }
@@ -2982,9 +2993,17 @@ internal class SlockKuiklyBridgeModule(
      * created so the settings UI can confirm.
      */
     private suspend fun submitFeedbackToQuiver(request: JSONObject? = null): Map<String, Any> {
+        SlockDiagnosticsLogger.record(
+                "SlockDiagnostics",
+                "quiver_feedback_submit_enter source=${if (request != null) "shared" else "native_prompt"} " +
+                        "messageLength=${request?.optString("message")?.length ?: 0} " +
+                        "fileCount=${request?.optJSONArray("files")?.length() ?: 0}"
+        )
         val description = request?.optString("message")?.trim()?.takeIf { it.isNotBlank() }
             ?: promptFeedbackDescription()
-            ?: return mapOf("status" to "cancelled")
+            ?: return mapOf("status" to "cancelled").also {
+                SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submit_cancelled reason=blank_or_cancelled")
+            }
         val userFilesResult =
                 withContext(Dispatchers.IO) {
                     runCatching { request?.optJSONArray("files").toFeedbackAttachmentFiles() }
@@ -3003,11 +3022,17 @@ internal class SlockKuiklyBridgeModule(
                 }
         val diagnosticsFile =
                 if (userFiles.size < QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
-                    withContext(Dispatchers.IO) { writeDiagnosticsFeedbackFile().file }
+                    withContext(Dispatchers.IO) { prepareOptionalDiagnosticsFeedbackFile() }
                 } else {
                     null
                 }
         val attachments = (userFiles + listOfNotNull(diagnosticsFile)).take(QUIVER_FEEDBACK_MAX_ATTACHMENTS)
+        SlockDiagnosticsLogger.record(
+                "SlockDiagnostics",
+                "quiver_feedback_submit_prepared messageLength=${description.length} " +
+                        "userAttachmentCount=${userFiles.size} diagnosticsAttached=${diagnosticsFile != null} " +
+                        "attachmentCount=${attachments.size}"
+        )
         return runCatching {
             val ticketId = QuiverFeedback(
                     context = appContext,
@@ -3044,7 +3069,7 @@ internal class SlockKuiklyBridgeModule(
             }
             mapOf<String, Any>(
                     "status" to "error",
-                    "code" to "settings_feedback_submit_failed",
+                    "code" to quiverFeedbackSubmitErrorCode(it),
                     "message" to (it.message ?: "feedback submission failed"),
             )
         }
@@ -3092,6 +3117,41 @@ internal class SlockKuiklyBridgeModule(
                 summary = "settings_feedback"
         )
         return DiagnosticsFeedbackFile(file = archive, summaryText = summaryText)
+    }
+
+    private fun prepareOptionalDiagnosticsFeedbackFile(): File? {
+        return runCatching { writeDiagnosticsFeedbackFile().file }
+                .getOrElse { throwable ->
+                    SlockDiagnosticsLogger.record(
+                            "SlockDiagnostics",
+                            "quiver_feedback_diagnostics_prepare_skipped error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                    )
+                    null
+                }
+                ?.takeIf { file ->
+                    val fits = file.length() in 1..QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES
+                    if (!fits) {
+                        SlockDiagnosticsLogger.record(
+                                "SlockDiagnostics",
+                                "quiver_feedback_diagnostics_attachment_skipped bytes=${file.length()} max=$QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES"
+                        )
+                    }
+                    fits
+                }
+    }
+
+    private fun quiverFeedbackSubmitErrorCode(throwable: Throwable): String {
+        val httpCode = (throwable as? QuiverFeedbackException)?.code
+        return when {
+            httpCode == 401 || httpCode == 403 -> "settings_feedback_auth_failed"
+            httpCode == 429 -> "settings_feedback_rate_limited"
+            httpCode == 413 -> "settings_feedback_attachment_too_large"
+            httpCode == 400 && "too large" in throwable.message.orEmpty().lowercase(Locale.US) ->
+                "settings_feedback_attachment_too_large"
+            httpCode in 500..599 -> "settings_feedback_server_unavailable"
+            throwable is IOException -> "settings_feedback_network_failed"
+            else -> "settings_feedback_submit_failed"
+        }
     }
 
     private fun JSONArray?.toFeedbackAttachmentFiles(): List<File> {
@@ -3160,7 +3220,7 @@ internal class SlockKuiklyBridgeModule(
     ): File {
         if (bytes.isEmpty()) throw IOException("Feedback attachment is empty")
         if (bytes.size > QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES) {
-            throw IOException("Feedback attachment exceeds 200 MB")
+            throw IOException("Feedback attachment exceeds 10 MB")
         }
         val cacheDir = File(appContext.cacheDir, QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME).apply { mkdirs() }
         cleanupQuiverFeedbackAttachmentCache(cacheDir)
@@ -3890,8 +3950,8 @@ internal class SlockKuiklyBridgeModule(
         private const val ATTACHMENT_CACHE_DIR_NAME = "slock-attachments"
         private const val THREAD_SHARE_IMAGE_CACHE_DIR_NAME = "slock-share-images"
         private const val THREAD_SHARE_IMAGE_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 9
-        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 200L * 1024L * 1024L
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3
+        private const val QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10L * 1024L * 1024L
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_DIR_NAME = "quiver-feedback-attachments"
         private const val QUIVER_FEEDBACK_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
         private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"

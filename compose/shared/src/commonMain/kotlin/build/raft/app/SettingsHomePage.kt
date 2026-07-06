@@ -8177,15 +8177,15 @@ private fun SharedQuiverFeedbackContent(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var submission by remember { mutableStateOf<SettingsQuiverFeedbackSubmission?>(null) }
-    val attachmentLimit = 9
-    val attachmentMaxBytes = 200L * 1024L * 1024L
+    val attachmentLimit = 3
+    val attachmentMaxBytes = 10L * 1024L * 1024L
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
 
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "最多 9 个附件。"
+            error = "Quiver 一次最多上传 3 个附件。"
             return
         }
         busy = true
@@ -8201,8 +8201,8 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Quiver 单个附件最大 200 MB，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Quiver 一次最多上传 9 个附件，已保留前 9 个。"
+                        rejectedCount > 0 -> "Quiver 单个附件最大 10 MB，已跳过超限文件。"
+                        accepted.size > remainingSlots -> "Quiver 一次最多上传 3 个附件，已保留前 3 个。"
                         else -> null
                     }
                 }
@@ -8215,27 +8215,63 @@ private fun SharedQuiverFeedbackContent(
     }
 
     fun submitFeedback() {
-        if (busy) return
+        settingsCapabilities.log(
+            "settings_quiver_feedback_submit_click busy=$busy " +
+                "messageLength=${message.length} trimmedLength=${normalizedMessage.length} " +
+                "attachmentCount=${attachments.size}"
+        )
+        if (busy) {
+            settingsCapabilities.log("settings_quiver_feedback_submit_ignored reason=busy")
+            return
+        }
         if (normalizedMessage.isBlank()) {
+            settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
             error = "Message is required."
             submission = null
             return
         }
+        settingsCapabilities.log("settings_quiver_feedback_submit_enter")
         busy = true
         error = null
         submission = null
         scope.launch {
-            when (val result = settingsCapabilities.submitQuiverFeedback(normalizedMessage, attachments.take(attachmentLimit))) {
-                is DataResult.Content -> {
-                    submission = result.data
-                    messageFieldValue = TextFieldValue("")
-                    attachments = emptyList()
+            try {
+                when (val result = settingsCapabilities.submitQuiverFeedback(normalizedMessage, attachments.take(attachmentLimit))) {
+                    is DataResult.Content -> {
+                        settingsCapabilities.log(
+                            "settings_quiver_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
+                        )
+                        submission = result.data
+                        messageFieldValue = TextFieldValue("")
+                        attachments = emptyList()
+                    }
+                    is DataResult.Empty -> {
+                        settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
+                        error = "settings_feedback_submit_unavailable"
+                    }
+                    is DataResult.Error -> {
+                        settingsCapabilities.log(
+                            "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
+                        )
+                        error = result.error.code
+                    }
+                    is DataResult.NoPermission -> {
+                        settingsCapabilities.log(
+                            "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
+                        )
+                        error = result.blocker.code
+                    }
                 }
-                is DataResult.Empty -> error = "settings_feedback_submit_unavailable"
-                is DataResult.Error -> error = result.error.code
-                is DataResult.NoPermission -> error = result.blocker.code
+            } catch (throwable: Throwable) {
+                settingsCapabilities.log(
+                    "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
+                        "message=${throwable.message.orEmpty()}"
+                )
+                error = "settings_feedback_submit_failed"
+            } finally {
+                settingsCapabilities.log("settings_quiver_feedback_submit_finished")
+                busy = false
             }
-            busy = false
         }
     }
 
@@ -8284,7 +8320,7 @@ private fun SharedQuiverFeedbackContent(
         }
         item {
             SettingsFormSectionCard(iconName = SlockLucideIconName.Paperclip, title = "Attachments") {
-                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 200 MB per file")
+                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 10 MB per file")
                 if (attachments.isEmpty()) {
                     SettingsFormEmptyText("No attachments selected.")
                 } else {
@@ -8301,7 +8337,10 @@ private fun SharedQuiverFeedbackContent(
         item {
             SlockBrutalActionButton(
                 label = if (busy) "Sending" else "Send feedback",
-                onClick = ::submitFeedback,
+                onClick = {
+                    settingsCapabilities.log("settings_quiver_feedback_button_on_click")
+                    submitFeedback()
+                },
                 enabled = !busy,
                 leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
                 backgroundColor = SlockColor.BrandYellow,

@@ -38,6 +38,10 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
+    fun log(message: String) {
+        bridge.log(message)
+    }
+
     suspend fun startMobileOAuthAccountLink(providerId: String): DataResult<Unit> {
         val response =
             settingsCapability(
@@ -262,6 +266,7 @@ internal class BridgeSettingsPlatformCapabilities(
             "settings_quiver_feedback_submit_start messageLength=${message.length} " +
                 "attachmentCount=${attachments.size}"
         )
+        bridge.log("settings_quiver_feedback_bridge_request_prepared")
         val response =
             settingsCapability(
                 JSONObject()

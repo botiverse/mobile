@@ -82,6 +82,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+  static readonly QUIVER_FEEDBACK_MAX_ATTACHMENTS = 3;
+  static readonly QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
   syncMode(): boolean {
     return false;
@@ -727,16 +729,22 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return { "status": "error", "code": "settings_feedback_message_required", "message": "Feedback message is required" };
       }
       const context = getContext(this) as common.UIAbilityContext;
-      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 9);
-      const attachmentPaths = userAttachmentPaths.slice(0, 9);
-      if (attachmentPaths.length < 9) {
-        attachmentPaths.push(await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context));
+      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"])
+        .slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+      const attachmentPaths = userAttachmentPaths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+      if (attachmentPaths.length < KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
+        const archivePath = await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context);
+        if (this.feedbackAttachmentFits(archivePath)) {
+          attachmentPaths.push(archivePath);
+        } else {
+          SlockOhosDiagnostics.record("Settings", `quiver_feedback_diagnostics_attachment_skipped path=${archivePath}`);
+        }
       }
       const ticketId = await QuiverFeedbackClient.submit(
         context,
         message,
         'bug',
-        attachmentPaths.slice(0, 9),
+        attachmentPaths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS),
         [],
       );
       const shortId = ticketId.slice(0, 8);
@@ -759,10 +767,21 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     (value as Array<Record<string, Object>>).forEach((file: Record<string, Object>) => {
       const fileRef = (file["fileRef"] as string | undefined) ?? "";
       if (fileRef.length > 0) {
-        paths.push(fileRef);
+        if (this.feedbackAttachmentFits(fileRef)) {
+          paths.push(fileRef);
+        }
       }
     });
-    return paths;
+    return paths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
+  }
+
+  private feedbackAttachmentFits(path: string): boolean {
+    try {
+      const stat = fs.statSync(path);
+      return stat.isFile() && stat.size > 0 && stat.size <= KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES;
+    } catch (_error) {
+      return false;
+    }
   }
 
   private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {
