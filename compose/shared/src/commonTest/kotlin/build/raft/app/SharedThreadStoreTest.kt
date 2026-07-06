@@ -1174,6 +1174,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startAndInitialContentDoNotBlockOnHomeSnapshotFallback() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val homeRequested = CompletableDeferred<Unit>()
+        val releaseHome = CompletableDeferred<Unit>()
+        val channelRepository =
+            FakeChannelRepository { _ ->
+                homeRequested.complete(Unit)
+                releaseHome.await()
+                DataResult.Content(emptyHomeSnapshot())
+            }
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                channelRepository = channelRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+
+        withTimeout(1_000) {
+            while (store.state.value.payload.messages.firstOrNull()?.body != "network body") {
+                delay(1)
+            }
+        }
+        assertTrue(homeRequested.isCompleted)
+        releaseHome.complete(Unit)
+        scope.cancel()
+    }
+
+    @Test
     fun startAndPagingUseConfiguredThreadPageSize() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -6881,10 +6913,13 @@ class SharedThreadStoreTest {
         }
     }
 
-    private class FakeChannelRepository : ChannelRepository {
+    private class FakeChannelRepository(
+        private val homeResult: (suspend (ServerId) -> DataResult<HomeSnapshot>)? = null
+    ) : ChannelRepository {
         val createRequests: MutableList<CreateChannelRequest> = mutableListOf()
 
-        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> = error("unused")
+        override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
+            homeResult?.invoke(serverId) ?: error("unused")
         override suspend fun getChannels(serverId: ServerId): DataResult<ChannelSnapshot> = error("unused")
         override suspend fun getDirectMessages(serverId: ServerId): DataResult<DirectMessageSnapshot> = error("unused")
         override suspend fun openAgentDirectMessage(agentId: MemberId): DataResult<OpenDirectMessageResult> = error("unused")
@@ -7413,6 +7448,15 @@ class SharedThreadStoreTest {
         SharedThreadDataSource(
             networkApi = FakeThreadApi(failChannelMessages = true),
             sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        )
+
+    private fun emptyHomeSnapshot(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+            currentMember = member("u1", "Artin"),
+            channels = emptyList(),
+            directMessages = emptyList(),
+            unreadTotal = 0
         )
 
     private fun sentPage(
