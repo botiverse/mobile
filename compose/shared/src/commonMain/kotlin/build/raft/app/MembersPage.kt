@@ -2073,7 +2073,8 @@ private fun MemberDetailVisualSeedContent(
         initialVisualMode = visualMode,
         initialAgentTab = initialAgentTab,
         agentPanelTabOrder = payload.agentPanelTabOrder,
-        initialAgentScopeSet = seed.agentScopeSet
+        initialAgentScopeSet = seed.agentScopeSet,
+        stableVisualCapture = true
     )
 }
 
@@ -2168,7 +2169,8 @@ internal fun MembersAgentDetailVisualContent() {
             nowEpochMillis = 1781872200000,
             timeFormat = SlockTimeFormat24Hour
         ),
-        initialVisualMode = visualMode
+        initialVisualMode = visualMode,
+        stableVisualCapture = true
     )
 }
 
@@ -2864,7 +2866,8 @@ private fun MembersDetailContent(
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
     agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null,
-    initialAgentScopeSet: AgentScopeSet? = null
+    initialAgentScopeSet: AgentScopeSet? = null,
+    stableVisualCapture: Boolean = false
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -3220,7 +3223,8 @@ private fun MembersDetailContent(
                     tabs = visibleTabs,
                     selectedTab = selectedTab,
                     onSelectedTabChange = { selectedTabOverride = it },
-                    onReorderTabs = onAgentPanelTabOrderChange
+                    onReorderTabs = onAgentPanelTabOrderChange,
+                    autoScrollSelectedTab = !stableVisualCapture
                 )
             }
             if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
@@ -3230,6 +3234,7 @@ private fun MembersDetailContent(
                     onCopyDiagnostics = { copyDiagnostics() },
                     timeContext = timeContext,
                     onOpenUrl = onOpenUrl,
+                    autoScrollToLatest = !stableVisualCapture,
                     stateNotice = {
                         MembersAgentDetailStateNotice(
                             state = agentDetailState,
@@ -4071,15 +4076,18 @@ private fun MembersAgentTabBar(
     selectedTab: MembersAgentDetailTab,
     onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
     onReorderTabs: ((List<MembersAgentDetailTab>) -> Unit)? = null,
+    autoScrollSelectedTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     var draggedTab by remember(tabs) { mutableStateOf<MembersAgentDetailTab?>(null) }
     var dragStartIndex by remember(tabs) { mutableStateOf(-1) }
     var dragOffsetX by remember(tabs) { mutableStateOf(0f) }
-    LaunchedEffect(tabs, selectedTab) {
-        if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
-            listState.animateScrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
+    if (autoScrollSelectedTab) {
+        LaunchedEffect(tabs, selectedTab) {
+            if (tabs.isNotEmpty() && !listState.isScrollInProgress) {
+                listState.animateScrollToItem(membersAgentTabVisibleAnchorIndex(tabs, selectedTab))
+            }
         }
     }
     Column(
@@ -7365,6 +7373,7 @@ private fun MembersAgentActivityTab(
     timeContext: SlockTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
+    autoScrollToLatest: Boolean = true,
     stateNotice: (@Composable () -> Unit)? = null
 ) {
     val copySucceeded =
@@ -7415,28 +7424,32 @@ private fun MembersAgentActivityTab(
                     .weight(1f)
             )
         } else {
-            val listState = rememberLazyListState()
+            val initialActivityIndex =
+                if (autoScrollToLatest) 0 else rows.lastIndex.coerceAtLeast(0)
+            val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialActivityIndex)
             var allowBottomAnchor by remember(detail?.agentId) { mutableStateOf(true) }
-            LaunchedEffect(detail?.agentId, rows.size) {
-                snapshotFlow {
-                    listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
-                }
-                    .distinctUntilChanged()
-                    .collect { (isScrollInProgress, isAtBottom) ->
-                        val nextAllow =
-                            when {
-                                isScrollInProgress && !isAtBottom -> false
-                                isAtBottom -> true
-                                else -> allowBottomAnchor
-                            }
-                        if (allowBottomAnchor != nextAllow) {
-                            allowBottomAnchor = nextAllow
-                        }
+            if (autoScrollToLatest) {
+                LaunchedEffect(detail?.agentId, rows.size) {
+                    snapshotFlow {
+                        listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
                     }
-            }
-            LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
-                if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
-                    listState.scrollToItem(rows.lastIndex)
+                        .distinctUntilChanged()
+                        .collect { (isScrollInProgress, isAtBottom) ->
+                            val nextAllow =
+                                when {
+                                    isScrollInProgress && !isAtBottom -> false
+                                    isAtBottom -> true
+                                    else -> allowBottomAnchor
+                                }
+                            if (allowBottomAnchor != nextAllow) {
+                                allowBottomAnchor = nextAllow
+                            }
+                        }
+                }
+                LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
+                    if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
+                        listState.scrollToItem(rows.lastIndex)
+                    }
                 }
             }
             LazyColumn(
