@@ -106,6 +106,7 @@ jobs:
       version_patch: ${{ steps.p.outputs.version_patch }}
       version_build: ${{ steps.p.outputs.version_build }}
       version_suffix: ${{ steps.p.outputs.version_suffix }}
+      version_name: ${{ steps.p.outputs.version_name }}
       quiver_channel: ${{ steps.p.outputs.quiver_channel }}
       android_variant: ${{ steps.p.outputs.android_variant }}
       release_mode: ${{ steps.p.outputs.release_mode }}
@@ -118,18 +119,28 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Tag: v<major>.<minor>.<patch>[-<suffix>]
-            RAW="${GITHUB_REF_NAME#v}"
+            # Optional advanced entry: a pushed tag. Narrow format only —
+            # v<major>.<minor>.<patch>[-<suffix>] — fail fast otherwise so a
+            # malformed tag never silently builds a wrong version.
+            TAG="${GITHUB_REF_NAME}"
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+              echo "::error::Tag '$TAG' is not a release tag. Expected vX.Y.Z or vX.Y.Z-suffix (e.g. v1.0.4, v1.0.4-rc1)." >&2
+              exit 1
+            fi
+            RAW="${TAG#v}"
             CORE="${RAW%%-*}"
             SUFFIX=""
             if [ "$RAW" != "$CORE" ]; then SUFFIX="${RAW#*-}"; fi
             IFS='.' read -r MAJ MIN PAT <<< "$CORE"
+            VERSION_NAME="${MAJ}.${MIN}.${PAT}"
+            [ -n "$SUFFIX" ] && VERSION_NAME="${VERSION_NAME}-${SUFFIX}"
             {
               echo "version_major=${MAJ:-1}"
               echo "version_minor=${MIN:-0}"
               echo "version_patch=${PAT:-0}"
               echo "version_build=0"
               echo "version_suffix=${SUFFIX}"
+              echo "version_name=${VERSION_NAME}"
               echo "quiver_channel=main"
               echo "android_variant=release"
               echo "release_mode=draft"
@@ -138,12 +149,15 @@ jobs:
               echo "share_ttl_seconds=604800"
             } >> "$GITHUB_OUTPUT"
           else
+            VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
+            [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
             {
               echo "version_major=${{ inputs.version_major }}"
               echo "version_minor=${{ inputs.version_minor }}"
               echo "version_patch=${{ inputs.version_patch }}"
               echo "version_build=${{ inputs.version_build }}"
               echo "version_suffix=${{ inputs.version_suffix }}"
+              echo "version_name=${VERSION_NAME}"
               echo "quiver_channel=${{ inputs.quiver_channel }}"
               echo "android_variant=${{ inputs.android_variant }}"
               echo "release_mode=${{ inputs.release_mode }}"
@@ -516,3 +530,42 @@ jobs:
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  tag_release:
+    name: Tag release record
+    runs-on: ubuntu-22.04
+    needs: [resolve, build_android_release, publish_quiver]
+    # Main link is workflow_dispatch → build → draft → *then* record a tag so
+    # git history and GitHub Releases line up with what shipped. Only on a
+    # dispatch that actually published (skip dry-runs and tag-triggered runs,
+    # which already came from a tag). The tag is pushed with GITHUB_TOKEN,
+    # which by design does NOT trigger another workflow run — so this is a
+    # record, not the two-stage "CI pushes tag to trigger CI" anti-pattern.
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      needs.resolve.outputs.publish_quiver == 'true' &&
+      needs.publish_quiver.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create and push release tag
+        shell: bash
+        env:
+          VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION_NAME}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on origin; leaving it untouched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${VERSION_NAME} (published via Quiver)"
+          git push origin "${TAG}"
+          echo "Pushed ${TAG} at ${GITHUB_SHA}. (GITHUB_TOKEN push — does not re-trigger the release workflow.)"
