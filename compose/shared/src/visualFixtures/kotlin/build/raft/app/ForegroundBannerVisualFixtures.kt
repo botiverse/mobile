@@ -33,7 +33,7 @@ internal fun ForegroundBannerVisualContent() {
                             kind = ConversationKind.Channel
                         ),
                     title = "Cindy",
-                    context = "#visual-testing - now",
+                    context = "#visual-testing",
                     threadContext = null,
                     body = "Updated the capture manifest and fixture seed.",
                     iconKind = SlockForegroundMessageBannerIconKind.Channel,
@@ -64,7 +64,7 @@ internal fun ForegroundBannerVisualContent() {
                             kind = ConversationKind.Thread
                         ),
                     title = "JingKe",
-                    context = "#native - thread - now",
+                    context = "#native - thread",
                     threadContext = "Retry Quiver OHPM publish after package-group auth",
                     body = "HAR ref bump is ready; waiting on device validation.",
                     iconKind = SlockForegroundMessageBannerIconKind.Channel,
@@ -87,7 +87,7 @@ internal fun ForegroundBannerVisualContent() {
                             kind = ConversationKind.DirectMessage
                         ),
                     title = "artin",
-                    context = "@artin - direct message - now",
+                    context = "@artin - direct message",
                     threadContext = null,
                     body = "Can you check this connected test result?",
                     iconKind = SlockForegroundMessageBannerIconKind.DirectMessage,
@@ -95,7 +95,7 @@ internal fun ForegroundBannerVisualContent() {
                     avatarWireValue = "pixel:robot",
                     avatarLabel = "AR"
                 ),
-            topSafeArea = 162.dp,
+            topSafeArea = 188.dp,
             onClick = {}
         )
     }
