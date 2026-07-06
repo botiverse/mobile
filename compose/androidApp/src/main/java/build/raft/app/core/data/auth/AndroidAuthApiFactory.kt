@@ -4,7 +4,7 @@ import android.content.Context
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockAuthTransport
-import build.raft.app.data.SharedKtorSlockAuthTransport
+import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SLOCK_API_BASE_URL
 
 object AndroidAuthApiFactory {
@@ -17,7 +17,7 @@ object AndroidAuthApiFactory {
         AndroidApiServerEnvironmentStore(context).current().socketBaseUrl
 
     fun createAuthTransport(baseUrl: String = BASE_URL): SlockAuthTransport =
-        SharedKtorSlockAuthTransport(baseUrl)
+        SharedSlockAuthTransport(baseUrl)
 
     fun createAuthTransport(context: Context): SlockAuthTransport =
         createAuthTransport(currentBaseUrl(context))

@@ -11,7 +11,7 @@ import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthTokenProvider
-import build.raft.app.data.SharedKtorSlockAuthTransport
+import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockHostNetworkNotifyContract
 import build.raft.app.data.postAndroidAppScopeEvent
@@ -516,7 +516,7 @@ internal object AndroidAppScopeRealtimeOwner {
             sessionStore = sessionStore,
             authApi =
                 SlockAuthApiClient(
-                    SharedKtorSlockAuthTransport(
+                    SharedSlockAuthTransport(
                         baseUrl = apiBaseUrl,
                         warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
                     )

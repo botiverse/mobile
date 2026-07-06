@@ -21,9 +21,9 @@ data class JsonConfig(
     val ignoreUnknownKeys: Boolean = true
 )
 
-internal fun JsonConfig.toKtorJson(): Json =
+internal fun JsonConfig.toKotlinxJson(): Json =
     Json {
-        prettyPrint = this@toKtorJson.prettyPrint
-        isLenient = this@toKtorJson.isLenient
-        ignoreUnknownKeys = this@toKtorJson.ignoreUnknownKeys
+        prettyPrint = this@toKotlinxJson.prettyPrint
+        isLenient = this@toKotlinxJson.isLenient
+        ignoreUnknownKeys = this@toKotlinxJson.ignoreUnknownKeys
     }

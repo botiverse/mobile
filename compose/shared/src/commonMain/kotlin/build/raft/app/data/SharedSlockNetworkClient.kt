@@ -14,7 +14,7 @@ import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import kotlin.time.TimeSource
 
-internal class SharedKtorSlockNetworkClient(
+internal class SharedSlockNetworkClient(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = SLOCK_API_BASE_URL,
     private val warningLogger: (String) -> Unit = {},
@@ -25,7 +25,7 @@ internal class SharedKtorSlockNetworkClient(
     private val authMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = SlockAuthApiClient(SharedKtorSlockAuthTransport(baseUrl, executor, warningLogger))
+            authApi = SlockAuthApiClient(SharedSlockAuthTransport(baseUrl, executor, warningLogger))
         )
 
     override suspend fun request(
@@ -203,10 +203,10 @@ internal class SharedKtorSlockNetworkClient(
         )
     }
 
-    private suspend fun List<MultipartFile>.resolvePlatformFileRefs(): KtorResolvedPlatformFiles {
-        if (!requiresPlatformFileResolver()) return KtorResolvedPlatformFiles.Content(this)
+    private suspend fun List<MultipartFile>.resolvePlatformFileRefs(): ResolvedPlatformFiles {
+        if (!requiresPlatformFileResolver()) return ResolvedPlatformFiles.Content(this)
         val resolver = platformFileResolver
-            ?: return KtorResolvedPlatformFiles.Error(fileRefUnsupportedResponse())
+            ?: return ResolvedPlatformFiles.Error(fileRefUnsupportedResponse())
         val resolved = mutableListOf<MultipartFile>()
         forEach { file ->
             val fileRef = file.fileRef
@@ -216,7 +216,7 @@ internal class SharedKtorSlockNetworkClient(
             }
             val response = resolver.readFile(fileRef)
             if (!response.success) {
-                return KtorResolvedPlatformFiles.Error(
+                return ResolvedPlatformFiles.Error(
                     HomeNetworkResponse(
                         code = 400,
                         bodyText = null,
@@ -235,7 +235,7 @@ internal class SharedKtorSlockNetworkClient(
                     sizeBytes = file.sizeBytes ?: response.sizeBytes ?: response.bytes.size.toLong()
                 )
         }
-        return KtorResolvedPlatformFiles.Content(resolved)
+        return ResolvedPlatformFiles.Content(resolved)
     }
 
     private suspend fun uploadMultipart(
@@ -298,7 +298,7 @@ internal class SharedKtorSlockNetworkClient(
     }
 }
 
-class SharedKtorSlockAuthTransport internal constructor(
+class SharedSlockAuthTransport internal constructor(
     private val baseUrl: String,
     private val executor: SlockHttpExecutor,
     private val warningLogger: (String) -> Unit = {}
@@ -443,15 +443,15 @@ private fun fileRefUnsupportedResponse(): HomeNetworkResponse =
         errorBodyText = """{"error":"file_ref_upload_requires_app_scope_file_resolver"}"""
     )
 
-private sealed interface KtorResolvedPlatformFiles {
-    data class Content(val files: List<MultipartFile>) : KtorResolvedPlatformFiles
-    data class Error(val response: HomeNetworkResponse) : KtorResolvedPlatformFiles
+private sealed interface ResolvedPlatformFiles {
+    data class Content(val files: List<MultipartFile>) : ResolvedPlatformFiles
+    data class Error(val response: HomeNetworkResponse) : ResolvedPlatformFiles
 }
 
-private inline fun KtorResolvedPlatformFiles.getOrElse(onError: (HomeNetworkResponse) -> Nothing): List<MultipartFile> =
+private inline fun ResolvedPlatformFiles.getOrElse(onError: (HomeNetworkResponse) -> Nothing): List<MultipartFile> =
     when (this) {
-        is KtorResolvedPlatformFiles.Content -> files
-        is KtorResolvedPlatformFiles.Error -> onError(response)
+        is ResolvedPlatformFiles.Content -> files
+        is ResolvedPlatformFiles.Error -> onError(response)
     }
 
 private fun platformFileReadErrorBody(errorCode: String, message: String): String =

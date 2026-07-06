@@ -10,7 +10,7 @@ fun createSlockNetworkClient(
     baseUrl: String = SLOCK_API_BASE_URL,
     warningLogger: (String) -> Unit = {}
 ): SlockNetworkClient =
-    SharedKtorSlockNetworkClient(
+    SharedSlockNetworkClient(
         sessionStore = sessionStore,
         baseUrl = baseUrl,
         warningLogger = warningLogger
