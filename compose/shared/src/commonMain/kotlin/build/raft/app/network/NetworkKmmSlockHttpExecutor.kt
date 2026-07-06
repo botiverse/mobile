@@ -6,6 +6,7 @@ import com.tencent.kmm.network.export.NetworkPriority
 import com.tencent.kmm.network.export.NetworkRequest
 import com.tencent.kmm.network.export.NetworkRequestPolicy
 import com.tencent.kmm.network.export.NetworkResponse
+import com.tencent.kmm.network.export.VBTransportResultCode
 import com.tencent.kmm.network.export.VBTransportMethod
 import com.tencent.kmm.network.export.IVBPBLog
 import com.tencent.kmm.network.export.VBTransportInitConfig
@@ -26,6 +27,10 @@ internal fun createPlatformSlockHttpExecutor(
 ): SlockHttpExecutor = NetworkKmmSlockHttpExecutor(warningLogger)
 
 private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
+private const val HEADER_ACCEPT_ENCODING = "Accept-Encoding"
+private const val ACCEPT_ENCODING_IDENTITY = "identity"
+
+internal expect fun slockNetworkKmmRequiresIdentityEncoding(): Boolean
 
 @Volatile
 private var networkKmmInitialized = false
@@ -89,7 +94,7 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            headers.forEach { (name, value) -> request.setHeader(name, value) }
+            request.setSlockHeaders(headers)
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -134,7 +139,7 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            headers.forEach { (name, value) -> request.setHeader(name, value) }
+            request.setSlockHeaders(headers)
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -144,7 +149,17 @@ internal class NetworkKmmSlockHttpExecutor(
                     "method=multipart ${error.safeDiagnosticsSummary()}"
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
-        }
+    }
+}
+
+private fun NetworkRequest.setSlockHeaders(headers: Map<String, String>) {
+    if (
+        slockNetworkKmmRequiresIdentityEncoding() &&
+            headers.keys.none { it.equals(HEADER_ACCEPT_ENCODING, ignoreCase = true) }
+    ) {
+        setHeader(HEADER_ACCEPT_ENCODING, ACCEPT_ENCODING_IDENTITY)
+    }
+    headers.forEach { (name, value) -> setHeader(name, value) }
 }
 
 private fun String.toTransportMethod(): VBTransportMethod =
@@ -168,19 +183,48 @@ private fun SlockRequestPriority.toNetworkKmmPriority(): NetworkPriority =
 
 private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
     val status = statusCode
+    val diagnostics = networkKmmDiagnostics()
     if (status == null) {
         return SlockHttpExecutorResponse(
             code = 0,
             bodyText = null,
-            errorBodyText = error?.message ?: "network_kmm_no_status"
+            errorBodyText = error?.message ?: "network_kmm_no_status",
+            transportDiagnostics = diagnostics
         )
     }
     val text = body.text()
     return if (status in 200..299) {
-        SlockHttpExecutorResponse(code = status, bodyText = text, errorBodyText = null)
+        SlockHttpExecutorResponse(code = status, bodyText = text, errorBodyText = null, transportDiagnostics = diagnostics)
     } else {
-        SlockHttpExecutorResponse(code = status, bodyText = null, errorBodyText = text ?: error?.message)
+        SlockHttpExecutorResponse(
+            code = status,
+            bodyText = null,
+            errorBodyText = text ?: error?.message,
+            transportDiagnostics = diagnostics
+        )
     }
+}
+
+private fun NetworkResponse.networkKmmDiagnostics(): String {
+    val rawCode = error?.rawCode ?: rawResponse?.errorCode
+    val rawCodeLabel =
+        when (rawCode) {
+            VBTransportResultCode.CODE_OK -> "OK"
+            VBTransportResultCode.CODE_CANCELED -> "CANCELED"
+            VBTransportResultCode.CODE_FORCE_TIMEOUT -> "FORCE_TIMEOUT"
+            VBTransportResultCode.CODE_NETWORK_ERROR -> "NETWORK_ERROR"
+            null -> "none"
+            else -> rawCode.toString()
+        }
+    val detail =
+        listOfNotNull(error?.message, rawResponse?.errorMessage)
+            .firstOrNull { it.isNotBlank() }
+            ?.toSafeDiagnosticsToken()
+            ?: "none"
+    return "engine=networkkmm status=${statusCode ?: "none"} " +
+        "kind=${error?.kind ?: "none"} rawCode=$rawCodeLabel detail=$detail " +
+        "bodyBytes=${body.bytes?.size ?: 0} errorStatus=${error?.statusCode ?: "none"} " +
+        "totalMs=${timing.totalTimeMs}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =
