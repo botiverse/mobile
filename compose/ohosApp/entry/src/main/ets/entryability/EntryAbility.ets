@@ -1,16 +1,13 @@
 import 'libentry.so';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { bundleManager } from '@kit.AbilityKit';
-import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
-import util from '@ohos.util';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
 import { registerSingleServiceProvider, setup, init } from '@kuiklybase/knoi';
 import { KuiklyRenderAdapterManager } from '@kuikly-open/render';
-import { AppVersionMode, Bugly, BuglyBuilder, ModuleName } from 'bugly';
 import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
@@ -18,7 +15,7 @@ import { initializeSlockOhosAppScopeMMKV } from '../kuikly/SlockOhosAppScopeMMKV
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
-import { SlockBuglyCrashListener, SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
+import { SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
 import { Quiver } from '@oranix/quiver';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
@@ -28,12 +25,6 @@ import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
-const BUGLY_APP_ID = '00d93a6322';
-const BUGLY_APP_KEY = '852c8bcc-3e5c-4447-88d9-b3f90abf5f57';
-const BUGLY_APP_CHANNEL = 'ohos';
-const BUGLY_DEBUG_MODE = false;
-const BUGLY_DEVICE_DIR = 'bugly';
-const BUGLY_DEVICE_ID_FILE = 'device_id.txt';
 interface SlockFontResource {
   familyName: string;
   familySrc: Resource;
@@ -69,15 +60,12 @@ class SlockOhosSharedLogSink {
 }
 
 export default class EntryAbility extends UIAbility {
-  private static buglyInitialized: boolean = false;
-  private static buglyInitializing: boolean = false;
   private static uiFontsRegistered: boolean = false;
   private mainWindow?: window.Window;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     this.setupKnoi();
-    this.initBugly(launchParam);
     // App-owned Quiver reporting config (client key is DSN-class: it
     // identifies the app; rotate from the Quiver console if leaked).
     Quiver.install(
@@ -242,119 +230,4 @@ export default class EntryAbility extends UIAbility {
     slockOhosRealtimeBridge.onPageHide(true);
   }
 
-  private initBugly(launchParam: AbilityConstant.LaunchParam): void {
-    if (EntryAbility.buglyInitialized || EntryAbility.buglyInitializing) {
-      return;
-    }
-    EntryAbility.buglyInitializing = true;
-    try {
-      const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
-      const builder = new BuglyBuilder();
-      const deviceId = this.resolveBuglyDeviceId();
-      const deviceModel = `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim();
-      builder.appId = BUGLY_APP_ID;
-      builder.appKey = BUGLY_APP_KEY;
-      builder.deviceId = deviceId;
-      builder.platform = BuglyBuilder.PLATFORM_PRO;
-      builder.appVersion = bundleInfo.versionName;
-      builder.appVersionMode = BUGLY_DEBUG_MODE ? AppVersionMode.DEBUG : AppVersionMode.RELEASE;
-      builder.buildNum = `${bundleInfo.versionCode}`;
-      builder.appChannel = BUGLY_APP_CHANNEL;
-      builder.deviceModel = deviceModel;
-      builder.debugMode = BUGLY_DEBUG_MODE;
-      builder.sdkLogMode = BUGLY_DEBUG_MODE;
-      builder.initDelay = 0;
-      builder.crashListener = new SlockBuglyCrashListener();
-      builder.enableJsCrashProtect = false;
-      builder.enablePrivacyInfoAuthorized = true;
-      builder.enablePerfModules = ModuleName.AllModules;
-      Bugly.init(this.context.getApplicationContext(), builder)
-        .then((): void => {
-          Bugly.setCrashMonitorAble(true, true);
-          SlockOhosBuglyDiagnostics.markBuglyReady();
-          SlockOhosBuglyDiagnostics.init(this.context, {
-            appId: BUGLY_APP_ID,
-            appKey: BUGLY_APP_KEY,
-            deviceId,
-            appVersion: bundleInfo.versionName,
-            deviceModel,
-            debugMode: BUGLY_DEBUG_MODE,
-          });
-          SlockOhosDiagnostics.setPersistentRecorder((tag: string, message: string): void => {
-            SlockOhosBuglyDiagnostics.record(tag, message);
-          });
-          EntryAbility.buglyInitialized = true;
-          EntryAbility.buglyInitializing = false;
-          this.reportLastExitReason(launchParam);
-          hilog.info(0x0000, 'testTag', '%{public}s', 'Bugly initialized');
-        })
-        .catch((err: Object): void => {
-          this.handleBuglyInitFailure(err);
-        });
-    } catch (err) {
-      this.handleBuglyInitFailure(err);
-    }
-  }
-
-  private handleBuglyInitFailure(err: Object): void {
-    const message = JSON.stringify(err) ?? '';
-    EntryAbility.buglyInitialized = false;
-    EntryAbility.buglyInitializing = false;
-    SlockOhosBuglyDiagnostics.disable(`init_failed ${message}`);
-    SlockOhosDiagnostics.setPersistentRecorder(null);
-    hilog.error(0x0000, 'testTag', 'Failed to initialize Bugly. Cause: %{public}s', message);
-  }
-
-  private reportLastExitReason(launchParam: AbilityConstant.LaunchParam): void {
-    if (!EntryAbility.buglyInitialized) {
-      return;
-    }
-    try {
-      Bugly.postLastExitReason('EntryAbility', launchParam);
-    } catch (err) {
-      hilog.warn(0x0000, 'testTag', 'Failed to report Bugly last exit reason. Cause: %{public}s', JSON.stringify(err) ?? '');
-    }
-  }
-
-  private resolveBuglyDeviceId(): string {
-    const buglyDir = `${this.context.filesDir}/${BUGLY_DEVICE_DIR}`;
-    const deviceIdPath = `${buglyDir}/${BUGLY_DEVICE_ID_FILE}`;
-    const savedDeviceId = this.readTextFile(deviceIdPath).trim();
-    if (savedDeviceId.length > 0) {
-      return savedDeviceId;
-    }
-    const generatedDeviceId = `ohos-${Date.now()}-${Math.floor(Math.random() * 0xFFFFFFFFFFFF).toString(16)}`;
-    try {
-      fs.mkdirSync(buglyDir, true);
-      const file = fs.openSync(deviceIdPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
-      try {
-        fs.writeSync(file.fd, generatedDeviceId);
-      } finally {
-        fs.closeSync(file);
-      }
-    } catch (err) {
-      hilog.warn(0x0000, 'testTag', 'Failed to persist Bugly device ID. Cause: %{public}s', JSON.stringify(err) ?? '');
-    }
-    return generatedDeviceId;
-  }
-
-  private readTextFile(filePath: string): string {
-    try {
-      const file = fs.openSync(filePath, fs.OpenMode.READ_ONLY);
-      try {
-        const stat = fs.statSync(file.fd);
-        if (stat.size <= 0) {
-          return '';
-        }
-        const buffer = new ArrayBuffer(stat.size);
-        const readLength = fs.readSync(file.fd, buffer);
-        const decoder = new util.TextDecoder('utf-8');
-        return decoder.decodeWithStream(new Uint8Array(buffer, 0, readLength));
-      } finally {
-        fs.closeSync(file);
-      }
-    } catch (err) {
-      return '';
-    }
-  }
 }
