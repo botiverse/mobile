@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -396,33 +397,38 @@ internal fun AuthActionButton(
     }
     val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     val disabledAlpha = 0.50f
-    val chromeAlpha = if (!enabled && preserveDisabledVisual) disabledAlpha else 1f
+    // React parity: disabled:opacity-50 dims the WHOLE element after compositing —
+    // the opaque face occludes the shadow first, then everything fades together.
+    // Applying per-color alpha instead let the black shadow bleed through the
+    // translucent face (muddy mauve instead of pale pink, task #372), so keep the
+    // colors full and dim the composited button with a group Modifier.alpha.
+    val dimWholeButton = !enabled && preserveDisabledVisual
     val contentColor = when {
-        enabled -> activeContentColor
-        preserveDisabledVisual -> activeContentColor.copy(alpha = disabledAlpha)
+        enabled || preserveDisabledVisual -> activeContentColor
         else -> SlockDisabledActionContent
     }
     val buttonBackground = when {
-        enabled -> background
-        preserveDisabledVisual -> background.copy(alpha = disabledAlpha)
+        enabled || preserveDisabledVisual -> background
         else -> slockDisabledActionBackgroundFor(background)
     }
-    val borderColor = when {
-        enabled -> SlockColor.BorderBlack
-        preserveDisabledVisual -> SlockColor.BorderBlack.copy(alpha = chromeAlpha)
-        else -> SlockDisabledActionBorder
-    }
-    val shadowColor = when {
-        enabled -> SlockColor.ShadowBlack
-        preserveDisabledVisual -> SlockColor.ShadowBlack.copy(alpha = chromeAlpha)
-        else -> SlockDisabledActionShadow
-    }
+    val borderColor = if (enabled || preserveDisabledVisual) SlockColor.BorderBlack else SlockDisabledActionBorder
+    val shadowColor = if (enabled || preserveDisabledVisual) SlockColor.ShadowBlack else SlockDisabledActionShadow
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
     val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
     val textStyle = authActionButtonTextStyle(variant, contentColor)
-    Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            // Group alpha must wrap the full footprint (face + offset shadow), so
+            // it sits BEFORE the shadow padding: Kuikly's Modifier.alpha renders
+            // into an intermediate layer clipped to this node's bounds, and after
+            // the padding the offset shadow would fall outside and get clipped.
+            .then(if (dimWholeButton) Modifier.alpha(disabledAlpha) else Modifier)
+            .padding(end = shadowOffset, bottom = shadowOffset)
+    ) {
         Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(shadowColor))
         Box(
             modifier = Modifier
@@ -443,7 +449,10 @@ internal fun AuthActionButton(
                     }
                 }
                 Text(
-                    text = if (loading && !text.endsWith("...")) "$text..." else text,
+                    // Labels like "Signing in…" already carry react's ellipsis
+                    // (U+2026); only append dots to loading labels without one
+                    // (e.g. "Opening Google" -> "Opening Google...").
+                    text = if (loading && !text.endsWith("...") && !text.endsWith("…")) "$text..." else text,
                     style = textStyle,
                     color = contentColor,
                     textAlign = TextAlign.Center

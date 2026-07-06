@@ -1192,6 +1192,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureAuthLoginSigning() {
+        captureKmpComponentCase(
+            caseId = "screens.auth.login.signing",
+            pageName = "compose_auth_login_inputs",
+            pageData = JSONObject().put("visualFixture", "signing"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
