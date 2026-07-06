@@ -281,3 +281,36 @@ fun getCommonCompilerArgs(): List<String> {
 fun getLinkerArgs(): List<String> {
     return listOf()
 }
+
+// fork #14 — build-time provenance gate against .so/klib ABI drift.
+// The NetworkKMM cinterop KLIB (the `network` dependency, this file) and the
+// native libpbcurlwrapper.so (packaged by the `network.ohos-runtime` plugin in
+// ../build.ohos.gradle.kts) MUST be the same raft.N. If they diverge, the
+// Kotlin bindings and the C++ CurlResponse struct disagree on field offsets and
+// a normal response read (handleCurlNativeResponse -> toKString) dereferences a
+// mis-offset pointer -> device SIGSEGV. This caught nothing at build time before
+// (OHOS CI had been disabled), so a stale pairing reached a device. Fail fast.
+val verifyNetworkOhosVersionPairing by tasks.registering {
+    doFirst {
+        val klibVersion =
+            Regex("""com\.tencent\.kuiklybase:network:([^"]+)""")
+                .find(project.file("build.ohos.gradle.kts").readText())
+                ?.groupValues?.get(1)
+        val pluginVersion =
+            Regex("""network\.ohos-runtime"\)\s*\.version\("([^"]+)"\)""")
+                .find(rootProject.file("build.ohos.gradle.kts").readText())
+                ?.groupValues?.get(1)
+        check(klibVersion != null) { "verifyNetworkOhosVersionPairing: network KLIB version not found in shared/build.ohos.gradle.kts" }
+        check(pluginVersion != null) { "verifyNetworkOhosVersionPairing: network.ohos-runtime plugin version not found in build.ohos.gradle.kts" }
+        check(klibVersion == pluginVersion) {
+            "NetworkKMM OHOS version drift: network KLIB=$klibVersion but ohos-runtime plugin (libpbcurlwrapper.so)=$pluginVersion. " +
+                "They must be the same raft.N or the cinterop bindings and the native CurlResponse struct disagree on layout " +
+                "-> device SIGSEGV in handleCurlNativeResponse (toKString on a mis-offset pointer). Align both versions."
+        }
+        logger.lifecycle("NetworkKMM OHOS version pairing OK: KLIB=$klibVersion == ohos-runtime=$pluginVersion")
+    }
+}
+
+tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+    dependsOn(verifyNetworkOhosVersionPairing)
+}
