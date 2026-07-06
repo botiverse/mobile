@@ -870,6 +870,7 @@ private fun firstNonBlank(vararg values: String?): String? =
 private fun String.toSettingsLabel(): String =
     replace("_", " ")
         .replace("-", " ")
+        .replace(".", " ")
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 
 private fun String.toAgentActivityTitle(): String =
