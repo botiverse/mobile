@@ -727,16 +727,16 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         return { "status": "error", "code": "settings_feedback_message_required", "message": "Feedback message is required" };
       }
       const context = getContext(this) as common.UIAbilityContext;
-      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 3);
-      const attachmentPaths = userAttachmentPaths.slice(0, 3);
-      if (attachmentPaths.length < 3) {
+      const userAttachmentPaths = this.feedbackAttachmentPaths(records["files"]).slice(0, 9);
+      const attachmentPaths = userAttachmentPaths.slice(0, 9);
+      if (attachmentPaths.length < 9) {
         attachmentPaths.push(await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context));
       }
       const ticketId = await QuiverFeedbackClient.submit(
         context,
         message,
         'bug',
-        attachmentPaths.slice(0, 3),
+        attachmentPaths.slice(0, 9),
         [],
       );
       const shortId = ticketId.slice(0, 8);
