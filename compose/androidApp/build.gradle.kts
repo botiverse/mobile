@@ -31,20 +31,6 @@ val googleServerClientId =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
-val defaultBuglyAndroidAppId = "1277318f53"
-val defaultBuglyAndroidAppKey = "a1b03176-0694-4167-ad18-05755b0b36e4"
-
-val buglyAndroidAppId =
-    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_ID")
-        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_ID"))
-        .getOrElse(defaultBuglyAndroidAppId)
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-
-val buglyAndroidAppKey =
-    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_KEY")
-        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_KEY"))
-        .getOrElse(defaultBuglyAndroidAppKey)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
@@ -127,8 +113,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
-        buildConfigField("String", "BUGLY_ANDROID_APP_ID", "\"$buglyAndroidAppId\"")
-        buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
         buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver.oranix.io")}\"")
@@ -228,11 +212,6 @@ dependencies {
     implementation(libs.mmkv)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
-    implementation(libs.bugly.pro) {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
-    }
-    implementation(libs.bugly.diagnose.logger)
-    implementation(libs.bugly.diagnose)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
