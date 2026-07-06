@@ -13,7 +13,7 @@ import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.SharedAuthTokenProvider
-import build.raft.app.data.SharedKtorSlockAuthTransport
+import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockLocalPreferenceStore
@@ -143,7 +143,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                             sessionStore = sessionStore,
                             authApi =
                                 SlockAuthApiClient(
-                                    SharedKtorSlockAuthTransport(
+                                    SharedSlockAuthTransport(
                                         baseUrl = apiBaseUrl,
                                         warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
                                     )
