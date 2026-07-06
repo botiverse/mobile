@@ -286,8 +286,13 @@ jobs:
             # centered dialogs (server-danger-modal, create-channel) even fell
             # off and failed to capture. Pinning the physical size to 1170x2532
             # makes the layout window == the crop == React's 390dp viewport, so
-            # both top-left- and centre-anchored content align.
-            adb shell wm size 1170x2532
+            # both top-left- and centre-anchored content align. `wm size` is
+            # flaky on the CI AVD (sometimes the override doesn't stick and the
+            # window comes back ~2414/2342px, so FULL_VIEWPORT 2532px crops clip
+            # — task #370), so set it in a device-shell loop that reads back the
+            # override and retries with a reset until it sticks, and echo the
+            # final `wm size` for the log.
+            adb shell 'for i in 1 2 3 4 5; do wm size 1170x2532; sleep 1; if wm size | grep -q "Override size: 1170x2532"; then echo "wm size applied on try $i"; break; fi; echo "wm size not applied on try $i, resetting"; wm size reset; sleep 1; done; if wm size | grep -q "Override size: 1170x2532"; then echo "wm-size: APPLIED"; else echo "wm-size: GAVE-UP-after-5 (test-side clamp will handle)"; fi; echo "final: $(wm size | tr "\n" " ")"'
             adb shell wm density 480
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
