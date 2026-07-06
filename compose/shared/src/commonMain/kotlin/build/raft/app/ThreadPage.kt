@@ -127,10 +127,12 @@ import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -178,6 +180,7 @@ import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
@@ -2113,6 +2116,12 @@ internal fun ThreadHeaderVisualScreen() {
 
 @Composable
 internal fun ThreadReactionAtlasVisualScreen() {
+    // task #376 (Quiver 389d855b): this standalone visual screen renders reaction
+    // glyphs outside ThreadMessagesList, so it provides its own hoisted atlas
+    // image for LocalThreadReactionAtlasImage (glyphs no longer self-load).
+    val atlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val readyAtlas = atlasImage.takeIf { it.width > 0 && it.height > 0 }
+    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyAtlas) {
     Column(
         modifier =
             Modifier
@@ -2158,6 +2167,7 @@ internal fun ThreadReactionAtlasVisualScreen() {
                 ThreadReactionChip(KuiklyThreadReactionItem(emoji = "🧪", count = 1, selected = false))
             }
         }
+    }
     }
 }
 
@@ -9487,6 +9497,18 @@ private fun ThreadMessagesList(
         }
         pendingKeyboardBottomAnchor = false
     }
+    // task #376 (Quiver 389d855b): decode the reaction sprite atlas once at this
+    // long-lived ThreadPage root and provide the ready ImageBitmap down so BOTH
+    // the timeline content AND the long-press action-menu overlay (the
+    // `actionMessageId?.let { ThreadMessageActionMenu(...) }` block below, which
+    // lives inside the same Box) resolve their reaction glyphs from the shared
+    // decoded bitmap instead of each starting a fresh async load. The
+    // `imageResource` value updates from a transient 0x0/null to the ready
+    // bitmap via recomposition, so a temporary null never hardens.
+    val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val readyThreadReactionAtlas =
+        threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
+    CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
@@ -9991,6 +10013,7 @@ private fun ThreadMessagesList(
                 )
             }
         }
+    }
     }
     }
 }
@@ -12736,6 +12759,14 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
 private fun threadDisplayReactionEmoji(emoji: String): String =
     emoji
 
+// task #376 (Quiver 389d855b): the decoded reaction sprite atlas is hoisted to
+// a stable ThreadPage mount point and provided here so glyphs consume the ready
+// ImageBitmap instead of each starting their own async `imageResource` load. A
+// null value means "not decoded yet" (temporary) and updates to the ready bitmap
+// via recomposition once the long-lived root finishes decoding — it must never
+// harden into a permanent raw-emoji fallback.
+internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
+
 @Composable
 private fun ThreadQuickReactionGlyph(
     emoji: String,
@@ -12759,13 +12790,20 @@ private fun ThreadReactionSpriteGlyph(
     sprite: ThreadReactionSprite,
     modifier: Modifier = Modifier
 ) {
-    val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
-    val imageReady = image.width > 0 && image.height > 0
-    if (!imageReady) {
+    // task #376 (Quiver 389d855b): consume the atlas image hoisted to the
+    // ThreadPage root via LocalThreadReactionAtlasImage instead of starting a
+    // fresh async `imageResource` load here. In a short-lived composition
+    // subtree (the long-press action-menu overlay) a per-glyph `imageResource`
+    // returned a 0x0 first frame and stuck on the raw-emoji fallback; reading
+    // the provided ready bitmap avoids that timing hole. A null value here is
+    // only a transient "not decoded yet" state — the root keeps the atlas
+    // mounted and this consumer recomposes to the sprite once it is ready.
+    val image = LocalThreadReactionAtlasImage.current
+    if (image == null) {
         ThreadReactionGlyphDiagnosticLog(
             path = "sprite_atlas_not_ready",
             emoji = sprite.value,
-            detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
+            detail = "sprite=${sprite.name} imageWidth=0 imageHeight=0"
         )
         ThreadTextReactionGlyph(emoji = sprite.value, modifier = modifier)
         return
