@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
@@ -310,14 +312,14 @@ class SlockHomeComponentsTest {
     @Test
     fun homeSearchChannelEntityMatchesWithOrWithoutHashPrefix() {
         val channel =
-            ConversationSummary(
+            HomeChannelRow(
                 threadId = ThreadId("channel-1"),
                 channelId = ChannelId("channel-1"),
                 kind = ConversationKind.Channel,
                 name = "proj-mobile"
             )
         val dm =
-            ConversationSummary(
+            HomeDirectMessageRow(
                 threadId = ThreadId("dm-1"),
                 channelId = ChannelId("dm-1"),
                 kind = ConversationKind.DirectMessage,
