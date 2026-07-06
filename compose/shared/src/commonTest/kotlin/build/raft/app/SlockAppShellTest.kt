@@ -169,6 +169,48 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPagerSwitchEpochAdvancesOnlyForTabChanges() {
+        assertEquals(0, appShellNextChildTabSwitchEpoch("home", "home", currentEpoch = 0))
+        assertEquals(1, appShellNextChildTabSwitchEpoch("home", "tasks", currentEpoch = 0))
+        assertEquals(2, appShellNextChildTabSwitchEpoch("tasks", "home", currentEpoch = 1))
+        assertEquals(2, appShellNextChildTabSwitchEpoch("unknown", "home", currentEpoch = 2))
+    }
+
+    @Test
+    fun childHostAppShellPagerFallbackDropsStaleEpoch() {
+        assertEquals(
+            true,
+            appShellChildPagerScrollEpochCanApply(
+                expectedTab = "home",
+                currentTab = "home",
+                expectedEpoch = 2,
+                currentEpoch = 2,
+                targetPage = 0
+            )
+        )
+        assertEquals(
+            false,
+            appShellChildPagerScrollEpochCanApply(
+                expectedTab = "tasks",
+                currentTab = "home",
+                expectedEpoch = 1,
+                currentEpoch = 2,
+                targetPage = 1
+            )
+        )
+        assertEquals(
+            false,
+            appShellChildPagerScrollEpochCanApply(
+                expectedTab = "home",
+                currentTab = "home",
+                expectedEpoch = 2,
+                currentEpoch = 2,
+                targetPage = null
+            )
+        )
+    }
+
+    @Test
     fun appShellActiveChildTabFollowsParentSelectedTab() {
         assertEquals("home", appShellActiveChildPagerTab("home"))
         assertEquals("tasks", appShellActiveChildPagerTab("tasks"))

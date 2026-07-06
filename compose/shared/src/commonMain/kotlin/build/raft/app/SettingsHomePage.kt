@@ -525,6 +525,23 @@ private class AppShellChildTabEntry(
     var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
 }
 
+private class AppShellChildPagerSwitchController {
+    private var switchToTab: ((tab: String, commandEpoch: Int) -> Boolean)? = null
+    private var latestCommandEpoch: Int = 0
+
+    fun updateSwitchHandler(handler: ((tab: String, commandEpoch: Int) -> Boolean)?) {
+        switchToTab = handler
+    }
+
+    fun switchTo(tab: String, commandEpoch: Int): Boolean {
+        latestCommandEpoch = commandEpoch
+        return switchToTab?.invoke(tab, commandEpoch) == true
+    }
+
+    fun isLatestCommand(commandEpoch: Int): Boolean =
+        latestCommandEpoch == commandEpoch
+}
+
 private data class AppShellChildTabRegistration(
     val entry: AppShellChildTabEntry,
     val replacedEntryId: Int
@@ -1500,6 +1517,25 @@ internal fun appShellChildPagerTargetIndex(selectedTab: String, pagerTabs: List<
     return index.takeIf { it >= 0 }
 }
 
+internal fun appShellNextChildTabSwitchEpoch(currentTab: String, nextTab: String, currentEpoch: Int): Int =
+    if (retainedAppShellSelectedTab(currentTab) == retainedAppShellSelectedTab(nextTab)) {
+        currentEpoch
+    } else {
+        currentEpoch + 1
+    }
+
+internal fun appShellChildPagerScrollEpochCanApply(
+    expectedTab: String?,
+    currentTab: String?,
+    expectedEpoch: Int,
+    currentEpoch: Int,
+    targetPage: Int?
+): Boolean =
+    targetPage != null &&
+        expectedTab != null &&
+        expectedTab == currentTab &&
+        expectedEpoch == currentEpoch
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -1634,12 +1670,17 @@ private fun AppShellTabs(
     selectedTab: String,
     childHostShellId: String,
     mountedTabs: Set<String>,
+    childTabSwitchEpoch: Int,
+    switchController: AppShellChildPagerSwitchController,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     val activeChildTab = appShellActiveChildPagerTab(activeTab)
     val pagerTabs = childHostAppShellPagerTabs(activeTab, mountedTabs)
     val targetPage = appShellChildPagerTargetIndex(activeTab, pagerTabs)
+    val appShellTabsCoroutineScope = rememberCoroutineScope()
+    val latestActiveChildTab by rememberUpdatedState(activeChildTab)
+    val latestChildTabSwitchEpoch by rememberUpdatedState(childTabSwitchEpoch)
     Box(modifier = Modifier.fillMaxSize()) {
         if (pagerTabs.isNotEmpty()) {
             val pagerState =
@@ -1647,11 +1688,36 @@ private fun AppShellTabs(
                     initialPage = targetPage ?: 0,
                     pageCount = { pagerTabs.size }
                 )
-            LaunchedEffect(activeChildTab, targetPage, pagerTabs) {
-                // The Kuikly PageList can report the target page while the native visual page
-                // is still stale, so selectedTab must always re-issue the control command.
-                if (targetPage != null) {
-                    pagerState.scrollToPage(targetPage)
+            SideEffect {
+                switchController.updateSwitchHandler { tab, commandEpoch ->
+                    val page = appShellChildPagerTargetIndex(tab, pagerTabs) ?: return@updateSwitchHandler false
+                    appShellTabsCoroutineScope.launch {
+                        if (switchController.isLatestCommand(commandEpoch)) {
+                            pagerState.scrollToPage(page)
+                        }
+                    }
+                    true
+                }
+            }
+            LaunchedEffect(activeChildTab, childTabSwitchEpoch, targetPage, pagerTabs) {
+                // Fallback for mount/recomposition or non-click routes. Direct bottom-tab clicks
+                // issue the pager command through switchController before relying on this effect.
+                if (
+                    appShellChildPagerScrollEpochCanApply(
+                        expectedTab = activeChildTab,
+                        currentTab = latestActiveChildTab,
+                        expectedEpoch = childTabSwitchEpoch,
+                        currentEpoch = latestChildTabSwitchEpoch,
+                        targetPage = targetPage
+                    )
+                ) {
+                    val scrollTarget = targetPage ?: return@LaunchedEffect
+                    pagerState.scrollToPage(scrollTarget)
+                }
+            }
+            DisposableEffect(switchController) {
+                onDispose {
+                    switchController.updateSwitchHandler(null)
                 }
             }
             HorizontalPager(
@@ -1724,6 +1790,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
+    var childTabSwitchEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
@@ -1736,6 +1803,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
+    val childTabSwitchController = remember(childTabShellId) { AppShellChildPagerSwitchController() }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
@@ -2196,13 +2264,22 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
             hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
+    fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
+        val retainedTab = retainedAppShellSelectedTab(nextTab)
+        val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
+        childTabSwitchEpoch = nextEpoch
+        if (directChildSwitch && retainedTab in AppShellChildPageTabKeys) {
+            childTabSwitchController.switchTo(retainedTab, nextEpoch)
+        }
+        selectedTab = retainedTab
+    }
     LaunchedEffect(diagnosticsDeepLinkRequest?.id, readyServerId) {
         val request = diagnosticsDeepLinkRequest ?: return@LaunchedEffect
         if (readyServerId == null || consumedDiagnosticsDeepLinkId == request.id) {
             return@LaunchedEffect
         }
         consumedDiagnosticsDeepLinkId = request.id
-        selectedTab = "settings"
+        selectAppShellTab("settings")
         retainedAppShellTabs = retainedAppShellTabs + "settings"
         selectedSettingsDestination = SettingsDestinationDiagnostics
         bridge.log(
@@ -2276,7 +2353,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         membersListCachedContent = null
         foregroundMessageBanner = null
         sharedStores.homeSavedStateCache.clear()
-        selectedTab = "home"
+        selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
         homeListPosition = AppShellServerScopedLazyListPosition()
@@ -2548,7 +2625,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         consumedNotificationLaunchKey = launchKey
-        selectedTab = "home"
+        selectAppShellTab("home")
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
         bridge.log(
@@ -2699,7 +2776,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return true
         }
         if (selectedTab != "home") {
-            selectedTab = "home"
+            selectAppShellTab("home")
             selectedSettingsDestination = SettingsDestinationHome
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
@@ -2851,7 +2928,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 ) {
                     is DataResult.Content -> {
                         val channel = result.data.channel
-                        selectedTab = "home"
+                        selectAppShellTab("home")
                         retainedAppShellTabs = retainedAppShellTabs + "home"
                         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
                         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(channel.threadId.value))
@@ -3146,7 +3223,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             "visitedBefore" to visitedBefore.toString()
                         )
                 )
-                selectedTab = nextTab
+                selectAppShellTab(nextTab, directChildSwitch = true)
                 if (isRetainedAppShellTab(nextTab)) {
                     retainedAppShellTabs = retainedAppShellTabs + nextTab
                 }
@@ -3251,7 +3328,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                     openHomeSecondaryDestination(HomeDestinationSaved)
                                 },
                                 onOpenComputers = {
-                                    selectedTab = "settings"
+                                    selectAppShellTab("settings")
                                     retainedAppShellTabs = retainedAppShellTabs + "settings"
                                     selectedSettingsDestination = SettingsDestinationComputers
                                 },
@@ -3458,7 +3535,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     AppShellTabs(
                         selectedTab = selectedTab,
                         childHostShellId = childTabShellId,
-                        mountedTabs = retainedAppShellTabs
+                        mountedTabs = retainedAppShellTabs,
+                        childTabSwitchEpoch = childTabSwitchEpoch,
+                        switchController = childTabSwitchController
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
