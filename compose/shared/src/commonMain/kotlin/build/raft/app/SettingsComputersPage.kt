@@ -1363,7 +1363,7 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
                 KuiklySettingsComputerItem(
                     id = "computer-studio",
                     name = "Studio Test Rig",
-                    daemonVersion = "0.61.1",
+                    daemonVersion = "0.65.0",
                     computerVersion = "0.0.50",
                     isComputer = true,
                     online = false,
@@ -1392,7 +1392,7 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
             ),
         canAddComputer = true,
         addComputerUnavailableReason = null,
-        latestDaemonVersion = "0.63.7",
+        latestDaemonVersion = "0.65.0",
         latestComputerVersion = "0.0.50"
     )
 
@@ -1456,8 +1456,8 @@ private fun visualPrimaryComputer(): KuiklySettingsComputerItem =
     KuiklySettingsComputerItem(
         id = "computer-mbp",
         name = "Jiachengs-MacBook-Pro",
-        daemonVersion = "0.63.7",
-        computerVersion = "0.0.50",
+        daemonVersion = "0.65.0",
+        computerVersion = "0.0.48",
         isComputer = true,
         online = true,
         hostname = null,

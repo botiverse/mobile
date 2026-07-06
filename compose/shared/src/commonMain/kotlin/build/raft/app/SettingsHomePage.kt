@@ -15466,9 +15466,7 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
             ),
         admins =
             listOf(
-                SettingsServerAdminSnapshot(fixture.ownerId, fixture.ownerDisplayName, fixture.ownerAdminDetail, fixture.ownerRole),
-                SettingsServerAdminSnapshot("user_cindy", "Cindy", "Admin · onboarding", "admin"),
-                SettingsServerAdminSnapshot("user_qa", "QA Tester", "Member · validation", "member")
+                SettingsServerAdminSnapshot(fixture.ownerId, fixture.ownerDisplayName, fixture.ownerAdminDetail, fixture.ownerRole)
             ),
         usageRows =
             listOf(
@@ -15592,9 +15590,9 @@ private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapsh
             ),
         browserLanguage =
             settingsVisualSelection(
-                selectedKey = "zh-CN",
-                selectedLabel = "Chinese (Simplified)",
-                statusLabel = "Chinese",
+                selectedKey = "en",
+                selectedLabel = "English",
+                statusLabel = "English",
                 detail = "Stored on this account."
             ),
         timezone =
