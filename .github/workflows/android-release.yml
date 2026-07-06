@@ -78,10 +78,12 @@ on:
         type: string
         default: "604800"
 
-  # Future: tag-triggered release
-  # push:
-  #   tags:
-  #     - "v*.*.*"
+  # Tag-triggered release: push a tag like v1.0.4 (optionally v1.0.4-rc1) to
+  # build. Version is parsed from the tag; the release is draft-first
+  # (an agent reviews the changelog, then publishes).
+  push:
+    tags:
+      - "v*.*.*"
 
 env:
   # The lane's android-release docs require these envs:
@@ -95,9 +97,81 @@ permissions:
   packages: read
 
 jobs:
+  resolve:
+    name: Resolve release parameters
+    runs-on: ubuntu-22.04
+    outputs:
+      version_major: ${{ steps.p.outputs.version_major }}
+      version_minor: ${{ steps.p.outputs.version_minor }}
+      version_patch: ${{ steps.p.outputs.version_patch }}
+      version_build: ${{ steps.p.outputs.version_build }}
+      version_suffix: ${{ steps.p.outputs.version_suffix }}
+      version_name: ${{ steps.p.outputs.version_name }}
+      quiver_channel: ${{ steps.p.outputs.quiver_channel }}
+      android_variant: ${{ steps.p.outputs.android_variant }}
+      release_mode: ${{ steps.p.outputs.release_mode }}
+      publish_quiver: ${{ steps.p.outputs.publish_quiver }}
+      create_share_page: ${{ steps.p.outputs.create_share_page }}
+      share_ttl_seconds: ${{ steps.p.outputs.share_ttl_seconds }}
+    steps:
+      - id: p
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Optional advanced entry: a pushed tag. Narrow format only —
+            # v<major>.<minor>.<patch>[-<suffix>] — fail fast otherwise so a
+            # malformed tag never silently builds a wrong version.
+            TAG="${GITHUB_REF_NAME}"
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+              echo "::error::Tag '$TAG' is not a release tag. Expected vX.Y.Z or vX.Y.Z-suffix (e.g. v1.0.4, v1.0.4-rc1)." >&2
+              exit 1
+            fi
+            RAW="${TAG#v}"
+            CORE="${RAW%%-*}"
+            SUFFIX=""
+            if [ "$RAW" != "$CORE" ]; then SUFFIX="${RAW#*-}"; fi
+            IFS='.' read -r MAJ MIN PAT <<< "$CORE"
+            VERSION_NAME="${MAJ}.${MIN}.${PAT}"
+            [ -n "$SUFFIX" ] && VERSION_NAME="${VERSION_NAME}-${SUFFIX}"
+            {
+              echo "version_major=${MAJ:-1}"
+              echo "version_minor=${MIN:-0}"
+              echo "version_patch=${PAT:-0}"
+              echo "version_build=0"
+              echo "version_suffix=${SUFFIX}"
+              echo "version_name=${VERSION_NAME}"
+              echo "quiver_channel=main"
+              echo "android_variant=release"
+              echo "release_mode=draft"
+              echo "publish_quiver=true"
+              echo "create_share_page=true"
+              echo "share_ttl_seconds=604800"
+            } >> "$GITHUB_OUTPUT"
+          else
+            VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
+            [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
+            {
+              echo "version_major=${{ inputs.version_major }}"
+              echo "version_minor=${{ inputs.version_minor }}"
+              echo "version_patch=${{ inputs.version_patch }}"
+              echo "version_build=${{ inputs.version_build }}"
+              echo "version_suffix=${{ inputs.version_suffix }}"
+              echo "version_name=${VERSION_NAME}"
+              echo "quiver_channel=${{ inputs.quiver_channel }}"
+              echo "android_variant=${{ inputs.android_variant }}"
+              echo "release_mode=${{ inputs.release_mode }}"
+              echo "publish_quiver=${{ inputs.publish_quiver }}"
+              echo "create_share_page=${{ inputs.create_share_page }}"
+              echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
+            } >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
   build_android_release:
     name: Build + sign APK
     runs-on: ubuntu-22.04
+    needs: resolve
     timeout-minutes: 30
     outputs:
       apk_path: ${{ steps.locate.outputs.apk_path }}
@@ -149,11 +223,11 @@ jobs:
         id: resolve
         shell: bash
         run: |
-          MAJOR="${{ inputs.version_major }}"
-          MINOR="${{ inputs.version_minor }}"
-          PATCH="${{ inputs.version_patch }}"
-          BUILD="${{ inputs.version_build }}"
-          SUFFIX="${{ inputs.version_suffix }}"
+          MAJOR="${{ needs.resolve.outputs.version_major }}"
+          MINOR="${{ needs.resolve.outputs.version_minor }}"
+          PATCH="${{ needs.resolve.outputs.version_patch }}"
+          BUILD="${{ needs.resolve.outputs.version_build }}"
+          SUFFIX="${{ needs.resolve.outputs.version_suffix }}"
           # versionCode = X*1_000_000 + Y*10_000 + Z*100 + build (per
           # docs/android-quiver-release-practices-2026-07-02.md)
           VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
@@ -168,19 +242,19 @@ jobs:
       - name: Gradle build (assembleRelease / assembleDebug)
         working-directory: compose
         env:
-          SLOCK_QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
+          SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
         shell: bash
         run: |
           GRADLE_ARGS=(
             :shared:generateSqlDelightInterface
-            :androidApp:assemble${{ inputs.android_variant == 'debug' && 'Debug' || 'Release' }}
-            "-PversionX=${{ inputs.version_major }}"
-            "-PversionY=${{ inputs.version_minor }}"
-            "-PversionZ=${{ inputs.version_patch }}"
-            "-PversionBuild=${{ inputs.version_build }}"
+            :androidApp:assemble${{ needs.resolve.outputs.android_variant == 'debug' && 'Debug' || 'Release' }}
+            "-PversionX=${{ needs.resolve.outputs.version_major }}"
+            "-PversionY=${{ needs.resolve.outputs.version_minor }}"
+            "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
+            "-PversionBuild=${{ needs.resolve.outputs.version_build }}"
           )
-          if [ -n "${{ inputs.version_suffix }}" ]; then
-            GRADLE_ARGS+=("-PversionSuffix=${{ inputs.version_suffix }}")
+          if [ -n "${{ needs.resolve.outputs.version_suffix }}" ]; then
+            GRADLE_ARGS+=("-PversionSuffix=${{ needs.resolve.outputs.version_suffix }}")
           fi
           ./gradlew \
             "${GRADLE_ARGS[@]}" \
@@ -190,7 +264,7 @@ jobs:
         id: locate
         shell: bash
         run: |
-          APK_DIR="compose/androidApp/build/outputs/apk/${{ inputs.android_variant }}"
+          APK_DIR="compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}"
           APK="$(find "${APK_DIR}" -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
           if [ -z "${APK}" ]; then
             echo "No APK found under ${APK_DIR}" >&2
@@ -215,8 +289,8 @@ jobs:
           export KEYSTORE_FILE
           BT="${ANDROID_HOME}/build-tools/36.0.0"
           UNSIGNED="${{ steps.locate.outputs.apk_path }}"
-          ALIGNED="/tmp/androidApp-${{ inputs.android_variant }}-aligned.apk"
-          SIGNED="/tmp/androidApp-${{ inputs.android_variant }}-signed.apk"
+          ALIGNED="/tmp/androidApp-${{ needs.resolve.outputs.android_variant }}-aligned.apk"
+          SIGNED="/tmp/androidApp-${{ needs.resolve.outputs.android_variant }}-signed.apk"
           "${BT}/zipalign" -p -f 4 "${UNSIGNED}" "${ALIGNED}"
           "${BT}/apksigner" sign \
             --ks "${KEYSTORE_FILE}" \
@@ -260,7 +334,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-release-mapping
-          path: compose/androidApp/build/outputs/mapping/${{ inputs.android_variant }}/mapping.txt
+          path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/mapping.txt
           if-no-files-found: warn
           retention-days: 14
 
@@ -277,18 +351,18 @@ jobs:
             echo "| **APK** | \`${{ steps.locate.outputs.apk_path }}\` |"
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
-            echo "| **Quiver channel target** | \`${{ inputs.quiver_channel }}\` |"
-            echo "| **Publish to Quiver** | \`${{ inputs.publish_quiver }}\` |"
+            echo "| **Quiver channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Publish to Quiver** | \`${{ needs.resolve.outputs.publish_quiver }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish_quiver:
     name: Publish to Quiver + create share page
     runs-on: ubuntu-22.04
     timeout-minutes: 15
-    needs: build_android_release
+    needs: [resolve, build_android_release]
     if: |
-      github.event_name == 'workflow_dispatch' &&
-      inputs.publish_quiver == true
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_quiver == 'true')
     environment:
       name: production
       # Optional: enforce manual approval for `production` env in repo settings.
@@ -299,16 +373,16 @@ jobs:
       # Mirror the chosen channel into both env names so the helper picks
       # it up AND any direct Quiver API calls (which use QUIVER_CHANNEL) stay
       # consistent.
-      SLOCK_QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
-      QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
-      SLOCK_ANDROID_VARIANT: ${{ inputs.android_variant }}
-      SLOCK_ANDROID_VERSION_MAJOR: ${{ inputs.version_major }}
-      SLOCK_ANDROID_VERSION_MINOR: ${{ inputs.version_minor }}
-      SLOCK_ANDROID_VERSION_PATCH: ${{ inputs.version_patch }}
-      SLOCK_ANDROID_VERSION_BUILD: ${{ inputs.version_build }}
-      SLOCK_ANDROID_VERSION_SUFFIX: ${{ inputs.version_suffix }}
+      SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+      QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+      SLOCK_ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
+      SLOCK_ANDROID_VERSION_MAJOR: ${{ needs.resolve.outputs.version_major }}
+      SLOCK_ANDROID_VERSION_MINOR: ${{ needs.resolve.outputs.version_minor }}
+      SLOCK_ANDROID_VERSION_PATCH: ${{ needs.resolve.outputs.version_patch }}
+      SLOCK_ANDROID_VERSION_BUILD: ${{ needs.resolve.outputs.version_build }}
+      SLOCK_ANDROID_VERSION_SUFFIX: ${{ needs.resolve.outputs.version_suffix }}
       SLOCK_SKIP_GRADLE_BUILD: "1"
-      SLOCK_QUIVER_DRAFT: ${{ inputs.release_mode == 'publish' && '0' || '1' }}
+      SLOCK_QUIVER_DRAFT: ${{ needs.resolve.outputs.release_mode == 'publish' && '0' || '1' }}
       # KMP follow-up: when helper gains sign/zipalign, flip this on.
       SLOCK_COLLECT_ANDROID_SYMBOLS: "0"
     steps:
@@ -330,7 +404,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: android-release-mapping
-          path: compose/androidApp/build/outputs/mapping/${{ inputs.android_variant }}/
+          path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
 
       - name: Install Quiver CLI (npm)
         shell: bash
@@ -384,9 +458,9 @@ jobs:
             echo "No downloaded APK found under dist/" >&2
             exit 1
           fi
-          mkdir -p compose/androidApp/build/outputs/apk/${{ inputs.android_variant }}
-          cp "${APK}" "compose/androidApp/build/outputs/apk/${{ inputs.android_variant }}/androidApp-${{ inputs.android_variant }}.apk"
-          ls -la compose/androidApp/build/outputs/apk/${{ inputs.android_variant }}/
+          mkdir -p compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}
+          cp "${APK}" "compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}/androidApp-${{ needs.resolve.outputs.android_variant }}.apk"
+          ls -la compose/androidApp/build/outputs/apk/${{ needs.resolve.outputs.android_variant }}/
           # Helper does the rest (build-metadata, build, asset, release, sign
           # skipped because APK is already on disk; depends on KMP follow-up
           # to integrate sign step into the helper itself).
@@ -400,10 +474,10 @@ jobs:
 
       - name: Create share page
         id: create-share-page
-        if: inputs.create_share_page && inputs.release_mode == 'publish' 
+        if: needs.resolve.outputs.create_share_page == 'true'
         env:
-          SLOCK_QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
-          QUIVER_CHANNEL: ${{ inputs.quiver_channel }}
+          SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
+          QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
         shell: bash
         run: |
           set -euo pipefail
@@ -417,7 +491,7 @@ jobs:
             -X POST \
             -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"ttl_seconds\":${{ inputs.share_ttl_seconds }}}" \
+            --data "{\"ttl_seconds\":${{ needs.resolve.outputs.share_ttl_seconds }}}" \
             "${QUIVER_API:-https://quiver.oranix.io}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
           echo "$SHARE_JSON"
           SHARE_URL="$(printf '%s' "$SHARE_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['share_url'])")"
@@ -433,12 +507,12 @@ jobs:
             echo "|---|---|"
             echo "| **APK** | \`${{ needs.build_android_release.outputs.apk_path }}\` |"
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
-            echo "| **Quiver channel** | \`${{ inputs.quiver_channel }}\` |"
-            echo "| **Release mode** | \`${{ inputs.release_mode }}\` |"
+            echo "| **Quiver channel** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
             echo "| **Release id** | \`${{ steps.publish-quiver-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"
             echo
-            if [ "${{ inputs.release_mode }}" = "draft" ]; then
+            if [ "${{ needs.resolve.outputs.release_mode }}" = "draft" ]; then
               echo "### Draft release — review required before publish"
               echo
               echo "Raw changelog (proofread + translate before publishing):"
@@ -456,3 +530,42 @@ jobs:
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  tag_release:
+    name: Tag release record
+    runs-on: ubuntu-22.04
+    needs: [resolve, build_android_release, publish_quiver]
+    # Main link is workflow_dispatch → build → draft → *then* record a tag so
+    # git history and GitHub Releases line up with what shipped. Only on a
+    # dispatch that actually published (skip dry-runs and tag-triggered runs,
+    # which already came from a tag). The tag is pushed with GITHUB_TOKEN,
+    # which by design does NOT trigger another workflow run — so this is a
+    # record, not the two-stage "CI pushes tag to trigger CI" anti-pattern.
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      needs.resolve.outputs.publish_quiver == 'true' &&
+      needs.publish_quiver.result == 'success'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create and push release tag
+        shell: bash
+        env:
+          VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION_NAME}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on origin; leaving it untouched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${VERSION_NAME} (published via Quiver)"
+          git push origin "${TAG}"
+          echo "Pushed ${TAG} at ${GITHUB_SHA}. (GITHUB_TOKEN push — does not re-trigger the release workflow.)"
