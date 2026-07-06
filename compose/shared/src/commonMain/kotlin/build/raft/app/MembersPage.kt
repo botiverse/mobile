@@ -200,6 +200,7 @@ private val MembersHeaderMessageButtonWidth = 92.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
 private val MembersAgentActivityIndicatorLaneWidth = 12.dp
 private val MembersAgentActivityContentGap = 6.dp
+private val MembersVisualLazyViewportHeight = 1800.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
@@ -2885,6 +2886,14 @@ private fun MembersDetailContent(
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
     val pager = LocalActivity.current.getPager() as Pager
+    fun logVisualLayout(label: String, width: Int, height: Int) {
+        if (stableVisualCapture) {
+            slockLogInfo(
+                tag = "VisualCapture",
+                message = "members_visual_layout label=$label mode=$initialVisualMode size=${width}x$height"
+            )
+        }
+    }
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
     val storeState by (sharedAgentDetailStore ?: fallbackAgentDetailStore).state.collectAsState()
     var actionState by remember(member.id.value, initialVisualMode) {
@@ -3180,6 +3189,91 @@ private fun MembersDetailContent(
             }
         }
     }
+    @Composable
+    fun MemberDetailSelectedTabContent() {
+        when (selectedTab) {
+            MembersAgentDetailTab.Profile ->
+                MembersAgentProfileTab(
+                    member = member,
+                    detail = detail,
+                    agentMachineRuntimes = agentMachineRuntimes,
+                    canManage = canManage,
+                    agentStatusIndicatorState = agentStatusIndicatorState,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
+                    showAvatarPicker = showAvatarPicker && canManage && !deleted,
+                    onToggleAvatarPicker = {
+                        showAvatarPicker = !showAvatarPicker
+                    },
+                    onSelectAvatar = { key ->
+                        saveAvatar("pixel:$key")
+                    },
+                    onClearAvatar = {
+                        saveAvatar(null)
+                    },
+                    onUploadAvatar = {
+                        val uploadCallback = onUploadAgentAvatar
+                        if (uploadCallback == null) {
+                            DataResult.Empty(EmptyReason.NoMembers)
+                        } else {
+                            val picked = onPickAgentAvatarFile()
+                            when (picked) {
+                                is DataResult.Content ->
+                                    uploadCallback(member.id, picked.data)
+                                is DataResult.Empty -> DataResult.Empty(picked.reason)
+                                is DataResult.Error -> DataResult.Error(picked.error)
+                                is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                            }
+                        }
+                    },
+                    sharedAgentDetailStore = sharedAgentDetailStore,
+                    storeState = storeState.takeIf { sharedAgentDetailStore != null },
+                    agentDetailActions = agentDetailActions,
+                    onUpdateAgentProfile = onUpdateAgentProfile,
+                    onUnavailableAction = onUnavailableAction,
+                    lifecycleInFlight = lifecycleInFlight,
+                    diagnosticActionState = effectiveDiagnosticActionState,
+                    onRunLifecycleAction = { runLifecycleAction(it) },
+                    onOpenRestartReset = { openRestartResetDialog() },
+                    onCopyDiagnostics = { copyDiagnostics() },
+                    onReportIssue = { reportIssue() },
+                    timeContext = timeContext,
+                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                )
+            MembersAgentDetailTab.Chat ->
+                MembersAgentDmsTab(
+                    detail = detail,
+                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                )
+            MembersAgentDetailTab.Reminders ->
+                MembersAgentRemindersTab(
+                    detail = detail,
+                    timeContext = timeContext,
+                    onOpenMessageRef = onOpenReminderMessage,
+                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                )
+            MembersAgentDetailTab.Workspace ->
+                MembersAgentWorkspaceTab(
+                    treeState = workspaceTreeState,
+                    expandedDirs = expandedWorkspaceDirs,
+                    loadedDirs = loadedWorkspaceDirs,
+                    loadingDirs = loadingWorkspaceDirs,
+                    dirErrors = workspaceDirErrors,
+                    onRefresh = { loadWorkspaceRoot() },
+                    onToggleDirectory = { toggleWorkspaceDirectory(it) },
+                    onSelectFile = { selectWorkspaceFile(it) },
+                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                )
+            MembersAgentDetailTab.Apps ->
+                MembersAgentAppsTab(
+                    detail = detail,
+                    timeContext = timeContext,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                )
+            MembersAgentDetailTab.Activity -> Unit
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -3235,6 +3329,7 @@ private fun MembersDetailContent(
                     timeContext = timeContext,
                     onOpenUrl = onOpenUrl,
                     autoScrollToLatest = !stableVisualCapture,
+                    visualDiagnosticsKey = "activity",
                     stateNotice = {
                         MembersAgentDetailStateNotice(
                             state = agentDetailState,
@@ -3246,13 +3341,41 @@ private fun MembersDetailContent(
                             )
                         )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                    modifier =
+                        if (stableVisualCapture) {
+                            Modifier
+                                .fillMaxWidth()
+                                .height(MembersVisualLazyViewportHeight)
+                                .onGloballyPositioned { coordinates ->
+                                    logVisualLayout(
+                                        label = "activity_container",
+                                        width = coordinates.size.width,
+                                        height = coordinates.size.height
+                                    )
+                                }
+                        } else {
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        }
                 )
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier =
+                        if (stableVisualCapture) {
+                            Modifier
+                                .fillMaxWidth()
+                                .height(MembersVisualLazyViewportHeight)
+                                .onGloballyPositioned { coordinates ->
+                                    logVisualLayout(
+                                        label = "detail_lazy",
+                                        width = coordinates.size.width,
+                                        height = coordinates.size.height
+                                    )
+                                }
+                        } else {
+                            Modifier.fillMaxSize()
+                        },
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
@@ -3270,88 +3393,7 @@ private fun MembersDetailContent(
                             }
                         }
                         item {
-                            when (selectedTab) {
-                                MembersAgentDetailTab.Profile ->
-                                    MembersAgentProfileTab(
-                                        member = member,
-                                        detail = detail,
-                                        agentMachineRuntimes = agentMachineRuntimes,
-                                        canManage = canManage,
-                                        agentStatusIndicatorState = agentStatusIndicatorState,
-                                        agentStatusResolver = agentStatusResolver,
-                                        memberAvatarResolver = memberAvatarResolver,
-                                        showAvatarPicker = showAvatarPicker && canManage && !deleted,
-                                        onToggleAvatarPicker = {
-                                            showAvatarPicker = !showAvatarPicker
-                                        },
-                                        onSelectAvatar = { key ->
-                                            saveAvatar("pixel:$key")
-                                        },
-                                        onClearAvatar = {
-                                            saveAvatar(null)
-                                        },
-                                        onUploadAvatar = {
-                                            val uploadCallback = onUploadAgentAvatar
-                                            if (uploadCallback == null) {
-                                                DataResult.Empty(EmptyReason.NoMembers)
-                                            } else {
-                                                val picked = onPickAgentAvatarFile()
-                                                when (picked) {
-                                                    is DataResult.Content ->
-                                                        uploadCallback(member.id, picked.data)
-                                                    is DataResult.Empty -> DataResult.Empty(picked.reason)
-                                                    is DataResult.Error -> DataResult.Error(picked.error)
-                                                    is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                                                }
-                                            }
-                                        },
-                                        sharedAgentDetailStore = sharedAgentDetailStore,
-                                        storeState = storeState.takeIf { sharedAgentDetailStore != null },
-                                        agentDetailActions = agentDetailActions,
-                                        onUpdateAgentProfile = onUpdateAgentProfile,
-                                        onUnavailableAction = onUnavailableAction,
-                                        lifecycleInFlight = lifecycleInFlight,
-                                        diagnosticActionState = effectiveDiagnosticActionState,
-                                        onRunLifecycleAction = { runLifecycleAction(it) },
-                                        onOpenRestartReset = { openRestartResetDialog() },
-                                        onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = { reportIssue() },
-                                        timeContext = timeContext,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Chat ->
-                                    MembersAgentDmsTab(
-                                        detail = detail,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Reminders ->
-                                    MembersAgentRemindersTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenMessageRef = onOpenReminderMessage,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Workspace ->
-                                    MembersAgentWorkspaceTab(
-                                        treeState = workspaceTreeState,
-                                        expandedDirs = expandedWorkspaceDirs,
-                                        loadedDirs = loadedWorkspaceDirs,
-                                        loadingDirs = loadingWorkspaceDirs,
-                                        dirErrors = workspaceDirErrors,
-                                        onRefresh = { loadWorkspaceRoot() },
-                                        onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                        onSelectFile = { selectWorkspaceFile(it) },
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Apps ->
-                                    MembersAgentAppsTab(
-                                        detail = detail,
-                                        timeContext = timeContext,
-                                        onOpenUrl = onOpenUrl,
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                                    )
-                                MembersAgentDetailTab.Activity -> Unit
-                            }
+                            MemberDetailSelectedTabContent()
                         }
                     } else {
                         item {
@@ -7374,14 +7416,29 @@ private fun MembersAgentActivityTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
     autoScrollToLatest: Boolean = true,
+    visualDiagnosticsKey: String? = null,
     stateNotice: (@Composable () -> Unit)? = null
 ) {
+    fun logActivityVisualLayout(label: String, width: Int, height: Int) {
+        val key = visualDiagnosticsKey ?: return
+        slockLogInfo(
+            tag = "VisualCapture",
+            message = "members_visual_layout label=${key}_$label rows=${detail?.activity.orEmpty().size} size=${width}x$height"
+        )
+    }
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SlockColor.SurfaceWhite),
+            .background(SlockColor.SurfaceWhite)
+            .onGloballyPositioned { coordinates ->
+                logActivityVisualLayout(
+                    label = "root",
+                    width = coordinates.size.width,
+                    height = coordinates.size.height
+                )
+            },
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         Row(
@@ -7457,6 +7514,13 @@ private fun MembersAgentActivityTab(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .onGloballyPositioned { coordinates ->
+                        logActivityVisualLayout(
+                            label = "lazy",
+                            width = coordinates.size.width,
+                            height = coordinates.size.height
+                        )
+                    }
                     .nestedScroll(
                         scrollUp = NestedScrollMode.SELF_FIRST,
                         scrollDown = NestedScrollMode.SELF_FIRST
