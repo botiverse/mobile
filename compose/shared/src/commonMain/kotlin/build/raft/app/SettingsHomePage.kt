@@ -55,6 +55,7 @@ import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.AppLocale
+import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
@@ -470,6 +471,7 @@ private const val SettingsDestinationNotifications = "notifications"
 private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
+private const val SettingsDestinationReleaseNotes = "releaseNotes"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
@@ -3791,6 +3793,7 @@ private fun SettingsAppShellContent(
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
                 SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationAbout)
+                SettingsDestinationReleaseNotes -> onDestinationChange(SettingsDestinationAbout)
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
                 else -> onDestinationChange(SettingsDestinationHome)
             }
@@ -4282,8 +4285,20 @@ private fun SettingsAppShellContent(
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
-                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) },
+                    onOpenReleaseNotes = { onDestinationChange(SettingsDestinationReleaseNotes) }
                 )
+            SettingsDestinationReleaseNotes -> {
+                val aboutSnapshot =
+                    when (val about = settingsState.about) {
+                        is ScreenLoadState.Content -> about.data
+                        else -> appShellAboutFallback(session)
+                    }
+                SharedSettingsReleaseNotesContent(
+                    versionCode = aboutSnapshot.buildLabel,
+                    bottomContentPadding = bottomContentPadding
+                )
+            }
             SettingsDestinationDeveloper ->
                 SharedSettingsDeveloperContent(
                     state = settingsState.developer,
@@ -7696,7 +7711,8 @@ private fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
-    onSendFeedback: () -> Unit
+    onSendFeedback: () -> Unit,
+    onOpenReleaseNotes: () -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -7710,8 +7726,75 @@ private fun SharedSettingsAboutContent(
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "feedback" -> onSendFeedback()
+            "releaseNotes" -> onOpenReleaseNotes()
         }
     }
+}
+
+/**
+ * task #90: server-rendered, public release-notes page for the current
+ * build, loaded full-screen in an in-app WebView. `allowNavigation`
+ * stays on so the page's per-version download links keep working. On a
+ * load failure we overlay a retry affordance that recreates the WebView
+ * (bumping [reloadKey]) instead of inventing a new navigation mechanism.
+ */
+@Composable
+private fun SharedSettingsReleaseNotesContent(
+    versionCode: String,
+    bottomContentPadding: Dp = SlockSpacing.Lg
+) {
+    val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
+    var reloadKey by remember { mutableStateOf(0) }
+    var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        key(reloadKey, url) {
+            SlockWebView(
+                url = url,
+                modifier = Modifier.fillMaxSize(),
+                allowNavigation = true,
+                onLoadSuccess = { loadError = null },
+                onLoadFailure = { reason -> loadError = reason }
+            )
+        }
+        if (loadError != null) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.SurfaceWhite)
+                        .padding(16.dp)
+                        .padding(bottom = bottomContentPadding),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
+                ) {
+                    SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
+                }
+                Text("Couldn't load release notes", style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text("Check your connection and try again.", style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+                SlockBrutalActionButton(
+                    label = "重试 / Retry",
+                    onClick = { reloadKey += 1 },
+                    leadingIcon = SlockLucideIconName.RefreshCw,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
+            }
+        }
+    }
+}
+
+private fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
+    val localeTag =
+        try {
+            KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().kmmResourceLocaleTag
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            AppLocale.Default.kmmResourceLocaleTag
+        }
+    return "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode&lang=$localeTag"
 }
 
 @Composable
@@ -9504,6 +9587,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 )
                             )
                             add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
+                            add(KuiklySharedSettingsRow("releaseNotes", SlockLucideIconName.FileText, "Release Notes", "View version history and changelog.", status = "Open", enabled = true))
                         }
                 )
             )
@@ -9761,6 +9845,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
+        SettingsDestinationReleaseNotes -> "Release Notes"
         SettingsDestinationDeveloper -> "Developer"
         SettingsDestinationApiEnvironment -> "API Environment"
         SettingsDestinationDiagnostics -> "Diagnostics"
@@ -9805,6 +9890,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
         SettingsDestinationAbout -> SlockLucideIconName.BadgeInfo
+        SettingsDestinationReleaseNotes -> SlockLucideIconName.FileText
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
