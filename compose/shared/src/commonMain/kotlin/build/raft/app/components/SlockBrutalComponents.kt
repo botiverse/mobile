@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -510,6 +511,8 @@ internal fun SlockBrutalInputField(
                     maxLines = maxLines,
                     keyboardOptions = keyboardOptions,
                     keyboardActions = keyboardActions,
+                    enabled = enabled,
+                    readOnly = !enabled,
                     textStyle = textStyle,
                     visualTransformation = visualTransformation,
                     systemNewlineAction = isMultiline,
@@ -521,6 +524,110 @@ internal fun SlockBrutalInputField(
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.X,
                         onClick = { onClear?.invoke() ?: onValueChange("") },
+                        size = 18.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+                trailingContent?.invoke()
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SlockBrutalInputField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    autoFocus: Boolean = false,
+    maxLines: Int = 1,
+    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+    fieldMinHeight: Dp = 42.dp,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 8.dp,
+    showShadow: Boolean = true,
+    forceFocused: Boolean = false,
+    borderColor: Color = SlockColor.BorderBlack,
+    enabledBackgroundColor: Color = SlockColor.SurfaceWhite,
+    disabledBackgroundColor: Color = SlockColor.SurfaceCream,
+    placeholderColor: Color = SlockColor.TextMutedGray,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    showClearWhenNotEmpty: Boolean = false,
+    onClear: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null
+) {
+    var focused by remember { mutableStateOf(false) }
+    val isMultiline = maxLines > 1
+    val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
+    val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
+    val shadowOffset = if (showShadow) {
+        if ((focused || forceFocused) && enabled) SlockShadow.Brutal else SlockShadow.BrutalSmall
+    } else {
+        0.dp
+    }
+    val reservedShadowOffset = if (showShadow) SlockShadow.Brutal else 0.dp
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(fieldMinHeight + reservedShadowOffset)
+    ) {
+        if (showShadow) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(fieldMinHeight)
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .slockSquareCorners()
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(fieldMinHeight)
+                    .slockSquareCorners()
+                    .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
+                    .border(SlockStroke.Default, borderColor)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            contentAlignment = fieldContentAlignment
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = rowVerticalAlignment
+            ) {
+                TextField(
+                    value = value,
+                    onValueChange = { if (enabled) onValueChange(it) },
+                    placeholder = placeholder,
+                    placeholderColor = placeholderColor,
+                    autoFocus = autoFocus,
+                    onFocus = { focused = true },
+                    onBlur = { focused = false },
+                    maxLines = maxLines,
+                    keyboardOptions = keyboardOptions,
+                    keyboardActions = keyboardActions,
+                    enabled = enabled,
+                    readOnly = !enabled,
+                    textStyle = textStyle,
+                    visualTransformation = visualTransformation,
+                    systemNewlineAction = isMultiline,
+                    contentAlignment = fieldContentAlignment,
+                    modifier = Modifier.weight(1f),
+                    focusRequester = focusRequester
+                )
+                if (showClearWhenNotEmpty && value.text.isNotEmpty() && enabled) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.X,
+                        onClick = { onClear?.invoke() ?: onValueChange(TextFieldValue("")) },
                         size = 18.dp,
                         shadowOffset = 2.dp
                     )

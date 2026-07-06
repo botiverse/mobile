@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -180,6 +181,62 @@ internal fun SlockBrutalTextarea(
                             .copy(fontSize = 12.sp, lineHeight = 14.sp)
                             .withSlockFontWeight(if (overLimit || hasError) FontWeight.Bold else FontWeight.Normal),
                     color = if (overLimit || hasError) SlockColor.AccentRed else SlockColor.TextBlack.copy(alpha = 0.50f),
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SlockBrutalTextarea(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    hint: String? = null,
+    error: String? = null,
+    showCounter: Boolean = false,
+    limit: Int? = null,
+    enabled: Boolean = true,
+    fieldHeight: Dp = 76.dp,
+    maxLines: Int = 3
+) {
+    val hasError = !error.isNullOrBlank()
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SlockBrutalInputField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            enabled = enabled,
+            autoFocus = false,
+            maxLines = maxLines,
+            fieldMinHeight = fieldHeight,
+            borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
+            enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
+            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Text(
+                text = error?.takeIf { it.isNotBlank() } ?: hint.orEmpty(),
+                style =
+                    SlockType.Caption
+                        .copy(fontSize = 12.sp, lineHeight = 14.sp)
+                        .withSlockFontWeight(if (hasError) FontWeight.Bold else FontWeight.Normal),
+                color = if (hasError) SlockColor.AccentRed else SlockColor.TextBlack.copy(alpha = 0.60f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (showCounter && limit != null) {
+                val overLimit = value.text.length > limit
+                Text(
+                    text = "${value.text.length}/$limit",
+                    style =
+                        SlockType.Caption
+                            .copy(fontSize = 12.sp, lineHeight = 14.sp)
+                            .withSlockFontWeight(if (overLimit) FontWeight.Bold else FontWeight.Normal),
+                    color = if (overLimit) SlockColor.AccentRed else SlockColor.TextBlack.copy(alpha = 0.45f),
                     maxLines = 1
                 )
             }

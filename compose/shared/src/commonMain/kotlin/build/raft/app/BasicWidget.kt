@@ -601,6 +601,8 @@ internal fun TextField(
     onBlur: () -> Unit = {},
     onFocus: () -> Unit = {},
     keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
     textStyle: TextStyle = TextStyle.Default,
     placeholderColor: Color? = null,
     cursorBrush: Brush = SolidColor(Color.Black),
@@ -653,6 +655,8 @@ internal fun TextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
+        enabled = enabled,
+        readOnly = readOnly,
         visualTransformation = visualTransformation,
         decorationBox = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
@@ -688,6 +692,8 @@ internal fun TextField(
     onBlur: () -> Unit = {},
     onFocus: () -> Unit = {},
     keyboardHeightChange: (KeyboardParams) -> Unit = {},
+    enabled: Boolean = true,
+    readOnly: Boolean = false,
     textStyle: TextStyle = TextStyle.Default,
     placeholderColor: Color? = null,
     cursorBrush: Brush = SolidColor(Color.Black),
@@ -697,6 +703,7 @@ internal fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
     systemNewlineAction: Boolean = false,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
     contentAlignment: Alignment = Alignment.CenterStart
 ) {
     var lastFocus by remember { mutableStateOf(false) }
@@ -733,6 +740,9 @@ internal fun TextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
+        enabled = enabled,
+        readOnly = readOnly,
+        visualTransformation = visualTransformation,
         decorationBox = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
                 if (value.text.isEmpty() && placeholder.isNotEmpty()) {

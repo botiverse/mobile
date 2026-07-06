@@ -401,6 +401,7 @@ import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
@@ -8036,7 +8037,8 @@ private fun SharedQuiverFeedbackContent(
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val scope = rememberCoroutineScope()
-    var message by remember { mutableStateOf("") }
+    var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
+    val message = messageFieldValue.text
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -8092,7 +8094,7 @@ private fun SharedQuiverFeedbackContent(
             when (val result = settingsCapabilities.submitQuiverFeedback(normalizedMessage, attachments.take(attachmentLimit))) {
                 is DataResult.Content -> {
                     submission = result.data
-                    message = ""
+                    messageFieldValue = TextFieldValue("")
                     attachments = emptyList()
                 }
                 is DataResult.Empty -> error = "settings_feedback_submit_unavailable"
@@ -8112,9 +8114,9 @@ private fun SharedQuiverFeedbackContent(
             SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquarePlus, title = "Feedback") {
                 SettingsFormDetailText("Send feedback to Quiver. Device diagnostics are attached automatically when there is room.")
                 SlockBrutalTextarea(
-                    value = message,
+                    value = messageFieldValue,
                     onValueChange = {
-                        message = it
+                        messageFieldValue = it
                         submission = null
                     },
                     placeholder = "What happened?",
