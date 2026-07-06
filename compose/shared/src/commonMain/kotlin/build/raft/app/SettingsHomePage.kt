@@ -15469,40 +15469,38 @@ private val homeSearchVisualHomeState = SharedHomeState(
     selectedTopAction = SharedHomeTopAction.Search
 )
 
+// Canonical create-channel roster (task #370): mirrors the react render host
+// priming in packages/web/visual-testing/VisualTestingCases.tsx
+// (primeCreateChannelStores) — agents Cindy (selected) + Visual QA, human
+// Designer (selected); the current user (artin) is excluded from the picker.
+// Identity/avatar values come from fixtureData.json via VisualFixtureData.
 private val homeCreateChannelVisualMembers = listOf(
         MemberProfile(
-            id = MemberId("user_artin"),
-            displayName = "Artin",
-            handle = "artin",
-            kind = MemberKind.Human,
-            avatarLabel = "AR",
-            presence = Presence.Active
-        ),
-        MemberProfile(
-            id = MemberId("user_product"),
-            displayName = "Product UX Designer",
-            handle = "Product-UX-Designer",
-            kind = MemberKind.Human,
-            avatarLabel = "PU",
-            presence = Presence.Active
-        ),
-        MemberProfile(
-            id = MemberId("agent_android"),
-            displayName = "Android Developer",
-            handle = "Android-Developer",
+            id = MemberId("agent-cindy"),
+            displayName = "Cindy",
+            handle = "Cindy",
             kind = MemberKind.Agent,
-            avatarLabel = "AD",
+            avatarLabel = "CI",
+            avatar = AvatarReference.Pixel("robot"),
             presence = Presence.Active,
             agentStatus = AgentStatus.Working
         ),
         MemberProfile(
-            id = MemberId("agent_kmp"),
-            displayName = "KMP-专家",
-            handle = "KMP-专家",
+            id = MemberId("agent-visual-qa"),
+            displayName = "Visual QA",
+            handle = "visual-qa",
             kind = MemberKind.Agent,
-            avatarLabel = "K",
-            presence = Presence.Active,
-            agentStatus = AgentStatus.Idle
+            avatarLabel = "VQ",
+            avatar = AvatarReference.Pixel("eye"),
+            presence = Presence.Offline,
+            agentStatus = AgentStatus.Offline
+        ),
+        MemberProfile(
+            id = MemberId("visual-human-designer"),
+            displayName = "Designer",
+            handle = "designer",
+            kind = MemberKind.Human,
+            avatarLabel = "DE"
         )
 )
 
@@ -15611,66 +15609,68 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     nextOffset = 3
 )
 
+// Canonical saved-messages entries (task #370): ported verbatim from
+// packages/visual-testing/shared/savedMessagesFixture.json in the slock repo
+// (total 5 → "5 saved" header, 3 rendered entries, hasMore → Load More).
+// Relative time labels match what react renders for the fixture ISO stamps.
 private val homeSavedVisualState = SharedHomeSavedPanelState(
     items =
         listOf(
             InboxItem(
-                key = "saved-channel-report",
+                key = "saved-visual-1",
                 kind = InboxItemKind.Channel,
-                channelId = ChannelId("ch_android"),
-                channelName = "android-artifacts",
-                lastMessageId = MessageId("msg_saved_report"),
-                lastMessagePreview = "Uploaded Android visual report with Search and Saved cases. The latest run still needs Product UX review before we mark it done.",
-                lastMessageAt = "13:58",
-                lastMessageSenderName = "Android Developer",
-                latestActivityMessageId = MessageId("msg_saved_report"),
-                latestActivityPreview = "Uploaded Android visual report with Search and Saved cases. The latest run still needs Product UX review before we mark it done.",
-                latestActivityAt = "2 hours ago",
-                latestActivitySenderName = "Android Developer"
+                channelId = ChannelId("channel-design"),
+                channelName = "design",
+                lastMessageId = MessageId("msg-saved-visual-1"),
+                lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                lastMessageAt = "14 days ago",
+                lastMessageSenderName = "Cindy",
+                lastMessageSenderId = "agent-cindy",
+                lastMessageSenderKind = MemberKind.Agent,
+                lastMessageSenderAvatarWireValue = "pixel:robot"
             ),
             InboxItem(
-                key = "saved-thread-reply",
+                key = "saved-visual-2",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread_msg_agent_reply"),
-                channelName = "thread",
-                lastMessageId = MessageId("msg_saved_thread_reply"),
-                lastMessagePreview = "Search visual parity should keep the real React SavedPanel as the source, not a hand-built preview shell.",
-                lastMessageAt = "14:31",
+                channelId = ChannelId("thread-visual"),
+                channelName = "design",
+                lastMessageId = MessageId("msg-saved-visual-2"),
+                lastMessagePreview = "Rename old visual cases under components.* before rerunning baseline.",
+                lastMessageAt = "14 days ago",
                 lastMessageSenderName = "artin",
-                threadChannelId = ChannelId("thread_msg_agent_reply"),
-                parentChannelId = ChannelId("ch_design"),
+                lastMessageSenderId = "visual-user",
+                lastMessageSenderKind = MemberKind.Human,
+                threadChannelId = ChannelId("thread-visual"),
+                parentChannelId = ChannelId("channel-design"),
                 parentChannelName = "design",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("msg_agent_reply"),
-                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
-                latestActivityMessageId = MessageId("msg_saved_thread_reply"),
-                latestActivityPreview = "Search visual parity should keep the real React SavedPanel as the source, not a hand-built preview shell.",
-                latestActivityAt = "1 hour ago",
-                latestActivitySenderName = "artin",
-                replyCount = 5,
-                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android"))
+                parentMessageId = MessageId("msg-parent-visual")
             ),
             InboxItem(
-                key = "saved-dm-checklist",
-                kind = InboxItemKind.DirectMessage,
-                channelId = ChannelId("dm_android"),
-                channelName = "Android Developer",
-                lastMessageId = MessageId("msg_saved_dm"),
-                lastMessagePreview = "Please keep this saved checklist around for the next connected visual-testing run.",
-                lastMessageAt = "14:44",
-                lastMessageSenderName = "Android Developer",
-                latestActivityMessageId = MessageId("msg_saved_dm"),
-                latestActivityPreview = "Please keep this saved checklist around for the next connected visual-testing run.",
-                latestActivityAt = "1 hour ago",
-                latestActivitySenderName = "Android Developer"
+                key = "saved-visual-3",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-design"),
+                channelName = "design",
+                lastMessageId = MessageId("msg-saved-visual-3"),
+                lastMessagePreview = "Publish preflight is green — report goes live after the next full run.",
+                lastMessageAt = "15 days ago",
+                lastMessageSenderName = "Product UX Designer",
+                lastMessageSenderId = "agent-product-ux",
+                lastMessageSenderKind = MemberKind.Agent,
+                lastMessageSenderAvatarWireValue = "pixel:paint"
             )
         ),
-    totalCount = 3,
+    totalCount = 5,
     loaded = true,
     hasMore = true,
     nextOffset = 3
 )
 
+// Canonical activity-inbox rows (task #370): ported verbatim from
+// packages/visual-testing/shared/activityResultsFixture.json in the slock repo
+// (thread card in #design with 5 replies / @you / 2 new, #android-artifacts
+// channel card with 1 new, @Cindy dm card). Relative time labels match what
+// react renders for the fixture ISO stamps.
 private val homeActivityVisualSnapshot = InboxSnapshot(
     server = homeSearchVisualServer,
     items =
@@ -15678,66 +15678,57 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
             InboxItem(
                 key = "activity-thread-visual-parity",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread_msg_agent_reply"),
+                channelId = ChannelId("thread-msg-agent-reply"),
                 channelName = "thread",
                 unreadCount = 2,
                 hasMention = true,
-                firstUnreadMessageId = MessageId("msg_activity_reply_1"),
-                lastMessageId = MessageId("msg_agent_reply"),
-                lastMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
-                lastMessageAt = "30 minutes ago",
-                lastMessageSenderName = "Android Developer",
-                threadChannelId = ChannelId("thread_msg_agent_reply"),
-                parentChannelId = ChannelId("ch_design"),
+                firstUnreadMessageId = MessageId("msg-visual-activity-reply"),
+                threadChannelId = ChannelId("thread-msg-agent-reply"),
+                parentChannelId = ChannelId("channel-design"),
                 parentChannelName = "design",
                 parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("msg_agent_reply"),
-                parentMessagePreview = "收到，统一 MessageItem / ThreadMessageItem 的正文、回复数和任务状态。",
-                latestActivityMessageId = MessageId("msg_activity_reply_1"),
-                latestActivityPreview = "Android Activity needs to reuse the real ThreadsInbox row primitives.",
-                latestActivityAt = "30 minutes ago",
-                latestActivitySenderName = "Artin",
-                replyCount = 5,
-                participantIds = listOf(MemberId("user_artin"), MemberId("agent_android")),
-                taskNumber = 177,
-                taskStatus = TaskStatus.InProgress,
-                taskClaimedByName = "Product-UX-Designer"
+                parentMessageId = MessageId("msg-agent-reply"),
+                parentMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                parentMessageSenderId = "agent-cindy",
+                parentMessageSenderKind = MemberKind.Agent,
+                latestActivityMessageId = MessageId("msg-visual-activity-reply"),
+                latestActivityPreview = "Review the Android composer crop before release.",
+                latestActivityAt = "14 days ago",
+                latestActivitySenderName = "artin",
+                latestActivitySenderId = "visual-user",
+                latestActivitySenderKind = MemberKind.Human,
+                replyCount = 5
             ),
             InboxItem(
                 key = "activity-channel-artifacts",
                 kind = InboxItemKind.Channel,
-                channelId = ChannelId("ch_android"),
+                channelId = ChannelId("channel-android"),
                 channelName = "android-artifacts",
-                lastMessageId = MessageId("msg_activity_channel_1"),
-                lastMessagePreview = "Uploaded Android visual report with Search and Saved cases.",
-                lastMessageAt = "1 hour ago",
-                lastMessageSenderName = "Android Developer",
-                latestActivityMessageId = MessageId("msg_activity_channel_1"),
-                latestActivityPreview = "Uploaded Android visual report with Search and Saved cases.",
-                latestActivityAt = "1 hour ago",
-                latestActivitySenderName = "Android Developer"
+                unreadCount = 1,
+                firstUnreadMessageId = MessageId("msg-visual-activity-android"),
+                lastMessageId = MessageId("msg-visual-activity-android"),
+                lastMessagePreview = "Captured the previous visual baseline before leaving the workspace.",
+                lastMessageAt = "16 days ago",
+                lastMessageSenderName = "Cindy",
+                lastMessageSenderId = "agent-cindy",
+                lastMessageSenderKind = MemberKind.Agent
             ),
             InboxItem(
-                key = "activity-dm-android",
+                key = "activity-dm-cindy",
                 kind = InboxItemKind.DirectMessage,
-                channelId = ChannelId("dm_android"),
-                channelName = "Android Developer",
-                unreadCount = 1,
-                firstUnreadMessageId = MessageId("msg_activity_dm_1"),
-                lastMessageId = MessageId("msg_activity_dm_1"),
-                lastMessagePreview = "Please keep this saved checklist around for the next connected visual-testing run.",
-                lastMessageAt = "1 hour ago",
-                lastMessageSenderName = "Android Developer",
-                latestActivityMessageId = MessageId("msg_activity_dm_1"),
-                latestActivityPreview = "Please keep this saved checklist around for the next connected visual-testing run.",
-                latestActivityAt = "1 hour ago",
-                latestActivitySenderName = "Android Developer"
+                channelId = ChannelId("dm-agent-cindy-artin"),
+                channelName = "Cindy",
+                lastMessageId = MessageId("msg-visual-activity-dm"),
+                lastMessagePreview = "201继续推进",
+                lastMessageAt = "16 days ago",
+                lastMessageSenderName = "Cindy",
+                lastMessageSenderId = "agent-cindy",
+                lastMessageSenderKind = MemberKind.Agent
             )
         ),
     totalCount = 3,
     totalUnreadCount = 3,
-    hasMore = true,
-    nextOffset = 3
+    hasMore = false
 )
 
 @Composable

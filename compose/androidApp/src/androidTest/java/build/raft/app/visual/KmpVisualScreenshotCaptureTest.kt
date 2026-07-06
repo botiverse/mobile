@@ -1005,6 +1005,19 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Joint-channel roster variant split from components.channel.members.panel
+    // (task #370): react counterpart + manifest entry land separately, so this
+    // case is react-missing until then.
+    @Test
+    fun captureChannelMembersPanelJointChannel() {
+        captureKmpComponentCase(
+            caseId = "components.channel.members.panel.joint-channel",
+            pageName = "compose_channel_members_panel_joint_channel_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
     @Test
     fun captureChannelSettingsPanel() {
         captureKmpComponentCase(
