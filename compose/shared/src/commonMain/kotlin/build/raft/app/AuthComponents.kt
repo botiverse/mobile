@@ -36,7 +36,6 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -397,23 +396,27 @@ internal fun AuthActionButton(
         AuthButtonTone.Disabled -> SlockColor.EmptyStateGray
     }
     val activeContentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
-    val disabledAlpha = 0.50f
-    // React parity: disabled:opacity-50 dims the WHOLE element after compositing —
-    // the opaque face occludes the shadow first, then everything fades together.
-    // Applying per-color alpha instead let the black shadow bleed through the
-    // translucent face (muddy mauve instead of pale pink, task #372), so keep the
-    // colors full and dim the composited button with a group Modifier.alpha.
     val dimWholeButton = !enabled && preserveDisabledVisual
     val contentColor = when {
+        dimWholeButton -> activeContentColor.authDisabledOpacityOverWhite()
         enabled || preserveDisabledVisual -> activeContentColor
         else -> SlockDisabledActionContent
     }
     val buttonBackground = when {
+        dimWholeButton -> background.authDisabledOpacityOverWhite()
         enabled || preserveDisabledVisual -> background
         else -> slockDisabledActionBackgroundFor(background)
     }
-    val borderColor = if (enabled || preserveDisabledVisual) SlockColor.BorderBlack else SlockDisabledActionBorder
-    val shadowColor = if (enabled || preserveDisabledVisual) SlockColor.ShadowBlack else SlockDisabledActionShadow
+    val borderColor = when {
+        dimWholeButton -> SlockColor.BorderBlack.authDisabledOpacityOverWhite()
+        enabled || preserveDisabledVisual -> SlockColor.BorderBlack
+        else -> SlockDisabledActionBorder
+    }
+    val shadowColor = when {
+        dimWholeButton -> SlockColor.ShadowBlack.authDisabledOpacityOverWhite()
+        enabled || preserveDisabledVisual -> SlockColor.ShadowBlack
+        else -> SlockDisabledActionShadow
+    }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
     val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
     val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
@@ -423,11 +426,6 @@ internal fun AuthActionButton(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
-            // Group alpha must wrap the full footprint (face + offset shadow), so
-            // it sits BEFORE the shadow padding: Kuikly's Modifier.alpha renders
-            // into an intermediate layer clipped to this node's bounds, and after
-            // the padding the offset shadow would fall outside and get clipped.
-            .then(if (dimWholeButton) Modifier.alpha(disabledAlpha) else Modifier)
             .padding(end = shadowOffset, bottom = shadowOffset)
     ) {
         Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(shadowColor))
@@ -462,6 +460,19 @@ internal fun AuthActionButton(
         }
     }
 }
+
+private fun Color.authDisabledOpacityOverWhite(): Color =
+    when (this) {
+        SlockColor.TextBlack,
+        SlockColor.BorderBlack -> Color(0xFF808080)
+        SlockColor.ShadowBlack -> Color(0xFF8A8888)
+        SlockColor.AccentPink -> Color(0xFFFFBED4)
+        SlockColor.BrandYellow -> Color(0xFFFFEAA0)
+        SlockColor.AccentCyan -> Color(0xFF93E5F9)
+        SlockColor.SurfaceWhite -> SlockColor.SurfaceWhite
+        SlockColor.EmptyStateGray -> Color(0xFFF3F3F3)
+        else -> this.copy(alpha = 0.50f)
+    }
 
 internal fun authActionButtonTextStyle(
     variant: AuthActionButtonVariant,
