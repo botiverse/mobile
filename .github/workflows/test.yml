@@ -644,17 +644,9 @@ jobs:
         shell: bash
         run: git config --global --add safe.directory '*'
 
-      # actions/cache keys include a compression-tool "version": the ubuntu
-      # prebuild saves zstd-compressed entries, which a gzip-only client can
-      # never restore (same key, different version). The image lacks zstd.
-      # curl is likewise absent and prepare_ohos_sqlite_provider.sh downloads
-      # the SQLite amalgamation with it.
-      - name: Install container build prerequisites
-        shell: bash
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends zstd curl
-
+      # zstd (actions/cache compression fingerprint) and curl (the SQLite
+      # amalgamation download in prepare_ohos_sqlite_provider.sh) are now baked
+      # into harmonyos-ci-image, so the per-run apt-get install is gone.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
