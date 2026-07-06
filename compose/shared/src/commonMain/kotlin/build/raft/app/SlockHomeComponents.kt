@@ -739,13 +739,17 @@ internal fun SlockStructuralHomeShell(
     val pinnedIdSet = remember(pinnedChannelIds) { pinnedChannelIds.toSet() }
     var sortOverlaySection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var activeMenuSection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
+    val allChannelId = remember(channels) { channels.firstOrNull { it.kind != "joint" && it.name == "all" }?.id }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState) {
-        channels
-            .filter { it.kind != "joint" }
-            .orderedBySidebarIds(channelOrder)
-            .sortedForSidebar(channelSortModeState) { it.name }
+        val regularChannels = channels.filter { it.kind != "joint" }
+        regularChannels
+            .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
+            .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }
     }
     val displayedChannels = baseDisplayedChannels
+    val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
+        baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
+    }
     val displayedJointChannels = remember(channels, channelOrder, channelSortModeState) {
         channels
             .filter { it.kind == "joint" }
@@ -1267,7 +1271,7 @@ internal fun SlockStructuralHomeShell(
                     val sortableFromMenu =
                         when (activeMenuSection) {
                             SlockHomeSortSection.Pinned -> pinnedItemsForSort.size > 1
-                            SlockHomeSortSection.Channels -> baseDisplayedChannels.size > 1
+                            SlockHomeSortSection.Channels -> sortableDisplayedChannels.size > 1
                             SlockHomeSortSection.JointChannels -> displayedJointChannels.size > 1
                             SlockHomeSortSection.DirectMessages -> displayedDirectMessages.size > 1
                             null -> false
@@ -1325,7 +1329,7 @@ internal fun SlockStructuralHomeShell(
                         SlockHomeSortSection.Pinned -> displayedPinned
                         SlockHomeSortSection.JointChannels -> displayedJointChannels
                         SlockHomeSortSection.DirectMessages -> displayedDirectMessages
-                        SlockHomeSortSection.Channels -> baseDisplayedChannels
+                        SlockHomeSortSection.Channels -> sortableDisplayedChannels
                     }
                 SlockSidebarSortOverlay(
                     title = when (section) {
@@ -1634,27 +1638,40 @@ internal fun SlockHomeSectionSelection.selects(id: String): Boolean =
 
 internal fun List<SlockHomeConversationItem>.sortedForSidebar(
     mode: SlockSidebarSortMode,
+    pinnedFirstId: String? = null,
     label: (SlockHomeConversationItem) -> String
-): List<SlockHomeConversationItem> =
-    when (mode) {
-        SlockSidebarSortMode.Manual -> this
-        SlockSidebarSortMode.Recent ->
-            sortedWith(
-                compareByDescending<SlockHomeConversationItem> {
-                    parseSlockTimestampEpochMillisOrNull(it.lastMessageAt ?: it.createdAt) ?: Long.MIN_VALUE
-                }.thenBy { label(it).trim().lowercase() }.thenBy { it.id }
-            )
-        SlockSidebarSortMode.Az ->
-            sortedWith(compareBy<SlockHomeConversationItem> { label(it).trim().lowercase() }.thenBy { it.id })
-    }
+): List<SlockHomeConversationItem> {
+    if (mode == SlockSidebarSortMode.Manual) return withPinnedFirst(pinnedFirstId)
+    val pinned = pinnedFirstId?.let { id -> firstOrNull { it.id == id } }
+    val sortable = pinned?.let { item -> filterNot { it.id == item.id } } ?: this
+    val sorted =
+        when (mode) {
+            SlockSidebarSortMode.Manual -> sortable
+            SlockSidebarSortMode.Recent ->
+                sortable.sortedWith(
+                    compareByDescending<SlockHomeConversationItem> {
+                        parseSlockTimestampEpochMillisOrNull(it.lastMessageAt ?: it.createdAt) ?: Long.MIN_VALUE
+                    }.thenBy { label(it).trim().lowercase() }.thenBy { it.id }
+                )
+            SlockSidebarSortMode.Az ->
+                sortable.sortedWith(compareBy<SlockHomeConversationItem> { label(it).trim().lowercase() }.thenBy { it.id })
+        }
+    return if (pinned != null) listOf(pinned) + sorted else sorted
+}
 
 internal fun List<SlockHomeConversationItem>.orderedBySidebarIds(
-    order: List<String>
+    order: List<String>,
+    pinnedFirstId: String? = null
 ): List<SlockHomeConversationItem> {
-    if (order.isEmpty() || isEmpty()) return this
+    if (isEmpty()) return this
+    if (order.isEmpty()) return withPinnedFirst(pinnedFirstId)
     val byId = associateBy { it.id }
     val ordered = LinkedHashMap<String, SlockHomeConversationItem>()
+    pinnedFirstId?.let { id ->
+        byId[id]?.let { ordered[it.id] = it }
+    }
     order.forEach { id ->
+        if (id == pinnedFirstId) return@forEach
         byId[id]?.let { ordered[it.id] = it }
     }
     forEach { item ->
@@ -1663,6 +1680,19 @@ internal fun List<SlockHomeConversationItem>.orderedBySidebarIds(
         }
     }
     return ordered.values.toList()
+}
+
+private fun List<SlockHomeConversationItem>.withPinnedFirst(pinnedFirstId: String?): List<SlockHomeConversationItem> {
+    if (pinnedFirstId.isNullOrBlank() || size < 2 || firstOrNull()?.id == pinnedFirstId) return this
+    val pinned = firstOrNull { it.id == pinnedFirstId } ?: return this
+    return listOf(pinned) + filterNot { it.id == pinnedFirstId }
+}
+
+internal fun List<SlockHomeConversationItem>.withoutSidebarPinnedItem(
+    pinnedFirstId: String?
+): List<SlockHomeConversationItem> {
+    if (pinnedFirstId.isNullOrBlank()) return this
+    return filterNot { it.id == pinnedFirstId }
 }
 
 internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
