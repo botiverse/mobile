@@ -25,8 +25,8 @@ internal data class SlockHttpExecutorResponse(
  *   CancellationException; they never throw for HTTP-level errors.
  * - No transport-level retry: refresh/retry policy is owned by the callers.
  *
- * Android/iOS actuals return the Ktor executor; OHOS returns the
- * NetworkKMM/libcurl executor (Ktor CIO has no native TLS on OHOS).
+ * Every platform gets the NetworkKMM executor (libcurl on OHOS, the
+ * library's pooled ktor engines on Android/iOS) — see task #12.
  */
 internal interface SlockHttpExecutor {
     suspend fun execute(
@@ -47,6 +47,3 @@ internal interface SlockHttpExecutor {
     ): SlockHttpExecutorResponse
 }
 
-internal expect fun createPlatformSlockHttpExecutor(
-    warningLogger: (String) -> Unit
-): SlockHttpExecutor

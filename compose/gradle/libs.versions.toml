@@ -23,7 +23,6 @@ gson = "2.11.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.1.0"
 coil = "3.4.0"
-ktor = "2.3.7"
 androidsvg = "1.4"
 mmkv = "2.4.0"
 buglyPro = "4.4.7.8"
@@ -60,9 +59,6 @@ socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref
 sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coroutines-extensions-jvm", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
-ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
-ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
-ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 mmkv = { group = "com.tencent", name = "mmkv", version.ref = "mmkv" }
 bugly-pro = { group = "com.tencent.bugly_16kb", name = "bugly-pro", version.ref = "buglyPro" }
