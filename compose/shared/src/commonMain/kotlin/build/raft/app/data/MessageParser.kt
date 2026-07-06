@@ -375,7 +375,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         attachments = attachments.map { it.toDomain() },
         reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },
         senderMembershipStatus = senderMembershipStatus,
-        forwardBundle = forwardBundle.toForwardMessageBundle(),
+        forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         deliveryState = MessageDeliveryState.Sent,
         task = task,
         replyCount = replyCount ?: summary?.replyCount ?: 0,

@@ -1976,9 +1976,10 @@ internal fun ThreadMessageVisualScreen() {
             Spacer(Modifier.height(SlockSpacing.Sm))
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
+                selectableCount = messages.size,
                 onCancel = {},
-                onMergeForward = {},
-                onForwardIndividually = {},
+                onSelectAll = {},
+                onForward = {},
                 onExportImage = {},
                 onCopyLinks = {}
             )
@@ -7462,7 +7463,13 @@ private fun ThreadPageContent(
     var forwardTargetStatus by remember(threadInstanceKey) { mutableStateOf(SharedMembersLoadStatus.Idle) }
     var forwardTargetErrorCode by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardSendingTargetId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
+    var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
+    val selectableShareMessageIds =
+        remember(timelineSlice) {
+            timelineSlice.threadSelectableShareMessageIds()
+        }
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
             timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
@@ -7837,18 +7844,17 @@ private fun ThreadPageContent(
                 if (!shareCaptureMode) {
                     ThreadShareSelectionToolbar(
                         selectedCount = selectedShareMessages.size,
+                        selectableCount = selectableShareMessageIds.size,
                         onCancel = clearShareSelection,
-                        onMergeForward = {
+                        onSelectAll = {
+                            selectedShareMessageIds = selectableShareMessageIds
+                        },
+                        onForward = {
                             if (selectedShareMessages.isNotEmpty()) {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
                                 forwardTargetQuery = ""
-                                activeModal = "forwardTargets"
-                            }
-                        },
-                        onForwardIndividually = {
-                            if (selectedShareMessages.isNotEmpty()) {
-                                activeForwardSelectionMode = ThreadForwardSelectionMode.Individual
-                                forwardTargetQuery = ""
+                                forwardSelectedTarget = null
+                                forwardNote = ""
                                 activeModal = "forwardTargets"
                             }
                         },
@@ -7982,35 +7988,24 @@ private fun ThreadPageContent(
                 }
             "forwardTargets" ->
                 ThreadForwardTargetModal(
-                    mode = activeForwardSelectionMode,
                     selectedCount = selectedShareMessages.size,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
+                    selectedTargetId = forwardSelectedTarget?.let { "${it.kind.name}:${it.id}" },
                     errorCode = forwardTargetErrorCode,
                     sendingTargetId = forwardSendingTargetId,
+                    note = forwardNote,
                     onQueryChange = { forwardTargetQuery = it },
+                    onNoteChange = { forwardNote = it },
                     onDismiss = { activeModal = null },
-                    onCreateGroup = {
-                        onThreadEvent(
-                            "forwardCreateGroupRequested",
-                            selectedShareMessages.size.toString(),
-                            null,
-                            activeForwardSelectionMode.wireValue
-                        )
-                    },
-                    onMultiSelect = {
-                        onThreadEvent(
-                            "forwardMultiSelectRequested",
-                            selectedShareMessages.size.toString(),
-                            null,
-                            activeForwardSelectionMode.wireValue
-                        )
-                    },
                     onSelectTarget = { target ->
+                        forwardSelectedTarget = target.forwardTarget
+                    },
+                    onSend = {
                         val repository = forwardTargetRepository
                         val sourceChannelId = payload.threadForwardSourceChannelId()
-                        val forwardTarget = target.forwardTarget
+                        val forwardTarget = forwardSelectedTarget
                         when {
                             repository == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward API unavailable", null, null)
@@ -8018,10 +8013,8 @@ private fun ThreadPageContent(
                                 onThreadEvent("forwardMessagesFailed", "Source conversation unavailable", null, null)
                             forwardTarget == null ->
                                 onThreadEvent("forwardMessagesFailed", "Forward target unavailable", null, null)
-                            forwardTarget.requiredAction == ForwardMessageTargetRequiredAction.JoinChannel ->
-                                onThreadEvent("forwardJoinConfirmationRequired", forwardTarget.title, null, null)
                             forwardSendingTargetId == null -> {
-                                forwardSendingTargetId = target.id
+                                forwardSendingTargetId = "${forwardTarget.kind.name}:${forwardTarget.id}"
                                 shareExportScope.launch {
                                     try {
                                         when (val resolved = repository.resolveTargetChannel(forwardTarget)) {
@@ -8031,11 +8024,14 @@ private fun ThreadPageContent(
                                                         sourceChannelId = sourceChannelId,
                                                         targetChannelId = resolved.data,
                                                         messageIds = selectedShareMessages.map { it.id },
-                                                        mode = activeForwardSelectionMode.toForwardMessageSendMode()
+                                                        mode = activeForwardSelectionMode.toForwardMessageSendMode(),
+                                                        note = forwardNote
                                                     )
                                                 when (val forwarded = repository.forwardMessages(request)) {
                                                     is DataResult.Content -> {
                                                         activeModal = null
+                                                        forwardSelectedTarget = null
+                                                        forwardNote = ""
                                                         clearShareSelection()
                                                         onThreadEvent(
                                                             "forwardMessagesSent",
@@ -10324,6 +10320,12 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
         .filter { message -> message.id in selectedIds && !message.isSystemMessage() }
         .distinctBy { message -> message.id }
 }
+
+private fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
+    (listOfNotNull(originMessage) + messages)
+        .filterNot { it.isSystemMessage() }
+        .map { it.id }
+        .toSet()
 
 private fun ThreadTimelineSlice.threadSelectedShareMarkdown(selectedIds: Set<String>): String =
     threadSelectedShareMessages(selectedIds).threadShareMarkdown()
@@ -14594,21 +14596,22 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
 
 @Composable
 private fun ThreadForwardTargetModal(
-    mode: ThreadForwardSelectionMode,
     selectedCount: Int,
     query: String,
     loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
+    selectedTargetId: String?,
     errorCode: String?,
     sendingTargetId: String?,
+    note: String,
     onQueryChange: (String) -> Unit,
+    onNoteChange: (String) -> Unit,
     onDismiss: () -> Unit,
-    onCreateGroup: () -> Unit,
-    onMultiSelect: () -> Unit,
-    onSelectTarget: (ThreadForwardTargetItem) -> Unit
+    onSelectTarget: (ThreadForwardTargetItem) -> Unit,
+    onSend: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "Select",
+        title = "Forward",
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 430.dp,
@@ -14624,25 +14627,13 @@ private fun ThreadForwardTargetModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "${mode.label} forward · $selectedCount selected",
+                    text = "$selectedCount selected",
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Button(
-                    onClick = onMultiSelect,
-                    pressFeedback = false,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "Multi",
-                        style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
             }
             SharedHomeSearchInput(
                 query = query,
@@ -14655,10 +14646,8 @@ private fun ThreadForwardTargetModal(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(10.dp))
-            ThreadForwardCreateGroupRow(onClick = onCreateGroup)
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
             Text(
-                text = if (query.isBlank()) "Recent" else "Search results",
+                text = if (query.isBlank()) "Destinations" else "Search results",
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
@@ -14689,10 +14678,69 @@ private fun ThreadForwardTargetModal(
                         items(targets.size, key = { targets[it].id }) { index ->
                             ThreadForwardTargetRow(
                                 target = targets[index],
+                                selected = selectedTargetId == targets[index].id,
                                 sending = sendingTargetId == targets[index].id,
                                 onClick = { onSelectTarget(targets[index]) }
                             )
                         }
+                    }
+                }
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
+            SlockBrutalTextField(
+                label = "NOTE",
+                value = note,
+                placeholder = "FORWARDED $selectedCount ${if (selectedCount == 1) "MESSAGE" else "MESSAGES"}",
+                maxLines = 2,
+                fieldMinHeight = 62.dp,
+                onValueChange = onNoteChange,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onDismiss,
+                    pressFeedback = false,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        text = "Cancel",
+                        style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+                Button(
+                    onClick = onSend,
+                    enabled = selectedTargetId != null && sendingTargetId == null,
+                    pressFeedback = false,
+                    modifier =
+                        Modifier
+                            .background(
+                                if (selectedTargetId != null && sendingTargetId == null) {
+                                    SlockColor.AccentPink
+                                } else {
+                                    SlockColor.SurfaceCream
+                                }
+                            )
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SlockLucideIcon(
+                            if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
+                            modifier = Modifier.size(14.dp),
+                            color = "#FF111111"
+                        )
+                        Text(
+                            text = if (sendingTargetId == null) "Send" else "Sending",
+                            style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1
+                        )
                     }
                 }
             }
@@ -14701,43 +14749,9 @@ private fun ThreadForwardTargetModal(
 }
 
 @Composable
-private fun ThreadForwardCreateGroupRow(onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        pressFeedback = false,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(36.dp)
-                        .background(SlockColor.BrandYellow)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(SlockLucideIconName.Users, modifier = Modifier.size(18.dp), color = "#FF111111")
-            }
-            Text(
-                text = "Create group and forward",
-                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 20.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(18.dp), color = "#FF777777")
-        }
-    }
-}
-
-@Composable
 private fun ThreadForwardTargetRow(
     target: ThreadForwardTargetItem,
+    selected: Boolean,
     sending: Boolean,
     onClick: () -> Unit
 ) {
@@ -14808,6 +14822,8 @@ private fun ThreadForwardTargetRow(
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
                 )
+            } else if (selected) {
+                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(16.dp), color = "#FF111111")
             }
         }
     }
@@ -14816,9 +14832,10 @@ private fun ThreadForwardTargetRow(
 @Composable
 private fun ThreadShareSelectionToolbar(
     selectedCount: Int,
+    selectableCount: Int,
     onCancel: () -> Unit,
-    onMergeForward: () -> Unit,
-    onForwardIndividually: () -> Unit,
+    onSelectAll: () -> Unit,
+    onForward: () -> Unit,
     onExportImage: () -> Unit,
     onCopyLinks: () -> Unit
 ) {
@@ -14859,15 +14876,15 @@ private fun ThreadShareSelectionToolbar(
                     iconSize = 14.dp
                 )
                 ThreadShareSelectionActionButton(
-                    label = "Merge",
-                    icon = SlockLucideIconName.Share2,
-                    onClick = onMergeForward,
-                    enabled = hasSelection
+                    label = "All",
+                    icon = SlockLucideIconName.Check,
+                    onClick = onSelectAll,
+                    enabled = hasSelection && selectedCount < selectableCount
                 )
                 ThreadShareSelectionActionButton(
-                    label = "One by one",
+                    label = "Forward",
                     icon = SlockLucideIconName.Send,
-                    onClick = onForwardIndividually,
+                    onClick = onForward,
                     enabled = hasSelection
                 )
                 SlockBrutalIconButton(

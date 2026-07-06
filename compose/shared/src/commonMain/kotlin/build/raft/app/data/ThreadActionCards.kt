@@ -47,6 +47,8 @@ internal data class ThreadActionCard(
 @Serializable
 internal data class WireActionCardMetadata(
     val kind: String? = null,
+    val version: Int? = null,
+    val forwardedItems: List<WireForwardedBundleItem> = emptyList(),
     val action: WireActionCardAction? = null,
     val state: String = "prepared",
     val executedAt: String? = null,

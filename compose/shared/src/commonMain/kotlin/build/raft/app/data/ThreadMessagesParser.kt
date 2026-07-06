@@ -284,7 +284,7 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
         commentRef = commentRef?.toMessageCommentRef(),
-        forwardBundle = forwardBundle.toForwardMessageBundle()
+        forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle()
     )
 }
 

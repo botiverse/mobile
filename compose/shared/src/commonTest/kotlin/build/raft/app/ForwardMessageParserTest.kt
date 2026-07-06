@@ -68,6 +68,84 @@ class ForwardMessageParserTest {
     }
 
     @Test
+    fun messagesParserPreservesStagingForwardedBundleActionMetadata() {
+        val payload = parseSharedChannelMessages(
+            bodyText = """
+                {
+                  "messages": [
+                    {
+                      "id": "forward-msg-1",
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "user-1",
+                      "senderName": "Ada",
+                      "messageType": "chat",
+                      "content": "Forwarded 2 messages",
+                      "createdAt": "2026-07-06T13:00:00.000Z",
+                      "actionMetadata": {
+                        "kind": "forwarded-bundle",
+                        "version": 1,
+                        "forwardedItems": [
+                          {
+                            "index": 0,
+                            "sourceMessageId": "m1",
+                            "sourceAuthorSnapshot": {
+                              "type": "user",
+                              "id": "user-2",
+                              "name": "Jor",
+                              "uniqueName": "jor"
+                            },
+                            "sourceCreatedAt": "2026-07-06T12:58:00.000Z",
+                            "sourceTargetSnapshot": {
+                              "id": "channel-1",
+                              "type": "channel",
+                              "label": "#general",
+                              "labelVisibility": "public"
+                            },
+                            "contentSnapshot": "我不是运维 无所谓了",
+                            "attachmentSnapshots": [
+                              { "filename": "note.txt", "mimeType": "text/plain" }
+                            ],
+                            "provenanceState": "available"
+                          },
+                          {
+                            "index": 1,
+                            "sourceMessageId": "m2",
+                            "sourceAuthorSnapshot": {
+                              "type": "agent",
+                              "id": "agent-1",
+                              "name": "Build Bot"
+                            },
+                            "sourceCreatedAt": "2026-07-06T12:59:00.000Z",
+                            "sourceTargetSnapshot": {
+                              "id": "channel-1",
+                              "type": "channel",
+                              "label": "#general",
+                              "labelVisibility": "public"
+                            },
+                            "contentSnapshot": "反正老板目前是不限量使用"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "historyLimited": false
+                }
+            """.trimIndent(),
+            fallbackThreadId = ThreadId("channel-1")
+        )
+
+        val bundle = assertNotNull(payload.messages.single().forwardBundle)
+        assertEquals("Forwarded", bundle.title)
+        assertEquals("#general", bundle.sourceTitle)
+        assertEquals(2, bundle.totalCount)
+        assertEquals("m1", bundle.messages.first().id)
+        assertEquals("jor", bundle.messages.first().authorName)
+        assertEquals("我不是运维 无所谓了", bundle.messages.first().body)
+        assertEquals(1, bundle.messages.first().attachmentCount)
+    }
+
+    @Test
     fun threadProjectionKeepsForwardBundleOnRenderedMessage() {
         val page = ThreadMessagesPage(
             messages = listOf(

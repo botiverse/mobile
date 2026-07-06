@@ -495,7 +495,7 @@ private fun MessageWireDto.toDomain(): Message {
         updatedAtLabel = updatedAt,
         reactions = reactions?.mapNotNull { it.toDomain() },
         commentRef = commentRef?.toDomain(),
-        forwardBundle = forwardBundle.toForwardMessageBundle(),
+        forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
     )
 }
 

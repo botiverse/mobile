@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,5 +98,42 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals("Ada", targets.single().title)
         assertEquals(ForwardMessageTargetRequiredAction.None, targets.single().requiredAction)
         assertTrue(targets.single().canForwardNow)
+    }
+
+    @Test
+    fun fallbackSearchUsesExistingJoinedChannelsAndDms() {
+        val targets =
+            fallbackForwardMessageTargets(
+                directMessages =
+                    listOf(
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-ada"),
+                            channelId = ChannelId("dm-ada"),
+                            name = "Ada",
+                            subtitle = "Recent DM",
+                            presenceMemberId = MemberId("user-ada")
+                        )
+                    ),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("channel-general"),
+                            channelId = ChannelId("channel-general"),
+                            name = "general",
+                            joined = true
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("channel-design"),
+                            channelId = ChannelId("channel-design"),
+                            name = "design",
+                            joined = false
+                        )
+                    ),
+                query = "d",
+                limit = 10
+            )
+
+        assertEquals(1, targets.size)
+        assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets.single().kind)
     }
 }
