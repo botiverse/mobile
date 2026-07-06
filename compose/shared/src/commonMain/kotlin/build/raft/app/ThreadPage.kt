@@ -1954,8 +1954,10 @@ internal fun ThreadMessageVisualScreen() {
             ThreadShareSelectionToolbar(
                 selectedCount = messages.size,
                 onCancel = {},
-                onShare = {},
-                onCopyMarkdown = {}
+                onMergeForward = {},
+                onForwardIndividually = {},
+                onExportImage = {},
+                onCopyLinks = {}
             )
         }
         return
@@ -4231,11 +4233,26 @@ internal fun SharedThreadRouteContent(
                     bridge.copyToPasteboard(itemId)
                     bridge.toast("Copied")
                 }
+                action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
+                    bridge.copyToPasteboard(itemId)
+                    bridge.toast("Links copied")
+                }
                 action == "shareSelectionImageSaved" -> {
                     bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Image saved")
                 }
                 action == "shareSelectionExportFailed" -> {
                     bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to export image")
+                }
+                action == "forwardTargetSelected" -> {
+                    val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
+                    val modeLabel = tab.threadForwardSelectionModeLabel()
+                    bridge.toast("$modeLabel forwarding to $target needs API support")
+                }
+                action == "forwardCreateGroupRequested" -> {
+                    bridge.toast("Create group forwarding needs API support")
+                }
+                action == "forwardMultiSelectRequested" -> {
+                    bridge.toast("Multi-select forwarding needs API support")
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
@@ -7392,6 +7409,7 @@ private fun ThreadPageContent(
     }
     var activeModal by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var activeForwardBundle by remember(threadInstanceKey) { mutableStateOf<ForwardMessageBundle?>(null) }
+    var activeForwardSelectionMode by remember(threadInstanceKey) { mutableStateOf(ThreadForwardSelectionMode.Merged) }
     var selectedShareMessageIds by remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val selectedShareBounds = remember(threadInstanceKey) { mutableMapOf<String, ThreadShareCaptureRect>() }
     var sharePreviewImage by remember(threadInstanceKey) { mutableStateOf<ThreadSharePreviewImage?>(null) }
@@ -7399,6 +7417,8 @@ private fun ThreadPageContent(
     var shareCaptureMode by remember(threadInstanceKey) { mutableStateOf(false) }
     var shareCaptureTargetMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var inlineSearchVisible by remember(threadInstanceKey) { mutableStateOf(false) }
+    val forwardMemberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
+    val forwardChannelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectedShareMessages =
         remember(timelineSlice, selectedShareMessageIds) {
@@ -7407,6 +7427,26 @@ private fun ThreadPageContent(
     val selectedShareMarkdown =
         remember(selectedShareMessages) {
             selectedShareMessages.threadShareMarkdown()
+        }
+    val selectedShareLinks =
+        remember(payload, selectedShareMessages, currentServerSlug) {
+            selectedShareMessages
+                .mapNotNull { message -> payload.threadMessagePermalink(message, currentServerSlug) }
+                .joinToString(separator = "\n")
+        }
+    val forwardTargetItems =
+        remember(
+            payload,
+            selectedShareMessages,
+            forwardChannelSuggestionSlice.suggestions,
+            forwardMemberSuggestionSlice.suggestions
+        ) {
+            threadForwardTargetItems(
+                payload = payload,
+                selectedMessages = selectedShareMessages,
+                channelSuggestions = forwardChannelSuggestionSlice.suggestions,
+                memberSuggestions = forwardMemberSuggestionSlice.suggestions
+            )
         }
     val clearShareSelection = {
         selectedShareMessageIds = emptySet()
@@ -7724,7 +7764,19 @@ private fun ThreadPageContent(
                     ThreadShareSelectionToolbar(
                         selectedCount = selectedShareMessages.size,
                         onCancel = clearShareSelection,
-                        onShare = {
+                        onMergeForward = {
+                            if (selectedShareMessages.isNotEmpty()) {
+                                activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
+                                activeModal = "forwardTargets"
+                            }
+                        },
+                        onForwardIndividually = {
+                            if (selectedShareMessages.isNotEmpty()) {
+                                activeForwardSelectionMode = ThreadForwardSelectionMode.Individual
+                                activeModal = "forwardTargets"
+                            }
+                        },
+                        onExportImage = {
                             if (selectedShareMessages.isNotEmpty() && !sharePreviewLoading) {
                                 sharePreviewLoading = true
                                 sharePreviewImage = null
@@ -7773,8 +7825,10 @@ private fun ThreadPageContent(
                                 }
                             }
                         },
-                        onCopyMarkdown = {
-                            if (selectedShareMarkdown.isNotBlank()) {
+                        onCopyLinks = {
+                            if (selectedShareLinks.isNotBlank()) {
+                                onThreadEvent("copyShareSelectionLinks", selectedShareLinks, null, null)
+                            } else if (selectedShareMarkdown.isNotBlank()) {
                                 onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
                             }
                         }
@@ -7850,6 +7904,40 @@ private fun ThreadPageContent(
                         }
                     )
                 }
+            "forwardTargets" ->
+                ThreadForwardTargetModal(
+                    mode = activeForwardSelectionMode,
+                    selectedCount = selectedShareMessages.size,
+                    targets = forwardTargetItems,
+                    channelStatus = forwardChannelSuggestionSlice.status,
+                    memberStatus = forwardMemberSuggestionSlice.status,
+                    onDismiss = { activeModal = null },
+                    onCreateGroup = {
+                        onThreadEvent(
+                            "forwardCreateGroupRequested",
+                            selectedShareMessages.size.toString(),
+                            null,
+                            activeForwardSelectionMode.wireValue
+                        )
+                    },
+                    onMultiSelect = {
+                        onThreadEvent(
+                            "forwardMultiSelectRequested",
+                            selectedShareMessages.size.toString(),
+                            null,
+                            activeForwardSelectionMode.wireValue
+                        )
+                    },
+                    onSelectTarget = { target ->
+                        activeModal = null
+                        onThreadEvent(
+                            "forwardTargetSelected",
+                            target.title,
+                            null,
+                            activeForwardSelectionMode.wireValue
+                        )
+                    }
+                )
             "members" ->
                 ThreadMembersModal(
                     members = payload.members,
@@ -14302,12 +14390,330 @@ private fun ForwardMessageItem.forwardMemberKind(): MemberKind =
         else -> MemberKind.Human
     }
 
+private enum class ThreadForwardSelectionMode(val wireValue: String, val label: String) {
+    Merged("merged", "Merged"),
+    Individual("individual", "Individual")
+}
+
+private fun String?.threadForwardSelectionModeLabel(): String =
+    when (this?.trim()?.lowercase()) {
+        ThreadForwardSelectionMode.Individual.wireValue -> ThreadForwardSelectionMode.Individual.label
+        else -> ThreadForwardSelectionMode.Merged.label
+    }
+
+private data class ThreadForwardTargetItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val kind: ThreadForwardTargetKind,
+    val avatarWireValue: String? = null,
+    val gravatarHash: String? = null,
+    val avatarLabel: String = title.take(1).uppercase()
+)
+
+private enum class ThreadForwardTargetKind {
+    Current,
+    Channel,
+    Member
+}
+
+private fun threadForwardTargetItems(
+    payload: KuiklyThreadScreenPayload,
+    selectedMessages: List<KuiklyThreadMessageItem>,
+    channelSuggestions: List<build.raft.app.data.SharedMembersChannelSuggestion>,
+    memberSuggestions: List<SharedMembersMemberSuggestion>
+): List<ThreadForwardTargetItem> {
+    val deduped = LinkedHashMap<String, ThreadForwardTargetItem>()
+    payload.currentForwardTargetItem()?.let { deduped[it.id] = it }
+    selectedMessages
+        .asSequence()
+        .mapNotNull { it.authorForwardTargetItem() }
+        .forEach { item -> deduped.putIfAbsent(item.id, item) }
+    memberSuggestions
+        .asSequence()
+        .mapNotNull { it.forwardTargetItem() }
+        .forEach { item -> deduped.putIfAbsent(item.id, item) }
+    channelSuggestions
+        .asSequence()
+        .mapNotNull { it.forwardTargetItem() }
+        .forEach { item -> deduped.putIfAbsent(item.id, item) }
+    return deduped.values.toList()
+}
+
+private fun KuiklyThreadScreenPayload.currentForwardTargetItem(): ThreadForwardTargetItem? {
+    val id =
+        sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: streamChannelId?.takeIf { it.isNotBlank() }
+            ?: parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return null
+    val cleanTitle = title.trim().takeIf { it.isNotBlank() } ?: "Current conversation"
+    val isDm = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage || channelKind.isThreadPermalinkDmKind()
+    return ThreadForwardTargetItem(
+        id = "current:$id",
+        title = cleanTitle,
+        subtitle = if (isDm) "Current DM" else "Current channel",
+        kind = ThreadForwardTargetKind.Current,
+        avatarWireValue = dmPeerAvatarUrl,
+        gravatarHash = dmPeerGravatarUrl,
+        avatarLabel = dmPeerAvatarLabel?.takeIf { it.isNotBlank() } ?: cleanTitle.take(1).uppercase()
+    )
+}
+
+private fun KuiklyThreadMessageItem.authorForwardTargetItem(): ThreadForwardTargetItem? {
+    val id = authorId.takeIf { it.isNotBlank() } ?: return null
+    val title = authorName.takeIf { it.isNotBlank() } ?: authorHandle.takeIf { it.isNotBlank() } ?: return null
+    return ThreadForwardTargetItem(
+        id = "member:$id",
+        title = title,
+        subtitle = authorDescription?.takeIf { it.isNotBlank() } ?: authorKind.threadForwardMemberKindLabel(),
+        kind = ThreadForwardTargetKind.Member,
+        avatarWireValue = avatarWireValue,
+        gravatarHash = gravatarHash,
+        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(1).uppercase()
+    )
+}
+
+private fun SharedMembersMemberSuggestion.forwardTargetItem(): ThreadForwardTargetItem? {
+    val id = memberId?.takeIf { it.isNotBlank() } ?: handle.takeIf { it.isNotBlank() } ?: return null
+    val title = displayName.takeIf { it.isNotBlank() } ?: handle.takeIf { it.isNotBlank() } ?: return null
+    return ThreadForwardTargetItem(
+        id = "member:$id",
+        title = title,
+        subtitle = description?.takeIf { it.isNotBlank() } ?: kind.name.lowercase().replaceFirstChar { it.uppercase() },
+        kind = ThreadForwardTargetKind.Member,
+        avatarWireValue = avatarWireValue,
+        gravatarHash = gravatarHash,
+        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(1).uppercase()
+    )
+}
+
+private fun build.raft.app.data.SharedMembersChannelSuggestion.forwardTargetItem(): ThreadForwardTargetItem? {
+    val name = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
+    return ThreadForwardTargetItem(
+        id = "channel:$name",
+        title = "#$name",
+        subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Channel",
+        kind = ThreadForwardTargetKind.Channel,
+        avatarLabel = "#"
+    )
+}
+
+private fun String.threadForwardMemberKindLabel(): String =
+    when (trim().lowercase()) {
+        "agent" -> "Agent"
+        "system" -> "System"
+        else -> "Member"
+    }
+
+private fun ThreadForwardTargetItem.matchesForwardTargetQuery(query: String): Boolean {
+    val normalized = query.trim().lowercase()
+    if (normalized.isBlank()) return true
+    return title.lowercase().contains(normalized) || subtitle.lowercase().contains(normalized)
+}
+
+@Composable
+private fun ThreadForwardTargetModal(
+    mode: ThreadForwardSelectionMode,
+    selectedCount: Int,
+    targets: List<ThreadForwardTargetItem>,
+    channelStatus: SharedMembersLoadStatus,
+    memberStatus: SharedMembersLoadStatus,
+    onDismiss: () -> Unit,
+    onCreateGroup: () -> Unit,
+    onMultiSelect: () -> Unit,
+    onSelectTarget: (ThreadForwardTargetItem) -> Unit
+) {
+    var query by remember(mode, selectedCount) { mutableStateOf("") }
+    val filteredTargets =
+        remember(targets, query) {
+            targets.filter { it.matchesForwardTargetQuery(query) }
+        }
+    SlockUnifiedDialog(
+        title = "Select",
+        onDismiss = onDismiss,
+        minWidth = 320.dp,
+        maxWidth = 430.dp,
+        contentPadding = 0.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        contentSpacing = 0.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "${mode.label} forward · $selectedCount selected",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = onMultiSelect,
+                    pressFeedback = false,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Multi",
+                        style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1
+                    )
+                }
+            }
+            SharedHomeSearchInput(
+                query = query,
+                loading = channelStatus == SharedMembersLoadStatus.InFlight || memberStatus == SharedMembersLoadStatus.InFlight,
+                interactive = true,
+                onQueryChange = { query = it },
+                onSubmit = {},
+                onClear = { query = "" },
+                placeholder = "Search",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            ThreadForwardCreateGroupRow(onClick = onCreateGroup)
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
+            Text(
+                text = "Recent",
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
+            )
+            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 470.dp)) {
+                if (filteredTargets.isEmpty()) {
+                    ThreadModalEmptyState(
+                        title = "NO TARGETS",
+                        detail = "TRY A DIFFERENT SEARCH OR WAIT FOR CHANNELS TO LOAD."
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
+                        contentPadding = PaddingValues(bottom = 12.dp)
+                    ) {
+                        items(filteredTargets.size, key = { filteredTargets[it].id }) { index ->
+                            ThreadForwardTargetRow(
+                                target = filteredTargets[index],
+                                onClick = { onSelectTarget(filteredTargets[index]) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadForwardCreateGroupRow(onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        pressFeedback = false,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(36.dp)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(SlockLucideIconName.Users, modifier = Modifier.size(18.dp), color = "#FF111111")
+            }
+            Text(
+                text = "Create group and forward",
+                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(18.dp), color = "#FF777777")
+        }
+    }
+}
+
+@Composable
+private fun ThreadForwardTargetRow(
+    target: ThreadForwardTargetItem,
+    onClick: () -> Unit
+) {
+    Button(
+        onClick = onClick,
+        pressFeedback = false,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            when (target.kind) {
+                ThreadForwardTargetKind.Channel,
+                ThreadForwardTargetKind.Current ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(38.dp)
+                                .background(SlockColor.SurfaceCream)
+                                .border(SlockStroke.Default, SlockColor.BrandYellow),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(
+                            if (target.kind == ThreadForwardTargetKind.Channel) SlockLucideIconName.Hash else SlockLucideIconName.MessageCircle,
+                            modifier = Modifier.size(18.dp),
+                            color = "#FF111111"
+                        )
+                    }
+                ThreadForwardTargetKind.Member ->
+                    SlockAvatar(
+                        avatarWireValue = target.avatarWireValue,
+                        label = target.avatarLabel,
+                        avatarSize = 38.dp,
+                        borderWidth = 0.dp,
+                        gravatarUrl = target.gravatarHash?.toGravatarAvatarUrl()
+                    )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = target.title,
+                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 21.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (target.subtitle.isNotBlank()) {
+                    Text(
+                        text = target.subtitle,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ThreadShareSelectionToolbar(
     selectedCount: Int,
     onCancel: () -> Unit,
-    onShare: () -> Unit,
-    onCopyMarkdown: () -> Unit
+    onMergeForward: () -> Unit,
+    onForwardIndividually: () -> Unit,
+    onExportImage: () -> Unit,
+    onCopyLinks: () -> Unit
 ) {
     val hasSelection = selectedCount > 0
     val bottomSafeArea = slockBottomSafeAreaPadding()
@@ -14327,7 +14733,7 @@ private fun ThreadShareSelectionToolbar(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = selectedCount.toString(),
+                text = "$selectedCount selected",
                 style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack.copy(alpha = 0.70f),
@@ -14335,7 +14741,7 @@ private fun ThreadShareSelectionToolbar(
             )
             Row(
                 modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalIconButton(
@@ -14345,9 +14751,29 @@ private fun ThreadShareSelectionToolbar(
                     shadowOffset = SlockShadow.BrutalSmall,
                     iconSize = 14.dp
                 )
+                ThreadShareSelectionActionButton(
+                    label = "Merge",
+                    icon = SlockLucideIconName.Share2,
+                    onClick = onMergeForward,
+                    enabled = hasSelection
+                )
+                ThreadShareSelectionActionButton(
+                    label = "One by one",
+                    icon = SlockLucideIconName.Send,
+                    onClick = onForwardIndividually,
+                    enabled = hasSelection
+                )
                 SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Share2,
-                    onClick = onShare,
+                    iconName = SlockLucideIconName.Copy,
+                    onClick = onCopyLinks,
+                    enabled = hasSelection,
+                    size = 28.dp,
+                    shadowOffset = SlockShadow.BrutalSmall,
+                    iconSize = 14.dp
+                )
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.Download,
+                    onClick = onExportImage,
                     enabled = hasSelection,
                     size = 28.dp,
                     shadowOffset = SlockShadow.BrutalSmall,
@@ -14355,15 +14781,41 @@ private fun ThreadShareSelectionToolbar(
                     backgroundColor = SlockColor.AccentPink,
                     disabledBackgroundColor = SlockColor.AccentPink
                 )
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Copy,
-                    onClick = onCopyMarkdown,
-                    enabled = hasSelection,
-                    size = 28.dp,
-                    shadowOffset = SlockShadow.BrutalSmall,
-                    iconSize = 14.dp
-                )
             }
+        }
+    }
+}
+
+@Composable
+private fun ThreadShareSelectionActionButton(
+    label: String,
+    icon: SlockLucideIconName,
+    onClick: () -> Unit,
+    enabled: Boolean
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        pressFeedback = false,
+        modifier =
+            Modifier
+                .height(28.dp)
+                .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF111111")
+            Text(
+                text = label,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
