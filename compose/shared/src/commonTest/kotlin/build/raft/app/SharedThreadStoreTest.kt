@@ -4995,6 +4995,77 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdatedDoesNotRevertJustAcknowledgedLocalReactionSelection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.ApplyMessageReactionSelection("m1", "🔥", selected = true))
+        store.accept(
+            SharedThreadIntent.ApplyMessageMutation(
+                MessageMutationSummary(
+                    messageId = "m1",
+                    reactions =
+                        listOf(
+                            MessageReactionSummary(
+                                emoji = "🔥",
+                                count = 1,
+                                reactorIds = listOf("u1"),
+                                reactorNames = listOf("Artin")
+                            )
+                        )
+                )
+            )
+        )
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Cindy"),
+                        timestampLabel = "",
+                        body = "server body edited",
+                        reactions = emptyList()
+                    )
+                )
+            )
+        )
+
+        val shieldedMessage = store.state.value.payload.messages.single()
+        assertEquals("server body edited", shieldedMessage.body)
+        assertEquals(
+            listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true, reactorIds = listOf("u1"), reactorNames = listOf("Artin"))),
+            shieldedMessage.reactions
+        )
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Cindy"),
+                        timestampLabel = "",
+                        body = "server body edited again",
+                        reactions = emptyList()
+                    )
+                )
+            )
+        )
+
+        val freshRemoval = store.state.value.payload.messages.single()
+        assertEquals("server body edited again", freshRemoval.body)
+        assertEquals(emptyList(), freshRemoval.reactions)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedKeepsVisibleReactionOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()
