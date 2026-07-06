@@ -114,6 +114,11 @@ private fun foregroundBannerVisualBanner(
         serverId = VisualFixtureData.Server.ID,
         focusedMessageId = "visual-message-$id",
         conversation = conversation,
+        openRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity = conversation,
+                anchorMessageId = "visual-message-$id"
+            ),
         title = title,
         context = context,
         threadContext = threadContext,

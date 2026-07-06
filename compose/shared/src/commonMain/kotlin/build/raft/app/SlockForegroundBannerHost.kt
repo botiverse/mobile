@@ -45,8 +45,8 @@ import com.tencent.kuikly.compose.ui.zIndex
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
 private const val ForegroundBannerZIndex = SlockFloatingOverlayHostZIndex + 10f
-private val ForegroundBannerIconTileSize = 30.dp
-private val ForegroundBannerIconGlyphSize = 14.dp
+private val ForegroundBannerIconTileSize = 28.dp
+private val ForegroundBannerIconGlyphSize = 13.dp
 
 internal fun slockForegroundBannerAutoDismissMs(): Long = ForegroundBannerAutoDismissMs
 
@@ -60,6 +60,7 @@ internal data class SlockForegroundMessageBanner(
     val serverId: String,
     val focusedMessageId: String,
     val conversation: ThreadLaunchConversationIdentity,
+    val openRequest: HomeMessageOpenRequest,
     val title: String,
     val context: String,
     val threadContext: String?,
@@ -75,6 +76,7 @@ internal fun SlockForegroundBannerHost(
     banner: SlockForegroundMessageBanner?,
     topSafeArea: Dp,
     onBannerClick: (SlockForegroundMessageBanner) -> Unit,
+    onBannerDismiss: (SlockForegroundMessageBanner) -> Unit = {},
     content: @Composable () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
@@ -83,7 +85,8 @@ internal fun SlockForegroundBannerHost(
             SlockForegroundMessageBannerView(
                 banner = banner,
                 topSafeArea = topSafeArea,
-                onClick = { onBannerClick(banner) }
+                onClick = { onBannerClick(banner) },
+                onDismiss = { onBannerDismiss(banner) }
             )
         }
     }
@@ -93,14 +96,15 @@ internal fun SlockForegroundBannerHost(
 internal fun SlockForegroundMessageBannerView(
     banner: SlockForegroundMessageBanner,
     topSafeArea: Dp,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDismiss: () -> Unit = {}
 ) {
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .zIndex(ForegroundBannerZIndex)
-                .padding(start = 12.dp, top = topSafeArea + 10.dp, end = 12.dp)
+                .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 12.dp)
     ) {
         Box(
             modifier =
@@ -108,8 +112,7 @@ internal fun SlockForegroundMessageBannerView(
                     .fillMaxWidth()
                     .widthIn(max = 640.dp)
                     .align(Alignment.TopCenter)
-                    .height(96.dp)
-                    .clickable(role = Role.Button, onClick = onClick)
+                    .height(86.dp)
         ) {
             Box(
                 modifier =
@@ -124,61 +127,105 @@ internal fun SlockForegroundMessageBannerView(
                         .matchParentSize()
                         .background(SlockColor.SurfaceWhite)
                         .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp),
+                        .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockForegroundBannerIcon(banner)
-                Spacer(Modifier.width(10.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                Row(
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .clickable(role = Role.Button, onClick = onClick),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = banner.titleLine(),
-                        style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    banner.threadContext?.takeIf { it.isNotBlank() }?.let { threadContext ->
-                        Row(
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            SlockLucideIcon(
-                                SlockLucideIconName.MessageSquare,
-                                modifier = Modifier.size(13.dp),
-                                color = "#FFFF4B9B"
-                            )
-                            Text(
-                                text = threadContext,
-                                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                    Text(
-                        text = banner.body,
-                        style =
-                            SlockType.Caption
-                                .copy(fontSize = 12.sp, lineHeight = 15.sp, color = SlockColor.TextMutedGray)
-                                .withSlockFontWeight(FontWeight.Medium),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    SlockForegroundBannerIcon(banner)
+                    Spacer(Modifier.width(10.dp))
+                    SlockForegroundBannerText(banner, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.width(8.dp))
+                SlockForegroundBannerActionIcon(
+                    iconName = SlockLucideIconName.X,
+                    onClick = onDismiss
+                )
+                Spacer(Modifier.width(4.dp))
                 SlockLucideIcon(
                     SlockLucideIconName.ChevronRight,
-                    modifier = Modifier.size(18.dp),
+                    modifier =
+                        Modifier
+                            .size(18.dp)
+                            .clickable(role = Role.Button, onClick = onClick),
                     color = SlockColor.TextBlackArgb
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SlockForegroundBannerText(
+    banner: SlockForegroundMessageBanner,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = banner.titleLine(),
+            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        banner.threadContext?.takeIf { it.isNotBlank() }?.let { threadContext ->
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.MessageSquare,
+                    modifier = Modifier.size(13.dp),
+                    color = "#FFFF4B9B"
+                )
+                Text(
+                    text = threadContext,
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Text(
+            text = banner.body,
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 12.sp, lineHeight = 15.sp, color = SlockColor.TextMutedGray)
+                    .withSlockFontWeight(FontWeight.Medium),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SlockForegroundBannerActionIcon(
+    iconName: SlockLucideIconName,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(24.dp)
+                .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            iconName,
+            modifier = Modifier.size(15.dp),
+            color = SlockColor.TextBlackArgb
+        )
     }
 }
 
@@ -242,11 +289,13 @@ internal fun slockForegroundMessageBannerProjection(
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)
     val iconName = projection.resolveForegroundBannerIconName(conversation)
     val body = message.body.toForegroundBannerPreview().ifBlank { "Sent a new message." }
+    val openRequest = message.resolveForegroundBannerOpenRequest(projection, conversation)
     return SlockForegroundMessageBanner(
         id = "foreground:$normalizedServerId:${message.id.value}",
         serverId = normalizedServerId,
         focusedMessageId = message.id.value,
         conversation = conversation,
+        openRequest = openRequest,
         title = sender,
         context = context,
         threadContext = threadContext,
@@ -332,7 +381,7 @@ private fun Message.resolveForegroundBannerConversation(
     directory: SharedConversationDirectoryState
 ): ThreadLaunchConversationIdentity? {
     val projection = resolveForegroundBannerProjection(directory)
-    if (projection != null) return projection.toForegroundThreadLaunchConversationIdentity()
+    if (projection != null) return projection.toForegroundThreadLaunchConversationIdentity(directory)
     val parentMessage = parentMessageId
     val parentChannel = channelId ?: threadChannelId
     if (parentMessage != null && parentChannel != null) {
@@ -340,7 +389,7 @@ private fun Message.resolveForegroundBannerConversation(
         return ThreadLaunchConversationIdentity(
             threadId = threadIdentity(parentChannel, parentMessage),
             channelId = parentChannel,
-            channelType = "thread",
+            channelType = null,
             thread =
                 ThreadConversation(
                     parentChannelId = parentChannel,
@@ -441,6 +490,29 @@ private fun Message.resolveForegroundBannerProjection(
     foregroundBannerLookupIds()
         .firstNotNullOfOrNull(directory::resolve)
 
+private fun Message.resolveForegroundBannerOpenRequest(
+    projection: SharedConversationDirectoryProjection?,
+    conversation: ThreadLaunchConversationIdentity
+): HomeMessageOpenRequest =
+    HomeMessageOpenRequest(
+        conversationIdentity = conversation,
+        anchorMessageId = id.value.takeIf { it.isNotBlank() },
+        originFallback = projection.toForegroundThreadLaunchOriginFallback()
+    )
+
+private fun SharedConversationDirectoryProjection?.toForegroundThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    if (this?.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = parentId,
+        preview = subtitle?.takeIf { it.isNotBlank() },
+        senderId = null,
+        senderKind = null,
+        expected = true
+    )
+}
+
 private fun Message.foregroundBannerLookupIds(): List<String> =
     listOfNotNull(
         threadChannelId?.value,
@@ -449,12 +521,25 @@ private fun Message.foregroundBannerLookupIds(): List<String> =
         parentMessageId?.value
     ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
 
-private fun SharedConversationDirectoryProjection.toForegroundThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
+private fun SharedConversationDirectoryProjection.toForegroundThreadLaunchConversationIdentity(
+    directory: SharedConversationDirectoryState
+): ThreadLaunchConversationIdentity {
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
     val streamChannel = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val normalizedChannelKind = channelKind.takeIf { it.isNotBlank() }
+    val normalizedParentChannelKind =
+        if (isReplyThread) {
+            parentChannelId
+                ?.let(directory::resolve)
+                ?.channelKind
+                ?.takeIf { it.isNotBlank() }
+                ?.takeUnless { it == KuiklyThreadSurfaceKind.ReplyThread }
+                ?: KuiklyThreadSurfaceKind.Channel
+        } else {
+            null
+        }
     return ThreadLaunchConversationIdentity(
         threadId =
             if (isReplyThread && parentChannel != null && parentMessage != null) {
@@ -463,7 +548,7 @@ private fun SharedConversationDirectoryProjection.toForegroundThreadLaunchConver
                 ThreadId(canonicalChannelId)
             },
         channelId = if (isReplyThread) parentChannel else streamChannel,
-        channelType = normalizedChannelKind,
+        channelType = if (isReplyThread) null else normalizedChannelKind,
         thread =
             if (isReplyThread && parentChannel != null && parentMessage != null) {
                 ThreadConversation(
@@ -471,7 +556,7 @@ private fun SharedConversationDirectoryProjection.toForegroundThreadLaunchConver
                     parentMessageId = parentMessage,
                     streamChannelId = streamChannel,
                     parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                    parentChannelKind = normalizedChannelKind?.takeUnless { it == "thread" }
+                    parentChannelKind = normalizedParentChannelKind
                 )
             } else {
                 null

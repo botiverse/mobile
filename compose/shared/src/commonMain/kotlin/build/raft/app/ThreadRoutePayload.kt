@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.MemberKind
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -52,7 +53,13 @@ internal data class WireThreadLaunchPayload(
     val composerSeedText: String = "",
     val composerSyncNonce: Int = 0,
     val composerFocusRequestNonce: Int = 0,
-    val focusedMessageRequestNonce: Int = 0
+    val focusedMessageRequestNonce: Int = 0,
+    val originFallbackParentChannelId: String? = null,
+    val originFallbackParentMessageId: String? = null,
+    val originFallbackPreview: String? = null,
+    val originFallbackSenderId: String? = null,
+    val originFallbackSenderKind: MemberKind? = null,
+    val originFallbackExpected: Boolean = true
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -98,7 +105,7 @@ internal data class WireThreadLaunchPayload(
                 parentMessageId = parentMessageId.nonBlank(),
                 streamChannelId = resolvedStreamId
             )
-        return KuiklyThreadScreenPayload(
+        val initialPayload = KuiklyThreadScreenPayload(
             instanceId = resolvedInstanceId,
             title = resolvedTitle,
             subtitle = null,
@@ -146,8 +153,34 @@ internal data class WireThreadLaunchPayload(
             showTaskStatusActions = supportsChannelTasks,
             emptyTitle = "Loading...",
             emptyDetail = ""
-        ).withLaunchHeaderContext()
+        )
+        val originFallback = toThreadLaunchOriginFallback()
+        return if (originFallback == null) {
+            initialPayload.withLaunchHeaderContext()
+        } else {
+            initialPayload.withHeaderContext(
+                SharedThreadHeaderContextStore.launchOriginContext(
+                    surfaceKind = initialPayload.surfaceKind,
+                    routeIdentity = initialPayload.resolveThreadRouteIdentity(),
+                    originMessage = null,
+                    parentMessageId = initialPayload.originParentMessageId ?: initialPayload.parentMessageId,
+                    originFallback = originFallback
+                )
+            )
+        }
     }
+}
+
+private fun WireThreadLaunchPayload.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    val parentMessageId = originFallbackParentMessageId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = originFallbackParentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = parentMessageId,
+        preview = originFallbackPreview?.takeIf { it.isNotBlank() },
+        senderId = originFallbackSenderId?.takeIf { it.isNotBlank() },
+        senderKind = originFallbackSenderKind,
+        expected = originFallbackExpected
+    )
 }
 
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
