@@ -1353,8 +1353,8 @@ private fun visualSettingsComputerDetailPayload(
             SettingsComputerSnapshot(
                 id = "computer-mbp",
                 name = "Jiachengs-MacBook-Pro",
-                daemonVersion = "0.0.50",
-                computerVersion = "0.0.50",
+                daemonVersion = "0.0.48",
+                computerVersion = "0.0.48",
                 isComputer = true,
                 online = true,
                 hostname = "Jiachengs-MacBook-Pro.local",
@@ -1376,6 +1376,14 @@ private fun visualSettingsComputerDetailPayload(
                     runtime = "codex",
                     avatarUrl = "pixel:paint",
                     description = "Reviews visual parity across surfaces."
+                ),
+                SettingsComputerAgentSnapshot(
+                    id = "agent-cindy",
+                    name = "Cindy",
+                    statusLabel = "online",
+                    runtime = "codex",
+                    avatarUrl = "pixel:robot",
+                    description = "Keeps visual testing release notes aligned."
                 )
             ),
         sections = emptyList(),
@@ -1384,7 +1392,7 @@ private fun visualSettingsComputerDetailPayload(
         payload.copy(
             agents =
                 payload.agents.map { agent ->
-                    if (agent.id == "agent-product-ux") {
+                    if (agent.id == "agent-product-ux" || agent.id == "agent-cindy") {
                         agent.copy(presenceLabel = "online", activityLabel = "Online")
                     } else {
                         agent
