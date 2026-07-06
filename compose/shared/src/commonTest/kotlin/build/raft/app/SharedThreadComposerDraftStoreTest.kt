@@ -575,6 +575,124 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun uploadingLocalAttachmentSurvivesSameComposerKeyRestart() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val local =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                previewUri = "content://picker/photo.png",
+                status = "uploading"
+            )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals(listOf(local), store.state.value.uploadedAttachments)
+        assertEquals(1, store.state.value.syncNonce)
+        assertEquals(null, persistence.read(draftKey))
+    }
+
+    @Test
+    fun removedLocalAttachmentDoesNotReappearAfterSameComposerKeyRestart() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val local =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+        val uploaded =
+            SharedThreadComposerAttachment(
+                id = "remote-image-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "ready"
+            )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
+        store.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(local.id))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1", syncNonce = 0),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(
+            SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                attachments = listOf(uploaded),
+                replacedAttachmentIds = setOf(local.id),
+                replacedAttachmentIdsByUploadedId = mapOf(uploaded.id to local.id)
+            )
+        )
+
+        assertEquals(emptyList(), store.state.value.uploadedAttachments)
+        assertTrue(local.id in store.state.value.removedAttachmentIds)
+    }
+
+    @Test
+    fun uploadingLocalAttachmentDoesNotSurviveDifferentComposerKeyRestart() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val firstDraftKey = "send=channel-1|parent=_|mention=channel-1"
+        val secondDraftKey = "send=channel-2|parent=_|mention=channel-2"
+        val local =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "photo.png",
+                sizeLabel = "32 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = firstDraftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                draftKey = secondDraftKey
+            )
+        )
+
+        assertEquals(emptyList(), store.state.value.uploadedAttachments)
+        assertEquals(emptySet(), store.state.value.removedAttachmentIds)
+    }
+
+    @Test
     fun draftPersistenceIsOptInToMviStore() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
