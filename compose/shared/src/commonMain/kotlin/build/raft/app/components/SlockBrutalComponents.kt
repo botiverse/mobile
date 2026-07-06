@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -50,6 +51,7 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.RectangleShape
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -458,6 +460,12 @@ internal fun SlockBrutalInputField(
 ) {
     var focused by remember { mutableStateOf(false) }
     val isMultiline = maxLines > 1
+    var fieldValue by remember { mutableStateOf(TextFieldValue(text = value, selection = TextRange(value.length))) }
+    // Re-sync only when the external string diverges (e.g., caller cleared it after submit),
+    // so normal typing / IME composition / selection are not clobbered on recomposition.
+    if (value != fieldValue.text) {
+        fieldValue = TextFieldValue(text = value, selection = TextRange(value.length))
+    }
     val fieldContentAlignment = if (isMultiline) Alignment.TopStart else Alignment.CenterStart
     val rowVerticalAlignment = if (isMultiline) Alignment.Top else Alignment.CenterVertically
     val shadowOffset = if (showShadow) {
@@ -499,24 +507,53 @@ internal fun SlockBrutalInputField(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = rowVerticalAlignment
             ) {
-                TextField(
-                    value = value,
-                    onValueChange = { if (enabled) onValueChange(it) },
-                    placeholder = placeholder,
-                    placeholderColor = placeholderColor,
-                    autoFocus = autoFocus,
-                    onFocus = { focused = true },
-                    onBlur = { focused = false },
-                    maxLines = maxLines,
-                    keyboardOptions = keyboardOptions,
-                    keyboardActions = keyboardActions,
-                    textStyle = textStyle,
-                    visualTransformation = visualTransformation,
-                    systemNewlineAction = isMultiline,
-                    contentAlignment = fieldContentAlignment,
-                    modifier = Modifier.weight(1f),
-                    focusRequester = focusRequester
-                )
+                if (visualTransformation == VisualTransformation.None) {
+                    TextField(
+                        // TextFieldValue overload (BasicWidget.kt:682): surfaces the IME
+                        // composition region so uncommitted CJK/pinyin candidate text reaches
+                        // the bound state even without an explicit blur/flush before submit.
+                        value = fieldValue,
+                        onValueChange = { next ->
+                            fieldValue = next
+                            if (enabled) onValueChange(next.text)
+                        },
+                        placeholder = placeholder,
+                        placeholderColor = placeholderColor,
+                        autoFocus = autoFocus,
+                        onFocus = { focused = true },
+                        onBlur = { focused = false },
+                        maxLines = maxLines,
+                        keyboardOptions = keyboardOptions,
+                        keyboardActions = keyboardActions,
+                        textStyle = textStyle,
+                        systemNewlineAction = isMultiline,
+                        contentAlignment = fieldContentAlignment,
+                        modifier = Modifier.weight(1f),
+                        focusRequester = focusRequester
+                    )
+                } else {
+                    // Password / transformed inputs keep the String overload (single-line,
+                    // non-CJK). It does not surface the composition region, but preserves the
+                    // visualTransformation masking that the TextFieldValue overload lacks.
+                    TextField(
+                        value = value,
+                        onValueChange = { if (enabled) onValueChange(it) },
+                        placeholder = placeholder,
+                        placeholderColor = placeholderColor,
+                        autoFocus = autoFocus,
+                        onFocus = { focused = true },
+                        onBlur = { focused = false },
+                        maxLines = maxLines,
+                        keyboardOptions = keyboardOptions,
+                        keyboardActions = keyboardActions,
+                        textStyle = textStyle,
+                        visualTransformation = visualTransformation,
+                        systemNewlineAction = isMultiline,
+                        contentAlignment = fieldContentAlignment,
+                        modifier = Modifier.weight(1f),
+                        focusRequester = focusRequester
+                    )
+                }
                 if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.X,
