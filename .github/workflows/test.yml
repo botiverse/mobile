@@ -408,19 +408,22 @@ jobs:
             --console=plain
 
       # Hard run gate since #215 cleared the legacy failures: the shared JVM
-      # suite must pass. Reports upload on failure for diagnosis.
-      - name: Run shared unit tests
+      # suite must pass. Run androidApp unit tests in the same gate so stale
+      # Android host tests cannot stay hidden until a local developer run.
+      - name: Run shared + Android app unit tests
         working-directory: compose
-        run: ./gradlew :shared:testDebugUnitTest --continue --no-daemon --console=plain
+        run: ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --continue --no-daemon --console=plain
 
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: shared-unit-test-reports
+          name: android-unit-test-reports
           path: |
             compose/shared/build/reports/tests/testDebugUnitTest/
             compose/shared/build/test-results/testDebugUnitTest/
+            compose/androidApp/build/reports/tests/testDebugUnitTest/
+            compose/androidApp/build/test-results/testDebugUnitTest/
           retention-days: 7
 
   ios:

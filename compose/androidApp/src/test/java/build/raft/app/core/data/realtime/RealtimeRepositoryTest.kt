@@ -716,10 +716,10 @@ class RealtimeRepositoryTest {
             RealtimeSocketEvents.AgentActivity,
             mapOf(
                 "agentId" to "agent-1",
-                "activity" to "disconnected"
+                "activity" to "offline"
             )
         ) as MemberPresenceUpdated
-        assertEquals(AgentStatus.Disconnected, disconnected.agentStatus)
+        assertEquals(AgentStatus.Offline, disconnected.agentStatus)
         assertEquals(Presence.Offline, disconnected.presence)
     }
 
@@ -1014,6 +1014,9 @@ class RealtimeRepositoryTest {
             AuthApiResult.Failure(404)
 
         override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
             AuthApiResult.Failure(404)
 
         override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
