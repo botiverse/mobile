@@ -1266,7 +1266,10 @@ private fun SharedTasksStatusLabel(
         modifier = Modifier
             .then(modifier)
             .background(status.color)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            // React's section-header status pill uses a 1px border; android's 2dp
+            // read as "too black / heavier" vs react's thinner (lighter-looking)
+            // line. Same black color, just match the 1px stroke (task #384).
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
