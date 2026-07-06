@@ -103,6 +103,8 @@ class KmpVisualScreenshotCaptureTest {
     // flaky short-window run, NOT a regression.
     private var lastCaptureClampedToShortWindow = false
 
+    private var lastCaptureMethod: String? = null
+
 
     @Test
     fun captureTokenPalette() {
@@ -978,15 +980,17 @@ class KmpVisualScreenshotCaptureTest {
         caseId: String,
         tab: String
     ) {
-        captureKmpComponentCase(
-            caseId = caseId,
-            pageName = "compose_member_detail",
-            pageData = memberDetailVisualPageData(
+        val pageData =
+            memberDetailVisualPageData(
                 instanceId = "visual-members-agent-$tab",
                 memberId = "agent-product-ux",
                 memberKind = "agent",
                 initialAgentTab = tab
-            ),
+            )
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_member_detail",
+            pageData = pageData,
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -1578,6 +1582,37 @@ class KmpVisualScreenshotCaptureTest {
             }
     }
 
+    private fun captureUiAutomationFallbackBitmap(caseId: String, crop: VisualCrop): Bitmap? {
+        val screenshot =
+            InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                ?: return null
+        val boundsProblem = cropBoundsProblem(screenshot, crop)
+        if (boundsProblem != null) {
+            Log.w(VISUAL_LOG_TAG, "$caseId UiAutomation fallback $boundsProblem")
+            screenshot.recycle()
+            return null
+        }
+        val cropped = screenshot.cropDp(crop)
+        val stats = cropped.visualStats()
+        val problems = visualValidationProblems(cropped, stats)
+        if (problems.isEmpty()) {
+            if (cropped !== screenshot) {
+                screenshot.recycle()
+            }
+            Log.i(VISUAL_LOG_TAG, "$caseId using UiAutomation screenshot after root-draw blank frame")
+            return cropped
+        }
+        Log.w(
+            VISUAL_LOG_TAG,
+            "$caseId UiAutomation fallback also failed validation: ${problems.joinToString("; ")}"
+        )
+        cropped.recycle()
+        if (cropped !== screenshot) {
+            screenshot.recycle()
+        }
+        return null
+    }
+
     private fun captureStableVisualBitmap(
         context: Context,
         caseId: String,
@@ -1585,6 +1620,7 @@ class KmpVisualScreenshotCaptureTest {
         requireReactionAtlas: Boolean = false
     ): Bitmap {
         lastCaptureClampedToShortWindow = false
+        lastCaptureMethod = crop.captureMethod
         if (requireReactionAtlas) {
             awaitReactionAtlasReady(caseId)
         }
@@ -1614,6 +1650,24 @@ class KmpVisualScreenshotCaptureTest {
             val normalized = cropped
             val stats = normalized.visualStats()
             val problems = visualValidationProblems(normalized, stats)
+            val uiAutomationFallback =
+                if (problems.isNotEmpty() && shouldTryUiAutomationFallback(stats)) {
+                    captureUiAutomationFallbackBitmap(caseId, crop)
+                } else {
+                    null
+                }
+            if (uiAutomationFallback != null) {
+                if (cropped !== screenshot && cropped !== normalized) {
+                    cropped.recycle()
+                }
+                if (screenshot !== normalized) {
+                    screenshot.recycle()
+                }
+                normalized.recycle()
+                lastBitmap?.recycle()
+                lastCaptureMethod = UI_AUTOMATION_CAPTURE_METHOD
+                return uiAutomationFallback
+            }
             if (problems.isEmpty()) {
                 if (cropped !== screenshot && cropped !== normalized) {
                     cropped.recycle()
@@ -1900,6 +1954,9 @@ class KmpVisualScreenshotCaptureTest {
         return problems
     }
 
+    private fun shouldTryUiAutomationFallback(stats: VisualBitmapStats): Boolean =
+        stats.uniqueColors <= 2 || stats.dominantRatio >= 0.985f
+
     private fun Bitmap.visualStats(): VisualBitmapStats {
         // Bounded sampling (task #370): a FULL_VIEWPORT frame is 1170x2532 ≈ 3M
         // pixels, and putting every one into a boxed HashMap<Int,Int> took
@@ -2026,7 +2083,7 @@ class KmpVisualScreenshotCaptureTest {
                 "rect": { "x": ${crop.leftDp}, "y": ${crop.topDp}, "width": ${crop.widthDp}, "height": ${crop.heightDp} }
               },
               "capture": {
-                "method": "$captureMethod",
+                "method": "${lastCaptureMethod ?: captureMethod}",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
@@ -2191,6 +2248,9 @@ class KmpVisualScreenshotCaptureTest {
     )
 
     companion object {
+        private const val UI_AUTOMATION_CAPTURE_METHOD =
+            "ui-automation-take-screenshot-viewport-crop"
+
         private val FULL_VIEWPORT_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -2704,7 +2764,6 @@ class KmpVisualScreenshotCaptureTest {
         // Ceiling for ActivityScenario.close() teardown (its moveToState does an
         // unbounded waitForIdleSync). Normal close is sub-second.
         private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
-
         // Hard per-case backstop. With every unbounded waitForIdleSync path now
         // bounded (idle waits, onActivity, close — task #362/#364), no case
         // hangs forever, so this is a generous ceiling for legitimately-slow 3x
