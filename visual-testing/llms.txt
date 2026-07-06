@@ -1,11 +1,11 @@
 # Raft Visual Testing
 
-Generated: 2026-07-06 13:01:37 UTC
-Latest run: 6abae56-20260706130112
-Latest commit: 6abae56-20260706130112
-Commit subject: fix(visual): make wm size stick (readback+retry) + clamp fallback so full-viewport never misses (#135)
+Generated: 2026-07-06 22:35:13 UTC
+Latest run: 1dcb122-20260706223444
+Latest commit: 1dcb122-20260706223444
+Commit subject: fix(settings): harden Quiver feedback submit (#205)
 Providers: react vs android
-Summary: total 84, same 0, pass 0, basic-pass 5, different 67, missing 12
+Summary: total 84, same 0, pass 0, basic-pass 4, different 75, missing 5
 AI analysis: ready 0 / total 84, pending 84
 Visual coverage matrix: active 85 / total 104, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
@@ -107,6 +107,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 1dcb122-20260706223444: react vs android, total 84, pass 0, basic-pass 4, different 75, matrix runs/1dcb122-20260706223444/component-matrix.json, page runs/1dcb122-20260706223444/
 - 6abae56-20260706130112: react vs android, total 84, pass 0, basic-pass 5, different 67, matrix runs/6abae56-20260706130112/component-matrix.json, page runs/6abae56-20260706130112/
 - c21f5b1-20260706091849: react vs android, total 84, pass 0, basic-pass 5, different 70, matrix runs/c21f5b1-20260706091849/component-matrix.json, page runs/c21f5b1-20260706091849/
 - 876435d-20260706075548: react vs android, total 84, pass 0, basic-pass 5, different 58, matrix runs/876435d-20260706075548/component-matrix.json, page runs/876435d-20260706075548/
