@@ -1446,6 +1446,14 @@ class KmpVisualScreenshotCaptureTest {
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Draw edge-to-edge so the decor view fills the full display and the
+            // status-bar area is not reserved (task #370): hiding the bars alone
+            // leaves the content laid out inside the inset-reduced area, so the
+            // captured screenshot came back ~118px short (1170x2414 vs the
+            // 1170x2532 the FULL_VIEWPORT crop needs) and every full-viewport
+            // case failed validateCropBounds. Zeroing decor-fits makes the
+            // window a true 1170x2532 with no top-inset shift.
+            activity.window.setDecorFitsSystemWindows(false)
             activity.window.insetsController?.let { controller ->
                 controller.hide(
                     WindowInsets.Type.statusBars() or
@@ -1529,7 +1537,16 @@ class KmpVisualScreenshotCaptureTest {
         do {
             waitForIdleBounded()
             val screenshot = captureActivityScreenshot(caseId)
-            validateCropBounds(caseId, screenshot, crop)
+            val boundsProblem = cropBoundsProblem(screenshot, crop)
+            if (boundsProblem != null) {
+                // Window not at full size yet (e.g. edge-to-edge not settled) —
+                // retry within the deadline rather than dropping to "missing".
+                Log.w(VISUAL_LOG_TAG, "$caseId $boundsProblem — retrying")
+                lastProblems = listOf(boundsProblem)
+                screenshot.recycle()
+                Thread.sleep(STABLE_CAPTURE_RETRY_MS)
+                continue
+            }
             val cropped = screenshot.cropDp(crop)
             // Task #342: keep native device pixels (emulator pinned to 480dpi
             // = exactly 3x, matching React's deviceScaleFactor 3) instead of
@@ -1701,18 +1718,25 @@ class KmpVisualScreenshotCaptureTest {
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
     }
 
-    private fun validateCropBounds(caseId: String, screenshot: Bitmap, crop: VisualCrop) {
+    // Returns null when the screenshot is large enough for the crop, else a
+    // description. Task #370: a too-small screenshot (e.g. the edge-to-edge
+    // window not yet settled so the decor view is still inset-reduced) is
+    // RETRYABLE, not fatal — the stable-capture loop keeps polling until the
+    // window reaches full size or the deadline passes, instead of hard-throwing
+    // and dropping the case to "missing" on a transient timing race.
+    private fun cropBoundsProblem(screenshot: Bitmap, crop: VisualCrop): String? {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
         val left = (crop.leftDp * density).roundToInt()
         val top = (crop.topDp * density).roundToInt()
         val desiredWidth = (crop.widthDp * density).roundToInt()
         val desiredHeight = (crop.heightDp * density).roundToInt()
-        require(left >= 0 && top >= 0) {
-            "$caseId visual crop starts outside screenshot: crop=$crop screenshot=${screenshot.width}x${screenshot.height}"
+        if (left < 0 || top < 0) {
+            return "crop starts outside screenshot: crop=$crop screenshot=${screenshot.width}x${screenshot.height}"
         }
-        require(left + desiredWidth <= screenshot.width && top + desiredHeight <= screenshot.height) {
-            "$caseId visual crop is clipped: crop=$crop px=($left,$top ${desiredWidth}x$desiredHeight) screenshot=${screenshot.width}x${screenshot.height}"
+        if (left + desiredWidth > screenshot.width || top + desiredHeight > screenshot.height) {
+            return "crop needs ${left + desiredWidth}x${top + desiredHeight}px but screenshot is only ${screenshot.width}x${screenshot.height} (window not at full size / inset not settled)"
         }
+        return null
     }
 
     private fun visualValidationProblems(bitmap: Bitmap, stats: VisualBitmapStats): List<String> {
