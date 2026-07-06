@@ -6,9 +6,11 @@ import build.raft.app.network.MultipartFile
 import build.raft.app.network.SlockHttpExecutor
 import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
+import build.raft.app.network.SlockRequestScheduler
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 
 class SharedKtorSlockNetworkClientTest {
@@ -33,7 +35,7 @@ class SharedKtorSlockNetworkClientTest {
      * transport receives, which the old MockEngine tests only saw re-parsed.
      */
     private class RecordingExecutor(
-        private val respond: (url: String) -> SlockHttpExecutorResponse
+        private val respond: suspend (url: String) -> SlockHttpExecutorResponse
     ) : SlockHttpExecutor {
         val requests = mutableListOf<RecordedRequest>()
         val multiparts = mutableListOf<RecordedMultipart>()
@@ -123,6 +125,35 @@ class SharedKtorSlockNetworkClientTest {
         )
         assertTrue(logs.any { it.contains("category=message_search") && it.contains("queryMeta=qLen=18;qWords=4;qFlags=space|plus|hash|nonAscii") })
         assertTrue(logs.none { it.contains("do not") || it.contains("中文") })
+    }
+
+    @Test
+    fun requestTimeoutReturnsNetworkErrorResponse() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                delay(50)
+                ok()
+            }
+        val client =
+            SharedKtorSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                warningLogger = logs::add,
+                requestScheduler = SlockRequestScheduler(requestTimeoutMillis = 1),
+                executor = executor
+            )
+
+        val response =
+            client.request(
+                priority = DataRequestPriority.Visible,
+                path = "servers/server-1/machines",
+                serverIdOverride = ServerId("server-1")
+            )
+
+        assertEquals(0, response.code)
+        assertTrue(response.errorBodyText.orEmpty().contains("network_timeout"))
+        assertTrue(logs.any { it.contains("path=servers/server-1/machines") && it.contains("result=network_error") })
     }
 
     @Test
