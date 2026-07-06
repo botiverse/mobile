@@ -733,12 +733,12 @@ jobs:
         env:
           # The container is a 7.8 GiB / 2-CPU host with no memory cgroup cap.
           # Keep the Gradle JVM small (it only orchestrates here) and drop the
-          # Kotlin JVM daemon via in-process compilation so the memory-heavy
-          # native link has maximum physical headroom. -Xss4m stays for the
-          # Compose compiler; the konan compiler daemon is KEPT (disabling it
-          # runs konanc on a worker thread that ignores -Xss4m and reintroduces
-          # the Compose-compiler StackOverflow).
-          GRADLE_OPTS: "-Xmx1500m -Xss4m -Dfile.encoding=UTF-8"
+          # Kotlin JVM daemon via in-process compilation so the konan compiler
+          # gets the physical headroom. -Xss4m stays for the Compose compiler;
+          # the konan compiler daemon is KEPT (disabling it runs konanc on a
+          # worker thread that ignores -Xss4m and reintroduces the
+          # Compose-compiler StackOverflow).
+          GRADLE_OPTS: "-Xmx1g -Xss4m -Dfile.encoding=UTF-8"
         run: |
           echo "== container resources =="
           nproc || true
@@ -749,9 +749,15 @@ jobs:
           # runner is OOM-killed). The release .so drops the debug info and links
           # inside the memory budget. A CI gate needs a valid libshared.so, not
           # debug symbols, so the release variant is the right build here.
+          # The release -opt link failed with 'OutOfMemoryError: Java heap
+          # space' inside konanc itself, so give the Kotlin/Native compiler a
+          # large heap (its default is far too small for this module's whole-
+          # program optimization). Gradle is trimmed to 1g to make room within
+          # the 7.8 GiB host; -Xss4m stays for the Compose compiler pass.
           ./gradlew -c settings.ohos.gradle.kts \
             :shared:linkReleaseSharedOhosArm64 \
             -Dkotlin.compiler.execution.strategy=in-process \
+            -Pkotlin.native.jvmArgs="-Xmx5g -Xss4m" \
             --no-daemon --console=plain
           mkdir -p ohosApp/entry/libs/arm64-v8a ohosApp/entry/src/main/cpp
           cp shared/build/bin/ohosArm64/releaseShared/libshared.so ohosApp/entry/libs/arm64-v8a/
