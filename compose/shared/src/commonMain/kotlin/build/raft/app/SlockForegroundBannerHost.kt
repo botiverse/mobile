@@ -44,9 +44,10 @@ import com.tencent.kuikly.compose.ui.zIndex
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
 private const val ForegroundBannerZIndex = SlockFloatingOverlayHostZIndex + 10f
+private val ForegroundBannerTwoLineHeight = 70.dp
+private val ForegroundBannerThreadReplyHeight = 90.dp
 private val ForegroundBannerAvatarSize = 30.dp
-private val ForegroundBannerTypeBadgeSize = 20.dp
-private val ForegroundBannerTypeGlyphSize = 11.dp
+private val ForegroundBannerReplyGlyphSize = 13.dp
 
 internal fun slockForegroundBannerAutoDismissMs(): Long = ForegroundBannerAutoDismissMs
 
@@ -99,6 +100,12 @@ internal fun SlockForegroundMessageBannerView(
     onClick: () -> Unit,
     onDismiss: () -> Unit = {}
 ) {
+    val bannerHeight =
+        if (banner.threadContext.isNullOrBlank()) {
+            ForegroundBannerTwoLineHeight
+        } else {
+            ForegroundBannerThreadReplyHeight
+        }
     Box(
         modifier =
             Modifier
@@ -112,7 +119,7 @@ internal fun SlockForegroundMessageBannerView(
                     .fillMaxWidth()
                     .widthIn(max = 640.dp)
                     .align(Alignment.TopCenter)
-                    .height(62.dp)
+                    .height(bannerHeight)
         ) {
             Box(
                 modifier =
@@ -146,15 +153,6 @@ internal fun SlockForegroundMessageBannerView(
                     iconName = SlockLucideIconName.X,
                     onClick = onDismiss
                 )
-                Spacer(Modifier.width(4.dp))
-                SlockLucideIcon(
-                    SlockLucideIconName.ChevronRight,
-                    modifier =
-                        Modifier
-                            .size(18.dp)
-                            .clickable(role = Role.Button, onClick = onClick),
-                    color = SlockColor.TextBlackArgb
-                )
             }
         }
     }
@@ -170,15 +168,44 @@ private fun SlockForegroundBannerText(
         verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         SlockForegroundBannerTitleRow(banner)
+        banner.threadContext?.takeIf { it.isNotBlank() }?.let { threadContext ->
+            SlockForegroundBannerThreadContextRow(threadContext)
+        }
         Text(
             text = banner.body,
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
+                    .withSlockFontWeight(FontWeight.Medium),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SlockForegroundBannerThreadContextRow(threadContext: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.MessageSquare,
+            modifier = Modifier.size(ForegroundBannerReplyGlyphSize),
+            color = SlockColor.TextMutedGrayArgb
+        )
+        Text(
+            text = threadContext,
             style =
                 SlockType.Caption
                     .copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
                     .withSlockFontWeight(FontWeight.Medium),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
     }
 }
@@ -192,15 +219,13 @@ private fun SlockForegroundBannerTitleRow(banner: SlockForegroundMessageBanner) 
     ) {
         Text(
             text = banner.title,
-            style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         if (inlineContext.isNotBlank()) {
             Spacer(Modifier.width(6.dp))
-            SlockForegroundBannerTypeBadge(banner)
-            Spacer(Modifier.width(4.dp))
             Text(
                 text = inlineContext,
                 style =
@@ -335,7 +360,7 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerThread
         this?.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
             conversation.kind == ConversationKind.Thread
     if (!isReplyThread) return null
-    return this?.title?.takeIf { it.isNotBlank() }
+    return this?.subtitle?.takeIf { it.isNotBlank() }
 }
 
 @Composable
@@ -346,24 +371,6 @@ private fun SlockForegroundBannerAvatar(banner: SlockForegroundMessageBanner) {
         avatarSize = ForegroundBannerAvatarSize,
         borderWidth = SlockStroke.Default
     )
-}
-
-@Composable
-private fun SlockForegroundBannerTypeBadge(banner: SlockForegroundMessageBanner) {
-    Box(
-        modifier =
-            Modifier
-                .size(ForegroundBannerTypeBadgeSize)
-                .background(SlockColor.BrandYellow)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        SlockLucideIcon(
-            banner.iconName ?: SlockLucideIconName.Hash,
-            modifier = Modifier.size(ForegroundBannerTypeGlyphSize),
-            color = "#FF141111"
-        )
-    }
 }
 
 private fun Message.resolveForegroundBannerConversation(
@@ -409,8 +416,7 @@ private fun Message.resolveForegroundBannerContext(
     val surface = projection?.toForegroundBannerSurfaceLabel() ?: fallbackForegroundBannerSurfaceLabel()
     return listOfNotNull(
         source,
-        surface,
-        timestampLabel.takeIf { it.isNotBlank() }
+        surface
     ).distinct().joinToString(" - ")
 }
 

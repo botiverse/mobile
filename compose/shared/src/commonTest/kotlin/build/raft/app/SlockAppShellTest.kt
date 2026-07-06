@@ -595,7 +595,7 @@ class SlockAppShellTest {
         assertEquals("message-1", resolved.focusedMessageId)
         assertEquals("channel-1", resolved.conversation.threadId.value)
         assertEquals("Cindy", resolved.title)
-        assertEquals("now", resolved.context)
+        assertEquals("", resolved.context)
         assertNull(resolved.threadContext)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.Hash, resolved.iconName)
@@ -645,8 +645,8 @@ class SlockAppShellTest {
 
         val resolved = assertNotNull(banner)
         assertEquals("Cindy", resolved.title)
-        assertEquals("#team-ops - thread - now", resolved.context)
-        assertEquals("deploy checklist", resolved.threadContext)
+        assertEquals("#team-ops - thread", resolved.context)
+        assertEquals("Parent message preview", resolved.threadContext)
         assertEquals("Hello from another route", resolved.body)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.MessageSquare, resolved.iconName)
@@ -703,7 +703,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(banner)
-        assertEquals("now", resolved.context)
+        assertEquals("", resolved.context)
     }
 
     @Test
@@ -736,7 +736,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(banner)
-        assertEquals("#home-fixes - now", resolved.context)
+        assertEquals("#home-fixes", resolved.context)
     }
 
     @Test
@@ -772,7 +772,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(banner)
-        assertEquals("@Cindy - direct message - now", resolved.context)
+        assertEquals("@Cindy - direct message", resolved.context)
         assertNull(resolved.threadContext)
         assertEquals(SlockForegroundMessageBannerIconKind.DirectMessage, resolved.iconKind)
         assertNull(resolved.iconName)
