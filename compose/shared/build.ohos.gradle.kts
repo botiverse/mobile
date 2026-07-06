@@ -134,7 +134,7 @@ kotlin {
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.6")
+                implementation("com.tencent.kuiklybase:network:0.1.0-raft.7")
             }
         }
         val commonTest by getting {

@@ -27,10 +27,6 @@ internal fun createPlatformSlockHttpExecutor(
 ): SlockHttpExecutor = NetworkKmmSlockHttpExecutor(warningLogger)
 
 private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
-private const val HEADER_ACCEPT_ENCODING = "Accept-Encoding"
-private const val ACCEPT_ENCODING_IDENTITY = "identity"
-
-internal expect fun slockNetworkKmmRequiresIdentityEncoding(): Boolean
 
 @Volatile
 private var networkKmmInitialized = false
@@ -94,7 +90,7 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            request.setSlockHeaders(headers)
+            headers.forEach { (name, value) -> request.setHeader(name, value) }
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -139,7 +135,7 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            request.setSlockHeaders(headers)
+            headers.forEach { (name, value) -> request.setHeader(name, value) }
             client.execute(request).toExecutorResponse()
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -150,16 +146,6 @@ internal class NetworkKmmSlockHttpExecutor(
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
     }
-}
-
-private fun NetworkRequest.setSlockHeaders(headers: Map<String, String>) {
-    if (
-        slockNetworkKmmRequiresIdentityEncoding() &&
-            headers.keys.none { it.equals(HEADER_ACCEPT_ENCODING, ignoreCase = true) }
-    ) {
-        setHeader(HEADER_ACCEPT_ENCODING, ACCEPT_ENCODING_IDENTITY)
-    }
-    headers.forEach { (name, value) -> setHeader(name, value) }
 }
 
 private fun String.toTransportMethod(): VBTransportMethod =
