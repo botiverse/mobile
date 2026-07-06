@@ -200,6 +200,26 @@ configurations
         }
     }
 
+// NetworkKMM (task #12, now on Android too) was compiled against the KBA
+// coroutines fork, whose kotlinx.coroutines.launch has an extra boolean
+// parameter. Stock coroutines wins conflict resolution here (1.8.1 > the
+// fork), so VBTransportService's launch$default(...,boolean,...) call is
+// missing at runtime -> NoSuchMethodError, crash on app open. The fork is a
+// SUPERSET (BuildersKt keeps the stock no-boolean launch$default AND adds the
+// boolean overload), so pinning the whole app's coroutines to it is safe:
+// stock callers (kuikly, androidx) still resolve, and NetworkKMM finds its
+// method. iOS/OHOS already resolve the fork via NetworkKMM's native variants.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlinx" &&
+            requested.name.startsWith("kotlinx-coroutines-")
+        ) {
+            useVersion("1.8.0-KBA-002")
+            because("NetworkKMM is built against the KBA coroutines fork (superset of stock); the app must run its BuildersKt so launch\$default resolves.")
+        }
+    }
+}
+
 dependencies {
     // Kuikly Compose shared module
     implementation(project(":shared"))
