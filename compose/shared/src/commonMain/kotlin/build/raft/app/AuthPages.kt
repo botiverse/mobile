@@ -76,6 +76,13 @@ private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
 private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
 private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
 private const val AUTH_LEGAL_CODE_VERIFIER_KEY = "slockAuthLegalCodeVerifier"
+private const val AUTH_VISUAL_FIXTURE_KEY = "visualFixture"
+private const val AUTH_LOGIN_VISUAL_FIXTURE_SIGNING = "signing"
+// Mirrors the react screens.auth.login.signing fill interactions
+// (packages/visual-testing/shared/sharedCases.json): same email and the same
+// 21-char password so both sides mask the same number of dots.
+private const val AUTH_LOGIN_VISUAL_SIGNING_EMAIL = "artin@raft.build"
+private const val AUTH_LOGIN_VISUAL_SIGNING_PASSWORD = "visual-sign-in-secret"
 private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
 private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
 private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
@@ -899,11 +906,21 @@ private val AuthDiagnosticsEmailPattern =
 
 @Composable
 internal fun AuthLoginInputsVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    // visualFixture "signing" renders the in-flight sign-in state: filled
+    // fields that stay white/enabled (task #372) plus the submit button as
+    // "Signing in…" at the 50%-alpha disabled look, with the google+github
+    // social section pinned to match the react case's /auth/providers stub.
+    // Any other value keeps the pre-existing default render used by the
+    // empty/filled/invalid captures.
+    val signing =
+        pager.pageData.params.optString(AUTH_VISUAL_FIXTURE_KEY) == AUTH_LOGIN_VISUAL_FIXTURE_SIGNING
     LoginContent(
-        email = "artin@slock.test",
-        password = "password",
-        submitting = false,
+        email = if (signing) AUTH_LOGIN_VISUAL_SIGNING_EMAIL else "artin@slock.test",
+        password = if (signing) AUTH_LOGIN_VISUAL_SIGNING_PASSWORD else "password",
+        submitting = signing,
         errorMessage = null,
+        socialProviders = if (signing) setOf(AuthProvider.Google, AuthProvider.GitHub) else emptySet(),
         onEmailChange = {},
         onPasswordChange = {},
         onSubmit = {},
@@ -987,15 +1004,21 @@ internal fun LoginContent(
             modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
+            // React parity (LoginPage.tsx): the inputs are never disabled while a
+            // sign-in request is in flight — they stay white/black-bordered and
+            // editable; only the submit button dims. Gating them on !formBusy
+            // grayed the whole form during signing (task #372). Double-submit
+            // stays impossible: the button disables itself and
+            // resolveLoginDraftSubmit ignores submits while formBusy.
             AuthTextField(
                 value = emailDraft,
                 onValueChange = {
                     emailDraft = it
                     onEmailChange(it)
                 },
+                // React parity: LoginPage.tsx labels are plain "Email"/"Password"
+                // (no pink required asterisk).
                 label = "Email",
-                required = true,
-                enabled = !formBusy,
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
@@ -1008,8 +1031,6 @@ internal fun LoginContent(
                     onPasswordChange(it)
                 },
                 label = "Password",
-                required = true,
-                enabled = !formBusy,
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
@@ -1032,12 +1053,19 @@ internal fun LoginContent(
             )
             if (visibleSocialProviders.isNotEmpty()) {
                 AuthDivider()
+                // React parity (LoginPage.tsx SocialProviderButton): social buttons
+                // are never disabled by an in-flight email/password sign-in — react
+                // keeps them full-opacity and clickable (tapping one abandons the
+                // pending login; onSocialSignIn resets submitting here too). They
+                // only dim during Android's own in-app "Opening …" social flow,
+                // a state react never renders because it redirects instead.
+                val socialEnabled = socialSubmittingProvider == null
                 if (AuthProvider.Google in visibleSocialProviders) {
                     AuthActionButton(
                         text = if (socialSubmittingProvider == AuthProvider.Google) "Opening Google" else "Continue with Google",
                         onClick = { onSocialSignIn(AuthProvider.Google) },
                         tone = AuthButtonTone.White,
-                        enabled = !formBusy,
+                        enabled = socialEnabled,
                         loading = socialSubmittingProvider == AuthProvider.Google,
                         preserveDisabledVisual = true,
                         leadingContent = { AuthProviderIcon(AuthProvider.Google) }
@@ -1048,7 +1076,7 @@ internal fun LoginContent(
                         text = if (socialSubmittingProvider == AuthProvider.GitHub) "Opening GitHub" else "Continue with GitHub",
                         onClick = { onSocialSignIn(AuthProvider.GitHub) },
                         tone = AuthButtonTone.Black,
-                        enabled = !formBusy,
+                        enabled = socialEnabled,
                         loading = socialSubmittingProvider == AuthProvider.GitHub,
                         preserveDisabledVisual = true,
                         leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
@@ -1083,7 +1111,6 @@ internal fun RegisterContent(
     forceNameFocused: Boolean = true,
     onOpenDiagnostics: () -> Unit = {}
 ) {
-    val formEnabled = !submitting
     var termsAccepted by remember { mutableStateOf(false) }
     val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
@@ -1093,7 +1120,7 @@ internal fun RegisterContent(
             email = email,
             password = password,
             termsAccepted = termsAccepted,
-            formBusy = !formEnabled,
+            formBusy = submitting,
             nameError = nameError,
             emailFormatError = emailError,
             passwordError = passwordError
@@ -1117,12 +1144,14 @@ internal fun RegisterContent(
             modifier = Modifier.authPageStaticTextFocus()
         )
         AuthFormColumn {
+            // React parity (RegisterPage.tsx): the inputs are never disabled while
+            // the create-account request is in flight — only the legal checkbox
+            // and submit button get disabled={loading} (task #372).
             AuthTextField(
                 name,
                 onNameChange,
                 "Name",
                 placeholder = "Letters, numbers, hyphens, underscores",
-                enabled = formEnabled,
                 isError = !nameError.isNullOrBlank(),
                 errorText = nameError,
                 forceFocused = forceNameFocused,
@@ -1133,7 +1162,6 @@ internal fun RegisterContent(
                 email,
                 onEmailChange,
                 "Email",
-                enabled = formEnabled,
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 focusRequester = emailFocusRequester,
@@ -1145,7 +1173,6 @@ internal fun RegisterContent(
                 onPasswordChange,
                 "Password",
                 placeholder = "Min 8 characters",
-                enabled = formEnabled,
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
@@ -1205,7 +1232,11 @@ internal fun ForgotPasswordContent(
                 value = email,
                 onValueChange = onEmailChange,
                 label = "Email",
-                enabled = !sending && !sent,
+                // React parity (ForgotPasswordPage.tsx): the email input stays
+                // enabled while the reset request is in flight (task #372).
+                // After `sent`, react swaps to a page without the input at all,
+                // so the grayed disabled field remains mobile's stand-in.
+                enabled = !sent,
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 forceFocused = !sent,
