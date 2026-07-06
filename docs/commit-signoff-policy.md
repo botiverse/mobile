@@ -65,3 +65,23 @@ scripts/install_git_hooks.sh
 ```
 
 The hook rejects commit messages that do not include a `Signed-off-by:` trailer with a `@mail.build` email. CI also runs `scripts/check-commit-signoff.sh` over the commit range for pushes and pull requests.
+
+## PR-only Main Integration
+
+GitHub `main` is protected. A valid signed commit is necessary but not enough
+to publish code: new mobile work must go through a GitHub PR to `main`.
+
+Use this flow:
+
+1. Branch from current `origin/main`.
+2. Commit with `git commit -s` and the correct `@mail.build` identity.
+3. Validate the touched area locally.
+4. Run `scripts/check-commit-signoff.sh <base> HEAD` for the PR range.
+5. Push the topic branch and open a PR.
+6. Wait for required GitHub checks and owner/reviewer approval, then merge via
+   the PR UI or `gh pr merge`.
+
+Do not directly merge finished work into a shared local `main` as the delivery
+step, and do not run `git push origin main`. If local `main` is already ahead,
+move the non-equivalent commits to PR branches and clean local `main` only
+after confirming there are no unrelated dirty files.

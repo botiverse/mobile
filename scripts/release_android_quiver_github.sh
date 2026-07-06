@@ -28,8 +28,9 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/release_android_quiver_github.sh [options]
 
-Pushes local Slock Android release inputs, ensures the Kuikly submodule commit
-is reachable by GitHub Actions, and dispatches .github/workflows/android-release.yml.
+Verifies local Slock Android release inputs are already present on the protected
+remote release branch, ensures the Kuikly submodule commit is reachable by
+GitHub Actions, and dispatches .github/workflows/android-release.yml.
 
 Defaults match the production Quiver release lane:
   versionName=1.0.1
@@ -186,8 +187,17 @@ else
   git -C third_party/kuikly-ui push "${KUIKLY_REMOTE}" "HEAD:${KUIKLY_BRANCH}"
 fi
 
-echo "==> Pushing Slock ${PUSH_BRANCH} to ${PUSH_REMOTE}/${PUSH_BRANCH}"
-git push "${PUSH_REMOTE}" "${PUSH_BRANCH}"
+echo "==> Verifying Slock ${PUSH_BRANCH} is already on ${PUSH_REMOTE}/${PUSH_BRANCH}"
+git fetch "${PUSH_REMOTE}" "${PUSH_BRANCH}"
+remote_ref="refs/remotes/${PUSH_REMOTE}/${PUSH_BRANCH}"
+git rev-parse --verify --quiet "${remote_ref}" >/dev/null ||
+  die "remote branch not found after fetch: ${PUSH_REMOTE}/${PUSH_BRANCH}"
+local_head="$(git rev-parse HEAD)"
+remote_head="$(git rev-parse "${remote_ref}")"
+if [ "${local_head}" != "${remote_head}" ]; then
+  die "local ${PUSH_BRANCH} (${local_head}) is not ${PUSH_REMOTE}/${PUSH_BRANCH} (${remote_head}); merge through a PR and fetch before releasing"
+fi
+echo "    verified: ${local_head}"
 
 release_version="$(version_name)"
 release_code="$(version_code)"

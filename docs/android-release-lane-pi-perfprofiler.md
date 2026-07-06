@@ -13,7 +13,8 @@ Owner (typically @artin) issues instructions like:
 - "打包打包"
 
 in any channel (usually `#artifacts`). Lane assumptions:
-- Source = current `local main` HEAD
+- Source = protected remote `origin/main`, after the release candidate has
+  already merged through PR
 - Target = Quiver `main` channel (or override via `SLOCK_QUIVER_CHANNEL`)
 - **No perf smoke** is part of this lane (cloud-phone lane is separate;
   see `docs/...-practices-2026-07-02.md` for in-app update QA scope)
@@ -23,9 +24,11 @@ in any channel (usually `#artifacts`). Lane assumptions:
 1. **Read state**.
    ```bash
    cd /Users/artin/AndroidStudioProjects/Slock
+   git fetch origin main
+   git checkout main
+   git reset --hard origin/main       # only in a clean release worktree
    git rev-parse --short HEAD
-   git status --short --branch       # expect ahead of origin/main, dirty in
-                                     # third_party/kuikly-ui, third_party/slock-source
+   git status --short --branch       # expect clean and equal to origin/main
    git ls-tree HEAD third_party/kuikly-ui third_party/slock-source
    ls compose/github-packages.properties
    ```
@@ -142,9 +145,9 @@ in any channel (usually `#artifacts`). Lane assumptions:
    `created_by`).
 
    For preview/nightly/debug channel releases, set `SLOCK_QUIVER_CHANNEL=preview`
-   (or override the channel argument). **Never** push a release to `main`
-   just to test the publish pipeline — use `preview` for that, then
-   `DELETE` the release after verification.
+   (or override the channel argument). **Never** push code directly to `main`
+   or publish a real `main` channel release just to test the pipeline — use
+   `preview` for that, then `DELETE` the release after verification.
 
 7. **Server-side verify** (the lane's 6-scope split: scope 1, 2, 5 are
    server-only; scope 3, 4, 6 need device/emulator — see

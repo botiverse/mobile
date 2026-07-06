@@ -120,14 +120,19 @@ scripts/check-commit-signoff.sh HEAD^ HEAD
 ## Branch, Worktree, and Push Rules
 
 - Do code work in an isolated worktree when practical.
-- Merge finished work into local `main` only after validation.
-- Do not push remote `main` unless the owner explicitly authorizes that push for
-  the specific task.
+- Branch from current `origin/main` and open a GitHub PR to `main` after
+  validation. GitHub `main` is protected and PR-only.
+- Do not merge finished work into shared local `main` as the delivery step.
+  If local `main` is ahead, treat it as reconciliation debt and move
+  non-equivalent commits to PR branches.
+- Do not push remote `main` directly. Use `gh pr create` / `gh pr merge` or the
+  GitHub PR UI after required checks pass.
 - Do not revert or clean unrelated dirty files. If the canonical checkout is
   dirty, inspect carefully and preserve other agents' changes.
 - Every meaningful progress or completion report must say whether the work is
-  branch/worktree-only, merged into local `main`, pushed to remote `main`, or not
-  applicable. If merged, include the local `main` commit hash.
+  branch/worktree-only, in PR, merged to remote `main`, or not applicable. If
+  a PR exists, include the PR number/link; if merged, include the remote merge
+  commit.
 
 ## Build and Validation Pointers
 

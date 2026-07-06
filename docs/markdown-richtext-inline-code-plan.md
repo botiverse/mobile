@@ -177,4 +177,5 @@ trusting screenshots.
   the RichText marker lands.
 - Do not expose generic RichText inline decoration API surface in this task.
 - Do not reintroduce `LineBackgroundSpan` background/border drawing.
-- Do not push remote main without explicit owner approval.
+- Do not push remote main directly. Mobile changes must go through a GitHub PR
+  to protected `main`.
