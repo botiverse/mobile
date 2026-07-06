@@ -207,6 +207,7 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailStore
@@ -214,6 +215,7 @@ import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.SharedHomeSavedStateCache
@@ -2615,7 +2617,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
             return@LaunchedEffect
         }
-        val openRequest = homeState.notificationThreadLaunchRequest(launchRequest)
+        val openRequest =
+            appShellConversationDirectory(homeState, homeActivityState)
+                .notificationThreadLaunchRequest(launchRequest)
         if (openRequest == null) {
             consumedNotificationLaunchKey = launchKey
             bridge.logWarn(
@@ -3160,10 +3164,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                     if (event is MessageNew) {
                         val directory =
-                            (latestHomeState.content as? SharedHomeContentState.Content)
-                                ?.snapshot
-                                ?.toSharedConversationDirectoryState()
-                                ?: SharedConversationDirectoryState()
+                            appShellConversationDirectory(
+                                homeState = latestHomeState,
+                                activityState = homeActivityState
+                            )
                         foregroundMessageBanner =
                             if (latestForegroundMessageBannersEnabled) {
                                 slockForegroundMessageBannerProjection(
@@ -14487,7 +14491,7 @@ private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTime
     return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
 }
 
-private data class AppShellNotificationThreadLaunchRequest(
+internal data class AppShellNotificationThreadLaunchRequest(
     val threadId: String,
     val messageId: String,
     val channelId: String? = null,
@@ -14539,14 +14543,28 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
 
-private fun SharedHomeState.notificationThreadLaunchRequest(
+private fun appShellConversationDirectory(
+    homeState: SharedHomeState,
+    activityState: SharedActivityState
+): SharedConversationDirectoryState {
+    val homeDirectory =
+        (homeState.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.toSharedConversationDirectoryState()
+            ?: SharedConversationDirectoryState()
+    val activityDirectory =
+        activityState
+            .snapshot
+            ?.toSharedConversationDirectoryState()
+            ?: SharedConversationDirectoryState()
+    return listOf(homeDirectory, activityDirectory).mergedSharedConversationDirectoryState()
+}
+
+internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest
 ): HomeMessageOpenRequest? {
-    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return null
     val projection =
-        snapshot
-            .toSharedConversationDirectoryState()
-            .resolveNotificationThreadProjection(request)
+        resolveNotificationThreadProjection(request)
             ?: return null
     val conversation = projection.toThreadLaunchConversationIdentity()
     return HomeMessageOpenRequest(

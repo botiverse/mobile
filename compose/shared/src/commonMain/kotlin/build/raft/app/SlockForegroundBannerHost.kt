@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
@@ -275,30 +276,8 @@ internal fun appShellVisibleForegroundConversationKey(
 
 internal fun slockConversationDirectoryStateFromProjections(
     projections: Collection<SharedConversationDirectoryProjection>
-): SharedConversationDirectoryState {
-    val byCanonicalId =
-        projections
-            .filter { it.canonicalChannelId.isNotBlank() }
-            .associateBy { it.canonicalChannelId }
-    val aliasesById =
-        buildMap<String, MutableSet<String>> {
-            byCanonicalId.values.forEach { projection ->
-                fun put(alias: String?) {
-                    val id = alias?.takeIf { it.isNotBlank() } ?: return
-                    getOrPut(id) { linkedSetOf() }.add(projection.canonicalChannelId)
-                }
-                put(projection.canonicalChannelId)
-                projection.aliases.forEach(::put)
-                put(projection.parentChannelId)
-                put(projection.parentMessageId)
-            }
-        }.mapValues { (_, values) -> values.toSet() }
-    return SharedConversationDirectoryState(
-        projectionsByCanonicalId = byCanonicalId,
-        aliasesById = aliasesById,
-        duplicateAliases = aliasesById.filterValues { it.size > 1 }
-    )
-}
+): SharedConversationDirectoryState =
+    projections.toSharedConversationDirectoryState()
 
 internal fun slockForegroundMessageBannerProjection(
     serverId: String,

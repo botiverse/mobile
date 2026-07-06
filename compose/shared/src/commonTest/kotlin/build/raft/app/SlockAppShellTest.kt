@@ -1,14 +1,18 @@
 package build.raft.app
 
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -671,6 +675,96 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.Channel, launchPayload.parentChannelKind)
         assertEquals("Parent message preview", launchPayload.originPreview)
+    }
+
+    @Test
+    fun foregroundBannerProjectionUsesActivityEnrichForRawRealtimeReplyThread() {
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            parentMessagePreview = "Original thread question",
+                            latestActivityMessageId = MessageId("reply-1"),
+                            latestActivityPreview = "The newest reply"
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "reply-stream",
+                        threadId = "reply-stream",
+                        body = "This should render as a reply-thread banner"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("#home-fixes - thread", resolved.context)
+        assertEquals("Original thread question", resolved.threadContext)
+        assertEquals("This should render as a reply-thread banner", resolved.body)
+        assertEquals(ConversationKind.Thread, resolved.conversation.kind)
+        assertEquals("parent-channel", resolved.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", resolved.conversation.thread?.streamChannelId?.value)
+        assertEquals("reply-1", resolved.openRequest.anchorMessageId)
+        assertEquals("Original thread question", resolved.openRequest.originFallback?.preview)
+    }
+
+    @Test
+    fun notificationLaunchUsesActivityEnrichForReplyThread() {
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            parentMessagePreview = "Original thread question",
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val openRequest =
+            directory.notificationThreadLaunchRequest(
+                AppShellNotificationThreadLaunchRequest(
+                    threadId = "reply-stream",
+                    messageId = "reply-1"
+                )
+            )
+
+        val resolved = assertNotNull(openRequest)
+        assertEquals(ConversationKind.Thread, resolved.conversationIdentity.kind)
+        assertEquals("parent-channel", resolved.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", resolved.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals("reply-1", resolved.anchorMessageId)
+        assertEquals("Original thread question", resolved.originFallback?.preview)
     }
 
     @Test

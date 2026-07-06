@@ -5,11 +5,11 @@ import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
-import build.raft.app.model.isGenericDisplayName
 import kotlinx.coroutines.flow.Flow
 
 internal enum class SharedConversationAliasKind(val resolvesUniqueConversation: Boolean) {
@@ -79,6 +79,30 @@ internal fun HomeSnapshot.toSharedConversationDirectoryState(
         logger = logger
     )
 
+internal fun InboxSnapshot.toSharedConversationDirectoryState(
+    logger: (String) -> Unit = {}
+): SharedConversationDirectoryState =
+    sharedConversationDirectoryStateFromProjections(
+        projections = items.flatMap { item -> item.toSharedConversationDirectoryProjections(server.id) },
+        logger = logger
+    )
+
+internal fun Collection<SharedConversationDirectoryProjection>.toSharedConversationDirectoryState(
+    logger: (String) -> Unit = {}
+): SharedConversationDirectoryState =
+    sharedConversationDirectoryStateFromProjections(
+        projections = this,
+        logger = logger
+    )
+
+internal fun Iterable<SharedConversationDirectoryState>.mergedSharedConversationDirectoryState(
+    logger: (String) -> Unit = {}
+): SharedConversationDirectoryState =
+    sharedConversationDirectoryStateFromProjections(
+        projections = flatMap { state -> state.projectionsByCanonicalId.values },
+        logger = logger
+    )
+
 private fun sharedConversationDirectoryState(
     serverId: ServerId,
     conversations: List<HomeConversationRow>,
@@ -101,6 +125,34 @@ private fun sharedConversationDirectoryState(
     }
     return SharedConversationDirectoryState(
         projectionsByCanonicalId = projections,
+        aliasesById = aliasesById,
+        duplicateAliases = duplicateAliases
+    )
+}
+
+private fun sharedConversationDirectoryStateFromProjections(
+    projections: Iterable<SharedConversationDirectoryProjection>,
+    logger: (String) -> Unit
+): SharedConversationDirectoryState {
+    val byCanonicalId =
+        projections
+            .filter { it.canonicalChannelId.isNotBlank() }
+            .associateBy { it.canonicalChannelId }
+    val aliasesById =
+        buildMap<String, MutableSet<String>> {
+            byCanonicalId.values.forEach { projection ->
+                putAlias(projection.canonicalChannelId, projection.canonicalChannelId)
+                projection.aliases.forEach { alias -> putAlias(alias, projection.canonicalChannelId) }
+                projection.parentChannelId?.let { alias -> putAlias(alias, projection.canonicalChannelId) }
+                projection.parentMessageId?.let { alias -> putAlias(alias, projection.canonicalChannelId) }
+            }
+        }.mapValues { (_, values) -> values.toSet() }
+    val duplicateAliases = aliasesById.filterValues { it.size > 1 }
+    duplicateAliases.forEach { (alias, canonicalIds) ->
+        logger("conversation_identity_alias_conflict alias=$alias canonicalIds=${canonicalIds.joinToString(",")}")
+    }
+    return SharedConversationDirectoryState(
+        projectionsByCanonicalId = byCanonicalId,
         aliasesById = aliasesById,
         duplicateAliases = duplicateAliases
     )
@@ -141,6 +193,113 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         joined = joined && permissions.canRead,
         archived = archived,
         permissions = permissions
+    )
+}
+
+private fun InboxItem.toSharedConversationDirectoryProjections(
+    serverId: ServerId
+): List<SharedConversationDirectoryProjection> {
+    val parentProjection =
+        if (kind == InboxItemKind.Thread) {
+            parentChannelProjection(serverId)
+        } else {
+            null
+        }
+    val itemProjection = toSharedConversationDirectoryProjection(serverId)
+    return listOfNotNull(parentProjection, itemProjection)
+}
+
+private fun InboxItem.parentChannelProjection(
+    serverId: ServerId
+): SharedConversationDirectoryProjection? {
+    val parentId = parentChannelId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val title =
+        parentChannelName
+            .safeInboxDisplayNameOrNull(additionalIdentityIds = setOf(parentId))
+            ?: parentId
+    val channelType = parentChannelKind.toDirectoryChannelType()
+    return SharedConversationDirectoryProjection(
+        serverId = serverId.value,
+        canonicalChannelId = parentId,
+        aliases = setOf(parentId, channelId.value).filter { it.isNotBlank() }.toSet(),
+        surfaceKind =
+            when (parentChannelKind) {
+                ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+                else -> KuiklyThreadSurfaceKind.Channel
+            },
+        channelKind = channelType,
+        title = title,
+        subtitle = null,
+        parentChannelId = null,
+        parentMessageId = null
+    )
+}
+
+internal fun InboxItem.toSharedConversationDirectoryProjection(
+    serverId: ServerId
+): SharedConversationDirectoryProjection? {
+    val canonicalChannelId =
+        when (kind) {
+            InboxItemKind.Thread -> threadChannelId ?: channelId
+            else -> channelId
+        }.value.takeIf { it.isNotBlank() } ?: return null
+    val parentId = parentChannelId?.value?.takeIf { it.isNotBlank() }
+    val parentMessage = parentMessageId?.value?.takeIf { it.isNotBlank() }
+    val identityIds =
+        buildSet {
+            add(canonicalChannelId)
+            channelId.value.takeIf { it.isNotBlank() }?.let(::add)
+            threadChannelId?.value?.takeIf { it.isNotBlank() }?.let(::add)
+            parentId?.let(::add)
+            parentMessage?.let(::add)
+        }
+    val titleSource =
+        when (kind) {
+            InboxItemKind.Thread -> parentChannelName ?: channelName
+            else -> channelName
+        }
+    val title =
+        titleSource.safeInboxDisplayNameOrNull(additionalIdentityIds = identityIds)
+            ?: canonicalChannelId
+    val surfaceKind =
+        when (kind) {
+            InboxItemKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            InboxItemKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
+            else -> KuiklyThreadSurfaceKind.Channel
+        }
+    return SharedConversationDirectoryProjection(
+        serverId = serverId.value,
+        canonicalChannelId = canonicalChannelId,
+        aliases =
+            buildSet {
+                add(canonicalChannelId)
+                channelId.value.takeIf { it.isNotBlank() }?.let(::add)
+                threadChannelId?.value?.takeIf { it.isNotBlank() }?.let(::add)
+                parentId?.let(::add)
+                parentMessage?.let(::add)
+                firstUnreadMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
+                lastMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
+                latestActivityMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
+            },
+        surfaceKind = surfaceKind,
+        channelKind =
+            when (kind) {
+                InboxItemKind.Thread -> "thread"
+                else -> channelKind.toDirectoryChannelType()
+            },
+        title = title,
+        subtitle =
+            if (kind == InboxItemKind.Thread) {
+                parentMessagePreview?.takeIf { it.isNotBlank() }
+            } else {
+                lastMessagePreview?.takeIf { it.isNotBlank() }
+            },
+        avatarWireValue = null,
+        avatarLabel = title.take(2).uppercase(),
+        peerMemberId = null,
+        parentChannelId = parentId,
+        parentMessageId = parentMessage
     )
 }
 
@@ -239,3 +398,28 @@ private fun HomeConversationRow.headerIdentityIds(): Set<String> =
         channelId?.value,
         thread?.streamChannelId?.value
     ).filter { it.isNotBlank() }.toSet()
+
+private fun ConversationKind?.toDirectoryChannelType(): String =
+    when (this) {
+        ConversationKind.DirectMessage -> "dm"
+        ConversationKind.Thread -> "thread"
+        ConversationKind.Joint -> "joint"
+        ConversationKind.Channel,
+        ConversationKind.Inbox,
+        ConversationKind.System,
+        null -> "channel"
+    }
+
+private fun String?.safeInboxDisplayNameOrNull(
+    additionalIdentityIds: Set<String> = emptySet()
+): String? =
+    conversationSafeDisplayTitleOrNull(this, additionalIdentityIds)
+        ?.takeUnless { candidate -> candidate.isGenericInboxDisplayName(additionalIdentityIds) }
+
+private fun String.isGenericInboxDisplayName(additionalIdentityIds: Set<String>): Boolean {
+    val candidate = conversationDisplayTitleCandidate(this) ?: return true
+    if (conversationIdentityLikeTitle(candidate, additionalIdentityIds)) return true
+    return candidate.equals("Channel", ignoreCase = true) ||
+        candidate.equals("Thread", ignoreCase = true) ||
+        candidate.equals("Direct Message", ignoreCase = true)
+}
