@@ -176,6 +176,9 @@ jobs:
   # other's build.
   fork-deps:
     name: Shared fork dependencies (prebuild)
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -422,6 +425,9 @@ jobs:
 
   ios:
     name: iOS compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: macos-latest
     timeout-minutes: 75
     env:
@@ -518,6 +524,9 @@ jobs:
 
   ohos:
     name: OHOS shared compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: macos-latest
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
@@ -622,6 +631,9 @@ jobs:
   # fork-dependency mavenLocal set as the ohos job is published first.
   ohos-host:
     name: OHOS host (hvigor/ArkTS) compile
+    # Temporarily disabled to conserve GitHub Actions minutes (artin, 2026-07-06).
+    # Re-enable by removing this `if: false`.
+    if: false
     runs-on: ubuntu-latest
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
