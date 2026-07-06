@@ -12649,8 +12649,8 @@ private fun threadMessageMenuActions(
         if (showShareMessagesAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Share Messages...",
-                    icon = SlockLucideIconName.Share2,
+                    label = "Select Message",
+                    icon = SlockLucideIconName.CircleCheck,
                     group = "copy",
                     onClick = onShareMessages
                 )
