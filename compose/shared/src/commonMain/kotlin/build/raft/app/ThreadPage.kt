@@ -429,6 +429,18 @@ private object ThreadReactionGlyphDiagnostics {
             Utils.logToNative("thread_reaction_glyph path=$path emoji=$emoji $detail")
         }
     }
+
+    // task #379: one-shot readiness signal for the visual-testing capture harness.
+    // The reaction sprite atlas decodes asynchronously; in the headless capture
+    // environment the snapshot can be taken before it finishes, so every reaction
+    // renders as a raw-emoji fallback. Emitting this line once (when the hoisted
+    // atlas ImageBitmap first becomes non-null) gives the capture side a logcat
+    // token to wait on before snapshotting reaction-bearing cases.
+    fun logAtlasReadyOnce(width: Int, height: Int) {
+        if (loggedKeys.add("thread_reaction_atlas_ready")) {
+            Utils.logToNative("thread_reaction_atlas_ready imageWidth=$width imageHeight=$height")
+        }
+    }
 }
 
 internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
@@ -9532,6 +9544,15 @@ private fun ThreadMessagesList(
     val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
     val readyThreadReactionAtlas =
         threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
+    if (readyThreadReactionAtlas != null) {
+        // task #379: signal capture harness once the atlas is decoded (see logAtlasReadyOnce).
+        SideEffect {
+            ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
+                readyThreadReactionAtlas.width,
+                readyThreadReactionAtlas.height
+            )
+        }
+    }
     CompositionLocalProvider(LocalThreadReactionAtlasImage provides readyThreadReactionAtlas) {
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
