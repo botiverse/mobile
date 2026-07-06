@@ -82,13 +82,16 @@ internal fun UiButtonVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        // react spaces these buttons 12px apart (box edge to box edge); the Kuikly
+        // button reserves its 2dp shadow as trailing/bottom layout space, so 10dp
+        // spacing puts the visible boxes 12dp apart like react (task #370).
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Save", onClick = {}, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
                 SlockBrutalActionButton(label = "Sync", onClick = {}, backgroundColor = SlockColor.BrandYellow, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
                 SlockBrutalActionButton(label = "Delete", onClick = {}, backgroundColor = SlockColor.AccentPink, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalActionButton(label = "Add", onClick = {}, backgroundColor = SlockColor.AccentCyan, minHeight = 24.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 12.sp))
                 SlockBrutalActionButton(label = "Continue", onClick = {}, backgroundColor = SlockColor.AccentLime, minHeight = 32.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 16.sp))
                 SlockBrutalActionButton(label = "Disabled", onClick = {}, backgroundColor = SlockColor.SurfaceCream, enabled = false, minHeight = 28.dp, minWidth = 0.dp, shadowOffset = 2.dp, textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp))
@@ -407,16 +410,18 @@ internal fun UiSelectionPopoverVisualContent() {
 
 @Composable
 internal fun UiMenuItemVisualContent() {
-    // 181dp matches react's content-sized element (543px @3x). The remaining
-    // in-image diff is the genuine ~1.25dp/row height delta of the menu rows vs
-    // react, to be fixed in the component later (task #370).
+    // 181dp matches react's content-sized element (543px @3x). Padding is
+    // start/top only: react's card is the full 310dp wide with its 4px shadow
+    // overflowing to the right/bottom, while the Kuikly surface reserves the
+    // shadow inside its parent — trailing padding would shrink the card below
+    // 310dp (task #370).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
                 .height(181.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(16.dp)
+                .padding(start = 16.dp, top = 16.dp)
     ) {
         SlockBrutalDropdownMenuSurface(
             items =
@@ -429,7 +434,8 @@ internal fun UiMenuItemVisualContent() {
             onSelect = {},
             width = 310.dp,
             rowHeight = 36.dp,
-            shadowOffset = 3.dp,
+            // react's shadow-brutal is 4px 4px (measured 12px @3x in the capture).
+            shadowOffset = 4.dp,
             showDividers = false,
             dividerBeforeIds = setOf("delete")
         )
@@ -446,7 +452,10 @@ internal fun UiSelectVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // react spaces the triggers 16px box edge to box edge; the Kuikly trigger
+        // reserves its 2dp shadow as bottom layout space, so 14dp spacing puts the
+        // second trigger 16dp below the first box like react (task #370).
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SlockSelectTrigger(label = "Codex")
             SlockSelectTrigger(label = "Select...", enabled = false)
         }

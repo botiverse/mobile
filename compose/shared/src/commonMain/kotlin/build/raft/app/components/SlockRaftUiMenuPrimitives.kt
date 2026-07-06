@@ -257,7 +257,9 @@ internal fun SlockSelectTrigger(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     expanded: Boolean = false,
-    height: Dp = 42.dp,
+    // react's select trigger box is 40px tall (components.ui.select.states renders
+    // 120px @3x); 42dp drew every default trigger 2dp too tall — task #370.
+    height: Dp = 40.dp,
     onClick: () -> Unit = {}
 ) {
     val shadowOffset = SlockShadow.BrutalSmall

@@ -173,7 +173,13 @@ private fun SlockFloatingOverlayDismissBarrier(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
+            // The barrier needs a non-transparent background so Kuikly creates a
+            // touch-capturing native view, but react draws no scrim behind menus at
+            // all: a 1% BLACK wash turned every pixel under the host into a light
+            // gray (white became 252,252,252 in visual captures). Wash with white
+            // instead — same hit-testing, invisible over the app's white surfaces
+            // (task #370).
+            .background(SlockColor.SurfaceWhite.copy(alpha = SlockFloatingOverlayTouchGuardAlpha))
             .slockNativeDispatchCapture()
             .pointerInput(dismissClickableActive) {
                 awaitEachGesture {
