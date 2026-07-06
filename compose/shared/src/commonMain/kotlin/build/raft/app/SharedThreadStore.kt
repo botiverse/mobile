@@ -2312,6 +2312,7 @@ private data class ThreadReadAllMarker(
 
 internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
+    data class ApplyRouteIntent(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
@@ -2437,6 +2438,7 @@ internal class SharedThreadStore(
                     }
             }
             is SharedThreadIntent.AppendSentPage,
+            is SharedThreadIntent.ApplyRouteIntent,
             is SharedThreadIntent.ApplyLocalSendStarted,
             is SharedThreadIntent.ApplyLocalSendFailure,
             is SharedThreadIntent.CancelLocalSend,
@@ -2491,6 +2493,7 @@ internal class SharedThreadStore(
     suspend fun accept(intent: SharedThreadIntent) {
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
+            is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
             SharedThreadIntent.Refresh -> refresh(_state.value.payload)
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
@@ -2601,6 +2604,22 @@ internal class SharedThreadStore(
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
         refresh(routeContextPayload)
+    }
+
+    private fun applyRouteIntent(routePayload: KuiklyThreadScreenPayload) {
+        val routeCandidatePayload = routePayload.withoutRouteCandidateContent()
+        reducePayloadPatch { currentPayload ->
+            val currentIdentity = currentPayload.resolveThreadRouteIdentity()
+            val incomingIdentity = routeCandidatePayload.resolveThreadRouteIdentity()
+            if (!currentIdentity.canRetainThreadPageFor(incomingIdentity)) {
+                diagnosticsLogger?.invoke(
+                    "thread_route_intent_drop reason=route_changed " +
+                        "current=${currentIdentity.instanceKey} incoming=${incomingIdentity.instanceKey}"
+                )
+                return@reducePayloadPatch currentPayload
+            }
+            currentPayload.withRouteIntentFrom(routeCandidatePayload)
+        }
     }
 
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
@@ -3745,6 +3764,56 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
         )
+    }
+
+private fun KuiklyThreadScreenPayload.withRouteIntentFrom(routePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    val resolvedIdentityPayload =
+        if (routePayload.resolveThreadRouteIdentity().canRenderTimelineCandidates) {
+            withResolvedReplyThreadRouteIntentFrom(routePayload)
+        } else {
+            this
+        }
+    return resolvedIdentityPayload.copy(
+        navigationLabel = routePayload.navigationLabel,
+        selectedTab = routePayload.selectedTab,
+        showModeTabs = routePayload.showModeTabs,
+        focusedMessageId = routePayload.focusedMessageId,
+        focusedMessageRequestNonce = routePayload.focusedMessageRequestNonce,
+        alignOwnMessagesRight = routePayload.alignOwnMessagesRight,
+        compactConsecutiveMessages = routePayload.compactConsecutiveMessages,
+        localOffsetMinutes = routePayload.localOffsetMinutes,
+        todayEpochDay = routePayload.todayEpochDay ?: todayEpochDay,
+        nowEpochMillis = routePayload.nowEpochMillis ?: nowEpochMillis,
+        timeFormat = routePayload.timeFormat,
+        knownMarkdownChannelNames =
+            routePayload.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
+        composer =
+            composer.copy(
+                syncNonce = maxOf(composer.syncNonce, routePayload.composer.syncNonce),
+                focusRequestNonce = maxOf(composer.focusRequestNonce, routePayload.composer.focusRequestNonce)
+            )
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withResolvedReplyThreadRouteIntentFrom(
+    routePayload: KuiklyThreadScreenPayload
+): KuiklyThreadScreenPayload =
+    if (routePayload.hasResolvedReplyThreadStreamFrom(this)) {
+        copy(
+            sourceThreadId = routePayload.sourceThreadId,
+            streamChannelId = routePayload.streamChannelId,
+            parentChannelId = routePayload.parentChannelId,
+            parentMessageId = routePayload.parentMessageId,
+            composer =
+                composer.copy(
+                    streamChannelId =
+                        routePayload.composer.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: routePayload.streamChannelId?.takeIf { it.isNotBlank() }
+                            ?: routePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                )
+        )
+    } else {
+        this
     }
 
 internal fun buildMarkdownChannelLaunchPayload(

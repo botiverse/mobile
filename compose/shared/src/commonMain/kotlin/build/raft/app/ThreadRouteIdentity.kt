@@ -24,6 +24,21 @@ internal data class ThreadRouteIdentity(
             }
 }
 
+internal fun ThreadRouteIdentity.canRetainThreadPageFor(incoming: ThreadRouteIdentity): Boolean {
+    if (this == incoming) return true
+    if (routeKind != incoming.routeKind) return false
+    if (instanceKey == incoming.instanceKey) return true
+    if (
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        incoming.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    ) {
+        val sameParent = parentKey != null && parentKey == incoming.parentKey
+        val sameTimeline = timelineKey != null && timelineKey == incoming.timelineKey
+        return sameParent || sameTimeline
+    }
+    return false
+}
+
 internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
     return resolveThreadRouteIdentity(
