@@ -258,13 +258,22 @@ internal class BridgeSettingsPlatformCapabilities(
         message: String,
         attachments: List<PlatformFile>
     ): DataResult<SettingsQuiverFeedbackSubmission> {
+        bridge.log(
+            "settings_quiver_feedback_submit_start messageLength=${message.length} " +
+                "attachmentCount=${attachments.size}"
+        )
         val response =
-            bridge.settingsCapability(
+            settingsCapability(
                 JSONObject()
                     .put("action", "submitFeedback")
                     .put("message", message)
                     .put("files", attachments.toFeedbackFilesJson())
             )
+        bridge.log(
+            "settings_quiver_feedback_submit_response status=${response?.optString("status").orEmpty()} " +
+                "code=${response?.optString("code").orEmpty()} " +
+                "ticket=${response?.optString("ticketId").orEmpty().take(8)}"
+        )
         return when (response?.optString("status")) {
             "ok" ->
                 DataResult.Content(

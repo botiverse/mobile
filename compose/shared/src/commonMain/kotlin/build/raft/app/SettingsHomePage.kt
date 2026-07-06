@@ -7719,16 +7719,15 @@ private fun SharedQuiverFeedbackContent(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var submission by remember { mutableStateOf<SettingsQuiverFeedbackSubmission?>(null) }
-    val attachmentLimit = 3
-    val attachmentMaxBytes = 10L * 1024L * 1024L
+    val attachmentLimit = 9
+    val attachmentMaxBytes = 200L * 1024L * 1024L
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
-    val canSubmit = normalizedMessage.isNotBlank() && !busy
 
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "最多 3 个附件。"
+            error = "最多 9 个附件。"
             return
         }
         busy = true
@@ -7744,8 +7743,8 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Quiver 单个附件最大 10 MB，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Quiver 一次最多上传 3 个附件，已保留前 3 个。"
+                        rejectedCount > 0 -> "Quiver 单个附件最大 200 MB，已跳过超限文件。"
+                        accepted.size > remainingSlots -> "Quiver 一次最多上传 9 个附件，已保留前 9 个。"
                         else -> null
                     }
                 }
@@ -7758,7 +7757,12 @@ private fun SharedQuiverFeedbackContent(
     }
 
     fun submitFeedback() {
-        if (!canSubmit) return
+        if (busy) return
+        if (normalizedMessage.isBlank()) {
+            error = "Message is required."
+            submission = null
+            return
+        }
         busy = true
         error = null
         submission = null
@@ -7822,7 +7826,7 @@ private fun SharedQuiverFeedbackContent(
         }
         item {
             SettingsFormSectionCard(iconName = SlockLucideIconName.Paperclip, title = "Attachments") {
-                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 10 MB per file")
+                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 200 MB per file")
                 if (attachments.isEmpty()) {
                     SettingsFormEmptyText("No attachments selected.")
                 } else {
@@ -7840,7 +7844,7 @@ private fun SharedQuiverFeedbackContent(
             SlockBrutalActionButton(
                 label = if (busy) "Sending" else "Send feedback",
                 onClick = ::submitFeedback,
-                enabled = canSubmit,
+                enabled = !busy,
                 leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
                 backgroundColor = SlockColor.BrandYellow,
                 modifier = Modifier.fillMaxWidth()
