@@ -2539,9 +2539,18 @@ internal fun SharedThreadRouteContent(
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
-    val initialRouteIdentity = remember(initialPayload) {
+    val incomingRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
     }
+    var retainedRouteIdentity by remember {
+        mutableStateOf(incomingRouteIdentity)
+    }
+    LaunchedEffect(incomingRouteIdentity) {
+        if (!retainedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            retainedRouteIdentity = incomingRouteIdentity
+        }
+    }
+    val initialRouteIdentity = retainedRouteIdentity
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
             SharedThreadViewModel(
@@ -2719,7 +2728,7 @@ internal fun SharedThreadRouteContent(
     val latestCurrentSession by rememberUpdatedState(currentSession)
     val latestPayloadRouteIdentity by rememberUpdatedState(payloadRouteIdentity)
     val latestForegroundConversationDirectory by rememberUpdatedState(foregroundConversationDirectory)
-    val threadInstanceKey = payloadRouteIdentity.instanceKey
+    val threadInstanceKey = initialThreadInstanceKey
     val threadTimelineKey =
         payloadRouteIdentity.timelineChannelId
             ?: initialRouteIdentity.timelineChannelId
@@ -2799,7 +2808,21 @@ internal fun SharedThreadRouteContent(
         createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
         createAgentComputerServerResolved = true
     }
-    LaunchedEffect(initialPayload) {
+    var startedRouteIdentity by remember(initialThreadInstanceKey) {
+        mutableStateOf<ThreadRouteIdentity?>(null)
+    }
+    LaunchedEffect(initialPayload, initialThreadInstanceKey) {
+        if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
+            return@LaunchedEffect
+        }
+        val alreadyStartedRouteIdentity = startedRouteIdentity
+        if (alreadyStartedRouteIdentity != null &&
+            alreadyStartedRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)
+        ) {
+            threadViewModel.dispatch(SharedThreadIntent.ApplyRouteIntent(initialPayload))
+            return@LaunchedEffect
+        }
+        startedRouteIdentity = incomingRouteIdentity
         bridge.performanceMarker(
             phase = "thread_open_start",
             routeName = "kuikly_thread",

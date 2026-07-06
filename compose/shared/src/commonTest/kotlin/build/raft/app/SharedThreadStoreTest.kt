@@ -191,6 +191,17 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun threadRouteIdentityRetainsReplyPageAcrossParentToStreamResolution() {
+        val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
+        val resolved = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
+        val otherParent = replyPayload(parentMessageId = "m2", threadId = "thread-m2").resolveThreadRouteIdentity()
+
+        assertTrue(unresolved.canRetainThreadPageFor(resolved))
+        assertTrue(resolved.canRetainThreadPageFor(unresolved))
+        assertFalse(unresolved.canRetainThreadPageFor(otherParent))
+    }
+
+    @Test
     fun threadRouteIdentityKeepsChannelAndDirectMessageSurfacesTyped() {
         val channel =
             basePayload().copy(
@@ -421,6 +432,61 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
         assertEquals("network body", store.state.value.payload.messages.single().body)
         observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun sameRouteIntentDoesNotRestartOrImportOriginCandidateContent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+
+        store.accept(SharedThreadIntent.Start(route))
+        val afterStart = store.state.value.payload
+        assertEquals(1, api.channelMessageCalls)
+
+        val originCandidate =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "route-author",
+                authorName = "Route",
+                body = "late route origin should stay out of state"
+            )
+        store.accept(
+            SharedThreadIntent.ApplyRouteIntent(
+                route.copy(
+                    selectedTab = "files",
+                    focusedMessageId = "reply-1",
+                    focusedMessageRequestNonce = 7,
+                    originMessage = originCandidate,
+                    originStatus = "loaded",
+                    messages =
+                        listOf(
+                            KuiklyThreadMessageItem(
+                                id = "route-message",
+                                authorId = "route-author",
+                                authorName = "Route",
+                                body = "late route body should stay out of state"
+                            )
+                        )
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(1, api.channelMessageCalls)
+        assertEquals("files", payload.selectedTab)
+        assertEquals("reply-1", payload.focusedMessageId)
+        assertEquals(7, payload.focusedMessageRequestNonce)
+        assertEquals(afterStart.messages, payload.messages)
+        assertNull(payload.originMessage)
+        assertEquals(afterStart.originStatus, payload.originStatus)
         scope.cancel()
     }
 
