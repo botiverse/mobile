@@ -1018,12 +1018,12 @@ internal fun ThreadComposerContent(
     // updates / suggestion list filtering are all under this; per-phase breakdown
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
     traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
-    var fieldValue by remember(state.instanceId, state.syncNonce) {
+    var fieldValue by remember(state.instanceId) {
         mutableStateOf(TextFieldValue(state.seedText, selection = TextRange(state.seedText.length)))
     }
     val text = fieldValue.text
-    var asTask by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.seedAsTask) }
-    var focused by remember(state.instanceId, state.syncNonce) { mutableStateOf(state.suggestionsOpen) }
+    var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
+    var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     var lastAcceptedLocalText by remember(state.instanceId) { mutableStateOf(state.seedText) }
     var lastAcceptedLocalAsTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
@@ -1316,15 +1316,6 @@ internal fun ThreadComposerContent(
                                 onEvent("staleChangeIgnored", next.text, asTask, null)
                                 return@TextField
                             }
-                            if (
-                                shouldDropThreadComposerDuplicateValue(
-                                    next = next,
-                                    current = fieldValue,
-                                    seedText = state.seedText
-                                )
-                            ) {
-                                return@TextField
-                            }
                             fieldValue = next
                             focused = true
                             println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
@@ -1446,13 +1437,6 @@ internal fun ThreadComposerContent(
     }
     }
 }
-
-internal fun shouldDropThreadComposerDuplicateValue(
-    next: TextFieldValue,
-    current: TextFieldValue,
-    seedText: String
-): Boolean =
-    next == current && next.text != seedText
 
 @Composable
 private fun ComposerSuggestionSlot(
