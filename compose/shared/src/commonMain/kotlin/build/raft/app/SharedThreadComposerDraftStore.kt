@@ -277,7 +277,20 @@ internal class SharedThreadComposerDraftPersistSlice(
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
                 val draftKey = intent.draftKey?.takeIf { it.isNotBlank() }
+                val sameDraftKey = draftKey != null && previous.draftKey == draftKey
                 val stagedUploadedAttachments = consumeStagedUploadedAttachments(draftKey)
+                val sessionAttachments =
+                    if (sameDraftKey) {
+                        previous.visibleSessionThreadComposerDraftAttachments()
+                    } else {
+                        emptyList()
+                    }
+                val removedAttachmentIds =
+                    if (sameDraftKey) {
+                        previous.removedAttachmentIds
+                    } else {
+                        emptySet()
+                    }
                 val restoredDraft =
                     draftKey
                         ?.let(persistence::readWithReplyFallback)
@@ -296,13 +309,15 @@ internal class SharedThreadComposerDraftPersistSlice(
                         }
                         ?: reduced
                 val withStagedAttachments =
-                    if (stagedUploadedAttachments.isEmpty()) {
+                    if (stagedUploadedAttachments.isEmpty() && sessionAttachments.isEmpty() && removedAttachmentIds.isEmpty()) {
                         restored
                     } else {
                         restored.copy(
+                            removedAttachmentIds = removedAttachmentIds,
                             uploadedAttachments =
-                                (restored.uploadedAttachments + stagedUploadedAttachments)
+                                (restored.uploadedAttachments + sessionAttachments + stagedUploadedAttachments)
                                     .distinctBy { attachment -> attachment.id }
+                                    .filterNot { attachment -> attachment.id in removedAttachmentIds }
                         )
                     }
                 if (withStagedAttachments.requiresComposerHostSync(reduced)) {
@@ -403,7 +418,13 @@ private fun SharedThreadComposerDraftState.requiresComposerHostSync(
 ): Boolean =
     seedText != previous.seedText ||
         seedAsTask != previous.seedAsTask ||
+        removedAttachmentIds != previous.removedAttachmentIds ||
         uploadedAttachments != previous.uploadedAttachments
+
+private fun SharedThreadComposerDraftState.visibleSessionThreadComposerDraftAttachments(): List<SharedThreadComposerAttachment> =
+    uploadedAttachments
+        .filterNot { attachment -> attachment.id in removedAttachmentIds }
+        .distinctBy { attachment -> attachment.id }
 
 private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosticsLabel(): String =
     when (this) {
