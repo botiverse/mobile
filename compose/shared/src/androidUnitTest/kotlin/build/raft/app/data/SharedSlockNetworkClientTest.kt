@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 
-class SharedKtorSlockNetworkClientTest {
+class SharedSlockNetworkClientTest {
     private class RecordedRequest(
         val priority: SlockRequestPriority,
         val url: String,
@@ -71,7 +71,7 @@ class SharedKtorSlockNetworkClientTest {
     fun requestUsesExecutorWithAuthHeadersAndServerOverride() = runBlocking {
         val executor = RecordingExecutor { ok() }
         val client =
-            SharedKtorSlockNetworkClient(
+            SharedSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 executor = executor
@@ -101,7 +101,7 @@ class SharedKtorSlockNetworkClientTest {
         val logs = mutableListOf<String>()
         val executor = RecordingExecutor { ok("""{"results":[],"hasMore":false}""") }
         val client =
-            SharedKtorSlockNetworkClient(
+            SharedSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 warningLogger = logs::add,
@@ -136,7 +136,7 @@ class SharedKtorSlockNetworkClientTest {
                 ok()
             }
         val client =
-            SharedKtorSlockNetworkClient(
+            SharedSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 warningLogger = logs::add,
@@ -169,7 +169,7 @@ class SharedKtorSlockNetworkClientTest {
                 sizeBytes = 42
             )
         val client =
-            SharedKtorSlockNetworkClient(
+            SharedSlockNetworkClient(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 baseUrl = "https://api.slock.test/api",
                 platformFileResolver = resolver,

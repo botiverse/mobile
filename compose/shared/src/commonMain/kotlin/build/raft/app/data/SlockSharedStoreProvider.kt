@@ -297,7 +297,7 @@ internal class SlockSharedStoreProvider private constructor(
             )
             val authDataSource =
                 SharedAuthDataSource(
-                    transport = SharedKtorSlockAuthTransport(
+                    transport = SharedSlockAuthTransport(
                         baseUrl = apiBaseUrl,
                         warningLogger = { message ->
                             slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
@@ -307,7 +307,7 @@ internal class SlockSharedStoreProvider private constructor(
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
                 )
             val networkClient =
-                SharedKtorSlockNetworkClient(
+                SharedSlockNetworkClient(
                     sessionStore = authStore,
                     baseUrl = apiBaseUrl,
                     warningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network"),
