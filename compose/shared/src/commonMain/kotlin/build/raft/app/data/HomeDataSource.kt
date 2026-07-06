@@ -39,8 +39,6 @@ class SharedHomeDataSource(
     private val appUpdateStatusProvider: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
-    @Suppress("UNUSED_PARAMETER")
-    localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {

@@ -20,7 +20,6 @@ import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.RealChannelRepository
@@ -1647,24 +1646,6 @@ private fun ThreadPageScreen() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val threadPageCoroutineScope = rememberCoroutineScope()
-    val threadLocalStore =
-        remember(sharedStores, authStore) {
-            sharedStores.createThreadLocalDataStore(
-                currentServerId = {
-                    authStore.readSession()
-                        ?.currentServerId
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let(::ServerId)
-                }
-            )
-        }
-    val localWriteThrough =
-        remember(threadLocalStore) {
-            ComposeLocalWriteThrough(
-                threadLocalStore,
-                logger = { message -> bridge.logDebug("shared_thread_cache $message") }
-            )
-        }
     val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
         SlockAgentsApiClient(
@@ -1720,7 +1701,6 @@ private fun ThreadPageScreen() {
         remember(
             networkClient,
             authStore,
-            localWriteThrough,
             memberRepository,
             sharedStores.serverMembersStore,
             channelRepository,
@@ -1730,7 +1710,6 @@ private fun ThreadPageScreen() {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
-                localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,
                 serverMembersStore = sharedStores.serverMembersStore,
                 conversationRepository =

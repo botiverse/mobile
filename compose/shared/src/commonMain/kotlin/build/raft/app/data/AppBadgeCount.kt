@@ -10,7 +10,7 @@ import build.raft.app.model.ServerId
  *
  *     unreadTotal = serverUnreadTotal ?: channelUnreadTotal
  *
- * with realtime increment at `ComposeLocalWriteThrough.kt:514`. The source
+ * with realtime projection applied by [SharedHomeStore]. The source
  * provenance is recorded explicitly so that future React / product changes
  * to the badge source can be adapted in one place without mis-aligning the
  * host bridge contract.

@@ -18,7 +18,6 @@ import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ChannelMemberActionResult
-import build.raft.app.data.ComposeLocalWriteThrough
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ChannelRepository
@@ -221,7 +220,6 @@ internal data class MarkdownThreadRefTarget(
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
-    private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val conversationRepository: ConversationRepository? = null,
@@ -255,7 +253,6 @@ internal class SharedThreadDataSource(
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
-        localWriteThrough: ComposeLocalWriteThrough? = null,
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
         conversationRepository: ConversationRepository? = null,
@@ -269,7 +266,6 @@ internal class SharedThreadDataSource(
     ) : this(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
-        localWriteThrough = localWriteThrough,
         memberRepository = memberRepository,
         serverMembersStore = serverMembersStore,
         conversationRepository = conversationRepository,
@@ -1618,11 +1614,9 @@ internal class SharedThreadDataSource(
                 throw cancellation
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true))
-            }
+        }
         return if (response is ThreadApiResult.Success) {
             val id = ChannelId(channelId)
-            val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-            localWriteThrough?.clearConversationUnread(id, "shared_thread_read_all", serverId)
             DataResult.Content(ReadReceiptResult(channelId = id, changed = true))
         } else {
             (response as ThreadApiResult.Failure).toThreadDataError("thread_read_receipt_network")
@@ -1848,15 +1842,6 @@ internal class SharedThreadDataSource(
             basePayload.parentChannelId?.takeIf { it.isNotBlank() }
                 ?: conversation.thread?.parentChannelId?.value
                 ?: parentMessage?.channelId?.value
-        findLocalReplyParentMessage(
-            parentChannelId = parentChannelId,
-            parentMessageId = parentMessageId
-        )?.let { parent ->
-            if (parentChannelId != null) {
-                messageResolver.upsert(ChannelId(parentChannelId), parent)
-            }
-            return copy(parentMessage = parent)
-        }
         if (!allowNetworkHydration) {
             return this
         }
@@ -1868,29 +1853,6 @@ internal class SharedThreadDataSource(
             )
                 ?: return this
         return copy(parentMessage = parent)
-    }
-
-    private suspend fun findLocalReplyParentMessage(
-        parentChannelId: String?,
-        parentMessageId: String
-    ): Message? {
-        val channelId = parentChannelId?.takeIf { it.isNotBlank() } ?: return null
-        val local = localWriteThrough ?: return null
-        val parentChannel = ChannelId(channelId)
-        val parentMessage = MessageId(parentMessageId)
-        val localThreadIds =
-            listOf(
-                threadIdentity(parentChannel, parentMessage),
-                ThreadId(channelId)
-            ).distinctBy { it.value }
-        return localThreadIds.firstNotNullOfOrNull { threadId ->
-            val snapshot = local.readThreadSnapshot(threadId) ?: return@firstNotNullOfOrNull null
-            snapshot.parentMessage?.takeIf { message ->
-                message.matchesReplyOriginParent(parentChannel, parentMessage)
-            } ?: snapshot.messages.firstOrNull { message ->
-                message.matchesReplyOriginParent(parentChannel, parentMessage)
-            }
-        }
     }
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
@@ -1921,23 +1883,12 @@ internal class SharedThreadDataSource(
         if (focusedContext != null) {
             return@coroutineScope focusedContext
         }
-        val localParentMessage =
-            findLocalReplyParentMessage(
-                parentChannelId = parentChannelId,
-                parentMessageId = parentMessageId
-            )?.also { message ->
-                messageResolver.upsert(ChannelId(parentChannelId), message)
-            }
         val parentContextDeferred =
-            if (localParentMessage == null) {
-                async {
-                    getReplyParentMessageFromStore(
-                        parentChannelId = parentChannelId,
-                        parentMessageId = parentMessageId
-                    )
-                }
-            } else {
-                null
+            async {
+                getReplyParentMessageFromStore(
+                    parentChannelId = parentChannelId,
+                    parentMessageId = parentMessageId
+                )
             }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
@@ -1950,7 +1901,7 @@ internal class SharedThreadDataSource(
             }
         return@coroutineScope when (initialResult) {
             is DataResult.Content -> {
-                val parentMessage = localParentMessage ?: parentContextDeferred?.await()
+                val parentMessage = parentContextDeferred.await()
                 val resolvedThreadId =
                     initialResult.data.conversation.thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }
                         ?: initialResult.data.conversation.channelId?.value?.takeIf { it.isNotBlank() }

@@ -25,12 +25,10 @@ class HomeDataSourceTest {
     @Test
     fun loadHomeFetchesApiWithoutWritingLocalHomeSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
-        val writeThrough = ComposeLocalWriteThrough(localStore)
         val source =
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
-                localWriteThrough = writeThrough,
                 parseHome = { payload, session ->
                     assertEquals(emptyList(), payload.channels)
                     assertEquals(emptyList(), payload.directMessages)
@@ -253,7 +251,6 @@ class HomeDataSourceTest {
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = FakeHomeApi(),
                 memberRepository = memberRepository,
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 parseHome = { _, session ->
                     DataResult.Content(
                         sampleHome(ServerId(session.currentServerId!!)).copy(
@@ -297,7 +294,6 @@ class HomeDataSourceTest {
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = api,
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
             )
 
@@ -319,7 +315,6 @@ class HomeDataSourceTest {
             SharedHomeDataSource(
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                 api = api,
-                localWriteThrough = ComposeLocalWriteThrough(localStore),
                 parseHome = { _, _ -> error("cached read should not parse network") }
             )
 
