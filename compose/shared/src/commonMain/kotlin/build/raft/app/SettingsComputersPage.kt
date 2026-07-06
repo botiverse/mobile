@@ -1914,7 +1914,7 @@ private fun KuiklySettingsAgentItem.subtitleLabel(): String? =
         ?: handle?.takeIf { it.isNotBlank() }?.let { "@$it" }
 
 private fun KuiklySettingsAgentItem.activityDisplayLabel(status: SlockAgentStatusIndicatorState?): String? =
-    status?.status?.label
+    status?.label
         ?: activityLabel?.toSettingsAgentStatusLabel()
         ?: statusLabel?.toSettingsAgentStatusLabel()
 

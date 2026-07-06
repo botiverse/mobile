@@ -41,6 +41,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
+import build.raft.app.data.projectAgentActivityStatus
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
@@ -625,37 +626,18 @@ private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityProje
 }
 
 private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
-    val kind = stringValue("kind")?.trim()?.lowercase() ?: return null
-    return when (kind) {
-        "thinking" ->
-            AgentActivityProjection(
-                status = AgentStatus.Thinking,
-                detail = stringValue("text")?.takeIf { it.isNotBlank() } ?: "Thinking..."
-            )
-        "tool_start" ->
-            AgentActivityProjection(
-                status = AgentStatus.Working,
-                detail = stringValue("toolName")?.toToolActivityLabel() ?: "Working"
-            )
-        "compaction_started" ->
-            AgentActivityProjection(
-                status = AgentStatus.Working,
-                detail = "Compacting context..."
-            )
-        "compaction_finished" ->
-            AgentActivityProjection(
-                status = AgentStatus.Online,
-                detail = ""
-            )
-        "status", "agent_status" -> {
-            val status = AgentStatus.fromAgentActivityWireValue(stringValue("activity")) ?: return null
-            AgentActivityProjection(
-                status = status,
-                detail = stringValue("detail") ?: ""
-            )
-        }
-        else -> null
-    }
+    val projection =
+        projectAgentActivityStatus(
+            kind = stringValue("kind"),
+            activity = stringValue("activity"),
+            detail = stringValue("detail"),
+            text = stringValue("text"),
+            toolName = stringValue("toolName")
+        ) ?: return null
+    return AgentActivityProjection(
+        status = projection.status,
+        detail = projection.detail
+    )
 }
 
 private fun List<JsonObject>.toRealtimeAgentActivityEntries(
@@ -875,29 +857,6 @@ private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): P
 
 private fun JsonObject.stringValue(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
-
-private fun String.toToolActivityLabel(): String {
-    val normalized = trim()
-        .substringAfterLast("__")
-        .substringAfterLast("/")
-        .substringAfterLast(".")
-        .takeIf { it.isNotBlank() }
-        ?: return "Working"
-    return when (normalized) {
-        "read_file" -> "Reading file..."
-        "write_file" -> "Writing file..."
-        "upload_file" -> "Uploading file..."
-        "view_file" -> "Viewing file..."
-        "schedule_reminder" -> "Scheduling reminder..."
-        "list_reminders" -> "Listing reminders..."
-        "cancel_reminder" -> "Canceling reminder..."
-        "run_command" -> "Running command..."
-        else -> "Using ${normalized.truncateToolLabel()}..."
-    }
-}
-
-private fun String.truncateToolLabel(): String =
-    if (length <= 24) this else take(22) + ".."
 
 private fun String.shouldHideToolStartInActivityLog(): Boolean =
     normalizedToolName() == "send_message"

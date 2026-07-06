@@ -54,12 +54,14 @@ internal fun rememberSlockAgentStatusIndicatorState(
 internal fun SharedServerMemberStatus.toSlockAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
     slockAgentStatusIndicatorState(
         status = status,
-        presence = presence
+        presence = presence,
+        statusLabel = statusLabel
     )
 
 internal fun slockAgentStatusIndicatorState(
     status: AgentStatus?,
-    presence: Presence
+    presence: Presence,
+    statusLabel: String? = null
 ): SlockAgentStatusIndicatorState =
     SlockAgentStatusIndicatorState(
         status = status,
@@ -83,7 +85,7 @@ internal fun slockAgentStatusIndicatorState(
         // Label derives from the same resolved status as color/pulse so a dot
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).
-        label = status?.label ?: presence.name
+        label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name
     )
 
 internal fun slockAgentStatusIndicatorState(
