@@ -297,12 +297,33 @@ jobs:
             adb install -r "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | head -1)"
             adb install -r "$(find apks -name '*androidTest.apk' | head -1)"
             mkdir -p visual-testing-results/android
-            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner || echo "instrumentation exited non-zero; pulling whatever was captured"
+            # Record the instrumentation exit code instead of swallowing it with
+            # `|| echo`: a hung case aborts AndroidJUnitRunner and `am instrument`
+            # exits non-zero, which the old `|| echo` hid so the job stayed green
+            # while the shard tail was silently dropped (see tail-drop guard
+            # below). `cmd; echo $? > file` keeps the line's own exit at 0 so a
+            # non-zero instrumentation run still falls through to the pull (never
+            # aborts the script) — we just persist rc to a file (script lines
+            # don't share shell vars) for the guard to report.
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; echo "$?" > visual-testing-results/instr-rc-${{ matrix.shard }}.txt; echo "instrumentation exit code $(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt); pulling whatever was captured"
             adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
             # Per-case timing + idle-wait warnings for this shard. Grep
             # CASE_START/CASE_END to see how long every android item ran and
             # which case (if any) stalled.
             adb logcat -d -v time -s VisualCapture:V TestRunner:V > visual-testing-results/logcat-shard-${{ matrix.shard }}.txt || echo "logcat dump failed"
+            # Tail-drop guard: a case that hangs past the per-case Timeout kills
+            # this shard's AndroidJUnitRunner, so every case MethodSorter orders
+            # after it never emits CASE_START and its results are silently lost
+            # (root-caused deterministically: each never-started case sat in a
+            # shard that had a hung case, ordered after it). The signature is a
+            # methodName with CASE_START but no CASE_END — a normally-FAILing case
+            # still logs CASE_END status=FAIL, so only a true hang trips this.
+            # Surface it LOUDLY as a red ::error:: annotation naming the hung
+            # case, but do NOT fail the step: a hard failure would trip the report
+            # job's `if: !failure()` and drop the whole published site. Portable
+            # (grep -oE isolates the two-token marker so awk $NF is the
+            # methodName regardless of the logcat -v time prefix; no gawk/procsub).
+            grep -oE 'CASE_START [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-started-${{ matrix.shard }}; grep -oE 'CASE_END [A-Za-z0-9_]+' visual-testing-results/logcat-shard-${{ matrix.shard }}.txt 2>/dev/null | awk '{print $NF}' | sort -u > /tmp/td-ended-${{ matrix.shard }}; HUNG=$(comm -23 /tmp/td-started-${{ matrix.shard }} /tmp/td-ended-${{ matrix.shard }} | tr '\n' ' '); RC=$(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt 2>/dev/null || echo '?'); if [ -n "$HUNG" ]; then MSG="tail-drop shard ${{ matrix.shard }}: hung case(s) with CASE_START but no CASE_END: ${HUNG}(instrumentation rc=$RC). Every case MethodSorter ordered after a hung case never ran and this shard's tail was dropped — not a timeout."; echo "::error title=Visual capture tail-drop (shard ${{ matrix.shard }})::$MSG"; echo "TAIL_DROP_GUARD: $MSG" >> visual-testing-results/logcat-shard-${{ matrix.shard }}.txt; else echo "tail-drop guard: shard ${{ matrix.shard }} clean (instrumentation rc=$RC, every CASE_START matched a CASE_END)"; fi
 
       - name: Upload android results
         if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
