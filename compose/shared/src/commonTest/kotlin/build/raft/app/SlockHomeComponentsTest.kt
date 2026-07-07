@@ -219,6 +219,75 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationBadgeProjectionFormatsAndPreservesAxes() {
+        assertEquals(
+            HomeSidebarBadgeProjection(label = null, hasUnread = false, hasAttention = false),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 0))
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "99+", tone = HomeSidebarBadgeTone.Loud, hasUnread = true, hasAttention = true),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 100))
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "4", tone = HomeSidebarBadgeTone.Quiet, hasUnread = true, hasAttention = false),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 4, joined = false))
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "5", tone = HomeSidebarBadgeTone.Quiet, hasUnread = true, hasAttention = false),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 5, muted = true))
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "5", tone = HomeSidebarBadgeTone.Loud, hasUnread = true, hasAttention = true),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 5, muted = true, mentionPierced = true))
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "5", tone = HomeSidebarBadgeTone.Loud, hasUnread = true, hasAttention = true),
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = 5, muted = true, followed = true))
+        )
+    }
+
+    @Test
+    fun homeConversationItemBadgeProjectionUsesActivityMutedAxis() {
+        val mutedConversation =
+            SlockHomeConversationItem(
+                id = "channel-muted",
+                name = "muted",
+                unreadCount = 6,
+                joined = true,
+                activityMuted = true
+            )
+        val unmutedConversation =
+            SlockHomeConversationItem(
+                id = "channel-loud",
+                name = "loud",
+                unreadCount = 6,
+                joined = true,
+                activityMuted = false
+            )
+
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "6", tone = HomeSidebarBadgeTone.Quiet, hasUnread = true, hasAttention = false),
+            mutedConversation.homeConversationBadgeProjection()
+        )
+        assertEquals(
+            HomeSidebarBadgeProjection(label = "6", tone = HomeSidebarBadgeTone.Loud, hasUnread = true, hasAttention = true),
+            unmutedConversation.homeConversationBadgeProjection()
+        )
+    }
+
+    @Test
+    fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
+        assertEquals(
+            HomeActivitySidebarProjection(unreadLabel = "99+", totalLabel = null),
+            homeActivitySidebarProjection(activityUnreadCount = 140, activityTotalCount = 200)
+        )
+        assertEquals(
+            HomeActivitySidebarProjection(unreadLabel = null, totalLabel = "99+"),
+            homeActivitySidebarProjection(activityUnreadCount = 0, activityTotalCount = 200)
+        )
+    }
+
+    @Test
     fun homeSidebarSelectionPrefersTopActionOverConversation() {
         assertEquals(
             SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Activity),
