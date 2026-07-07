@@ -2588,7 +2588,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         val openRequest =
-            appShellConversationDirectory.notificationThreadLaunchRequest(launchRequest)
+            appShellConversationDirectory
+                .notificationThreadLaunchRequest(launchRequest, serverId = session.currentServerId.orEmpty())
         if (openRequest == null) {
             consumedNotificationLaunchKey = launchKey
             bridge.logWarn(
@@ -14849,41 +14850,21 @@ private fun SlockForegroundMessageBannerProjectionResult.appShellForegroundBanne
         "suppressReason=${suppressReason.orEmpty()}"
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
-    request: AppShellNotificationThreadLaunchRequest
+    request: AppShellNotificationThreadLaunchRequest,
+    serverId: String = ""
 ): HomeMessageOpenRequest? {
-    val projection =
-        resolveNotificationThreadProjection(request)
-            ?: return null
-    val conversation = projection.toThreadLaunchConversationIdentity(this)
-    return HomeMessageOpenRequest(
-        conversationIdentity = conversation,
-        anchorMessageId = conversation.notificationAnchorMessageId(request),
-        originFallback = projection.toThreadLaunchOriginFallback()
-    )
-}
-
-private fun SharedConversationDirectoryState.resolveNotificationThreadProjection(
-    request: AppShellNotificationThreadLaunchRequest
-): SharedConversationDirectoryProjection? =
-    listOfNotNull(
-        request.threadId,
-        request.channelId,
-        request.parentMessageId,
-        request.parentChannelId
-    ).firstNotNullOfOrNull { id -> resolve(id) }
-
-private fun ThreadLaunchConversationIdentity.notificationAnchorMessageId(
-    request: AppShellNotificationThreadLaunchRequest
-): String =
-    if (
-        kind != ConversationKind.Thread &&
-        request.parentChannelId?.isNotBlank() == true &&
-        request.parentMessageId?.isNotBlank() == true
+    return when (
+        val resolution =
+            resolveOpenRequest(
+                serverId = serverId,
+                sourceMessageIdentity = request.toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = this
+            )
     ) {
-        request.parentMessageId
-    } else {
-        request.messageId
+        is ConversationOpenResolution.Resolved -> resolution.request
+        is ConversationOpenResolution.Pending -> null
     }
+}
 
 private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange): SearchIsoBounds {
     val context = this ?: return SearchIsoBounds()

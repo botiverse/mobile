@@ -1394,12 +1394,23 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
             }
     }
 
-internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
-    HomeMessageOpenRequest(
-        conversationIdentity = toThreadLaunchConversationIdentity(),
-        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
-        originFallback = toThreadLaunchOriginFallback()
-    )
+internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest {
+    val sourceMessageIdentity = toConversationOpenSourceMessageIdentity()
+    return when (
+        val resolution =
+            resolveOpenRequest(
+                serverId = "",
+                sourceMessageIdentity = sourceMessageIdentity
+            )
+    ) {
+        is ConversationOpenResolution.Resolved -> resolution.request
+        is ConversationOpenResolution.Pending -> HomeMessageOpenRequest(
+            conversationIdentity = toThreadLaunchConversationIdentity(),
+            anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
+            originFallback = sourceMessageIdentity.originFallback
+        )
+    }
+}
 
 internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
     val streamChannelId = resolveInboxStreamChannelId()
@@ -1421,20 +1432,9 @@ private fun InboxItem.launchConversationKind(): ConversationKind =
     when (kind) {
         InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
         InboxItemKind.Thread -> ConversationKind.Thread
+        // Product default: user-initiated MentionAction opens the target as a channel,
+        // this is not a parser fallback for unknown route kind strings.
         InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
         InboxItemKind.System -> ConversationKind.System
         InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
     }
-
-private fun InboxItem.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
-    if (kind != InboxItemKind.Thread) return null
-    val parentId = parentMessageId?.value?.takeIf { it.isNotBlank() } ?: return null
-    return ThreadLaunchOriginFallback(
-        parentChannelId = parentChannelId?.value?.takeIf { it.isNotBlank() },
-        parentMessageId = parentId,
-        preview = parentMessagePreview?.takeIf { it.isNotBlank() },
-        senderId = parentMessageSenderId?.takeIf { it.isNotBlank() },
-        senderKind = parentMessageSenderKind,
-        expected = true
-    )
-}
