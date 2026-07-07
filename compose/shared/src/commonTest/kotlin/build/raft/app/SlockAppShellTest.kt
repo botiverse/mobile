@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.HomeSnapshot
+import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
@@ -10,6 +11,7 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -713,6 +715,90 @@ class SlockAppShellTest {
             )
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
+    }
+
+    @Test
+    fun foregroundBannerReplyThreadWinsOverMergedDmAliasForDisplayAndOpenIdentity() {
+        val homeState =
+            HomeSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                currentMember =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    ),
+                channels = emptyList(),
+                directMessages =
+                    listOf(
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("reply-stream"),
+                            channelId = ChannelId("dm-parent"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Cindy"
+                        )
+                    ),
+                unreadTotal = 0
+            ).toSharedConversationDirectoryState()
+        val activityState =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            parentMessagePreview = "Original thread question",
+                            latestActivityMessageId = MessageId("reply-1"),
+                            latestActivityPreview = "Newest reply"
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+
+        listOf(
+            listOf(homeState, activityState),
+            listOf(activityState, homeState)
+        ).forEach { states ->
+            val result =
+                slockForegroundMessageBannerProjectionResult(
+                    serverId = "server-1",
+                    currentServerId = "server-1",
+                    message =
+                        appShellForegroundTestMessage(
+                            id = "reply-1",
+                            channelId = "reply-stream",
+                            threadChannelId = "reply-stream",
+                            body = "This should not look like a DM"
+                        ),
+                    currentMemberId = "user-1",
+                    visibleConversationKey = null,
+                    conversationDirectory = states.mergedSharedConversationDirectoryState()
+                )
+            val banner = assertNotNull(result.banner)
+            val projection = assertNotNull(result.sharedProjection)
+
+            assertEquals(ConversationKind.Thread, projection.conversationKind)
+            assertEquals(KuiklyThreadSurfaceKind.ReplyThread, projection.surfaceKind)
+            assertEquals(ConversationKind.Thread, banner.conversation.kind)
+            assertEquals(SlockForegroundMessageBannerIconKind.Channel, banner.iconKind)
+            assertEquals(SlockLucideIconName.MessageSquare, banner.iconName)
+            assertEquals("#home-fixes - thread", banner.context)
+            assertEquals("Original thread question", banner.threadContext)
+            assertEquals("This should not look like a DM", banner.body)
+            assertEquals(ConversationKind.Thread, banner.openRequest.conversationIdentity.kind)
+            assertEquals("parent-channel", banner.openRequest.conversationIdentity.thread?.parentChannelId?.value)
+            assertEquals("parent-message", banner.openRequest.conversationIdentity.thread?.parentMessageId?.value)
+            assertEquals("reply-stream", banner.openRequest.conversationIdentity.thread?.streamChannelId?.value)
+            assertEquals("reply-1", banner.openRequest.anchorMessageId)
+        }
     }
 
     // task #425 part 2: server-provided conversationContext short-circuits the

@@ -64,10 +64,12 @@ internal data class SharedConversationDirectoryState(
 ) {
     fun resolve(id: String?): SharedConversationDirectoryProjection? {
         val normalized = id?.takeIf { it.isNotBlank() } ?: return null
+        // A canonical id is the projection's self-attested identity. Aliases
+        // may help find that identity, but they must never override it.
+        projectionsByCanonicalId[normalized]?.let { return it }
         val canonicalIds = aliasesById[normalized].orEmpty()
         return when {
             canonicalIds.size == 1 -> projectionsByCanonicalId[canonicalIds.single()]
-            normalized in projectionsByCanonicalId -> projectionsByCanonicalId[normalized]
             else -> null
         }
     }
@@ -246,7 +248,10 @@ private fun InboxItem.parentChannelProjection(
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
         canonicalChannelId = parentId,
-        aliases = setOf(parentId, channelId.value).filter { it.isNotBlank() }.toSet(),
+        // The parent projection proves only the parent conversation. A thread
+        // stream id belongs to the child ReplyThread projection and must not
+        // be claimed as a parent alias.
+        aliases = setOf(parentId),
         conversationKind = conversationKind,
         surfaceKind = conversationKind.toKuiklySurfaceKind(),
         channelKind = channelType,
