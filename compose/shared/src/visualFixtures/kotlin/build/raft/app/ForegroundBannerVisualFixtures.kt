@@ -129,6 +129,10 @@ private fun foregroundBannerVisualBanner(
         body = body,
         iconKind = iconKind,
         iconName = iconName,
+        // Fixture supplies the avatar directly via avatarWireValue/avatarLabel,
+        // so no member-store lookup is needed (task #396: #213 added this
+        // required param but the fixture builder was not updated).
+        senderMemberId = null,
         avatarWireValue = avatarWireValue,
         avatarLabel = avatarLabel
     )
