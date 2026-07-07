@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.parseConversationKindOrNull
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
@@ -193,13 +194,23 @@ private fun WireInboxItem.toDomain(): InboxItem? = when (kind) {
 private fun WireInboxItem.toChannelOrDmDomain(): InboxItem? {
     val id = channelId ?: return null
     val name = channelName ?: id
-    val itemKind = if (kind == "dm") InboxItemKind.DirectMessage else InboxItemKind.Channel
+    val itemKind =
+        when (parseConversationKindOrNull(kind)) {
+            ConversationKind.DirectMessage -> InboxItemKind.DirectMessage
+            ConversationKind.Channel -> InboxItemKind.Channel
+            else -> return null
+        }
     return InboxItem(
         key = if (itemKind == InboxItemKind.DirectMessage) "dm:$id" else "channel:$id",
         kind = itemKind,
         channelId = ChannelId(id),
         channelName = name,
-        channelKind = if (itemKind == InboxItemKind.DirectMessage) ConversationKind.DirectMessage else channelType?.toConversationKind(),
+        channelKind =
+            if (itemKind == InboxItemKind.DirectMessage) {
+                ConversationKind.DirectMessage
+            } else {
+                parseConversationKindOrNull(channelType)
+            },
         unreadCount = unreadCount,
         hasMention = hasMention,
         firstUnreadMessageId = firstUnreadMessageId?.let(::MessageId),
@@ -225,7 +236,7 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
         threadChannelId = ChannelId(threadId),
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
-        parentChannelKind = parentChannelType?.toConversationKind(),
+        parentChannelKind = parseConversationKindOrNull(parentChannelType),
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessagePreview,
         parentMessageSenderId = parentMessageSenderId,
@@ -261,7 +272,7 @@ private fun WireInboxItem.toMentionActionDomain(): InboxItem? {
         channelName = channelName?.takeIf { it.isNotBlank() }
             ?: mappedActions.firstNotNullOfOrNull { action -> action.channelName?.takeIf { it.isNotBlank() } }
             ?: targetChannelId,
-        channelKind = channelType?.toConversationKind(),
+        channelKind = parseConversationKindOrNull(channelType),
         unreadCount = 0,
         hasMention = false,
         lastMessageId = targetMessageId?.let(::MessageId),
@@ -286,13 +297,6 @@ private fun WireInboxPendingMentionAction.toDomain(): PendingMentionAction? {
         availableActions = availableActions,
         expiresAt = expiresAt,
     )
-}
-
-private fun String.toConversationKind(): ConversationKind? = when (trim().lowercase()) {
-    "dm", "direct", "direct_message", "direct-message", "directmessage" -> ConversationKind.DirectMessage
-    "joint" -> ConversationKind.Joint
-    "channel", "private", "public", "group" -> ConversationKind.Channel
-    else -> null
 }
 
 private fun String?.toSenderKind(): MemberKind? = when {
@@ -342,7 +346,7 @@ data class SharedSavedItems(
 
 fun parseSharedSavedItems(bodyText: String): SharedSavedItems? = runCatching {
     val decoded = inboxJson.decodeFromString(WireSavedResponse.serializer(), bodyText)
-    val items = decoded.saved.map { it.toInboxItem() }.distinctBy { it.key }
+    val items = decoded.saved.mapNotNull { it.toInboxItem() }.distinctBy { it.key }
     SharedSavedItems(
         items = items,
         hasMore = decoded.hasMore,
@@ -366,18 +370,16 @@ fun parseSharedSavedMessageStatus(bodyText: String): SavedMessageStatusSnapshot?
     )
 }.getOrNull()
 
-private fun WireSavedEntry.toInboxItem(): InboxItem {
-    val itemKind = when (channelType) {
-        "dm" -> InboxItemKind.DirectMessage
-        "thread" -> InboxItemKind.Thread
-        else -> InboxItemKind.Channel
-    }
+private fun WireSavedEntry.toInboxItem(): InboxItem? {
+    val conversationKind = parseConversationKindOrNull(channelType)
+    val itemKind = conversationKind.toInboxItemKind() ?: return null
     val key = "saved:$messageId"
     return InboxItem(
         key = key,
         kind = itemKind,
         channelId = ChannelId(channelId),
         channelName = channelName,
+        channelKind = conversationKind,
         lastMessageId = MessageId(messageId),
         lastMessagePreview = content,
         lastMessageAt = createdAt,
@@ -387,7 +389,7 @@ private fun WireSavedEntry.toInboxItem(): InboxItem {
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
-        parentChannelKind = parentChannelType?.toConversationKind(),
+        parentChannelKind = parseConversationKindOrNull(parentChannelType),
         parentMessageId = parentMessageId?.let(::MessageId),
     )
 }
@@ -436,16 +438,13 @@ data class SharedSearchItems(
 
 fun parseSharedSearchItems(bodyText: String): SharedSearchItems? = runCatching {
     val decoded = inboxJson.decodeFromString(WireSearchResponse.serializer(), bodyText)
-    val items = decoded.results.map { it.toInboxItem() }.distinctBy { it.key }
+    val items = decoded.results.mapNotNull { it.toInboxItem() }.distinctBy { it.key }
     SharedSearchItems(items = items, hasMore = decoded.hasMore)
 }.getOrNull()
 
-private fun WireSearchResult.toInboxItem(): InboxItem {
-    val itemKind = when (channelType) {
-        "dm" -> InboxItemKind.DirectMessage
-        "thread" -> InboxItemKind.Thread
-        else -> InboxItemKind.Channel
-    }
+private fun WireSearchResult.toInboxItem(): InboxItem? {
+    val conversationKind = parseConversationKindOrNull(channelType)
+    val itemKind = conversationKind.toInboxItemKind() ?: return null
     val key = when (itemKind) {
         InboxItemKind.DirectMessage -> "dm:$channelId:$id"
         InboxItemKind.Thread -> "thread:$channelId:$id"
@@ -456,6 +455,7 @@ private fun WireSearchResult.toInboxItem(): InboxItem {
         kind = itemKind,
         channelId = ChannelId(channelId),
         channelName = channelName,
+        channelKind = conversationKind,
         lastMessageId = MessageId(id),
         lastMessagePreview = snippet.ifBlank { content },
         lastMessageAt = createdAt,
@@ -465,8 +465,19 @@ private fun WireSearchResult.toInboxItem(): InboxItem {
         threadChannelId = if (itemKind == InboxItemKind.Thread) ChannelId(channelId) else null,
         parentChannelId = ChannelId(parentChannelId),
         parentChannelName = parentChannelName,
-        parentChannelKind = parentChannelType.toConversationKind(),
+        parentChannelKind = parseConversationKindOrNull(parentChannelType),
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessageContent,
     )
 }
+
+private fun ConversationKind?.toInboxItemKind(): InboxItemKind? =
+    when (this) {
+        ConversationKind.DirectMessage -> InboxItemKind.DirectMessage
+        ConversationKind.Thread -> InboxItemKind.Thread
+        ConversationKind.Channel,
+        ConversationKind.Joint -> InboxItemKind.Channel
+        ConversationKind.System,
+        ConversationKind.Inbox,
+        null -> null
+    }

@@ -14593,7 +14593,7 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
 
 internal data class SharedHomeConversationRowSeed(
     val id: String,
-    val kind: String,
+    val kind: ConversationKind,
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
     val peerType: String? = null,
@@ -14623,7 +14623,7 @@ internal data class SharedHomeConversationRowProjector(
 private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
     SharedHomeConversationRowSeed(
         id = threadId.value,
-        kind = kind.name.lowercase(),
+        kind = kind,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
@@ -14641,10 +14641,11 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     directoryProjection: SharedConversationDirectoryProjection? = null
 ): SlockHomeConversationItem {
     val title = resolvedDirectoryTitle(directoryProjection)
+    val resolvedKind = directoryProjection?.conversationKind ?: kind
     return SlockHomeConversationItem(
         id = id,
         name = title,
-        kind = kind,
+        kind = resolvedKind.toKuiklySurfaceKind(),
         channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
