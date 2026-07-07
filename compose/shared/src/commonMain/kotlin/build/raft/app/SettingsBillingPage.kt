@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
+import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsIntent
@@ -57,6 +58,22 @@ internal class ComposeSettingsBillingPage : build.raft.app.base.BasePager() {
         super.willInit()
         setContent { SettingsBillingScreen() }
     }
+}
+
+// Opened from the Settings "Workspace" section. Billing is its own single-page
+// pager (not an in-Settings-child-pager destination) so the WebView gets a
+// full-height native viewport + clean lifecycle — same reason as Release Notes
+// (task #227): rendering the WebView inside the retained multi-tab child pager
+// caused the header/webview attach-order flash.
+internal fun Pager.openSettingsBillingPage() {
+    acquireModule<com.tencent.kuikly.core.module.RouterModule>(
+        com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+    ).openPage(
+        SETTINGS_BILLING_PAGE,
+        com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
+            put("pageName", SETTINGS_BILLING_PAGE)
+        }
+    )
 }
 
 @Serializable
@@ -215,6 +232,44 @@ internal val settingsBillingSmokePayload =
 @Composable
 private fun SettingsBillingScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    // Render the header on the first frame. The billing body's first composition
+    // is heavy (rememberStandaloneSettingsEnvironment builds the settings stores +
+    // the WebView native view attaches), which otherwise delays the header a frame
+    // and shows the native white page first (task #227 follow-up). Defer the body
+    // to a child composable committed after the first frame so the header is always
+    // painted first.
+    var bodyReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { bodyReady = true }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = "Billing",
+            iconName = SlockLucideIconName.CreditCard,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = {
+                        pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
+                            com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
+                        ).closePage()
+                    },
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (bodyReady) {
+                SettingsBillingScreenBody(pager)
+            } else {
+                SettingsBillingLoadingContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsBillingScreenBody(pager: Pager) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val launchPayload =
@@ -223,9 +278,6 @@ private fun SettingsBillingScreen() {
             pager.pageData.params.toString(),
             pager.pageData.params.optString("instanceId")
         )
-    val timeContext = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.settingsStandaloneTimeContext()
-    }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-billing") {

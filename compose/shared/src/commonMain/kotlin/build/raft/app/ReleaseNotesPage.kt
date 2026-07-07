@@ -69,26 +69,16 @@ internal fun Pager.openReleaseNotesPage() {
 @Composable
 private fun ReleaseNotesScreen() {
     val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
-    val settingsViewModel: SharedSettingsViewModel =
-        viewModel(key = "standalone-release-notes") {
-            SharedSettingsViewModel(environment.dataSource)
-        }
-    val settingsState by settingsViewModel.state.collectAsState()
-    LaunchedEffect(Unit) {
-        bridge.log("release_notes_open")
-        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
-    }
-    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
-
-    val versionCode =
-        (settingsState.about as? ScreenLoadState.Content)?.data?.buildLabel.orEmpty()
-
+    // Render the header on the first frame. The body's first composition is heavy
+    // (rememberStandaloneSettingsEnvironment builds the settings stores + the
+    // WebView native view attaches), which otherwise delays the header a frame and
+    // shows the native white page first (task #227 follow-up). Defer the body to a
+    // child composable committed after the first frame so the header paints first.
+    var bodyReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { bodyReady = true }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = "Release Notes",
-            subtitle = "Version history and changelog",
             iconName = SlockLucideIconName.FileText,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
@@ -105,9 +95,33 @@ private fun ReleaseNotesScreen() {
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            ReleaseNotesWebViewBody(versionCode)
+            if (bodyReady) {
+                ReleaseNotesScreenBody(pager)
+            } else {
+                ReleaseNotesCenteredNotice("加载中… / Loading…")
+            }
         }
     }
+}
+
+@Composable
+private fun ReleaseNotesScreenBody(pager: Pager) {
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-release-notes") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(Unit) {
+        bridge.log("release_notes_open")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+    }
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+
+    val versionCode =
+        (settingsState.about as? ScreenLoadState.Content)?.data?.buildLabel.orEmpty()
+    ReleaseNotesWebViewBody(versionCode)
 }
 
 @Composable
