@@ -2,6 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import android.util.Size
+import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
@@ -28,6 +29,7 @@ internal class SlockKuiklyPageRenderView(
     private var loadFailureCallback: KuiklyRenderCallback? = null
     private var viewDidAppear = false
     private var pageDidAppear = false
+    private var childActive = true
     private var childDidAttach = false
     private var childVisible = false
     private var childInitPosted = false
@@ -128,6 +130,10 @@ internal class SlockKuiklyPageRenderView(
                 true
             }
             PROP_GLASS_STYLE -> true
+            PROP_ACTIVE -> {
+                updateChildActive(propValue as? Boolean ?: propValue.toString().toBooleanStrictOrNull() ?: true)
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = propValue as? KuiklyRenderCallback
                 true
@@ -150,6 +156,10 @@ internal class SlockKuiklyPageRenderView(
                 true
             }
             PROP_GLASS_STYLE -> true
+            PROP_ACTIVE -> {
+                updateChildActive(true)
+                true
+            }
             EVENT_LOAD_SUCCESS -> {
                 loadSuccessCallback = null
                 true
@@ -199,9 +209,19 @@ internal class SlockKuiklyPageRenderView(
         resetChildIfAttached()
     }
 
+    private fun updateChildActive(next: Boolean) {
+        if (childActive == next) return
+        childActive = next
+        syncChildVisibility()
+        if (next) {
+            scheduleChildInitIfReady()
+        }
+    }
+
     private fun resetChildIfAttached() {
         if (childRenderView == null) return
         destroyChild()
+        scheduleChildInitIfReady()
         if (isInLayout) {
             post { requestLayout() }
         } else {
@@ -210,7 +230,7 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun scheduleChildInitIfReady() {
-        if (destroyed || childRenderView != null || childInitPosted || pageName.isBlank() || width <= 0 || height <= 0) {
+        if (!shouldScheduleSlockKuiklyChildInit(destroyed, childRenderView != null, childInitPosted, pageName, width, height)) {
             return
         }
         childInitPosted = true
@@ -321,10 +341,19 @@ internal class SlockKuiklyPageRenderView(
     }
 
     private fun syncChildVisibility() {
-        val shouldBeVisible = viewDidAppear && pageDidAppear && childDidAttach
-        if (childVisible == shouldBeVisible) return
-        childVisible = shouldBeVisible
-        if (shouldBeVisible) {
+        val shouldBeRendered =
+            slockKuiklyChildShouldRender(childActive = childActive, childAttached = childDidAttach)
+        val shouldBeLifecycleVisible =
+            slockKuiklyChildLifecycleVisible(
+                childActive = childActive,
+                childAttached = childDidAttach,
+                viewDidAppear = viewDidAppear,
+                pageDidAppear = pageDidAppear
+            )
+        childRenderView?.visibility = slockKuiklyChildRenderVisibility(shouldBeRendered)
+        if (childVisible == shouldBeLifecycleVisible) return
+        childVisible = shouldBeLifecycleVisible
+        if (shouldBeLifecycleVisible) {
             childRenderView?.onResume()
         } else {
             childRenderView?.onPause()
@@ -354,6 +383,7 @@ internal class SlockKuiklyPageRenderView(
         private const val PROP_PAGE_NAME = "pageName"
         private const val PROP_PAGE_DATA = "pageData"
         private const val PROP_GLASS_STYLE = "glassStyle"
+        private const val PROP_ACTIVE = "active"
         private const val METHOD_SEND_EVENT = "sendEvent"
         private const val EVENT_DID_APPEAR = "didAppear"
         private const val EVENT_DID_DISAPPEAR = "didDisappear"
@@ -404,3 +434,34 @@ internal fun slockKuiklyRootViewSizeDidChangedData(
         "height" to heightPx / resolvedDensity
     )
 }
+
+internal fun slockKuiklyChildRenderVisibility(visible: Boolean): Int =
+    if (visible) View.VISIBLE else View.INVISIBLE
+
+internal fun slockKuiklyChildShouldRender(childActive: Boolean, childAttached: Boolean): Boolean =
+    childActive && childAttached
+
+internal fun shouldScheduleSlockKuiklyChildInit(
+    destroyed: Boolean,
+    childAttached: Boolean,
+    childInitPosted: Boolean,
+    pageName: String,
+    widthPx: Int,
+    heightPx: Int
+): Boolean =
+    !destroyed &&
+        !childAttached &&
+        !childInitPosted &&
+        pageName.isNotBlank() &&
+        widthPx > 0 &&
+        heightPx > 0
+
+internal fun slockKuiklyChildLifecycleVisible(
+    childActive: Boolean,
+    childAttached: Boolean,
+    viewDidAppear: Boolean,
+    pageDidAppear: Boolean
+): Boolean =
+    slockKuiklyChildShouldRender(childActive = childActive, childAttached = childAttached) &&
+        viewDidAppear &&
+        pageDidAppear

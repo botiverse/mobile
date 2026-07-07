@@ -106,115 +106,6 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun retainedAppShellTabOrderKeepsActiveTabOnTop() {
-        assertEquals(listOf("tasks", "members", "settings", "home"), retainedAppShellTabOrder("home"))
-        assertEquals(listOf("home", "members", "settings", "tasks"), retainedAppShellTabOrder("tasks"))
-        assertEquals(listOf("home", "tasks", "settings", "members"), retainedAppShellTabOrder("members"))
-        assertEquals(listOf("home", "tasks", "members", "settings"), retainedAppShellTabOrder("settings"))
-    }
-
-    @Test
-    fun retainedAppShellComposedTabsCanDescribeMountedInactiveTabs() {
-        assertEquals(
-            listOf("home", "tasks"),
-            retainedAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(listOf("tasks"), activeOnlyAppShellComposedTabs("tasks"))
-        assertEquals(listOf("home"), activeOnlyAppShellComposedTabs("unknown"))
-    }
-
-    @Test
-    fun childHostAppShellPagerTabsKeepMountedChildTabsInFixedOrder() {
-        assertEquals(
-            listOf("home", "tasks"),
-            childHostAppShellPagerTabs("tasks", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(
-            listOf("home", "tasks", "members"),
-            childHostAppShellPagerTabs("members", mountedTabs = setOf("home", "tasks", "members"))
-        )
-        assertEquals(
-            listOf("home", "tasks", "settings"),
-            childHostAppShellPagerTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
-        )
-        assertEquals(
-            listOf("home", "tasks"),
-            childHostAppShellPagerTabs("unknown", mountedTabs = setOf("tasks"))
-        )
-    }
-
-    @Test
-    fun childHostAppShellPagerTargetFollowsParentSelectedTab() {
-        val pagerTabs = listOf("home", "tasks", "members")
-
-        assertEquals("home", appShellActiveChildPagerTab("home"))
-        assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
-        assertEquals("members", appShellActiveChildPagerTab("members"))
-        assertEquals("settings", appShellActiveChildPagerTab("settings"))
-        assertEquals("home", appShellActiveChildPagerTab("unknown"))
-
-        assertEquals(0, appShellChildPagerTargetIndex("home", pagerTabs))
-        assertEquals(1, appShellChildPagerTargetIndex("tasks", pagerTabs))
-        assertEquals(2, appShellChildPagerTargetIndex("members", pagerTabs))
-        assertNull(appShellChildPagerTargetIndex("settings", pagerTabs))
-        assertEquals(3, appShellChildPagerTargetIndex("settings", pagerTabs + "settings"))
-        assertNull(appShellChildPagerTargetIndex("members", listOf("home", "tasks")))
-    }
-
-    @Test
-    fun childHostAppShellPagerTargetMovesBackToHomeWithTasksMounted() {
-        val mountedTabs = setOf("home", "tasks")
-        val tasksTabs = childHostAppShellPagerTabs("tasks", mountedTabs)
-        val homeTabs = childHostAppShellPagerTabs("home", mountedTabs)
-
-        assertEquals(tasksTabs, homeTabs)
-        assertEquals(1, appShellChildPagerTargetIndex("tasks", tasksTabs))
-        assertEquals(0, appShellChildPagerTargetIndex("home", homeTabs))
-    }
-
-    @Test
-    fun appShellChildPagerSwitchEpochAdvancesOnlyForTabChanges() {
-        assertEquals(0, appShellNextChildTabSwitchEpoch("home", "home", currentEpoch = 0))
-        assertEquals(1, appShellNextChildTabSwitchEpoch("home", "tasks", currentEpoch = 0))
-        assertEquals(2, appShellNextChildTabSwitchEpoch("tasks", "home", currentEpoch = 1))
-        assertEquals(2, appShellNextChildTabSwitchEpoch("unknown", "home", currentEpoch = 2))
-    }
-
-    @Test
-    fun childHostAppShellPagerFallbackDropsStaleEpoch() {
-        assertEquals(
-            true,
-            appShellChildPagerScrollEpochCanApply(
-                expectedTab = "home",
-                currentTab = "home",
-                expectedEpoch = 2,
-                currentEpoch = 2,
-                targetPage = 0
-            )
-        )
-        assertEquals(
-            false,
-            appShellChildPagerScrollEpochCanApply(
-                expectedTab = "tasks",
-                currentTab = "home",
-                expectedEpoch = 1,
-                currentEpoch = 2,
-                targetPage = 1
-            )
-        )
-        assertEquals(
-            false,
-            appShellChildPagerScrollEpochCanApply(
-                expectedTab = "home",
-                currentTab = "home",
-                expectedEpoch = 2,
-                currentEpoch = 2,
-                targetPage = null
-            )
-        )
-    }
-
-    @Test
     fun appShellActiveChildTabFollowsParentSelectedTab() {
         assertEquals("home", appShellActiveChildPagerTab("home"))
         assertEquals("tasks", appShellActiveChildPagerTab("tasks"))
@@ -224,43 +115,11 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun homeWarmAppShellComposedTabsKeepsOnlyHomeInactive() {
-        assertEquals(
-            listOf("home", "tasks"),
-            homeWarmAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(
-            listOf("tasks"),
-            homeWarmAppShellComposedTabs("tasks", mountedTabs = setOf("tasks"))
-        )
-        assertEquals(
-            listOf("home", "settings"),
-            homeWarmAppShellComposedTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
-        )
-        assertEquals(
-            listOf("home"),
-            homeWarmAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
-        )
-    }
-
-    @Test
-    fun warmPrimaryAppShellComposedTabsKeepsVisitedTasksWarm() {
-        assertEquals(
-            listOf("home", "tasks"),
-            warmPrimaryAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(
-            listOf("tasks", "home"),
-            warmPrimaryAppShellComposedTabs("home", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(
-            listOf("home", "tasks", "settings"),
-            warmPrimaryAppShellComposedTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
-        )
-        assertEquals(
-            listOf("tasks", "home"),
-            warmPrimaryAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
-        )
+    fun appShellChildPagerSwitchEpochAdvancesOnlyForTabChanges() {
+        assertEquals(0, appShellNextChildTabSwitchEpoch("home", "home", currentEpoch = 0))
+        assertEquals(1, appShellNextChildTabSwitchEpoch("home", "tasks", currentEpoch = 0))
+        assertEquals(2, appShellNextChildTabSwitchEpoch("tasks", "home", currentEpoch = 1))
+        assertEquals(2, appShellNextChildTabSwitchEpoch("unknown", "home", currentEpoch = 2))
     }
 
     @Test
