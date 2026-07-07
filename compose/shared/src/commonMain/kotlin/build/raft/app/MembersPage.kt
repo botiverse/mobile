@@ -7428,8 +7428,7 @@ private fun MembersAgentActivityTab(
                     .weight(1f)
             )
         } else {
-            val initialActivityIndex =
-                if (autoScrollToLatest) 0 else rows.lastIndex.coerceAtLeast(0)
+            val initialActivityIndex = membersAgentActivityInitialFirstVisibleIndex(rows.size)
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialActivityIndex)
             var allowBottomAnchor by remember(detail?.agentId) { mutableStateOf(true) }
             if (autoScrollToLatest) {
@@ -7439,12 +7438,11 @@ private fun MembersAgentActivityTab(
                     }
                         .distinctUntilChanged()
                         .collect { (isScrollInProgress, isAtBottom) ->
-                            val nextAllow =
-                                when {
-                                    isScrollInProgress && !isAtBottom -> false
-                                    isAtBottom -> true
-                                    else -> allowBottomAnchor
-                                }
+                            val nextAllow = membersAgentActivityNextBottomAnchor(
+                                current = allowBottomAnchor,
+                                isScrollInProgress = isScrollInProgress,
+                                isAtBottom = isAtBottom
+                            )
                             if (allowBottomAnchor != nextAllow) {
                                 allowBottomAnchor = nextAllow
                             }
@@ -8858,6 +8856,20 @@ private fun LazyListState.isMembersActivityAtBottom(lastIndex: Int): Boolean {
         item.index == lastIndex && item.offset + item.size <= layoutInfo.viewportEndOffset + 4
     }
 }
+
+internal fun membersAgentActivityInitialFirstVisibleIndex(itemCount: Int): Int =
+    (itemCount - 1).coerceAtLeast(0)
+
+internal fun membersAgentActivityNextBottomAnchor(
+    current: Boolean,
+    isScrollInProgress: Boolean,
+    isAtBottom: Boolean
+): Boolean =
+    when {
+        isAtBottom -> true
+        isScrollInProgress -> false
+        else -> current
+    }
 
 private data class MembersAgentGroup(
     val label: String,

@@ -106,4 +106,39 @@ class MembersAgentTabOrderTest {
         assertEquals(1, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Chat))
         assertEquals(0, membersAgentTabVisibleAnchorIndex(tabs, MembersAgentDetailTab.Activity))
     }
+
+    @Test
+    fun activityTabInitialIndexPinsToLatestEntry() {
+        assertEquals(0, membersAgentActivityInitialFirstVisibleIndex(0))
+        assertEquals(0, membersAgentActivityInitialFirstVisibleIndex(1))
+        assertEquals(4, membersAgentActivityInitialFirstVisibleIndex(5))
+    }
+
+    @Test
+    fun activityTabBottomAnchorRespectsManualHistoryScroll() {
+        assertEquals(
+            false,
+            membersAgentActivityNextBottomAnchor(
+                current = true,
+                isScrollInProgress = true,
+                isAtBottom = false
+            )
+        )
+        assertEquals(
+            false,
+            membersAgentActivityNextBottomAnchor(
+                current = false,
+                isScrollInProgress = false,
+                isAtBottom = false
+            )
+        )
+        assertEquals(
+            true,
+            membersAgentActivityNextBottomAnchor(
+                current = false,
+                isScrollInProgress = false,
+                isAtBottom = true
+            )
+        )
+    }
 }
