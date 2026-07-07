@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.toWireChannelKindOrNull
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -45,11 +46,17 @@ internal data class SharedConversationDirectoryProjection(
     val parentMessageId: String? = null,
     val joined: Boolean = true,
     val archived: Boolean = false,
-    val activityMuted: Boolean = false,
-    val muteFromSeq: Long? = null,
-    val activityMuteSupported: Boolean = false,
+    val activityNotificationPreference: ChannelActivityNotificationPreference =
+        ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions()
-)
+) {
+    val activityMuted: Boolean
+        get() = activityNotificationPreference.activityMuted
+    val muteFromSeq: Long?
+        get() = activityNotificationPreference.muteFromSeq
+    val activityMuteSupported: Boolean
+        get() = activityNotificationPreference.activityMuteSupported
+}
 
 internal data class SharedConversationDirectoryState(
     val projectionsByCanonicalId: Map<String, SharedConversationDirectoryProjection> = emptyMap(),
@@ -198,9 +205,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,
         archived = archived,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported,
+        activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
 }

@@ -1,11 +1,12 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
-import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -362,9 +363,12 @@ private data class ChannelActivityMuteSettingsResponse(
     fun toSettings(channelId: ChannelId): ChannelActivityMuteSettings =
         ChannelActivityMuteSettings(
             channelId = channelId,
-            activityMuted = activityMuted,
-            muteFromSeq = muteFromSeq,
-            activityMuteSupported = activityMuteSupported
+            activityNotificationPreference =
+                ChannelActivityNotificationPreference(
+                    activityMuted = activityMuted,
+                    muteFromSeq = muteFromSeq,
+                    activityMuteSupported = activityMuteSupported
+                )
         )
 }
 

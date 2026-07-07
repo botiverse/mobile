@@ -76,10 +76,15 @@ sealed interface HomeConversationRow {
     val jointPeerServerName: String?
     val jointPeerServerSlug: String?
     val jointPeerStatus: String?
-    val activityMuted: Boolean
-    val muteFromSeq: Long?
-    val activityMuteSupported: Boolean
+    val activityNotificationPreference: ChannelActivityNotificationPreference
     val permissions: ConversationPermissions
+
+    val activityMuted: Boolean
+        get() = activityNotificationPreference.activityMuted
+    val muteFromSeq: Long?
+        get() = activityNotificationPreference.muteFromSeq
+    val activityMuteSupported: Boolean
+        get() = activityNotificationPreference.activityMuteSupported
 }
 
 @Serializable
@@ -113,9 +118,8 @@ data class HomeChannelRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
-    override val activityMuted: Boolean = false,
-    override val muteFromSeq: Long? = null,
-    override val activityMuteSupported: Boolean = false,
+    override val activityNotificationPreference: ChannelActivityNotificationPreference =
+        ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions()
 ) : HomeConversationRow
 
@@ -150,9 +154,8 @@ data class HomeDirectMessageRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
-    override val activityMuted: Boolean = false,
-    override val muteFromSeq: Long? = null,
-    override val activityMuteSupported: Boolean = false,
+    override val activityNotificationPreference: ChannelActivityNotificationPreference =
+        ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions()
 ) : HomeConversationRow
 
@@ -187,9 +190,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported,
+        activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
 
@@ -224,9 +225,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported,
+        activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
 
@@ -255,9 +254,7 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         joined = joined,
         archived = archived,
         memberCount = memberCount,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported,
+        activityNotificationPreference = activityNotificationPreference,
         permissions = permissions
     )
 

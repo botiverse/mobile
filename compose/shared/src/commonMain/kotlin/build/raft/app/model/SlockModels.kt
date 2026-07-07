@@ -50,6 +50,25 @@ data class ThreadConversation(
     val parentChannelKind: String? = null
 )
 
+/**
+ * Per-receiver notification preference for channel activity promotion.
+ *
+ * The server resolves these fields for the current receiver; callers should
+ * treat the three wire fields as one domain value instead of independent row
+ * flags. This mirrors the web channel-store `mute` gate while keeping scalar
+ * read projections available for existing UI surfaces.
+ */
+@Serializable
+data class ChannelActivityNotificationPreference(
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false
+) {
+    companion object {
+        val Unsupported = ChannelActivityNotificationPreference()
+    }
+}
+
 @Serializable
 data class ConversationSummary(
     val threadId: ThreadId,
@@ -81,11 +100,16 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
-    val activityMuted: Boolean = false,
-    val muteFromSeq: Long? = null,
-    val activityMuteSupported: Boolean = false,
+    val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions()
-)
+) {
+    val activityMuted: Boolean
+        get() = activityNotificationPreference.activityMuted
+    val muteFromSeq: Long?
+        get() = activityNotificationPreference.muteFromSeq
+    val activityMuteSupported: Boolean
+        get() = activityNotificationPreference.activityMuteSupported
+}
 
 @Serializable
 data class ConversationPermissions(
