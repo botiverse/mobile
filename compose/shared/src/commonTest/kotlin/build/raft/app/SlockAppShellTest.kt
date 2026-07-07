@@ -896,6 +896,100 @@ class SlockAppShellTest {
         )
     }
 
+    // task #437: labels ride the identity+directory SSOT chain. A context-identified
+    // thread whose OWN stream has no directory row must still label from the parent
+    // channel row (which home always has) instead of rendering DM-bare.
+    @Test
+    fun foregroundBannerContextThreadLabelsFromParentChannelRow() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "reply-stream",
+                        threadId = "reply-stream",
+                        conversationContext =
+                            MessageConversationContext(
+                                channelKind = ConversationKind.Thread,
+                                parentMessageId = MessageId("parent-message"),
+                                parentChannelId = ChannelId("parent-channel"),
+                                parentChannelKind = ConversationKind.Channel
+                            )
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("#home-fixes - thread", resolved.context)
+        // No parent-preview data without the stream row — the reply row stays absent
+        // rather than faked.
+        assertEquals(null, resolved.threadContext)
+        assertEquals(SlockLucideIconName.MessageSquare, resolved.iconName)
+        assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
+    }
+
+    // task #437: same SSOT chain, DM-parented thread — the parent row's kind drives
+    // the "@" prefix.
+    @Test
+    fun foregroundBannerContextThreadLabelsFromDmParentRow() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "dm-parent",
+                        aliases = setOf("dm-parent"),
+                        conversationKind = ConversationKind.DirectMessage,
+                        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                        channelKind = "dm",
+                        title = "Cindy"
+                    )
+                )
+            )
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "dm-reply-stream",
+                        threadId = "dm-reply-stream",
+                        conversationContext =
+                            MessageConversationContext(
+                                channelKind = ConversationKind.Thread,
+                                parentMessageId = MessageId("parent-message"),
+                                parentChannelId = ChannelId("dm-parent"),
+                                parentChannelKind = ConversationKind.DirectMessage
+                            )
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("@Cindy - thread", resolved.context)
+    }
+
     @Test
     fun foregroundBannerIncompleteThreadContextStillWaits() {
         // A context claiming Thread but missing its parent must not shortcut:
