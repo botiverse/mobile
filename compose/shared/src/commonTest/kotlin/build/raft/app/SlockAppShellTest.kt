@@ -1267,6 +1267,65 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerContextRescuesReplyThreadWhenProjectionParentUnresolved() {
+        // t430 acceptance ①: rescue fires ONLY on projection-hit + builder-null + context
+        // available — same fixture as foregroundBannerDropsReplyThreadWhenParentKindUnresolved
+        // (which pins the context-unavailable branch: conversation_missing), plus a trusted
+        // server conversationContext -> the banner opens with the correct DM-thread identity.
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-1",
+                channelId = "reply-stream",
+                threadId = "reply-stream",
+                body = "Rescued by server context",
+                conversationContext =
+                    MessageConversationContext(
+                        channelKind = ConversationKind.Thread,
+                        parentMessageId = MessageId("parent-message"),
+                        parentChannelId = ChannelId("dm-parent"),
+                        parentChannelKind = ConversationKind.DirectMessage
+                    )
+            )
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "Cindy",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("dm-parent"),
+                            parentChannelName = "Cindy",
+                            // parentChannelKind intentionally omitted -> parent projection
+                            // dropped -> builder-null (the rescue precondition).
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val banner = assertNotNull(result.banner)
+        assertNull(result.suppressReason)
+        assertEquals(ConversationKind.Thread, banner.conversation.kind)
+        assertEquals("dm-parent", banner.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", banner.conversation.thread?.parentMessageId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, banner.conversation.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, banner.conversation.thread?.parentChannelKind)
+    }
+
+    @Test
     fun notificationLaunchDropsReplyThreadWhenParentKindUnresolved() {
         // t5/#419 A2: the notification source carries no typed parent kind, so an unresolvable
         // reply-thread parent yields a null open request (Pending -> null drop).
