@@ -2258,7 +2258,7 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
     )
 }
 
-private fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
+internal fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
     messageId: String,
     timeContext: SlockTimeContext
 ): WireThreadLaunchPayload {
