@@ -402,6 +402,28 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationItemKeepsDmKindAheadOfChannelType() {
+        val item =
+            SlockHomeConversationItem(
+                id = "dm-cindy",
+                name = "Cindy",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = KuiklyThreadSurfaceKind.Channel
+            )
+
+        assertTrue(item.isDirectMessageConversation())
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, item.homeChannelKind())
+    }
+
+    @Test
+    fun homeConversationItemRecognizesLegacyDirectMessageKind() {
+        val item = SlockHomeConversationItem(id = "dm-cindy", name = "Cindy", kind = "directmessage")
+
+        assertTrue(item.isDirectMessageConversation())
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, item.homeChannelKind())
+    }
+
+    @Test
     fun homeSearchChannelEntityMatchesWithOrWithoutHashPrefix() {
         val channel =
             HomeChannelRow(
