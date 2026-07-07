@@ -1322,6 +1322,122 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun launchPayloadWithUnknownSurfaceKindReturnsErrorState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-bad-surface",
+                      "surfaceKind": "spaceship",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("fallback", payload.instanceId)
+        assertEquals("error", payload.status)
+        assertEquals("payload_parse_failed", payload.errorCode)
+    }
+
+    @Test
+    fun launchPayloadWithUnknownChannelKindReturnsErrorState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-bad-kind",
+                      "surfaceKind": "channel",
+                      "channelKind": "spaceship",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("fallback", payload.instanceId)
+        assertEquals("error", payload.status)
+        assertEquals("payload_parse_failed", payload.errorCode)
+    }
+
+    @Test
+    fun launchPayloadWithUnknownParentKindReturnsErrorState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-bad-parent-kind",
+                      "surfaceKind": "thread",
+                      "sourceThreadId": "reply-stream-1",
+                      "streamChannelId": "reply-stream-1",
+                      "parentChannelId": "channel-1",
+                      "parentMessageId": "message-1",
+                      "parentSurfaceKind": "spaceship"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("fallback", payload.instanceId)
+        assertEquals("error", payload.status)
+        assertEquals("payload_parse_failed", payload.errorCode)
+    }
+
+    @Test
+    fun launchPayloadParsesPrivateChannelKindThroughContract() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-private",
+                      "surfaceKind": "channel",
+                      "channelKind": "private",
+                      "sourceThreadId": "private-1",
+                      "streamChannelId": "private-1"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("thread-private", payload.instanceId)
+        assertEquals("loading", payload.status)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("private", payload.channelKind)
+    }
+
+    @Test
+    fun launchPayloadParsesDirectChannelKindAsDirectMessage() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-direct",
+                      "surfaceKind": "channel",
+                      "channelKind": "direct",
+                      "sourceThreadId": "dm-1",
+                      "streamChannelId": "dm-1"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("thread-direct", payload.instanceId)
+        assertEquals("loading", payload.status)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.channelKind)
+        assertEquals(true, payload.memberScopedMentions)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
+    }
+
+    @Test
     fun sourceThreadLaunchPayloadStartsStoreBackedLoadingState() {
         val payload =
             parseThreadScreenPayload(

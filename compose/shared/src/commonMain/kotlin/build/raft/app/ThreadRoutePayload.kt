@@ -1,7 +1,8 @@
 package build.raft.app
 
-import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.SlockTimeFormat24Hour
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -66,13 +67,16 @@ internal data class WireThreadLaunchPayload(
             .any { !it.isNullOrBlank() }
 
     fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
-        val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-        val resolvedParentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull()
-        val resolvedParentChannelKind =
-            parentChannelKind.normalizedThreadChannelKind()
-                ?: channelKind.normalizedThreadChannelKind()
-                    .takeIf { isReplyThread && resolvedParentSurfaceKind == KuiklyThreadSurfaceKind.Channel }
-        val taskChannelKind = if (isReplyThread) resolvedParentChannelKind else channelKind.normalizedThreadChannelKind()
+        return toInitialPayloadOrNull(fallbackInstanceId)
+            ?: error("Invalid thread launch route kind")
+    }
+
+    fun toInitialPayloadOrNull(fallbackInstanceId: String): KuiklyThreadScreenPayload? {
+        val routeKinds = toThreadLaunchRouteKindsOrNull() ?: return null
+        val isReplyThread = routeKinds.isReplyThread
+        val resolvedParentSurfaceKind = routeKinds.parentSurfaceKind
+        val resolvedParentChannelKind = routeKinds.parentChannelKind
+        val taskChannelKind = if (isReplyThread) resolvedParentChannelKind else routeKinds.channelKind
         val supportsChannelTasks = !taskChannelKind.equals("joint", ignoreCase = true)
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
@@ -89,13 +93,13 @@ internal data class WireThreadLaunchPayload(
         val resolvedTitle =
             SharedThreadHeaderContextStore
                 .launchContext(
-                    surfaceKind = surfaceKind,
+                    surfaceKind = routeKinds.surfaceKind,
                     parentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
                 )
                 .title
         val resolvedComposer =
             KuiklyThreadComposerPayload(
-                surfaceKind = surfaceKind,
+                surfaceKind = routeKinds.surfaceKind,
                 seedText = composerSeedText,
                 syncNonce = composerSyncNonce,
                 focusRequestNonce = composerFocusRequestNonce,
@@ -110,10 +114,10 @@ internal data class WireThreadLaunchPayload(
             title = resolvedTitle,
             subtitle = null,
             status = "loading",
-            surfaceKind = surfaceKind,
+            surfaceKind = routeKinds.surfaceKind,
             channelKind =
-                if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
-                    channelKind?.takeIf { it.isNotBlank() } ?: KuiklyThreadSurfaceKind.Channel
+                if (routeKinds.surfaceKind == KuiklyThreadSurfaceKind.Channel) {
+                    routeKinds.channelKind ?: KuiklyThreadSurfaceKind.Channel
                 } else {
                     KuiklyThreadSurfaceKind.Channel
                 },
@@ -124,7 +128,7 @@ internal data class WireThreadLaunchPayload(
             parentSurfaceKind = resolvedParentSurfaceKind,
             parentChannelKind = resolvedParentChannelKind,
             parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
-            memberScopedMentions = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
+            memberScopedMentions = routeKinds.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
                     originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
@@ -146,8 +150,8 @@ internal data class WireThreadLaunchPayload(
             nowEpochMillis = nowEpochMillis,
             timeFormat = timeFormat,
             composer = resolvedComposer,
-            showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
-            showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+            showMembersAction = !isReplyThread && routeKinds.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+            showSettingsAction = !isReplyThread && routeKinds.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null && resolvedParentSurfaceKind != null,
             showTaskOpenActions = supportsChannelTasks,
             showTaskStatusActions = supportsChannelTasks,
@@ -170,6 +174,88 @@ internal data class WireThreadLaunchPayload(
         }
     }
 }
+
+private data class ThreadLaunchRouteKinds(
+    val kind: ConversationKind,
+    val surfaceKind: String,
+    val channelKind: String?,
+    val parentSurfaceKind: String?,
+    val parentChannelKind: String?
+) {
+    val isReplyThread: Boolean = kind == ConversationKind.Thread
+}
+
+private fun WireThreadLaunchPayload.toThreadLaunchRouteKindsOrNull(): ThreadLaunchRouteKinds? {
+    val explicitSurfaceKind = surfaceKind.nonBlank() ?: return null
+    val surfaceConversationKind = parseConversationKindOrNull(explicitSurfaceKind) ?: return null
+    val channelConversationKind =
+        channelKind.nonBlank()?.let { rawKind ->
+            parseConversationKindOrNull(rawKind) ?: return null
+        }
+    val routeKind =
+        if (surfaceConversationKind == ConversationKind.Channel && channelConversationKind != null) {
+            channelConversationKind
+        } else {
+            surfaceConversationKind
+        }
+    val normalizedSurfaceKind = routeKind.toKuiklySurfaceKind()
+    val normalizedChannelKind =
+        if (normalizedSurfaceKind == KuiklyThreadSurfaceKind.Channel) {
+            routeKind.toLaunchChannelKind(channelKind)
+        } else {
+            null
+        }
+    val parentSurfaceConversationKind =
+        parentSurfaceKind.nonBlank()?.let { rawKind ->
+            parseConversationKindOrNull(rawKind) ?: return null
+        }
+    val parentChannelConversationKind =
+        parentChannelKind.nonBlank()?.let { rawKind ->
+            parseConversationKindOrNull(rawKind) ?: return null
+        }
+    val parentKind = parentChannelConversationKind ?: parentSurfaceConversationKind
+    val parentSurface = parentKind?.toLaunchParentSurfaceKindOrNull()
+    if (parentKind != null && parentSurface == null) return null
+    val parentChannel =
+        when (parentKind) {
+            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            ConversationKind.Joint -> "joint"
+            ConversationKind.Channel ->
+                parentKind.toLaunchChannelKind(parentChannelKind)
+                    ?: normalizedChannelKind.takeIf { routeKind == ConversationKind.Thread }
+            null -> null
+            else -> return null
+        }
+    return ThreadLaunchRouteKinds(
+        kind = routeKind,
+        surfaceKind = normalizedSurfaceKind,
+        channelKind = normalizedChannelKind,
+        parentSurfaceKind = parentSurface,
+        parentChannelKind = parentChannel
+    )
+}
+
+private fun ConversationKind.toLaunchChannelKind(rawKind: String?): String? =
+    when (this) {
+        ConversationKind.Channel -> rawKind.normalizedLaunchChannelKindOrNull() ?: KuiklyThreadSurfaceKind.Channel
+        ConversationKind.Joint -> "joint"
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        else -> null
+    }
+
+private fun ConversationKind.toLaunchParentSurfaceKindOrNull(): String? =
+    when (this) {
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.Channel,
+        ConversationKind.Joint -> KuiklyThreadSurfaceKind.Channel
+        else -> null
+    }
+
+private fun String?.normalizedLaunchChannelKindOrNull(): String? =
+    nonBlank()
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { kind -> parseConversationKindOrNull(kind).let { it == ConversationKind.Channel || it == ConversationKind.Joint } }
 
 private fun WireThreadLaunchPayload.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
     val parentMessageId = originFallbackParentMessageId?.takeIf { it.isNotBlank() } ?: return null
@@ -303,7 +389,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
         threadPageJson
             .decodeFromString(WireThreadLaunchPayload.serializer(), source)
             .takeIf { it.hasRouteIdentity() }
-            ?.toInitialPayload(instanceId)
+            ?.toInitialPayloadOrNull(instanceId)
     }.getOrNull()
 
 internal fun String?.threadLaunchParentSurfaceKindOrNull(): String? =
