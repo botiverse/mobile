@@ -13,18 +13,18 @@
     "mode": "element",
     "contract": "component-bounds",
     "rect": {
-      "x": 16,
-      "y": 16,
-      "width": 342,
-      "height": 828
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
     },
     "targetRect": {
-      "x": 16,
-      "y": 16,
-      "width": 342,
-      "height": 828
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 844
     },
     "outset": null
   },
-  "capturedAt": "2026-07-07T17:33:00.837Z"
+  "capturedAt": "2026-07-07T22:03:37.076Z"
 }

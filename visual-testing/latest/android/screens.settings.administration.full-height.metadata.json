@@ -4,7 +4,7 @@
               "source": "kmp-shared",
               "caseId": "screens.settings.administration.full-height",
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.settings.administration.full-height.png",
-              "viewport": { "width": 1170, "height": 7382, "density": 1 },
+              "viewport": { "width": 1170, "height": 7500, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
@@ -16,8 +16,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 491,
-                  "dominantRatio": 0.81510967
+                  "uniqueColors": 520,
+                  "dominantRatio": 0.81302154
                 }
               },
               "diagnostics": {
@@ -25,12 +25,12 @@
     "displayHeightPx": 7310,
     "densityDpi": 480,
     "rootWidthPx": 1170,
-    "rootHeightPx": 7382,
+    "rootHeightPx": 7500,
     "hardwareAccelerated": true,
-    "totalViews": 349,
+    "totalViews": 348,
     "laidOutViews": 345,
     "visibleContentLeafViews": 4
 },
               "clampedToShortWindow": true,
-              "capturedAt": "1783446769848"
+              "capturedAt": "1783462792020"
             }

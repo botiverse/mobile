@@ -12,25 +12,25 @@
                 "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
               },
               "capture": {
-                "method": "ui-automation-take-screenshot-viewport-crop",
+                "method": "app-window-root-draw-viewport-density-resize",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 714,
-                  "dominantRatio": 0.7782963
+                  "uniqueColors": 546,
+                  "dominantRatio": 0.78314495
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2460,
+    "displayHeightPx": 2342,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 181,
+    "totalViews": 180,
     "laidOutViews": 178,
     "visibleContentLeafViews": 7
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783446618213"
+              "capturedAt": "1783462658358"
             }

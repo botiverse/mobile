@@ -1,11 +1,11 @@
 # Raft Visual Testing
 
-Generated: 2026-07-07 18:05:08 UTC
-Latest run: 04bbe8e-20260707180439
-Latest commit: 04bbe8e-20260707180439
-Commit subject: fix(home): resolve foreground banner identity by provenance
+Generated: 2026-07-07 22:26:27 UTC
+Latest run: b0f6a2f-20260707222554
+Latest commit: b0f6a2f-20260707222554
+Commit subject: fix(home): no dismiss-activation delay for click-opened popovers (task #436 follow-up) (#313)
 Providers: react vs android
-Summary: total 87, same 0, pass 0, basic-pass 5, different 78, missing 4
+Summary: total 87, same 0, pass 0, basic-pass 5, different 80, missing 2
 AI analysis: ready 0 / total 87, pending 87
 Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
@@ -110,6 +110,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- b0f6a2f-20260707222554: react vs android, total 87, pass 0, basic-pass 5, different 80, matrix runs/b0f6a2f-20260707222554/component-matrix.json, page runs/b0f6a2f-20260707222554/
 - 04bbe8e-20260707180439: react vs android, total 87, pass 0, basic-pass 5, different 78, matrix runs/04bbe8e-20260707180439/component-matrix.json, page runs/04bbe8e-20260707180439/
 - 1dcb122-20260706223444: react vs android, total 84, pass 0, basic-pass 4, different 75, matrix runs/1dcb122-20260706223444/component-matrix.json, page runs/1dcb122-20260706223444/
 - 6abae56-20260706130112: react vs android, total 84, pass 0, basic-pass 5, different 67, matrix runs/6abae56-20260706130112/component-matrix.json, page runs/6abae56-20260706130112/

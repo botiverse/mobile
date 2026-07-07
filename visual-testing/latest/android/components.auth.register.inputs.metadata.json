@@ -4,7 +4,7 @@
               "source": "kmp-shared",
               "caseId": "components.auth.register.inputs",
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.auth.register.inputs.png",
-              "viewport": { "width": 1170, "height": 2414, "density": 1 },
+              "viewport": { "width": 1170, "height": 2532, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
@@ -17,20 +17,20 @@
                 "systemBars": "hidden",
                 "validation": {
                   "uniqueColors": 395,
-                  "dominantRatio": 0.81121516
+                  "dominantRatio": 0.81993866
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
-    "rootHeightPx": 2414,
+    "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 74,
+    "totalViews": 73,
     "laidOutViews": 70,
     "visibleContentLeafViews": 5
 },
-              "clampedToShortWindow": true,
-              "capturedAt": "1783447162973"
+              "clampedToShortWindow": false,
+              "capturedAt": "1783462926910"
             }
