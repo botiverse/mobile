@@ -74,7 +74,8 @@ data class ThreadMarkdownTag(
     val label: String,
     val kind: ThreadMarkdownTagKind,
     val channelName: String? = null,
-    val threadShortId: String? = null
+    val threadShortId: String? = null,
+    val explicitTaskPrefix: Boolean = false
 )
 
 enum class ThreadMarkdownTagKind {
@@ -314,7 +315,13 @@ private fun String.threadMarkdownInlineScan(
     val inlineContentIdPrefix = inlineContentScope.toSlockMarkdownInlineContentIdPrefix()
     val tagMatches =
         threadInlineTagRanges(protectedRanges).mapNotNull { range ->
-            substring(range).toThreadMarkdownTagOrNull()?.let { tag ->
+            val label = substring(range)
+            label.toThreadMarkdownTagOrNull(
+                explicitTaskPrefix =
+                    label.startsWith('#') &&
+                        label.drop(1).all { it.isDigit() } &&
+                        hasThreadTaskReferencePrefix(range.first)
+            )?.let { tag ->
                 ThreadInlineTagMatch(
                     id = "$inlineContentIdPrefix:${baseOffset + range.first}",
                     tag = tag,
@@ -421,10 +428,11 @@ private fun Set<String>.containsThreadMention(label: String): Boolean {
     return key.isNotBlank() && contains(key)
 }
 
-private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
+private fun String.toThreadMarkdownTagOrNull(explicitTaskPrefix: Boolean = false): ThreadMarkdownTag? =
     when {
         startsWith('@') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.UserMention)
-        drop(1).all { it.isDigit() } -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task)
+        drop(1).all { it.isDigit() } ->
+            ThreadMarkdownTag(this, ThreadMarkdownTagKind.Task, explicitTaskPrefix = explicitTaskPrefix)
         isThreadChannelReference() -> {
             val channel = substringAfter("#").substringBefore(":")
             val shortId = substringAfter(":")
@@ -521,6 +529,17 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
         return null
     }
     return start until nameEndExclusive
+}
+
+private fun String.hasThreadTaskReferencePrefix(hashIndex: Int): Boolean {
+    var index = hashIndex - 1
+    while (index >= 0 && this[index].isWhitespace()) index--
+    val wordEndExclusive = index + 1
+    while (index >= 0 && this[index].isLetter()) index--
+    val wordStart = index + 1
+    if (wordStart == wordEndExclusive) return false
+    if (!substring(wordStart, wordEndExclusive).equals("task", ignoreCase = true)) return false
+    return index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
 }
 
 private fun Char.isThreadMentionPart(): Boolean =

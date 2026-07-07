@@ -182,7 +182,11 @@ class SlockMarkdownTest {
             - 请看 #markdown专修
             - 继续看 #markdown专修:7933cf78 和 #50
             """.trimIndent()
-        val isTagValid = validThreadMarkdownTags(knownChannels = setOf("markdown专修"))
+        val isTagValid =
+            validThreadMarkdownTags(
+                knownChannels = setOf("markdown专修"),
+                knownTaskNumbers = setOf(50)
+            )
         val rendered =
             renderSlockMarkdownListItemAnnotatedStrings(
                 content = body,
@@ -324,7 +328,8 @@ class SlockMarkdownTest {
                         isTagValid =
                             validThreadMarkdownTags(
                                 knownChannels = setOf("markdown专修"),
-                                knownMentions = setOf("Android-App-Integrator")
+                                knownMentions = setOf("Android-App-Integrator"),
+                                knownTaskNumbers = setOf(15)
                             )
                     )
             )
@@ -520,7 +525,8 @@ class SlockMarkdownTest {
         val validator =
             validThreadMarkdownTags(
                 knownChannels = setOf("markdown专修"),
-                knownMentions = setOf("artin", "Android-App-Integrator")
+                knownMentions = setOf("artin", "Android-App-Integrator"),
+                knownTaskNumbers = setOf(42)
             )
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
@@ -572,9 +578,52 @@ class SlockMarkdownTest {
 
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
+        assertEquals(setOf("slock:0"), annotated.slockMarkdownClickableTags())
+        assertTrue(annotated.slockMarkdownTagChromeAnnotations().isEmpty())
+        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+    }
+
+    @Test
+    fun bareNumericTaskReferencesRequireKnownTaskNumbers() {
+        val body = "@KMP-专家 #520 Phase 5"
+        val validator =
+            validThreadMarkdownTags(
+                knownMentions = setOf("KMP-专家"),
+                knownTaskNumbers = setOf(520)
+            )
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator = slockMarkdownAnnotator(body, isTagValid = validator)
+            )
+
         assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
         assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
-        assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+    }
+
+    @Test
+    fun explicitTaskReferencesRenderWithoutKnownTaskNumbers() {
+        val body = "Please review task #520 before merge"
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                isTagValid = validThreadMarkdownTags()
+            )
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        isTagValid = validThreadMarkdownTags(),
+                        tokenPlan = plan
+                    )
+            )
+
+        assertEquals(listOf("#520"), plan.tagTokens().map { it.label })
+        assertTrue(plan.tagTokens().single().tag?.explicitTaskPrefix == true)
+        assertEquals(setOf("slock:19"), annotated.slockMarkdownClickableTags())
+        assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
     }
 
     @Test
@@ -590,7 +639,8 @@ class SlockMarkdownTest {
                 isTagValid =
                     validThreadMarkdownTags(
                         knownChannels = setOf("raft-mobile"),
-                        knownMentions = setOf("artin")
+                        knownMentions = setOf("artin"),
+                        knownTaskNumbers = setOf(25)
                     )
             )
         val tokens = plan.tagTokens()
@@ -861,7 +911,11 @@ class SlockMarkdownTest {
             slockMarkdownAnnotator(
                 content = body,
                 highlightedMentions = setOf("artin"),
-                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownMentions = setOf("artin"),
+                        knownTaskNumbers = setOf(405)
+                    )
             )
 
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
@@ -905,7 +959,8 @@ class SlockMarkdownTest {
                 isTagValid =
                     validThreadMarkdownTags(
                         knownChannels = setOf("markdown专修"),
-                        knownMentions = setOf("artin")
+                        knownMentions = setOf("artin"),
+                        knownTaskNumbers = setOf(405)
                     )
             )
 
@@ -956,7 +1011,8 @@ class SlockMarkdownTest {
         val isTagValid =
             validThreadMarkdownTags(
                 knownChannels = setOf("markdown专修"),
-                knownMentions = setOf("artin")
+                knownMentions = setOf("artin"),
+                knownTaskNumbers = setOf(37)
             )
         val plan = SlockMarkdownInlineTokenRegistry.plan(body, isTagValid = isTagValid)
         val annotated =
@@ -1083,7 +1139,11 @@ class SlockMarkdownTest {
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
-                isTagValid = validThreadMarkdownTags(knownMentions = setOf("artin"))
+                isTagValid =
+                    validThreadMarkdownTags(
+                        knownMentions = setOf("artin"),
+                        knownTaskNumbers = setOf(25)
+                    )
             )
 
         assertEquals(listOf("@artin", "#25"), plan.tagTokens().map { it.label })
@@ -1265,13 +1325,16 @@ class SlockMarkdownTest {
 
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),
-        knownMentions: Set<String> = emptySet()
+        knownMentions: Set<String> = emptySet(),
+        knownTaskNumbers: Set<Int> = emptySet()
     ): (ThreadMarkdownTag) -> Boolean {
         val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
         return { tag ->
             when (tag.kind) {
-                ThreadMarkdownTagKind.Task -> true
+                ThreadMarkdownTagKind.Task ->
+                    tag.explicitTaskPrefix ||
+                        tag.label.removePrefix("#").trim().toIntOrNull()?.let { it in knownTaskNumbers } == true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
                 ThreadMarkdownTagKind.Channel,

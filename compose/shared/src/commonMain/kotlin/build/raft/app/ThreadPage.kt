@@ -1211,14 +1211,26 @@ private fun KuiklyThreadScreenPayload.toKnownMarkdownMentionNameSet(): Set<Strin
         messages.forEach { message -> addKnownThreadMentionValues(message) }
     }
 
+private fun KuiklyThreadScreenPayload.toKnownMarkdownTaskNumberSet(
+    linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection()
+): Set<Int> =
+    buildSet {
+        tasks.mapNotNullTo(this) { task -> task.taskNumber }
+        originMessage?.taskNumber?.let(::add)
+        messages.mapNotNullTo(this) { message -> message.taskNumber }
+        linkedTasksProjection.lookup.values.mapNotNullTo(this) { task -> task.taskNumber }
+    }
+
 private fun threadMarkdownTagContextSignature(
     highlightedMentions: Set<String>,
     knownChannelNames: Set<String>,
-    knownMentionNames: Set<String>
+    knownMentionNames: Set<String>,
+    knownTaskNumbers: Set<Int>
 ): String =
     "highlighted=${highlightedMentions.size}:${highlightedMentions.hashCode().toString(16)} " +
         "channels=${knownChannelNames.size}:${knownChannelNames.hashCode().toString(16)} " +
-        "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)}"
+        "mentions=${knownMentionNames.size}:${knownMentionNames.hashCode().toString(16)} " +
+        "tasks=${knownTaskNumbers.size}:${knownTaskNumbers.hashCode().toString(16)}"
 
 private fun MutableSet<String>.addKnownThreadMentionValues(member: KuiklyThreadMemberItem) {
     addKnownThreadMentionValue(member.id)
@@ -1239,10 +1251,13 @@ private fun MutableSet<String>.addKnownThreadMentionValue(value: String?) {
 
 private fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
     knownChannelNames: Set<String>,
-    knownMentionNames: Set<String>
+    knownMentionNames: Set<String>,
+    knownTaskNumbers: Set<Int>
 ): Boolean =
     when (kind) {
-        ThreadMarkdownTagKind.Task -> true
+        ThreadMarkdownTagKind.Task ->
+            explicitTaskPrefix ||
+                label.removePrefix("#").trim().toIntOrNull()?.let { it in knownTaskNumbers } == true
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
         ThreadMarkdownTagKind.Channel,
         ThreadMarkdownTagKind.ChannelThread -> {
@@ -1951,16 +1966,21 @@ private fun ThreadMessageVisualScreenContent() {
         remember(payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    val knownMarkdownTaskNumbers =
+        remember(payload.tasks, payload.originMessage, payload.messages) {
+            payload.toKnownMarkdownTaskNumberSet()
+        }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
+        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames) {
+        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
-                knownMentionNames = knownMarkdownMentionNames
+                knownMentionNames = knownMarkdownMentionNames,
+                knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
     val visualReplyMetadataByParentId =
@@ -7843,16 +7863,21 @@ private fun ThreadPageContent(
         remember(payload.members, payload.memberCandidates, payload.originMessage, payload.messages) {
             payload.toKnownMarkdownMentionNameSet()
         }
+    val knownMarkdownTaskNumbers =
+        remember(payload.tasks, payload.originMessage, payload.messages, linkedTasksProjection) {
+            payload.toKnownMarkdownTaskNumberSet(linkedTasksProjection)
+        }
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean =
-        remember(knownMarkdownChannelNames, knownMarkdownMentionNames) {
-            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames) }
+        remember(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
+            { tag -> tag.isKnownThreadMarkdownTag(knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) }
         }
     val markdownTagContextSignature =
-        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames) {
+        remember(highlightedMentions, knownMarkdownChannelNames, knownMarkdownMentionNames, knownMarkdownTaskNumbers) {
             threadMarkdownTagContextSignature(
                 highlightedMentions = highlightedMentions,
                 knownChannelNames = knownMarkdownChannelNames,
-                knownMentionNames = knownMarkdownMentionNames
+                knownMentionNames = knownMarkdownMentionNames,
+                knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
     val resolveMarkdownTagLabel =
