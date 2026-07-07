@@ -1,0 +1,128 @@
+package build.raft.app
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
+
+class ThreadSendEchoAbsorptionTest {
+
+    private fun pendingShadow(
+        id: String = "${ThreadTransientLocalSendIdPrefix}1",
+        body: String = "hello",
+        asTask: Boolean = false,
+        attachmentIds: List<String> = emptyList(),
+        deliveryState: String = ThreadMessageDeliverySending,
+        authorId: String = "user-1"
+    ): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = authorId,
+            authorName = "Me",
+            isOwn = true,
+            body = body,
+            deliveryState = deliveryState,
+            pendingSendContext =
+                KuiklyThreadPendingSendContext(
+                    channelId = "channel-1",
+                    body = body,
+                    asTask = asTask,
+                    attachmentIds = attachmentIds
+                )
+        )
+
+    private fun canonicalEcho(
+        id: String = "canonical-1",
+        body: String = "hello",
+        taskId: String? = null,
+        attachmentIds: List<String> = emptyList(),
+        isOwn: Boolean = true,
+        authorId: String = "user-1"
+    ): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = authorId,
+            authorName = "Me",
+            isOwn = isOwn,
+            body = body,
+            taskId = taskId,
+            attachments =
+                attachmentIds.map { attachmentId ->
+                    KuiklyThreadAttachmentItem(id = attachmentId, name = "file-$attachmentId")
+                }
+        )
+
+    @Test
+    fun matchingCanonicalEchoAbsorbsPendingShadowExactlyOnce() {
+        val shadow = pendingShadow()
+        val echo = canonicalEcho()
+        val other = canonicalEcho(id = "canonical-2", body = "unrelated")
+
+        val absorbed = listOf(other, shadow).absorbingCanonicalSendEchoes(listOf(echo))
+
+        assertEquals(listOf(other), absorbed)
+        // Second application is a no-op: the shadow is gone and nothing else matches.
+        val again = absorbed.absorbingCanonicalSendEchoes(listOf(echo))
+        assertSame(absorbed, again)
+    }
+
+    @Test
+    fun rpcLostButPushEchoDeliveredStillAbsorbsShadow() {
+        // The send RPC response never arrived, so the shadow is still "sending".
+        // The canonical message arrives later via push; absorption must not
+        // depend on the RPC ack path.
+        val shadow = pendingShadow(body = "offline send")
+        val pushEcho = canonicalEcho(body = "offline send")
+
+        val absorbed = listOf(shadow).absorbingCanonicalSendEchoes(listOf(pushEcho))
+
+        assertTrue(absorbed.isEmpty())
+    }
+
+    @Test
+    fun noMatchingEchoKeepsListReferenceIdentity() {
+        val shadow = pendingShadow(body = "hello")
+        val messages = listOf(shadow)
+
+        assertSame(messages, messages.absorbingCanonicalSendEchoes(listOf(canonicalEcho(body = "different"))))
+        assertSame(messages, messages.absorbingCanonicalSendEchoes(emptyList()))
+    }
+
+    @Test
+    fun mismatchedContentIsNotAbsorbed() {
+        val shadow = pendingShadow(body = "hello", attachmentIds = listOf("a1"))
+
+        val differentBody = canonicalEcho(body = "hello!", attachmentIds = listOf("a1"))
+        val differentAttachments = canonicalEcho(body = "hello", attachmentIds = listOf("a2"))
+        val taskEcho = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), taskId = "task-1")
+        val otherAuthor = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), authorId = "user-2")
+        val notOwn = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), isOwn = false)
+
+        for (echo in listOf(differentBody, differentAttachments, taskEcho, otherAuthor, notOwn)) {
+            assertEquals(listOf(shadow), listOf(shadow).absorbingCanonicalSendEchoes(listOf(echo)))
+        }
+    }
+
+    @Test
+    fun failedShadowIsRetainedForRetry() {
+        // A failed local send must stay visible/retryable even when a canonical
+        // message with identical content arrives.
+        val failed = pendingShadow(deliveryState = ThreadMessageDeliveryFailed)
+
+        val absorbed = listOf(failed).absorbingCanonicalSendEchoes(listOf(canonicalEcho()))
+
+        assertEquals(listOf(failed), absorbed)
+    }
+
+    @Test
+    fun canonicalRowsAreNeverAbsorbed() {
+        // Only transient local shadows may be removed; canonical rows with the
+        // same body are untouched (dedup by id happens at the merge layer).
+        val canonicalA = canonicalEcho(id = "canonical-a")
+        val canonicalB = canonicalEcho(id = "canonical-b")
+
+        val absorbed = listOf(canonicalA).absorbingCanonicalSendEchoes(listOf(canonicalB))
+
+        assertEquals(listOf(canonicalA), absorbed)
+    }
+}
