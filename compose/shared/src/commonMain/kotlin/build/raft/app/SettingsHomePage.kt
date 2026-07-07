@@ -14683,12 +14683,18 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     directoryProjection: SharedConversationDirectoryProjection? = null
 ): SlockHomeConversationItem {
     val title = resolvedDirectoryTitle(directoryProjection)
-    val resolvedKind = directoryProjection?.conversationKind ?: kind
+    val projectedChannelType =
+        directoryProjection
+            ?.takeIf { projection -> projection.conversationKind == kind }
+            ?.channelKind
+            ?.takeIf { it.isNotBlank() }
     return SlockHomeConversationItem(
         id = id,
         name = title,
-        kind = resolvedKind.toKuiklySurfaceKind(),
-        channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: fallbackChannelType,
+        // The row seed is the Home identity source. Directory projection enriches display/state
+        // fields, but cannot rewrite the row's conversation kind (§5).
+        kind = kind.toKuiklySurfaceKind(),
+        channelType = projectedChannelType ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
         description = directoryProjection?.subtitle ?: fallbackDescription,
