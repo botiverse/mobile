@@ -3,22 +3,17 @@ package build.raft.app
 /**
  * The SINGLE absorption point for canonical send echoes.
  *
- * DEPRECATED (migration-period heuristic — do not extend):
- * this matches a locally-sent pending shadow against a canonical message by
- * content (author + body + task flag + attachment id set). Per
- * `docs/kmp-data-flow-and-sync-contract-binding-2026-07-07.md` §4 (RFC 038
- * §6), the target contract is exact-id absorption via a client-generated
- * `random_id` (wire field `randomId`, artin ruling 2026-07-07 / task #83)
- * echoed back by the server. The server does not echo it yet;
- * once it does, this function switches to exact matching and the content
- * heuristic becomes a fallback with a removal milestone.
+ * Primary matching is exact `random_id` (wire field `randomId`, artin ruling
+ * 2026-07-07 / task #83) echoed by the server. The old content heuristic is a
+ * migration fallback only when the canonical row lacks `randomId`; remove it
+ * after the randomId-capable server is fully deployed.
  *
  * Rules until then:
  * - Every merge path that folds canonical messages into a timeline holding
  *   local pending shadows MUST call this function. Do not inline or fork the
  *   matching logic at call sites.
- * - Do not add new matching dimensions (timestamps are forbidden in decision
- *   paths; see binding doc §3 obligation 5).
+ * - Do not add new heuristic matching dimensions (timestamps are forbidden in
+ *   decision paths; see binding doc §3 obligation 5).
  */
 internal fun List<KuiklyThreadMessageItem>.absorbingCanonicalSendEchoes(
     canonicalMessages: List<KuiklyThreadMessageItem>
@@ -48,6 +43,9 @@ private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
     if (canonicalMessage.id == id || canonicalMessage.isTransientLocalSendingMessage()) return false
     if (canonicalMessage.pendingSendContext != null) return false
     if (!canonicalMessage.isOwn) return false
+    val localRandomId = context.randomId?.takeIf { it.isNotBlank() }
+    val canonicalRandomId = canonicalMessage.randomId?.takeIf { it.isNotBlank() }
+    if (canonicalRandomId != null) return localRandomId == canonicalRandomId
     if (authorId.isNotBlank() && canonicalMessage.authorId.isNotBlank() && authorId != canonicalMessage.authorId) {
         return false
     }

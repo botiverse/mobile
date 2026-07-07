@@ -422,7 +422,8 @@ class RealConversationRepository(
         channelId: ChannelId,
         body: String,
         attachmentIds: List<AttachmentId>,
-        asTask: Boolean
+        asTask: Boolean,
+        randomId: String?
     ): DataResult<SendMessageResult> {
         val context = currentContext() ?: return authRequired()
         if (body.isBlank() && attachmentIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
@@ -435,7 +436,8 @@ class RealConversationRepository(
                         channelId = channelId.value,
                         body = body,
                         attachmentIds = attachmentIds.map { it.value },
-                        asTask = asTask
+                        asTask = asTask,
+                        randomId = randomId
                     )
                 )
             },

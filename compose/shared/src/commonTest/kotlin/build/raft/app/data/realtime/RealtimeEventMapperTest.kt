@@ -163,6 +163,7 @@ class RealtimeEventMapperTest {
                   "senderName": "Artin",
                   "senderMembershipStatus": "active",
                   "content": "hello world",
+                  "randomId": "rid-realtime-1",
                   "attachments": [
                     {
                       "id": "att-1",
@@ -187,6 +188,7 @@ class RealtimeEventMapperTest {
         assertEquals("Artin", message.author.displayName)
         assertEquals("active", message.senderMembershipStatus)
         assertEquals("hello world", message.body)
+        assertEquals("rid-realtime-1", message.randomId)
 
         val attachment = message.attachments.single()
         assertEquals("att-1", attachment.id.value)

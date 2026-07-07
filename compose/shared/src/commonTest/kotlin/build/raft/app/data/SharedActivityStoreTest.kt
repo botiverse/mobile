@@ -1224,7 +1224,8 @@ class SharedActivityStoreTest {
             channelId: ChannelId,
             body: String,
             attachmentIds: List<AttachmentId>,
-            asTask: Boolean
+            asTask: Boolean,
+            randomId: String?
         ): DataResult<SendMessageResult> =
             error("unused")
     }
