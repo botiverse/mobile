@@ -9,24 +9,30 @@ internal object KuiklyThreadSurfaceKind {
     const val ReplyThread = "thread"
 }
 
+// t5/#419 finale: the ConversationSummary thread-surface family delegates to the canonical
+// ThreadLaunchConversationIdentity extensions (the conversion is a plain field copy), so the
+// semantics live exactly once. Kind projections route through the #417 contract.
+
 internal fun ConversationSummary.threadSurfaceKind(): String =
-    when (kind) {
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-        ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-        else -> KuiklyThreadSurfaceKind.Channel
-    }
+    toThreadLaunchConversationIdentity().threadSurfaceKind()
 
 internal fun ConversationSummary.usesMemberScopedMentions(): Boolean =
-    kind == ConversationKind.DirectMessage ||
-        kind == ConversationKind.Joint ||
-        channelType.isMemberScopedThreadChannelType()
+    toThreadLaunchConversationIdentity().usesMemberScopedMentions()
 
-private fun String?.isMemberScopedThreadChannelType(): Boolean =
+internal fun String?.isMemberScopedThreadChannelType(): Boolean =
+    // Member-scoping heuristic over the row's channelType — intentionally NOT a kind parse
+    // (visibility values like "private" scope mentions too); single copy, both families use it.
     when (this?.trim()?.lowercase()) {
         "dm", "direct", "direct_message", "direct-message", "private", "joint" -> true
         else -> false
     }
 
+/**
+ * Qualified parent-surface projection: a reply thread's PARENT can only be a dm or channel
+ * surface — Thread/System/Inbox (and unknown) are not valid parent shapes and project to
+ * null for the caller to treat as unresolved. This is intentionally narrower than
+ * [toKuiklySurfaceKind] (which maps Thread to "thread").
+ */
 internal fun ConversationKind?.threadParentSurfaceKindOrNull(): String? =
     when (this) {
         ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
@@ -35,60 +41,36 @@ internal fun ConversationKind?.threadParentSurfaceKindOrNull(): String? =
         else -> null
     }
 
-private fun String?.threadParentSurfaceKindOrNull(): String? =
-    when (this?.trim()?.lowercase()) {
-        KuiklyThreadSurfaceKind.DirectMessage,
-        "direct_message",
-        "direct-message",
-        "directmessage",
-        "direct" -> KuiklyThreadSurfaceKind.DirectMessage
-        KuiklyThreadSurfaceKind.Channel,
-        "public",
-        "private",
-        "joint",
-        "group" -> KuiklyThreadSurfaceKind.Channel
-        else -> null
-    }
+/**
+ * String form of the qualified parent projection: parse through the #417 contract, then
+ * qualify. Exact parity with the legacy per-file vocab tables (incl. "direct" -> dm and
+ * "thread"/"system" -> null) — the vocabulary now lives only in the contract.
+ */
+internal fun String?.parsedThreadParentSurfaceKindOrNull(): String? =
+    parseConversationKindOrNull(this).threadParentSurfaceKindOrNull()
 
 internal fun ConversationSummary.threadStreamChannelId(): String? =
-    thread?.streamChannelId?.value
-        ?: if (kind == ConversationKind.Thread) {
-            null
-        } else {
-            channelId?.value ?: threadId.value
-        }
+    toThreadLaunchConversationIdentity().threadStreamChannelId()
 
 internal fun ConversationSummary.threadParentChannelId(): String? =
-    thread?.parentChannelId?.value
+    toThreadLaunchConversationIdentity().threadParentChannelId()
 
 internal fun ConversationSummary.threadParentMessageId(): String? =
-    thread?.parentMessageId?.value
+    toThreadLaunchConversationIdentity().threadParentMessageId()
 
 internal fun ConversationSummary.threadParentSurfaceKind(): String? =
-    thread?.parentSurfaceKind.threadParentSurfaceKindOrNull()
-        ?: if (kind == ConversationKind.Thread) {
-            channelType.threadParentSurfaceKindOrNull()
-        } else {
-            null
-        }
+    toThreadLaunchConversationIdentity().threadParentSurfaceKind()
 
 internal fun ConversationSummary.threadParentChannelKind(): String? =
-    thread?.parentChannelKind.normalizedThreadChannelKind()
-        ?: if (kind == ConversationKind.Thread) {
-            channelType.normalizedThreadChannelKind()
-        } else {
-            null
-        }
+    toThreadLaunchConversationIdentity().threadParentChannelKind()
 
 internal fun ConversationKind?.threadChannelKindWireValue(): String? =
-    when (this) {
-        ConversationKind.Channel -> KuiklyThreadSurfaceKind.Channel
-        ConversationKind.Joint -> "joint"
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-        else -> null
-    }
+    // Same table as the #417 bridge projection (parity pinned by ConversationKindContractTest).
+    this?.toWireChannelKindOrNull()
 
 internal fun String?.normalizedThreadChannelKind(): String? =
+    // Verbatim passthrough by design (contract rule 4): channel-kind strings may carry
+    // visibility ("public"/"private") that a kind parse would collapse; normalization only.
     this?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
 
 internal fun threadSurfaceComposerPlaceholder(
