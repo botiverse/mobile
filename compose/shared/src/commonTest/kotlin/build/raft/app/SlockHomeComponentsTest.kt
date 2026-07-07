@@ -273,6 +273,32 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationTitleProjectionUsesActivityMutedAxis() {
+        assertEquals(
+            SlockColor.TextMutedGray,
+            homeConversationTitleColor(muted = true, joined = true)
+        )
+        assertEquals(
+            SlockColor.TextMutedGray,
+            homeConversationTitleColor(muted = true, joined = false)
+        )
+        assertEquals(
+            SlockColor.TextBlack,
+            homeConversationTitleColor(muted = false, joined = true)
+        )
+        assertEquals(
+            SlockColor.TextBlack.copy(alpha = 0.46f),
+            homeConversationTitleColor(muted = false, joined = false)
+        )
+    }
+
+    @Test
+    fun homeConversationMutedIndicatorUsesBellOffOnlyWhenMuted() {
+        assertEquals(SlockLucideIconName.BellOff, homeConversationMutedIndicatorIcon(muted = true))
+        assertNull(homeConversationMutedIndicatorIcon(muted = false))
+    }
+
+    @Test
     fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
         assertEquals(
             HomeActivitySidebarProjection(unreadLabel = "99+", totalLabel = null),
