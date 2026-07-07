@@ -420,7 +420,7 @@ internal fun slockForegroundMessageBannerProjectionResult(
         return SlockForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
     val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
-    val context = message.resolveForegroundBannerContext(projection, conversationDirectory)
+    val context = conversation.resolveForegroundBannerContext(projection, conversationDirectory)
     val threadContext = projection.resolveForegroundBannerThreadContext(conversation)
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)
     val iconName = projection.resolveForegroundBannerIconName(conversation)
@@ -575,35 +575,49 @@ private fun Message.resolveForegroundBannerConversation(
     return null
 }
 
-private fun Message.resolveForegroundBannerContext(
-    projection: SharedConversationDirectoryProjection?,
+// task #437 SSOT: banner display labels derive from ONE chain — the resolved
+// conversation identity plus the directory rows its ids address (parent channel for a
+// thread, peer/self row for a DM or channel). The message's own stream projection is
+// no longer a private entry point for labels; it is just an addressable row, used only
+// as a title fallback when the identity's ids resolve nothing. Whether that stream row
+// exists (Activity snapshot) or the identity came from a typed conversationContext,
+// the label path is identical — display enrichment only, identity untouched (§5).
+private fun ThreadLaunchConversationIdentity.resolveForegroundBannerContext(
+    streamProjection: SharedConversationDirectoryProjection?,
     directory: SharedConversationDirectoryState
-): String {
-    val source =
-        projection
-            ?.toForegroundBannerSourceLabel(directory)
-    val surface = projection?.toForegroundBannerSurfaceLabel() ?: fallbackForegroundBannerSurfaceLabel()
-    return listOfNotNull(
-        source,
-        surface
+): String =
+    listOfNotNull(
+        foregroundBannerSourceLabel(streamProjection, directory),
+        foregroundBannerSurfaceLabel()
     ).distinct().joinToString(" - ")
-}
 
-private fun SharedConversationDirectoryProjection.toForegroundBannerSourceLabel(
+private fun ThreadLaunchConversationIdentity.foregroundBannerSourceLabel(
+    streamProjection: SharedConversationDirectoryProjection?,
     directory: SharedConversationDirectoryState
 ): String? =
-    when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage ->
-            safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId, peerMemberId.orEmpty()) + aliases)
+    when (kind) {
+        ConversationKind.DirectMessage ->
+            foregroundBannerSelfRow(streamProjection, directory)
+                ?.let { row ->
+                    row.safeForegroundBannerTitle(
+                        identityIds = setOfNotNull(channelId?.value, threadId.value, row.peerMemberId)
+                    )
+                }
                 ?.let { "@$it" }
-        KuiklyThreadSurfaceKind.ReplyThread -> {
-            val parentProjection = parentChannelId?.let(directory::resolve)
+        ConversationKind.Thread -> {
+            val parentChannelId = thread?.parentChannelId?.value ?: channelId?.value
+            // The parent id can alias the reply thread's own row; a parent is never a
+            // reply thread — treat that as an unresolved parent (same rule as
+            // toThreadLaunchConversationIdentity).
+            val parentRow =
+                directory.resolve(parentChannelId)
+                    ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+            val identityIds = setOfNotNull(parentChannelId, thread?.parentMessageId?.value, threadId.value)
             val title =
-                parentProjection
-                    ?.safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
-                    ?: safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
+                parentRow?.safeForegroundBannerTitle(identityIds = identityIds)
+                    ?: streamProjection?.safeForegroundBannerTitle(identityIds = identityIds)
             title?.let { value ->
-                if (parentProjection?.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                if (parentRow?.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
                     "@${value.removePrefix("@")}"
                 } else {
                     "#${value.removePrefix("#")}"
@@ -611,19 +625,30 @@ private fun SharedConversationDirectoryProjection.toForegroundBannerSourceLabel(
             }
         }
         else ->
-            safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId) + aliases)
+            foregroundBannerSelfRow(streamProjection, directory)
+                ?.let { row ->
+                    row.safeForegroundBannerTitle(identityIds = setOfNotNull(channelId?.value, threadId.value))
+                }
                 ?.let { "#$it" }
     }
+
+private fun ThreadLaunchConversationIdentity.foregroundBannerSelfRow(
+    streamProjection: SharedConversationDirectoryProjection?,
+    directory: SharedConversationDirectoryState
+): SharedConversationDirectoryProjection? =
+    streamProjection
+        ?: directory.resolve(channelId?.value)
+        ?: directory.resolve(threadId.value)
 
 private fun SharedConversationDirectoryProjection.safeForegroundBannerTitle(
     identityIds: Set<String> = emptySet()
 ): String? =
     conversationSafeDisplayTitleOrNull(title, identityIds + canonicalChannelId + aliases)
 
-private fun SharedConversationDirectoryProjection.toForegroundBannerSurfaceLabel(): String? =
-    when (surfaceKind) {
-        KuiklyThreadSurfaceKind.DirectMessage -> "direct message"
-        KuiklyThreadSurfaceKind.ReplyThread -> "thread"
+private fun ThreadLaunchConversationIdentity.foregroundBannerSurfaceLabel(): String? =
+    when (kind) {
+        ConversationKind.DirectMessage -> "direct message"
+        ConversationKind.Thread -> "thread"
         else -> null
     }
 
@@ -645,12 +670,6 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerIconNa
         this?.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> SlockLucideIconName.MessageSquare
         conversation.kind == ConversationKind.Thread -> SlockLucideIconName.MessageSquare
         else -> this?.channelKind.threadChannelHeaderIcon()
-    }
-
-private fun Message.fallbackForegroundBannerSurfaceLabel(): String? =
-    when {
-        parentMessageId != null -> "thread"
-        else -> null
     }
 
 private fun Message.resolveForegroundBannerProjection(
