@@ -87,7 +87,7 @@ import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
-private const val ActivityUpdateSignatureWindow = 20
+private const val ActivityUpdateTrackingWindow = 20
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -504,8 +504,6 @@ private fun SharedActivityList(
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
-    var previousTopItemKey by remember { mutableStateOf<String?>(null) }
-    var previousUpdateSignature by remember { mutableStateOf<String?>(null) }
     var pendingUpdateCount by remember { mutableStateOf(0) }
     val scrollScope = rememberCoroutineScope()
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
@@ -516,13 +514,13 @@ private fun SharedActivityList(
         }
     }
     LaunchedEffect(snapshot.items) {
-        val nearTop = listState.isActivityNearTop()
-        val currentSignature = activityUpdateSignature(snapshot.items)
+        // A drag in progress means the user is NOT parked at the top even if
+        // the viewport currently is: auto-scrolling would cancel the gesture
+        // and yank them (task #554 pattern scan).
+        val nearTop = listState.isActivityNearTop() && !listState.isScrollInProgress
         val increment =
             activityPendingUpdateIncrement(
                 previousItems = previousItems,
-                previousTopItemKey = previousTopItemKey,
-                previousUpdateSignature = previousUpdateSignature,
                 currentItems = snapshot.items,
                 nearTop = nearTop
             )
@@ -533,9 +531,7 @@ private fun SharedActivityList(
             pendingUpdateCount = 0
             listState.scrollToItem(0)
         }
-        previousItems = snapshot.items.take(ActivityUpdateSignatureWindow)
-        previousTopItemKey = snapshot.items.firstOrNull()?.key
-        previousUpdateSignature = currentSignature
+        previousItems = snapshot.items.take(ActivityUpdateTrackingWindow)
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isActivityNearTop() }
@@ -1233,66 +1229,32 @@ private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int)
 private fun LazyListState.isActivityNearTop(): Boolean =
     firstVisibleItemIndex <= 1 && firstVisibleItemScrollOffset < ActivityNearTopThresholdPx
 
+// "↑ x new" counts ONLY genuinely new activity, never the user's own actions.
+// Two things qualify (task #554 follow-up — the old whole-signature diff
+// counted mark-read/unread/done mutations as "new updates"):
+//  1. fresh rows that sorted in above every previously known row (the feed is
+//     newest-first, so real arrivals enter at the top; rows revealed from
+//     below the tracked window sit under a known key and don't count);
+//  2. known conversations whose latest activity MESSAGE changed — read-state
+//     and task-status mutations never touch latestActivityMessageId.
 internal fun activityPendingUpdateIncrement(
     previousItems: List<InboxItem>,
-    previousTopItemKey: String?,
-    previousUpdateSignature: String?,
     currentItems: List<InboxItem>,
     nearTop: Boolean
 ): Int {
-    if (nearTop || previousTopItemKey == null || previousUpdateSignature == null) return 0
-    val currentTopItemKey = currentItems.firstOrNull()?.key ?: return 0
-    if (currentTopItemKey == previousTopItemKey) {
-        if (activityCurrentWindowIsRemovalOnly(previousItems, currentItems)) return 0
-        return if (activityUpdateSignature(currentItems) != previousUpdateSignature) 1 else 0
-    }
-    val previousTopIndex = currentItems.indexOfFirst { it.key == previousTopItemKey }
-    if (previousTopIndex < 0 && activityCurrentWindowIsRemovalOnly(previousItems, currentItems)) {
-        return 0
-    }
-    return if (previousTopIndex > 0) previousTopIndex else 1
-}
-
-private fun activityCurrentWindowIsRemovalOnly(
-    previousItems: List<InboxItem>,
-    currentItems: List<InboxItem>
-): Boolean {
-    if (previousItems.isEmpty()) return false
-    val currentWindow = currentItems.take(ActivityUpdateSignatureWindow)
-    if (currentWindow.isEmpty()) return false
+    if (nearTop || previousItems.isEmpty()) return 0
     val previousByKey = previousItems.associateBy { it.key }
-    var lastPreviousIndex = -1
-    var knownCurrentCount = 0
-    val lastKnownCurrentIndex = currentWindow.indexOfLast { it.key in previousByKey }
-    if (lastKnownCurrentIndex < 0) return false
-    currentWindow.forEachIndexed { currentIndex, current ->
-        val previous = previousByKey[current.key]
-            ?: return currentIndex > lastKnownCurrentIndex
-        val previousIndex = previousItems.indexOfFirst { it.key == current.key }
-        if (previousIndex <= lastPreviousIndex) return false
-        if (current.activityUpdateSignaturePart() != previous.activityUpdateSignaturePart()) return false
-        lastPreviousIndex = previousIndex
-        knownCurrentCount += 1
-    }
-    return knownCurrentCount < previousItems.size
+    val currentWindow = currentItems.take(ActivityUpdateTrackingWindow)
+    if (currentWindow.isEmpty()) return 0
+    val freshTopRows = currentWindow.takeWhile { it.key !in previousByKey }.count()
+    val advancedKnownRows =
+        currentWindow.count { current ->
+            val previous = previousByKey[current.key] ?: return@count false
+            val currentLatest = current.latestActivityMessageId?.value
+            currentLatest != null && currentLatest != previous.latestActivityMessageId?.value
+        }
+    return freshTopRows + advancedKnownRows
 }
-
-internal fun activityUpdateSignature(items: List<InboxItem>): String =
-    items
-        .take(ActivityUpdateSignatureWindow)
-        .joinToString(separator = "|") { item -> item.activityUpdateSignaturePart() }
-
-private fun InboxItem.activityUpdateSignaturePart(): String =
-    listOf(
-        key,
-        unreadCount.toString(),
-        hasMention.toString(),
-        firstUnreadMessageId?.value.orEmpty(),
-        latestActivityMessageId?.value.orEmpty(),
-        latestActivityAt.orEmpty(),
-        lastMessageId?.value.orEmpty(),
-        taskStatus?.name.orEmpty()
-    ).joinToString(separator = ":")
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()
