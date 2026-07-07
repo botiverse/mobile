@@ -13,13 +13,12 @@ import org.json.JSONObject
 /**
  * App diagnostics: an on-device JSONL log ring + feedback-archive builder.
  *
- * Bugly was removed (crash/native/ANR reporting is handled by the Quiver SDK;
+ * External crash reporting moved (crash/native/ANR reporting is handled by the Quiver SDK;
  * telemetry/scene/user-context reporting is dropped). This object keeps its
  * public API so callers are unchanged, but the reporting methods are now
- * no-ops — only local logging and the feedback archive remain. (Named
- * *Bugly for continuity; rename is a follow-up.)
+ * no-ops; only local logging and the feedback archive remain.
  */
-object SlockAndroidBuglyDiagnostics {
+object SlockAndroidAppDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
     private const val FeedbackDirName = "slock-feedback"
     private const val FeedbackFilePrefix = "slock-feedback-"
@@ -32,7 +31,7 @@ object SlockAndroidBuglyDiagnostics {
         SlockFileDiagnosticsLogger.init(context.applicationContext)
         SlockDiagnosticsLogger.d(
             Tag,
-            "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl bugly=removed"
+            "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl quiver=crash"
         )
     }
 
@@ -118,7 +117,7 @@ object SlockAndroidBuglyDiagnostics {
         recordLog("info", Tag, "diagnostics_local_files_clear_requested")
     }
 
-    // ---- Reporting hooks retained as no-ops (Bugly removed) -----------------
+    // ---- Reporting hooks retained as no-ops (External crash reporting moved) -----------------
 
     fun registerDiagnosticsAttachment(file: File): Boolean = false
 
@@ -152,7 +151,7 @@ object SlockAndroidBuglyDiagnostics {
     }
 
     fun testCrash(kind: String = "java"): Boolean {
-        SlockDiagnosticsLogger.d(Tag, "test_crash kind=$kind ignored=bugly_removed")
+        SlockDiagnosticsLogger.d(Tag, "test_crash kind=$kind ignored=quiver_only")
         return false
     }
 

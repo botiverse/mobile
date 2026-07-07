@@ -103,7 +103,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ### P2 (业务扩展)
 - Activity/Notifications unified timeline (per @Cindy native realtime app-scope owner #370)
-- Bugly diagnostic event forwarding (per #111 done)
+- App diagnostic event forwarding (per #111 done)
 
 ## Owner 拍 (下一步)
 

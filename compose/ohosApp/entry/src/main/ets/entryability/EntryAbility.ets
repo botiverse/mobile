@@ -15,7 +15,7 @@ import { initializeSlockOhosAppScopeMMKV } from '../kuikly/SlockOhosAppScopeMMKV
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
-import { SlockOhosBuglyDiagnostics } from './SlockOhosBuglyDiagnostics';
+import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
 import { Quiver } from '@oranix/quiver';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,

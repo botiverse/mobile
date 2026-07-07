@@ -9,11 +9,10 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
  * App diagnostics for HarmonyOS: local log breadcrumbs + a feedback archive
  * builder used by the Quiver feedback flow.
  *
- * Bugly was removed — crash capture is handled by the Quiver SDK
+ * External crash reporting moved — crash capture is handled by the Quiver SDK
  * (QuiverCrashReporter). This keeps the public methods the app relies on
  * (record / reportCaughtError / updateScene / exportDiagnosticsText /
  * prepareFeedbackArchivePath), all backed by the local diagnostics logger.
- * (Named *Bugly for continuity; rename is a follow-up.)
  */
 const TAG: string = 'SlockOhosDiagnostics';
 const DIAGNOSTIC_UPLOAD_DIR_NAME: string = 'diagnostics_upload';
@@ -22,7 +21,7 @@ const MAX_DIAGNOSTIC_EXPORT_CHARS: number = 180000;
 const FEEDBACK_FILE_PREFIX: string = 'slock-feedback-';
 const FEEDBACK_SUMMARY_NAME: string = 'slock-diagnostics-summary.txt';
 
-export class SlockOhosBuglyDiagnostics {
+export class SlockOhosAppDiagnostics {
   static record(tag: string, message: string): void {
     SlockOhosDiagnostics.record(tag, message);
   }
@@ -39,21 +38,21 @@ export class SlockOhosBuglyDiagnostics {
 
   /** Build the diagnostics feedback archive and return its path (for Quiver upload). */
   static async prepareFeedbackArchivePath(context: common.UIAbilityContext): Promise<string> {
-    const summaryText = SlockOhosBuglyDiagnostics.exportDiagnosticsText(context);
-    const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context, summaryText);
-    return SlockOhosBuglyDiagnostics.writeFeedbackArchive(context, diagnosticFilePath);
+    const summaryText = SlockOhosAppDiagnostics.exportDiagnosticsText(context);
+    const diagnosticFilePath = SlockOhosAppDiagnostics.writeDiagnosticSnapshot(context, summaryText);
+    return SlockOhosAppDiagnostics.writeFeedbackArchive(context, diagnosticFilePath);
   }
 
   static exportDiagnosticsText(context: common.UIAbilityContext): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
-    SlockOhosBuglyDiagnostics.recordDiagnosticsEnvironment(context, bundleInfo);
+    SlockOhosAppDiagnostics.recordDiagnosticsEnvironment(context, bundleInfo);
     const diagnostics = SlockOhosDiagnostics.exportText(1000);
     const clippedDiagnostics =
       diagnostics.length > MAX_DIAGNOSTIC_EXPORT_CHARS
         ? diagnostics.slice(diagnostics.length - MAX_DIAGNOSTIC_EXPORT_CHARS)
         : diagnostics;
     return [
-      SlockOhosBuglyDiagnostics.feedbackSummaryText(context, bundleInfo),
+      SlockOhosAppDiagnostics.feedbackSummaryText(context, bundleInfo),
       '',
       clippedDiagnostics,
     ].join('\n');
@@ -92,11 +91,11 @@ export class SlockOhosBuglyDiagnostics {
 
   private static writeDiagnosticSnapshot(context: common.UIAbilityContext, text: string = ''): string {
     const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
-    SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
+    SlockOhosAppDiagnostics.ensureDirectory(uploadDir);
     const path = `${uploadDir}/${FEEDBACK_SUMMARY_NAME}`;
     const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
     try {
-      fs.writeSync(file.fd, text.length > 0 ? text : SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
+      fs.writeSync(file.fd, text.length > 0 ? text : SlockOhosAppDiagnostics.exportDiagnosticsText(context));
     } finally {
       fs.closeSync(file);
     }
@@ -105,10 +104,10 @@ export class SlockOhosBuglyDiagnostics {
 
   private static async writeFeedbackArchive(context: common.UIAbilityContext, diagnosticFilePath: string): Promise<string> {
     const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
-    SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
-    SlockOhosBuglyDiagnostics.pruneFeedbackArchives(uploadDir);
+    SlockOhosAppDiagnostics.ensureDirectory(uploadDir);
+    SlockOhosAppDiagnostics.pruneFeedbackArchives(uploadDir);
     const archivePath = `${uploadDir}/${FEEDBACK_FILE_PREFIX}${Date.now()}.zip`;
-    const inputFiles = SlockOhosBuglyDiagnostics.feedbackArchiveFiles(context, diagnosticFilePath);
+    const inputFiles = SlockOhosAppDiagnostics.feedbackArchiveFiles(context, diagnosticFilePath);
     if (inputFiles.length === 0) {
       throw new Error('No diagnostics files available for feedback archive');
     }
@@ -121,26 +120,26 @@ export class SlockOhosBuglyDiagnostics {
   private static feedbackArchiveFiles(context: common.UIAbilityContext, diagnosticFilePath: string): Array<string> {
     return [
       diagnosticFilePath,
-      ...SlockOhosBuglyDiagnostics.collectFiles(`${context.filesDir}/${CRASH_DIR_NAME}`),
+      ...SlockOhosAppDiagnostics.collectFiles(`${context.filesDir}/${CRASH_DIR_NAME}`),
     ].filter((path: string, index: number, paths: Array<string>) => {
-      return SlockOhosBuglyDiagnostics.pathIsFile(path) && paths.indexOf(path) === index;
+      return SlockOhosAppDiagnostics.pathIsFile(path) && paths.indexOf(path) === index;
     });
   }
 
   private static collectFiles(path: string): Array<string> {
-    if (!SlockOhosBuglyDiagnostics.pathExists(path)) {
+    if (!SlockOhosAppDiagnostics.pathExists(path)) {
       return [];
     }
-    if (SlockOhosBuglyDiagnostics.pathIsFile(path)) {
+    if (SlockOhosAppDiagnostics.pathIsFile(path)) {
       return [path];
     }
-    if (!SlockOhosBuglyDiagnostics.pathIsDirectory(path)) {
+    if (!SlockOhosAppDiagnostics.pathIsDirectory(path)) {
       return [];
     }
     const result: Array<string> = [];
     try {
       fs.listFileSync(path).forEach((name: string) => {
-        result.push(...SlockOhosBuglyDiagnostics.collectFiles(`${path}/${name}`));
+        result.push(...SlockOhosAppDiagnostics.collectFiles(`${path}/${name}`));
       });
     } catch (_error) {
     }
@@ -187,10 +186,10 @@ export class SlockOhosBuglyDiagnostics {
       fs.mkdirSync(path, true);
       return;
     } catch (error) {
-      if (SlockOhosBuglyDiagnostics.isFileExistsError(error) && SlockOhosBuglyDiagnostics.pathIsDirectory(path)) {
+      if (SlockOhosAppDiagnostics.isFileExistsError(error) && SlockOhosAppDiagnostics.pathIsDirectory(path)) {
         return;
       }
-      throw new Error(SlockOhosBuglyDiagnostics.safeString(error));
+      throw new Error(SlockOhosAppDiagnostics.safeString(error));
     }
   }
 

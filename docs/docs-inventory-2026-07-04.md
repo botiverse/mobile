@@ -38,7 +38,7 @@
 17. **OHOS → #native task #206**：07-05 完结关闭。已落：HDS tabbar 官方材质（#53 HdsTabs systemMaterialEffect）、widget/forms、前台保活开关 #113。两个残留并入 task #207：composer 换行菜单 Phase 2（OHOS render fork 未接，prop 目前 OHOS no-op）、SQLDelight smoke DB 双驱动（现仅 androidUnitTest JVM 驱动有测试，native 驱动 smoke 未建）。
 18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；perf marker 缺口（modal/cache/icon-batch）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
 19. **未建产品面（owner 决策）→ #native task #208**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
-20. **杂项 → #native task #207**：Bugly 后续（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
+20. **杂项 → #native task #207**：Quiver diagnostics follow-up（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
 
 ### 活跃 task board 上、文档未覆盖的单点（2026-07-04 快照）
 
@@ -48,11 +48,10 @@
 
 ## 二、92 份文档状态表
 
-### OPEN — 有明确未完成工作（22）
+### OPEN — 有明确未完成工作（21）
 
 | 文档 | 摘要/剩余 |
 | --- | --- |
-| bugly-capability-audit-2026-06-24 | OHOS user-context、feedback/upload 拆分、Android uniqueId |
 | composer-basictextfield-migration-spec | ~~整体未实施（OHOS 正确性依赖）~~ 07-05 已删除：前提过时——composer 实际走 BasicTextField(TextFieldValue)，fork 7ea6b09 起三端（含 OHOS C++）已有完整双向选区同步（上游 #1342），task #202 关闭 |
 | fork-artifact-github-packages-publishing-spec | OHOS HAR/SQLDelight 远程发布 + workflow 未落 |
 | im-composer-baseline-contract-2026-07-03 | send-operation 生命周期/typed 状态未建 |
@@ -89,10 +88,11 @@ agent-detail-permissions-tab-spec-2026-06-25、android-ui-shared-migration-audit
 
 conversation-summary-boundary-spec-2026-06-27 为部分完成（Phase 3/4 未做）。
 
-### STALE / SUPERSEDED — 已过时或被取代（7）
+### STALE / SUPERSEDED — 已过时或被取代（8）
 
 | 文档 | 处置 |
 | --- | --- |
+| removed crash-provider capability audit | 07-08 #native task #228 删除；SDK 已移除，QuiverCrash + app diagnostics 在岗 |
 | react-kmp-feature-map-2026-06-20 | 被 06-26 版取代（已加横幅） |
 | react-kmp-feature-map-2026-06-26 | 仍是权威 gap 图，但 P0/P1 多项已落——已加 07-04 状态附录；建议尽快重跑 fresh scan |
 | kmp-thread-capability-parity-audit | 文内自标 superseded（06-27） |

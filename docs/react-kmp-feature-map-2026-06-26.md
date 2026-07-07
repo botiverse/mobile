@@ -529,10 +529,10 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 - `chore(visual-testing)` activate composer suggestion cases
 - `chore(visual-testing)` activate agent detail tabs (per #218 done)
 - `feat(native)` keep realtime alive in background (per #105 done)
-- `feat(ohos)` export Bugly diagnostics feedback archive (per #111 done)
-- `feat(android)` attach diagnostics to Bugly (per #111 done)
-- `feat(android)` export feedback from Bugly diagnose logs (per #111 done)
-- `feat(native)` expand android bugly diagnostics (per #111 done)
+- `feat(ohos)` export App diagnostics feedback archive (per #111 done)
+- `feat(android)` attach diagnostics to app diagnostics (per #111 done)
+- `feat(android)` export feedback from app diagnostics logs (per #111 done)
+- `feat(native)` expand android app diagnostics (per #111 done)
 - `feat(native)` add Kuikly MMKV preference backend (per #96 done, #98 done)
 - `feat(settings)` add Computers header + button + AddMachineDialog flow
 - `feat(settings)` declutter Server Profile page
@@ -542,14 +542,14 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 ### Slice 12: Native — 功能点
 - `feat(native)` keep realtime alive in background (per #105 done)
 - `feat(native)` add Kuikly MMKV preference backend (per #96 done)
-- `feat(native)` expand android bugly diagnostics (per #111 done)
+- `feat(native)` expand android app diagnostics (per #111 done)
 - `feat(native)` surface foreground realtime notifications (per #103 done)
 - `feat(ohos)` add activity and agent widgets (per #283 done)
 - `feat(android)` add raft launcher widgets (per #110 done)
 - `feat(gradle)` add toolchain configuration for multiple platforms
-- `feat(android)` attach diagnostics to Bugly (per #111 done)
-- `feat(android)` export feedback from Bugly diagnose logs
-- `feat(ohos)` export Bugly diagnostics feedback archive
+- `feat(android)` attach diagnostics to app diagnostics (per #111 done)
+- `feat(android)` export feedback from app diagnostics logs
+- `feat(ohos)` export App diagnostics feedback archive
 - `feat(ohos)` add activity and agent widgets
 - `feat(android)` add raft launcher widgets
 - `feat(#100)` Android host consumer of `bridge.appBadge` for launcher icon badge (per #100 done)
@@ -563,7 +563,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 - `nativeRequireMmkvPreferenceBackend` (per #96 done)
 - `nativeLimitRealtimeFanoutToForeground`
 - `nativeAvoidPullRefreshBridgeCrash`
-- `androidUseTdlogAsDiagnosticsSink` (Bugly TDLog, per #111 done)
+- `androidUseTdlogAsDiagnosticsSink` (App diagnostics log, per #111 done)
 - `androidUseImageLauncherForeground` / `regenerateLauncherIcons` / `shrinkLauncherIconMark` / `shrinkAdaptiveLauncherForeground` / `restoreWhiteLauncherIconFill` / `insetAdaptiveLauncherForeground` (launcher icon polish per #95 #110 done)
 - `androidRegisterMmkvModuleAndExtractNativeLibs` (MMKV module registration)
 - `androidRegisterKuiklyModulesEagerly` / `androidRegisterKuiklyVideoViewAdapter` (Kuikly module registration, per #112 done)
@@ -583,7 +583,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 **React 現状**:
 - VisualTestingCases.tsx: case registry
 - sharedCases.json: 71 cases
-- Diagnostics: bugly + logcat export
+- Diagnostics: app JSONL + logcat export
 - ReleaseNotesPage.tsx
 - AnnouncementModal.tsx
 - OwnerOnboardingModal.tsx
@@ -657,7 +657,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 5. Reaction sprite atlas (#397 AD-1)
 6. Tab swipe gesture (#112 AD-2)
 7. Idle/Disconnected 业务扩展 vs 简化 (owner 拍)
-8. Diagnostics polish (log + native + Bugly)
+8. Diagnostics polish (log + native + Quiver)
 9. Markdown 扩展 (Mermaid / outline / copy code)
 10. Native diagnostics file logging (#215 Codex-Kuikly-MP)
 

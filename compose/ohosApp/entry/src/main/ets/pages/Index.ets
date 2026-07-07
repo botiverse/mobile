@@ -7,7 +7,7 @@ import globalNativeManager from '../kuikly/MyNativeManager';
 import slockOhosMotionBridge from '../kuikly/SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
-import { SlockOhosBuglyDiagnostics } from '../entryability/SlockOhosBuglyDiagnostics';
+import { SlockOhosAppDiagnostics } from '../entryability/SlockOhosAppDiagnostics';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -137,7 +137,7 @@ struct Index {
   private handleKuiklyExceptionStack(stack: string): void {
     const stackText = this.symbolicatedKuiklyStack(stack);
     this.exception = stackText;
-    this.reportKuiklyExceptionToBugly(stackText);
+    this.reportKuiklyExceptionToAppDiagnostics(stackText);
     stackText.split('\n').forEach((line: string) => {
       if (line.length > 0) {
         hilog.error(0x0000, SLOCK_KUIKLY_EXCEPTION_LOG_TAG, '%{public}s', line);
@@ -162,9 +162,9 @@ struct Index {
     return stack;
   }
 
-  private reportKuiklyExceptionToBugly(stackText: string): void {
+  private reportKuiklyExceptionToAppDiagnostics(stackText: string): void {
     const firstLine = stackText.split('\n').find((line: string) => line.length > 0) ?? 'Kuikly exception';
-    SlockOhosBuglyDiagnostics.reportCaughtError(
+    SlockOhosAppDiagnostics.reportCaughtError(
       'KuiklyException',
       firstLine,
       stackText,

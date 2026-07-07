@@ -4,7 +4,7 @@ import android.app.Application
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
-import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import build.raft.app.core.data.diagnostics.SlockAndroidAppDiagnostics
 import io.quiver.update.QuiverCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -16,9 +16,9 @@ import kotlinx.coroutines.runBlocking
 class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        SlockAndroidBuglyDiagnostics.init(this)
+        SlockAndroidAppDiagnostics.init(this)
         installSlockPlatformLogSink { level, tag, message ->
-            SlockAndroidBuglyDiagnostics.recordLog(level, tag, message)
+            SlockAndroidAppDiagnostics.recordLog(level, tag, message)
         }
         installAndroidAppScopeSharedKeyValueStores(this)
         installAndroidAppScopePlatformFileResolver(this)
@@ -31,7 +31,7 @@ class SlockApplication : Application() {
                 KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@SlockApplication)).readSession()
             }
         }.getOrNull()?.let { session ->
-            SlockAndroidBuglyDiagnostics.updateUserContext(
+            SlockAndroidAppDiagnostics.updateUserContext(
                 context = this,
                 userId = session.user.id,
                 selectedServerId = session.currentServerId,
@@ -47,7 +47,7 @@ class SlockApplication : Application() {
             channel = BuildConfig.QUIVER_CHANNEL,
             clientKey = BuildConfig.QUIVER_CLIENT_KEY,
             extraContext = {
-                SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(this)
+                SlockAndroidAppDiagnostics.exportRecentDiagnosticsText(this)
             }
         )
     }

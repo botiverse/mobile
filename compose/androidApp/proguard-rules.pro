@@ -12,11 +12,10 @@
 #   public *;
 #}
 
-# Preserve source and line number information for Bugly crash stack traces.
+# Preserve source and line number information for Quiver crash stack traces.
 -keepattributes SourceFile,LineNumberTable
 
-# Keep Bugly/RMonitor SDK entry points intact when release minification is enabled.
--keep class com.tencent.bugly.** { *; }
+# Keep RMonitor SDK entry points intact when release minification is enabled.
 -keep class com.tencent.rmonitor.** { *; }
 -keep class com.tencent.feedback.** { *; }
 

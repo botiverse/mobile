@@ -11,7 +11,7 @@ import router from '@ohos.router';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
-import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
+import { SlockOhosAppDiagnostics } from '../../entryability/SlockOhosAppDiagnostics';
 import { QuiverFeedbackClient } from '@oranix/quiver';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
@@ -338,7 +338,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (sceneName.length === 0) {
       return;
     }
-    const result = SlockOhosBuglyDiagnostics.updateScene(action, sceneName);
+    const result = SlockOhosAppDiagnostics.updateScene(action, sceneName);
     if (result["status"] === "ok") {
       SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=ok`);
     } else {
@@ -384,7 +384,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return;
     }
     SlockOhosDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
-    SlockOhosBuglyDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
+    SlockOhosAppDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
   }
 
   private markerString(value: Object, fallback: string): string {
@@ -693,7 +693,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   private copyDiagnosticsCapability(): Record<string, Object> {
     const context = getContext(this) as common.UIAbilityContext;
-    SlockOhosClipboard.copyText(SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
+    SlockOhosClipboard.copyText(SlockOhosAppDiagnostics.exportDiagnosticsText(context));
     SlockOhosDiagnostics.record("Settings", "diagnostics_copied");
     return { "status": "ok", "code": "diagnostics_copied" };
   }
@@ -705,7 +705,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private async sendFeedbackToQuiverCapability(): Promise<Record<string, Object>> {
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const archivePath = await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context);
+      const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
       const ticketId = await QuiverFeedbackClient.submit(
         context,
         'In-app feedback (diagnostics attached).',
@@ -733,7 +733,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         .slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
       const attachmentPaths = userAttachmentPaths.slice(0, KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS);
       if (attachmentPaths.length < KRBridgeModule.QUIVER_FEEDBACK_MAX_ATTACHMENTS) {
-        const archivePath = await SlockOhosBuglyDiagnostics.prepareFeedbackArchivePath(context);
+        const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
         if (this.feedbackAttachmentFits(archivePath)) {
           attachmentPaths.push(archivePath);
         } else {

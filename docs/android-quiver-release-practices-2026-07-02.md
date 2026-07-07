@@ -211,7 +211,7 @@ The helper:
 - builds `:androidApp:assemble<Variant>` unless `SLOCK_SKIP_GRADLE_BUILD=1`
 - computes the configured version name/code
 - writes `artifacts/android-quiver/<version>-<code>-<git>/build-metadata.json`
-- reuses `scripts/prepare_android_bugly_symbols.sh` to stage mapping/native
+- reuses `scripts/prepare_android_quiver_symbols.sh` to stage mapping/native
   symbol archives when present
 - calls the npm-published Quiver CLI `builds publish-android` command to upload
   the APK as an

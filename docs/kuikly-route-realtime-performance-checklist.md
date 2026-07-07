@@ -17,7 +17,7 @@ Home cache while Thread was active.
   trigger broad recomposition while another route is active.
 - Realtime events need product priority, not a single shared "apply to every
   route immediately" path.
-- Diagnostics should preserve enough data for Bugly/export and HDC analysis,
+- Diagnostics should preserve enough data for Quiver/export and HDC analysis,
   but high-frequency facts must not flood `console.log`.
 - Page-visible content is not sufficient acceptance for transition work.
   A route can appear correct while the render thread is pegged.

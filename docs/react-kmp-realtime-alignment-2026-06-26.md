@@ -21,7 +21,7 @@ Included:
 
 Not included:
 - visual presentation of notifications
-- unrelated Bugly / diagnostics work
+- unrelated Quiver diagnostics work
 - product UI changes that do not affect realtime state flow
 
 ## React Baseline
