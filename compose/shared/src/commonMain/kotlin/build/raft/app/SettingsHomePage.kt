@@ -149,8 +149,11 @@ import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.SharedSettingsEffect
+import build.raft.app.data.SharedSettingsHomeSnapshot
 import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.data.SharedSettingsNavItem
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
+import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot
@@ -16251,117 +16254,6 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
             )
     )
 
-private class SettingsRouteVisualRepository : SettingsRepository {
-    override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun registerConnectedApp(request: SettingsConnectedAppRegisterRequest): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun updateConnectedApp(request: SettingsConnectedAppUpdateRequest): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun uploadConnectedAppLogo(request: SettingsConnectedAppLogoUploadRequest): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun requestConnectedAppPublish(request: SettingsConnectedAppPublishRequest): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
-        DataResult.Content(settingsVisualConnectedAppsSnapshot())
-
-    override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun getComputerRuntimeModels(
-        machineId: String,
-        runtime: String
-    ): DataResult<SettingsComputerRuntimeModelsSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun deleteComputerWorkspace(request: SettingsComputerWorkspaceDeleteRequest): DataResult<SettingsComputerActionResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> =
-        DataResult.Content(settingsVisualBillingSnapshot())
-
-    override suspend fun getServerSettings(): DataResult<SettingsServerSnapshot> =
-        DataResult.Content(settingsVisualServerSnapshot())
-
-    override suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> =
-        DataResult.Content(settingsVisualServerSnapshot())
-
-    override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> =
-        DataResult.Content(settingsVisualAppearanceSnapshot())
-
-    override suspend fun updateAppearanceSettings(request: SettingsAppearanceUpdateRequest): DataResult<SettingsAppearanceSnapshot> =
-        DataResult.Content(settingsVisualAppearanceSnapshot())
-
-    override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> =
-        DataResult.Content(settingsVisualMobileSnapshot())
-
-    override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> =
-        DataResult.Content(settingsVisualLanguageRegionSnapshot())
-
-    override suspend fun updateLanguageRegionPreference(
-        request: SettingsLanguageRegionPreferenceUpdateRequest
-    ): DataResult<SettingsLanguageRegionSnapshot> =
-        DataResult.Content(settingsVisualLanguageRegionSnapshot())
-
-    override suspend fun createServerJoinLinkForInvite(
-        request: SettingsServerJoinLinkCreateRequest
-    ): DataResult<SettingsServerJoinLinkSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    override suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> =
-        DataResult.Content(settingsVisualServerSnapshot().joinLinks)
-}
-
 private fun settingsVisualSelection(
     selectedKey: String,
     selectedLabel: String,
@@ -16857,22 +16749,15 @@ private fun SettingsRouteVisualScreen() {
             parseSettingsRouteVisualPayload(pager.pageData.params)
         }
     val session = remember(route.fixtureKey) { settingsRouteVisualSession() }
-    val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
-    val repository = remember(route.fixtureKey) { SettingsRouteVisualRepository() }
-    val dataSource =
-        remember(sessionStore, repository) {
-            SharedSettingsDataSource(
-                sessionStore = sessionStore,
-                settingsRepository = repository,
-                diagnosticsLogger = { message -> bridge.log("settings_route_visual $message") }
-            )
+    val state =
+        remember(route.destination, route.itemId, route.fixtureKey) {
+            settingsRouteVisualState(route)
         }
-    val viewModel = remember(dataSource) { SharedSettingsViewModel(dataSource) }
-    val state by viewModel.state.collectAsState()
     val settingsCapabilities =
         remember(bridge) {
             BridgeSettingsPlatformCapabilities(bridge)
         }
+    val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
     val authDataSource =
         remember(sessionStore, session) {
             SharedAuthDataSource(
@@ -16895,7 +16780,7 @@ private fun SettingsRouteVisualScreen() {
         settingsState = state,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         onToggleNotificationPreference = {},
-        onSettingsIntent = viewModel::dispatch,
+        onSettingsIntent = {},
         selectedDestination = route.destination,
         onDestinationChange = {},
         onSettingsHeaderClick = {},
@@ -16919,7 +16804,70 @@ private fun SettingsRouteVisualScreen() {
     )
 }
 
-private data class SettingsRouteVisualPayload(
+internal fun settingsRouteVisualState(route: SettingsRouteVisualPayload): SharedSettingsState {
+    val destination = route.destination.toSharedSettingsDestination() ?: SharedSettingsDestination.Administration
+    return SharedSettingsState(
+        route = SharedSettingsRoute(destination, route.itemId),
+        home = ScreenLoadState.Content(settingsRouteVisualHomeSnapshot(destination)),
+        server =
+            if (destination == SharedSettingsDestination.Administration || destination == SharedSettingsDestination.Server) {
+                ScreenLoadState.Content(settingsVisualServerSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            },
+        connectedApps =
+            if (destination == SharedSettingsDestination.ConnectedApps) {
+                ScreenLoadState.Content(settingsVisualConnectedAppsSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            },
+        billing =
+            if (destination == SharedSettingsDestination.Billing) {
+                ScreenLoadState.Content(settingsVisualBillingSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            },
+        languageRegion =
+            if (destination == SharedSettingsDestination.LanguageRegion) {
+                ScreenLoadState.Content(settingsVisualLanguageRegionSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            },
+        appearance =
+            if (destination == SharedSettingsDestination.Appearance) {
+                ScreenLoadState.Content(settingsVisualAppearanceSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            },
+        mobile =
+            if (destination == SharedSettingsDestination.Notifications || destination == SharedSettingsDestination.Mobile) {
+                ScreenLoadState.Content(settingsVisualMobileSnapshot())
+            } else {
+                ScreenLoadState.Loading
+            }
+    )
+}
+
+private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsDestination): SharedSettingsHomeSnapshot {
+    val session = settingsRouteVisualSession()
+    return SharedSettingsHomeSnapshot(
+        items =
+            listOf(
+                SharedSettingsNavItem(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, session.user.bestDisplayName, selectedDestination == SharedSettingsDestination.Account),
+                SharedSettingsNavItem(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination == SharedSettingsDestination.LanguageRegion),
+                SharedSettingsNavItem(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination == SharedSettingsDestination.Appearance),
+                SharedSettingsNavItem(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination == SharedSettingsDestination.Notifications),
+                SharedSettingsNavItem(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination == SharedSettingsDestination.Mobile),
+                SharedSettingsNavItem(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, settingsVisualFixtureValues.ownerRole.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Server),
+                SharedSettingsNavItem(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, settingsVisualFixtureValues.serverPlan.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Billing),
+                SharedSettingsNavItem(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination == SharedSettingsDestination.Administration),
+                SharedSettingsNavItem(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination == SharedSettingsDestination.ConnectedApps),
+                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
+            )
+    )
+}
+
+internal data class SettingsRouteVisualPayload(
     val destination: String,
     val itemId: String?,
     val fixtureKey: String,
