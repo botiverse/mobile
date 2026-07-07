@@ -225,7 +225,9 @@ import build.raft.app.data.SharedHomeSearchSavedViewModel
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
+import build.raft.app.data.AccountProviderLinkStartResult
 import build.raft.app.data.AccountSettingsSnapshot
+import build.raft.app.data.AccountAvatarUploadRequest
 import build.raft.app.data.ACCOUNT_ACTION_AVATAR_UPLOAD
 import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import build.raft.app.data.ACCOUNT_ACTION_PROFILE_SAVE
@@ -257,12 +259,22 @@ import build.raft.app.data.SettingsBillingSnapshot
 import build.raft.app.data.SettingsConnectedAppBuiltInSnapshot
 import build.raft.app.data.SettingsConnectedAppClientSnapshot
 import build.raft.app.data.SettingsConnectedAppInstalledSnapshot
+import build.raft.app.data.SettingsConnectedAppLogoUploadRequest
 import build.raft.app.data.SettingsConnectedAppMarketplaceSnapshot
 import build.raft.app.data.SettingsConnectedAppPublishRequest
 import build.raft.app.data.SettingsConnectedAppRegisterRequest
 import build.raft.app.data.SettingsConnectedAppSecretSnapshot
 import build.raft.app.data.SettingsConnectedAppUpdateRequest
 import build.raft.app.data.SettingsConnectedAppsSnapshot
+import build.raft.app.data.SettingsComputerActionResult
+import build.raft.app.data.SettingsComputerDetailSnapshot
+import build.raft.app.data.SettingsComputerKeyRotationResult
+import build.raft.app.data.SettingsComputerRegisterRequest
+import build.raft.app.data.SettingsComputerRegistrationResult
+import build.raft.app.data.SettingsComputerRenameRequest
+import build.raft.app.data.SettingsComputerRuntimeModelsSnapshot
+import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerWorkspaceDeleteRequest
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.data.SettingsMobileSelectionSnapshot
@@ -275,6 +287,7 @@ import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SettingsServerAdminSnapshot
 import build.raft.app.data.SettingsServerAgreementSnapshot
+import build.raft.app.data.SettingsServerActionResult
 import build.raft.app.data.SettingsServerAgreementUpdateRequest
 import build.raft.app.data.SettingsServerDeleteRequest
 import build.raft.app.data.SettingsServerInviteCreateRequest
@@ -431,6 +444,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
+const val SETTINGS_ROUTE_VISUAL_PAGE = "compose_settings_route_visual"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
 const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val HOME_SEARCH_PAGE = "compose_home_search"
@@ -480,6 +494,19 @@ private const val SettingsDestinationQuiverFeedback = "quiver-feedback"
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
+private const val SettingsRouteVisualDestinationKey = "destination"
+private const val SettingsRouteVisualFixtureKey = "fixtureKey"
+private const val SettingsRouteVisualItemIdKey = "itemId"
+private const val SettingsRouteVisualMachineIdKey = "machineId"
+internal val SettingsRouteVisualPageDataFields =
+    setOf(
+        SettingsRouteVisualDestinationKey,
+        SettingsRouteVisualFixtureKey,
+        SettingsRouteVisualItemIdKey,
+        SettingsRouteVisualMachineIdKey,
+        "fullHeight",
+        "slockVisualFullHeight"
+    )
 private const val SettingsDeveloperUnlockTapCount = 7
 private const val AppShellInitialTabKey = "slockInitialTab"
 private const val AppShellInitialSettingsDestinationKey = "slockInitialSettingsDestination"
@@ -572,6 +599,14 @@ internal class ComposeSettingsHomePage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { SettingsHomeScreen() }
+    }
+}
+
+@Page(SETTINGS_ROUTE_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeSettingsRouteVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { SettingsRouteVisualScreen() }
     }
 }
 
@@ -16258,6 +16293,117 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
             )
     )
 
+private class SettingsRouteVisualRepository : SettingsRepository {
+    override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun registerConnectedApp(request: SettingsConnectedAppRegisterRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun updateConnectedApp(request: SettingsConnectedAppUpdateRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun uploadConnectedAppLogo(request: SettingsConnectedAppLogoUploadRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun requestConnectedAppPublish(request: SettingsConnectedAppPublishRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        DataResult.Content(settingsVisualConnectedAppsSnapshot())
+
+    override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun getComputerRuntimeModels(
+        machineId: String,
+        runtime: String
+    ): DataResult<SettingsComputerRuntimeModelsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun deleteComputerWorkspace(request: SettingsComputerWorkspaceDeleteRequest): DataResult<SettingsComputerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun getBilling(): DataResult<SettingsBillingSnapshot> =
+        DataResult.Content(settingsVisualBillingSnapshot())
+
+    override suspend fun getServerSettings(): DataResult<SettingsServerSnapshot> =
+        DataResult.Content(settingsVisualServerSnapshot())
+
+    override suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> =
+        DataResult.Content(settingsVisualServerSnapshot())
+
+    override suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> =
+        DataResult.Content(settingsVisualAppearanceSnapshot())
+
+    override suspend fun updateAppearanceSettings(request: SettingsAppearanceUpdateRequest): DataResult<SettingsAppearanceSnapshot> =
+        DataResult.Content(settingsVisualAppearanceSnapshot())
+
+    override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> =
+        DataResult.Content(settingsVisualMobileSnapshot())
+
+    override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> =
+        DataResult.Content(settingsVisualLanguageRegionSnapshot())
+
+    override suspend fun updateLanguageRegionPreference(
+        request: SettingsLanguageRegionPreferenceUpdateRequest
+    ): DataResult<SettingsLanguageRegionSnapshot> =
+        DataResult.Content(settingsVisualLanguageRegionSnapshot())
+
+    override suspend fun createServerJoinLinkForInvite(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    override suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> =
+        DataResult.Content(settingsVisualServerSnapshot().joinLinks)
+}
+
 private fun settingsVisualSelection(
     selectedKey: String,
     selectedLabel: String,
@@ -16741,6 +16887,139 @@ private fun SettingsHomeScreen() {
     SettingsHomeContent(payload) { key ->
         bridge.log("settings_home_unsupported_destination key=$key")
     }
+}
+
+@Composable
+private fun SettingsRouteVisualScreen() {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val route =
+        remember(pager.pageData.params.toString()) {
+            parseSettingsRouteVisualPayload(pager.pageData.params)
+        }
+    val session = remember(route.fixtureKey) { settingsRouteVisualSession() }
+    val sessionStore = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val repository = remember(route.fixtureKey) { SettingsRouteVisualRepository() }
+    val dataSource =
+        remember(sessionStore, repository) {
+            SharedSettingsDataSource(
+                sessionStore = sessionStore,
+                settingsRepository = repository,
+                diagnosticsLogger = { message -> bridge.log("settings_route_visual $message") }
+            )
+        }
+    val viewModel = remember(dataSource) { SharedSettingsViewModel(dataSource) }
+    val state by viewModel.state.collectAsState()
+    val settingsCapabilities =
+        remember(bridge) {
+            BridgeSettingsPlatformCapabilities(bridge)
+        }
+    val authDataSource =
+        remember(sessionStore, session) {
+            SharedAuthDataSource(
+                api = AuthChooseServerVisualApi(session.user, session.servers),
+                sessionStore = sessionStore,
+                diagnosticsLogger = { message -> bridge.log("settings_route_visual_auth $message") }
+            )
+        }
+    LaunchedEffect(route.destination, route.itemId, route.fixtureKey, route.fullHeight) {
+        bridge.log(
+            "settings_route_visual_render destination=${route.destination} " +
+                "fixtureKey=${route.fixtureKey} itemId=${route.itemId.orEmpty()} fullHeight=${route.fullHeight}"
+        )
+    }
+
+    SettingsAppShellContent(
+        session = session,
+        authDataSource = authDataSource,
+        settingsCapabilities = settingsCapabilities,
+        settingsState = state,
+        notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
+        onToggleNotificationPreference = {},
+        onSettingsIntent = viewModel::dispatch,
+        selectedDestination = route.destination,
+        onDestinationChange = {},
+        onSettingsHeaderClick = {},
+        onOpenComputer = {},
+        onOpenRouter = {},
+        onMessageAlignmentSelected = {},
+        onCompactConsecutiveMessagesSelected = {},
+        onForegroundMessageBannersSelected = {},
+        onActivityTaskStatusBadgesSelected = {},
+        onThreadRowAffordanceSelected = { _, _ -> },
+        onSettingsAction = { _, _ -> },
+        onDiagnosticsFeedbackPrepared = {},
+        diagnosticsFeedbackDraft = null,
+        diagnosticsFeedbackHomeState = SharedHomeState(),
+        onDiagnosticsFeedbackBack = {},
+        onDiagnosticsFeedbackRefresh = {},
+        onDiagnosticsFeedbackChannelSelected = {},
+        bottomContentPadding = SlockSpacing.Lg,
+        timeContext = null,
+        onLogout = {}
+    )
+}
+
+private data class SettingsRouteVisualPayload(
+    val destination: String,
+    val itemId: String?,
+    val fixtureKey: String,
+    val fullHeight: Boolean
+)
+
+private fun parseSettingsRouteVisualPayload(params: com.tencent.kuikly.core.nvi.serialization.json.JSONObject): SettingsRouteVisualPayload {
+    val destination =
+        params.optString(SettingsRouteVisualDestinationKey)
+            .trim()
+            .takeIf { it.toSharedSettingsDestination() != null }
+            ?: SettingsDestinationAdministration
+    val itemId =
+        params.optString(SettingsRouteVisualItemIdKey)
+            .trim()
+            .ifBlank { params.optString(SettingsRouteVisualMachineIdKey).trim() }
+            .takeIf { it.isNotBlank() }
+    val fixtureKey =
+        params.optString(SettingsRouteVisualFixtureKey)
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?: "canonical"
+    return SettingsRouteVisualPayload(
+        destination = destination,
+        itemId = itemId,
+        fixtureKey = fixtureKey,
+        fullHeight = params.optBoolean("fullHeight", params.optBoolean("slockVisualFullHeight", false))
+    )
+}
+
+private fun settingsRouteVisualSession(): StoredAuthSession {
+    val fixture = settingsVisualFixtureValues
+    return StoredAuthSession(
+        user =
+            StoredAuthUser(
+                id = fixture.ownerId,
+                email = fixture.ownerEmail,
+                name = fixture.ownerName,
+                displayName = fixture.ownerDisplayName,
+                emailVerified = fixture.ownerEmailVerified,
+                preferredTimeFormat = "24h",
+                timeFormat = "24h"
+            ),
+        accessToken = "visual-access-token",
+        refreshToken = "visual-refresh-token",
+        selectedServerId = fixture.serverId,
+        selectedServerSlug = fixture.serverSlug,
+        servers =
+            listOf(
+                StoredAuthServer(
+                    id = fixture.serverId,
+                    name = fixture.serverName,
+                    slug = fixture.serverSlug,
+                    role = fixture.ownerRole,
+                    plan = fixture.serverPlan
+                )
+            )
+    )
 }
 
 @Composable
