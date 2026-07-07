@@ -251,6 +251,21 @@ data class AgentProfile(
 )
 
 // Message Models
+
+/**
+ * Server-provided conversation identity attached to realtime `message:*`
+ * events (server task #86, mobile task #425). Identity only, no display
+ * state. Null on payloads from servers that pre-date the field; consumers
+ * must keep the projection-wait path as fallback while those exist.
+ */
+@Serializable
+data class MessageConversationContext(
+    val channelKind: ConversationKind? = null,
+    val parentMessageId: MessageId? = null,
+    val parentChannelId: ChannelId? = null,
+    val parentChannelKind: ConversationKind? = null
+)
+
 @Serializable
 data class Message(
     val id: MessageId,
@@ -277,7 +292,8 @@ data class Message(
     val reactions: List<MessageReaction>? = null,
     val senderMembershipStatus: String? = null,
     val commentRef: MessageCommentRef? = null,
-    val forwardBundle: ForwardMessageBundle? = null
+    val forwardBundle: ForwardMessageBundle? = null,
+    val conversationContext: MessageConversationContext? = null
 )
 
 @Serializable
