@@ -4568,6 +4568,7 @@ private fun SharedSettingsServerContent(
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     onAction: (String, String?) -> Unit
 ) {
+    val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -4680,6 +4681,9 @@ private fun SharedSettingsServerContent(
             )
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+        if (visualFullHeight) {
+            item { SettingsVisualFullHeightSentinel() }
+        }
     }
 }
 
@@ -4765,6 +4769,7 @@ private fun SettingsConnectedAppsContent(
             onConfirmUninstall = onConfirmUninstall
         )
     }
+    val visualFullHeight = settingsVisualFullHeightEnabled()
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -4907,6 +4912,9 @@ private fun SettingsConnectedAppsContent(
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+        if (visualFullHeight) {
+            item { SettingsVisualFullHeightSentinel() }
+        }
     }
 }
 
@@ -16982,6 +16990,38 @@ private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsD
                 SharedSettingsNavItem(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination == SharedSettingsDestination.ConnectedApps),
                 SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
             )
+    )
+}
+
+/**
+ * Visual-only full-height support (task #388 A). The capture harness grows the
+ * emulator display so the whole Settings route fits one frame; it needs (1) the
+ * fullHeight capture flag readable at the list sites and (2) the content-bottom
+ * pixel to crop the tall frame to. Both read capture-intent pageData params the
+ * same way the safe-area overrides do (SlockSafeArea.kt); production pages never
+ * set them, so this is inert outside compose_settings_route_visual captures.
+ */
+@Composable
+internal fun settingsVisualFullHeightEnabled(): Boolean {
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    return params.optBoolean("fullHeight", params.optBoolean("slockVisualFullHeight", false))
+}
+
+@Composable
+internal fun SettingsVisualFullHeightSentinel() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    var lastLoggedBottom by remember { mutableStateOf(-1) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { coordinates ->
+                val bottom = (coordinates.positionInRoot().y + coordinates.size.height).toInt()
+                if (bottom != lastLoggedBottom) {
+                    lastLoggedBottom = bottom
+                    bridge.log("settings_route_visual_fullheight contentBottomPx=$bottom")
+                }
+            }
     )
 }
 
