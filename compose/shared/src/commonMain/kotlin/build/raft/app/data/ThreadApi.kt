@@ -48,7 +48,8 @@ internal interface SlockThreadApi {
         channelId: String,
         body: String,
         asTask: Boolean = false,
-        attachmentIds: List<String> = emptyList()
+        attachmentIds: List<String> = emptyList(),
+        randomId: String? = null
     ): ThreadApiResult<ThreadMessagesPage>
     suspend fun executePendingMentionActions(
         action: String,
@@ -109,13 +110,15 @@ internal class SlockThreadApiClient(
         channelId: String,
         body: String,
         asTask: Boolean,
-        attachmentIds: List<String>
+        attachmentIds: List<String>,
+        randomId: String?
     ): ThreadApiResult<ThreadMessagesPage> =
         transport.sendMessage(
             channelId = channelId,
             body = body,
             asTask = asTask,
-            attachmentIds = attachmentIds
+            attachmentIds = attachmentIds,
+            randomId = randomId
         ).mapThreadSendBody(
             contractCode = "thread_send_contract_mismatch",
             diagnosticsLogger = diagnosticsLogger
@@ -263,7 +266,8 @@ internal class NetworkSlockThreadApi(
         channelId: String,
         body: String,
         asTask: Boolean,
-        attachmentIds: List<String>
+        attachmentIds: List<String>,
+        randomId: String?
     ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
@@ -274,7 +278,8 @@ internal class NetworkSlockThreadApi(
                     channelId = channelId,
                     body = body,
                     attachmentIds = attachmentIds,
-                    asTask = asTask
+                    asTask = asTask,
+                    randomId = randomId
                 )
         )
 
@@ -698,7 +703,25 @@ data class ThreadSendMessageRequestBody(
     val channelId: String,
     val content: String,
     val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
+    val randomId: String? = null
+)
+
+@Serializable
+private data class ThreadSendMessageRequestBodyWithoutRandomId(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
     val asTask: Boolean = false
+)
+
+@Serializable
+private data class ThreadSendMessageRequestBodyWithRandomId(
+    val channelId: String,
+    val content: String,
+    val attachmentIds: List<String> = emptyList(),
+    val asTask: Boolean = false,
+    val randomId: String
 )
 
 @Serializable
@@ -711,21 +734,42 @@ internal fun buildSharedThreadSendMessageBody(
     channelId: String,
     body: String,
     attachmentIds: List<String> = emptyList(),
-    asTask: Boolean = false
+    asTask: Boolean = false,
+    randomId: String? = null
 ): String =
     buildSharedThreadSendMessageBody(
         ThreadSendMessageRequestBody(
             channelId = channelId,
             content = body,
             attachmentIds = attachmentIds,
-            asTask = asTask
+            asTask = asTask,
+            randomId = randomId?.takeIf { it.isNotBlank() }
         )
     )
 
-fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String =
-    threadApiJson.encodeToString(
-        request
-    )
+fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): String {
+    val randomId = request.randomId?.takeIf { it.isNotBlank() }
+    return if (randomId == null) {
+        threadApiJson.encodeToString(
+            ThreadSendMessageRequestBodyWithoutRandomId(
+                channelId = request.channelId,
+                content = request.content,
+                attachmentIds = request.attachmentIds,
+                asTask = request.asTask
+            )
+        )
+    } else {
+        threadApiJson.encodeToString(
+            ThreadSendMessageRequestBodyWithRandomId(
+                channelId = request.channelId,
+                content = request.content,
+                attachmentIds = request.attachmentIds,
+                asTask = request.asTask,
+                randomId = randomId
+            )
+        )
+    }
+}
 
 internal fun buildPendingMentionActionExecuteBody(action: String, resolutionIds: List<String>): String =
     threadApiJson.encodeToString(

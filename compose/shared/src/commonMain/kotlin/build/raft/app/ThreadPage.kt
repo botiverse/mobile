@@ -240,6 +240,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
+import kotlin.random.Random
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -404,6 +405,9 @@ private object ThreadLocalSendNextId {
         return "local-send-$scope-$counter"
     }
 }
+
+private fun newThreadSendRandomId(): String =
+    "mobile-${Random.nextLong().toULong().toString(36)}-${Random.nextLong().toULong().toString(36)}"
 
 /**
  * Phase 1 instrumentation flag for #172 (Thread virtual rendering v1).
@@ -856,6 +860,7 @@ internal data class KuiklyThreadMessageItem(
     val systemEventType: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val body: String = "",
+    val randomId: String? = null,
     val threadChannelId: String? = null,
     val replyCount: Int = 0,
     val unreadReplyCount: Int = 0,
@@ -891,7 +896,8 @@ internal data class KuiklyThreadPendingSendContext(
     val mentionChannelId: String? = null,
     val parentMessageId: String? = null,
     val streamChannelId: String? = null,
-    val memberScopedMentions: Boolean = false
+    val memberScopedMentions: Boolean = false,
+    val randomId: String? = null
 )
 
 internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount: Int): String {
@@ -934,6 +940,7 @@ private fun buildThreadPendingSendMessage(
         avatarWireValue = user?.avatarUrl,
         gravatarHash = user?.gravatarHash,
         timestampLabel = timestampLabel,
+        randomId = context.randomId?.takeIf { it.isNotBlank() },
         body = context.body,
         // Phase 3 #3 #3 (#280): explicit nullable instead of \`context.streamChannelId ?: context.channelId\`
         // (反例 3, intentionally left during #278 send flow scope). v0.2 ReplyThread contract
@@ -3931,7 +3938,8 @@ internal fun SharedThreadRouteContent(
                             channelId = context.channelId,
                             body = context.body,
                             asTask = context.asTask,
-                            attachmentIds = context.attachmentIds
+                            attachmentIds = context.attachmentIds,
+                            randomId = context.randomId
                         )
                     }
                 val sendException = sendResult.exceptionOrNull()
@@ -5412,7 +5420,8 @@ internal fun SharedThreadRouteContent(
                             mentionChannelId = composerSurface.mentionScopeChannelId,
                             parentMessageId = composerSurface.parentMessageId,
                             streamChannelId = composerSurface.streamChannelId,
-                            memberScopedMentions = payload.memberScopedMentions
+                            memberScopedMentions = payload.memberScopedMentions,
+                            randomId = newThreadSendRandomId()
                         )
                     val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
                     val localTimestampLabel =

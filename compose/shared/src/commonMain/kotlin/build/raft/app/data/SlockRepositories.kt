@@ -188,7 +188,8 @@ interface ConversationRepository {
         channelId: ChannelId,
         body: String,
         attachmentIds: List<AttachmentId> = emptyList(),
-        asTask: Boolean = false
+        asTask: Boolean = false,
+        randomId: String? = null
     ): DataResult<SendMessageResult>
 
     suspend fun executePendingMentionActions(

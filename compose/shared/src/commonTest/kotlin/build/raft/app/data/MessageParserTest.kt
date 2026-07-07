@@ -92,6 +92,7 @@ class MessageParserTest {
                       "senderName": "Artin",
                       "senderMembershipStatus": "removed",
                       "content": "image",
+                      "randomId": "rid-parser-1",
                       "createdAt": "2026-06-06T00:00:00.000Z",
                       "attachments": [
                         {
@@ -120,6 +121,7 @@ class MessageParserTest {
 
         val message = payload.messages.single()
         assertEquals("removed", message.senderMembershipStatus)
+        assertEquals("rid-parser-1", message.randomId)
 
         val attachment = message.attachments.single()
         assertEquals(640, attachment.width)

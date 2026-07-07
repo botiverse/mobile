@@ -317,7 +317,8 @@ data class Message(
     val senderMembershipStatus: String? = null,
     val commentRef: MessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
-    val conversationContext: MessageConversationContext? = null
+    val conversationContext: MessageConversationContext? = null,
+    val randomId: String? = null
 )
 
 @Serializable

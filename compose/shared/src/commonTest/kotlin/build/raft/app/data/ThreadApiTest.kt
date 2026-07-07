@@ -115,6 +115,22 @@ class ThreadApiTest {
     }
 
     @Test
+    fun sendMessageParsesCanonicalRandomIdEcho() = runBlocking {
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    sendBody = """{"id":"m-send","channelId":"channel-1","senderType":"user","senderId":"u1","content":"sent","randomId":"rid-send-1","seq":1}"""
+                )
+            )
+
+        val result = api.sendMessage("channel-1", "sent", randomId = "rid-send-1")
+
+        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
+        assertEquals("m-send", message.id)
+        assertEquals("rid-send-1", message.randomId)
+    }
+
+    @Test
     fun messageSyncEmitsOffUiParseDiagnostics() = runBlocking {
         val logs = mutableListOf<String>()
         val api =
@@ -341,7 +357,7 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.channelMessages("thread-1", limit = 25, afterSeq = 100))
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.messageSync("channel-1", sinceSeq = 10, limit = 30))
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(
-            api.sendMessage("channel-1", "hello", asTask = true, attachmentIds = listOf("att-1"))
+            api.sendMessage("channel-1", "hello", asTask = true, attachmentIds = listOf("att-1"), randomId = "rid-1")
         )
         assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl("att-1", disposition = "inline"))
         assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1"))
@@ -367,7 +383,7 @@ class ThreadApiTest {
                 "GET messages/channel/thread-1 priority=Visible query=limit=25&before=99 server= body=",
                 "GET messages/channel/thread-1 priority=Visible query=limit=25&after=100 server= body=",
                 "GET messages/sync priority=Visible query=since_seq=10&limit=30&channel_id=channel-1 server= body=",
-                """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true}""",
+                """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true,"randomId":"rid-1"}""",
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
                 "GET attachments/att-1/comments priority=Visible query= server= body=",
                 """POST attachments/att-1/comments priority=Foreground query= server= body={"content":"looks good"}""",
@@ -382,6 +398,18 @@ class ThreadApiTest {
                 """POST messages/mention-actions/execute priority=Foreground query= server= body={"action":"notify","resolutionIds":["res-1"]}"""
             ),
             networkClient.calls
+        )
+    }
+
+    @Test
+    fun sendMessageBodyOmitsRandomIdWhenMissingOrBlank() {
+        assertEquals(
+            """{"channelId":"channel-1","content":"hello","attachmentIds":[],"asTask":false}""",
+            buildSharedThreadSendMessageBody(channelId = "channel-1", body = "hello")
+        )
+        assertEquals(
+            """{"channelId":"channel-1","content":"hello","attachmentIds":[],"asTask":false}""",
+            buildSharedThreadSendMessageBody(channelId = "channel-1", body = "hello", randomId = " ")
         )
     }
 
@@ -412,7 +440,8 @@ class ThreadApiTest {
             channelId: String,
             body: String,
             asTask: Boolean,
-            attachmentIds: List<String>
+            attachmentIds: List<String>,
+            randomId: String?
         ): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = sendBody)
 

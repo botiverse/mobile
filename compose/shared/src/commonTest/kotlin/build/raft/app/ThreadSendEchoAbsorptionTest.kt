@@ -13,7 +13,8 @@ class ThreadSendEchoAbsorptionTest {
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList(),
         deliveryState: String = ThreadMessageDeliverySending,
-        authorId: String = "user-1"
+        authorId: String = "user-1",
+        randomId: String? = "rid-1"
     ): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
@@ -21,13 +22,15 @@ class ThreadSendEchoAbsorptionTest {
             authorName = "Me",
             isOwn = true,
             body = body,
+            randomId = randomId,
             deliveryState = deliveryState,
             pendingSendContext =
                 KuiklyThreadPendingSendContext(
                     channelId = "channel-1",
                     body = body,
                     asTask = asTask,
-                    attachmentIds = attachmentIds
+                    attachmentIds = attachmentIds,
+                    randomId = randomId
                 )
         )
 
@@ -37,7 +40,8 @@ class ThreadSendEchoAbsorptionTest {
         taskId: String? = null,
         attachmentIds: List<String> = emptyList(),
         isOwn: Boolean = true,
-        authorId: String = "user-1"
+        authorId: String = "user-1",
+        randomId: String? = "rid-1"
     ): KuiklyThreadMessageItem =
         KuiklyThreadMessageItem(
             id = id,
@@ -45,6 +49,7 @@ class ThreadSendEchoAbsorptionTest {
             authorName = "Me",
             isOwn = isOwn,
             body = body,
+            randomId = randomId,
             taskId = taskId,
             attachments =
                 attachmentIds.map { attachmentId ->
@@ -53,9 +58,9 @@ class ThreadSendEchoAbsorptionTest {
         )
 
     @Test
-    fun matchingCanonicalEchoAbsorbsPendingShadowExactlyOnce() {
+    fun matchingRandomIdCanonicalEchoAbsorbsPendingShadowExactlyOnce() {
         val shadow = pendingShadow()
-        val echo = canonicalEcho()
+        val echo = canonicalEcho(body = "server canonical body")
         val other = canonicalEcho(id = "canonical-2", body = "unrelated")
 
         val absorbed = listOf(other, shadow).absorbingCanonicalSendEchoes(listOf(echo))
@@ -67,7 +72,27 @@ class ThreadSendEchoAbsorptionTest {
     }
 
     @Test
-    fun rpcLostButPushEchoDeliveredStillAbsorbsShadow() {
+    fun canonicalWithoutRandomIdFallsBackToLegacyHeuristic() {
+        val shadow = pendingShadow(body = "offline send")
+        val pushEcho = canonicalEcho(body = "offline send", randomId = null)
+
+        val absorbed = listOf(shadow).absorbingCanonicalSendEchoes(listOf(pushEcho))
+
+        assertTrue(absorbed.isEmpty())
+    }
+
+    @Test
+    fun randomIdMismatchDoesNotAbsorbEvenWhenContentMatches() {
+        val shadow = pendingShadow(body = "same", randomId = "rid-local")
+        val echo = canonicalEcho(body = "same", randomId = "rid-other")
+
+        val absorbed = listOf(shadow).absorbingCanonicalSendEchoes(listOf(echo))
+
+        assertEquals(listOf(shadow), absorbed)
+    }
+
+    @Test
+    fun rpcLostButPushEchoWithRandomIdDeliveredStillAbsorbsShadow() {
         // The send RPC response never arrived, so the shadow is still "sending".
         // The canonical message arrives later via push; absorption must not
         // depend on the RPC ack path.
@@ -84,7 +109,7 @@ class ThreadSendEchoAbsorptionTest {
         val shadow = pendingShadow(body = "hello")
         val messages = listOf(shadow)
 
-        assertSame(messages, messages.absorbingCanonicalSendEchoes(listOf(canonicalEcho(body = "different"))))
+        assertSame(messages, messages.absorbingCanonicalSendEchoes(listOf(canonicalEcho(body = "different", randomId = "rid-other"))))
         assertSame(messages, messages.absorbingCanonicalSendEchoes(emptyList()))
     }
 
@@ -92,11 +117,11 @@ class ThreadSendEchoAbsorptionTest {
     fun mismatchedContentIsNotAbsorbed() {
         val shadow = pendingShadow(body = "hello", attachmentIds = listOf("a1"))
 
-        val differentBody = canonicalEcho(body = "hello!", attachmentIds = listOf("a1"))
-        val differentAttachments = canonicalEcho(body = "hello", attachmentIds = listOf("a2"))
-        val taskEcho = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), taskId = "task-1")
-        val otherAuthor = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), authorId = "user-2")
-        val notOwn = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), isOwn = false)
+        val differentBody = canonicalEcho(body = "hello!", attachmentIds = listOf("a1"), randomId = null)
+        val differentAttachments = canonicalEcho(body = "hello", attachmentIds = listOf("a2"), randomId = null)
+        val taskEcho = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), taskId = "task-1", randomId = null)
+        val otherAuthor = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), authorId = "user-2", randomId = null)
+        val notOwn = canonicalEcho(body = "hello", attachmentIds = listOf("a1"), isOwn = false, randomId = null)
 
         for (echo in listOf(differentBody, differentAttachments, taskEcho, otherAuthor, notOwn)) {
             assertEquals(listOf(shadow), listOf(shadow).absorbingCanonicalSendEchoes(listOf(echo)))

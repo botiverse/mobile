@@ -5706,10 +5706,12 @@ class SharedThreadStoreTest {
             channelId = "channel-1",
             body = "with files",
             asTask = false,
-            attachmentIds = listOf("att-1", "att-2")
+            attachmentIds = listOf("att-1", "att-2"),
+            randomId = "rid-1"
         )
 
         assertEquals(listOf("att-1", "att-2"), api.lastAttachmentIds)
+        assertEquals("rid-1", api.lastRandomId)
     }
 
     @Test
@@ -6906,6 +6908,7 @@ class SharedThreadStoreTest {
         val syncLimits: MutableList<Int> = mutableListOf()
         val channelIds: MutableList<String> = mutableListOf()
         var lastAttachmentIds: List<String> = emptyList()
+        var lastRandomId: String? = null
         val savedMessageIds: MutableList<String> = mutableListOf()
         val unsavedMessageIds: MutableList<String> = mutableListOf()
         val addedReactions: MutableList<Pair<String, String>> = mutableListOf()
@@ -6963,9 +6966,11 @@ class SharedThreadStoreTest {
             channelId: String,
             body: String,
             asTask: Boolean,
-            attachmentIds: List<String>
+            attachmentIds: List<String>,
+            randomId: String?
         ): HomeNetworkResponse {
             lastAttachmentIds = attachmentIds
+            lastRandomId = randomId
             return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
         }
 
@@ -7520,7 +7525,8 @@ class SharedThreadStoreTest {
             channelId: ChannelId,
             body: String,
             attachmentIds: List<build.raft.app.model.AttachmentId>,
-            asTask: Boolean
+            asTask: Boolean,
+            randomId: String?
         ): DataResult<SendMessageResult> = error("unused")
     }
 

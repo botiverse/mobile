@@ -1253,9 +1253,10 @@ internal class SharedThreadDataSource(
         channelId: String,
         body: String,
         asTask: Boolean,
-        attachmentIds: List<String> = emptyList()
+        attachmentIds: List<String> = emptyList(),
+        randomId: String? = null
     ): ThreadApiResult<ThreadMessagesPage> =
-        api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds)
+        api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds, randomId = randomId)
 
     suspend fun executePendingMentionActions(
         action: String,
@@ -5868,6 +5869,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         systemEventType = systemEventType,
         metadata = metadata.withoutLocalSendMetadata(),
         body = body,
+        randomId = randomId?.takeIf { it.isNotBlank() } ?: pendingSendContext?.randomId?.takeIf { it.isNotBlank() },
         threadChannelId = threadChannelId?.value,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,

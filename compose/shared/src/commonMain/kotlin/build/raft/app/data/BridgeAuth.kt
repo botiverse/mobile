@@ -575,7 +575,8 @@ internal interface SharedThreadNetworkApi {
         channelId: String,
         body: String,
         asTask: Boolean = false,
-        attachmentIds: List<String> = emptyList()
+        attachmentIds: List<String> = emptyList(),
+        randomId: String? = null
     ): HomeNetworkResponse
     suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse

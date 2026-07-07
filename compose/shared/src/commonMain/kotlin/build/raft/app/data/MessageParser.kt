@@ -91,6 +91,7 @@ private data class MessagesWireMessage(
     val senderMembershipStatus: String? = null,
     val messageType: String = "chat",
     val content: String = "",
+    val randomId: String? = null,
     /** Anchor marker on a thread PARENT message — points to the thread channel
      *  where replies live. `null` on ordinary messages and on thread replies. */
     val threadId: String? = null,
@@ -373,6 +374,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         },
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
+        randomId = randomId?.takeIf { it.isNotBlank() },
         reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },
         senderMembershipStatus = senderMembershipStatus,
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
