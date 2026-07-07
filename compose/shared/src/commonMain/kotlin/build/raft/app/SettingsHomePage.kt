@@ -15158,7 +15158,7 @@ private fun Pager.openStandaloneTaskThreadPage(
     compactConsecutiveMessages: Boolean,
     threadRowAffordances: Set<ThreadRowAffordancePreference>
 ) {
-    openStandaloneThreadLaunchPayload(
+    val launchPayload =
         buildStandaloneTaskThreadLaunchPayload(
             task = task,
             timeContext = timeContext,
@@ -15166,7 +15166,8 @@ private fun Pager.openStandaloneTaskThreadPage(
             compactConsecutiveMessages = compactConsecutiveMessages,
             threadRowAffordances = threadRowAffordances
         )
-    )
+            ?: return
+    openStandaloneThreadLaunchPayload(launchPayload)
 }
 
 private fun Pager.openStandaloneThreadLaunchPayload(launchPayload: WireThreadLaunchPayload) {
@@ -15399,42 +15400,15 @@ internal fun buildStandaloneTaskThreadLaunchPayload(
     alignOwnMessagesRight: Boolean = false,
     compactConsecutiveMessages: Boolean = false,
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default
-): WireThreadLaunchPayload {
-    val streamThreadId = task.threadId?.value?.takeIf { it.isNotBlank() }
-    val parentMessageId =
-        task.parentMessageId?.value?.takeIf { it.isNotBlank() }
-            ?: task.messageId?.value?.takeIf { it.isNotBlank() }
-    val focusedMessageId =
-        task.messageId
-            ?.value
-            ?.takeIf { it.isNotBlank() && it != parentMessageId }
-    return WireThreadLaunchPayload(
-        instanceId = "task-thread-${task.id.value}",
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        threadId = streamThreadId,
-        sourceThreadId = streamThreadId,
-        streamChannelId = streamThreadId,
-        parentChannelId = task.channelId?.value?.takeIf { it.isNotBlank() },
-        parentMessageId = parentMessageId,
-        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-        originParentMessageId = parentMessageId,
-        focusedMessageId = focusedMessageId,
-        focusedMessageRequestNonce =
-            if (focusedMessageId != null) {
-                nextThreadFocusedMessageRequestNonce()
-            } else {
-                0
-            },
-        selectedTab = "chat",
-        navigationLabel = "Back",
+): WireThreadLaunchPayload? {
+    val target = task.toTaskThreadLaunchTarget() ?: return null
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation = target.conversation,
+        timeContext = timeContext,
+        anchorMessageId = target.focusedMessageId,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
-        showReactionActions = threadRowAffordances.showReactionActions(),
-        showInlineSaveAction = threadRowAffordances.showInlineSaveAction(),
-        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
-        todayEpochDay = timeContext?.todayEpochDay,
-        nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
+        threadRowAffordances = threadRowAffordances
     )
 }
 
