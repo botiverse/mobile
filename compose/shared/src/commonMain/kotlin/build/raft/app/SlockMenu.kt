@@ -74,6 +74,7 @@ internal fun SlockBaseMenuOverlay(
     rowHeight: Dp = SlockBaseMenuRowHeight,
     labelFontSize: TextUnit = 12.sp,
     labelLineHeight: TextUnit = 14.sp,
+    labelFontWeight: FontWeight = FontWeight.SemiBold,
     labelLetterSpacing: TextUnit = 0.8.sp,
     selectedIndicatorPlacement: SlockMenuSelectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Leading,
     modifier: Modifier = Modifier,
@@ -152,6 +153,7 @@ internal fun SlockBaseMenuOverlay(
                         rowHeight = rowHeight,
                         labelFontSize = labelFontSize,
                         labelLineHeight = labelLineHeight,
+                        labelFontWeight = labelFontWeight,
                         labelLetterSpacing = labelLetterSpacing,
                         selectedIndicatorPlacement = selectedIndicatorPlacement,
                         onClick = { onSelect(item.id) }
@@ -189,7 +191,8 @@ internal fun SlockTaskStatusMenuOverlay(
         width = 140.dp,
         rowHeight = 36.dp,
         labelFontSize = 14.sp,
-        labelLineHeight = 18.sp,
+        labelLineHeight = 20.sp,
+        labelFontWeight = FontWeight.Normal,
         labelLetterSpacing = 0.sp,
         selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
         horizontalOffset = 0.dp,
@@ -220,6 +223,7 @@ private fun SlockBaseMenuRow(
     rowHeight: Dp,
     labelFontSize: TextUnit,
     labelLineHeight: TextUnit,
+    labelFontWeight: FontWeight,
     labelLetterSpacing: TextUnit,
     selectedIndicatorPlacement: SlockMenuSelectedIndicatorPlacement,
     onClick: () -> Unit
@@ -252,7 +256,7 @@ private fun SlockBaseMenuRow(
                     fontSize = labelFontSize,
                     lineHeight = labelLineHeight,
                     letterSpacing = labelLetterSpacing
-                ).withSlockFontWeight(FontWeight.SemiBold),
+                ).withSlockFontWeight(labelFontWeight),
                 color = SlockBaseMenuForegroundColor,
                 maxLines = 1,
                 modifier = Modifier.weight(1f)

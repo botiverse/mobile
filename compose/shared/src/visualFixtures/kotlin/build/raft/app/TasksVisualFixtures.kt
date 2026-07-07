@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -208,7 +209,8 @@ internal fun TasksStatusMenuVisualContent() {
             width = 140.dp,
             rowHeight = 36.dp,
             labelFontSize = 14.sp,
-            labelLineHeight = 18.sp,
+            labelLineHeight = 20.sp,
+            labelFontWeight = FontWeight.Normal,
             labelLetterSpacing = 0.sp,
             selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
             horizontalOffset = 0.dp,
