@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
@@ -69,6 +70,36 @@ class SettingsHomePageDiagnosticsTest {
                 "oneTimeClientSecret"
             )
         assertTrue(SettingsRouteVisualPageDataFields.none { it in forbiddenProductPayloadFields })
+    }
+
+    @Test
+    fun routeVisualStatePreseedsFullCaptureDestinations() {
+        val administration =
+            settingsRouteVisualState(
+                SettingsRouteVisualPayload(
+                    destination = "administration",
+                    itemId = null,
+                    fixtureKey = "canonical",
+                    fullHeight = true
+                )
+            )
+        assertEquals(SharedSettingsDestination.Administration, administration.route.destination)
+        assertTrue(administration.home is ScreenLoadState.Content)
+        assertTrue(administration.server is ScreenLoadState.Content)
+
+        val connectedApps =
+            settingsRouteVisualState(
+                SettingsRouteVisualPayload(
+                    destination = "connected-apps",
+                    itemId = null,
+                    fixtureKey = "canonical",
+                    fullHeight = true
+                )
+            )
+        assertEquals(SharedSettingsDestination.ConnectedApps, connectedApps.route.destination)
+        assertTrue(connectedApps.home is ScreenLoadState.Content)
+        val connectedAppsContent = connectedApps.connectedApps as ScreenLoadState.Content
+        assertTrue(connectedAppsContent.data.registered.isNotEmpty())
     }
 
     @Test
