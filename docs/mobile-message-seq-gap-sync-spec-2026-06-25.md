@@ -43,7 +43,7 @@ Already present:
 
 - Android realtime client has `RealtimeCursorPolicy` and sends socket `sync:resume` after rooms join using `lastSeq`.
 - Shared model has `SyncResumeResponse(messages, currentSeq, hasMore)` and `Heartbeat(seq)`.
-- `ComposeLocalWriteThrough.writeRealtimeEvents()` handles `MessageNew`, `MessageUpdated`, and `SyncResumeResponse` by merging messages into local Home/Thread snapshots.
+- Current repository/local-store realtime handlers must merge `MessageNew`, `MessageUpdated`, and `SyncResumeResponse` into local Home/Thread snapshots.
 - Thread network APIs already support `messageSync(channelId, sinceSeq, limit)` over `/messages/sync`.
 - Thread newer paging already uses `messageSync` with `afterSeq`.
 - Local `ThreadSnapshot.lastSeq` is persisted and patch-merged.

@@ -243,7 +243,8 @@ is the gating factor.
 ### 3.10 Root build.gradle.kts
 
 `compose/build.gradle.kts` needs updating:
-- Add `validateKmpSharedRelease` task (simplified — no need for publish step)
+- Use direct Gradle validation commands; the legacy wrapper task has been
+  removed.
 - Update plugin versions to match outer catalog
 - Update all root-relative file references from `docs/...` and `scripts/...` to
   `../docs/...` and `../scripts/...`, because the task now runs with `compose/` as
@@ -272,8 +273,8 @@ Merge properties from outer `gradle.properties` into `compose/gradle.properties`
 ### 3.13 Scripts
 
 Update all scripts that reference the outer project structure:
-- `scripts/validate_kmp_shared_release.sh`: Remove the publish step; change to direct
-  `:androidApp:compileDebugKotlin` within the compose project.
+- The legacy shared-release validation wrapper has been removed; use direct
+  `compose/gradlew` validation commands.
 - `scripts/run_live_slock_db_flow.sh`: change the Gradle invocation from root
   `testDebugUnitTest` / `:app:*` style to `compose/gradlew :androidApp:testDebugUnitTest`
   with the same focused test filter.
@@ -354,8 +355,7 @@ and uses its own `build.ohos.gradle.kts` with its own plugin versions. It is tri
 `-c settings.ohos.gradle.kts`. Keep this path unchanged.
 
 ### 5.6 Build Script Migration
-The `validate_kmp_shared_release.sh` script and other CI validators reference the old
-structure.
+Legacy CI validators may reference the old structure.
 
 **Mitigation**: Update scripts as part of the migration. All script paths change from
 `$ROOT_DIR` (outer root) to `$ROOT_DIR/compose` or simply `$ROOT_DIR` if compose becomes
@@ -447,8 +447,8 @@ outer `.idea/`.
 
 ### Phase 5: Root Cleanup
 
-16. **Update `compose/build.gradle.kts`** with the root validation task
-    (`validateKmpSharedRelease`).
+16. **Update `compose/build.gradle.kts`** and validation docs to use direct Gradle
+    commands instead of the removed wrapper.
 
 17. **Merge `gradle.properties`** entries.
 
@@ -524,7 +524,7 @@ outer `.idea/`.
 - [ ] `:androidApp:assembleDebug` produces a valid APK
 - [ ] `:androidApp:testDebugUnitTest` passes (or acceptable failure count)
 - [ ] `:shared:compileKotlinOhosArm64` passes
-- [ ] `scripts/validate_kmp_shared_release.sh` updated and passes
+- [ ] Direct Gradle validation commands are documented and pass
 - [ ] Scripts directory updated with new paths
 - [ ] AGENTS.md updated with new build instructions
 - [ ] Outer Gradle scaffolding deleted

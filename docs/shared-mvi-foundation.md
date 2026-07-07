@@ -160,8 +160,7 @@ stores and shared infrastructure:
 - auth/session: `KuiklyMMKVAuthSessionStore`, `SharedAuthDataSource`,
   `SharedAuthGateStore`;
 - local persistence: `SqlDelightRelationalStore`,
-  `RelationalComposeLocalDataStore`, `ComposeLocalWriteThrough`, local
-  preference stores;
+  `RelationalComposeLocalDataStore`, local preference stores;
 - app/domain projections: `SharedConversationDirectoryStore`,
   `SharedServerMembersStore`, `SharedAgentDetailStore`,
   `SharedTasksDataStore`, `SharedActivityStore` cache, Home/Saved state cache;

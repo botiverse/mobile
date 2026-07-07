@@ -13,7 +13,7 @@ Scope: Home shared shell parity after Android native Home migration. This audit 
 
 KMP Home has a commonMain `SharedHomeStore`, preserves visible Home content
 during in-process refreshes after content exists, and the real
-`compose_slock_app_shell` now wires `ComposeLocalWriteThrough` into
+`compose_slock_app_shell` now wires shared local persistence into
 `SharedHomeDataSource`.
 
 The remaining risk is more specific than the original audit: visible Home loads
@@ -30,20 +30,20 @@ regression coverage.
 | Selected server restore | Shared app shell calls `restoreSession()`, requires `selectedServerId`, and `SharedHomeStore` reads `activeSession.currentServerId`. Server switch updates `authStore.updateSelectedServer(...)`. | Mostly migrated | Restore happens inside the shared shell placeholder; parent audit owns any splash/presentation parity question. | Keep selected-server persistence in commonMain. |
 | In-process Home warm state | `SharedHomeViewModel` is keyed as `shared-home`; `SharedHomeContentState.Content.asRefreshing()` keeps content and toggles `contentRefreshing`. Thread pop returns to main route without rebuilding the whole Activity. | Migrated for same shell instance | Warm state is process/viewmodel scoped only. It does not cover cold start or Activity recreation with cached Home data. | Add regression tests for Thread -> Home returning with existing content and no global Loading. |
 | Refresh/loading without clearing existing content | If current state is `Content`, refresh/network failure keeps the snapshot. Route-return/automatic refresh has also been made silent. If current state is `Loading`, `Empty`, or `Error`, visible load still does not directly emit cache first. | Mostly migrated | First visible load, offline visible load, or shell recreation can still show loading/error instead of cached channels/DMs. | Add product-path test: visible startup with existing cache and network failure/delay must stay content or emit cached content first. |
-| Channel/DM local database cache | commonMain owns `ComposeLocalWriteThrough`; real `SlockAppShellContent` constructs a shared `ComposeLocalWriteThrough` and passes it to `SharedHomeDataSource`. | Wired / needs validation | Cache-first visible semantics still need verification. | Keep the shared shell wiring; add cold-start/offline regression coverage around visible priority. |
+| Channel/DM local database cache | commonMain owns shared local persistence; real `SlockAppShellContent` wires the current local store/data-source path into `SharedHomeDataSource`. | Wired / needs validation | Cache-first visible semantics still need verification. | Keep the shared shell wiring; add cold-start/offline regression coverage around visible priority. |
 | Background cache read | `SharedHomeDataSource.loadHome()` reads cache only when `priority == Background`; `SharedHomeStore` normal Start/Refresh/SelectServer still use `DataRequestPriority.Visible`. | Partial | Existing cache-read branch is available but not the normal visible startup path. | Either introduce `LoadCachedThenRefresh` flow or let Visible load emit cached content before network. |
 | Server switch stale response gate | Shared `HomeServerSwitchState` gates result by request generation and server id. | Migrated | Needs continued test coverage but the state machine is in commonMain. | Keep existing generation tests; add cache/server-switch combined test if cache is wired. |
 
 ## Code Evidence
 
-- Real shared shell creates `ComposeLocalWriteThrough` from `RelationalComposeLocalDataStore` and passes it into `SharedHomeDataSource` in `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`.
+- Real shared shell wires `RelationalComposeLocalDataStore` / repository-backed local persistence into `SharedHomeDataSource` in `compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt`.
 - `SharedHomeDataSource.loadHome()` only returns cached Home when `priority == DataRequestPriority.Background`; otherwise it fetches network and writes through the now-injected `localWriteThrough`.
 - `SharedHomeStore.load()` calls `dataSource.loadHome(..., priority = DataRequestPriority.Visible)` for Start, Refresh, and SelectServer.
 
 ## Recommended Fix Order
 
 1. Verify shared local database Home cache in the product shell.
-   - The shared `ComposeLocalWriteThrough` injection exists.
+   - The shared local-persistence injection exists.
    - Android and OHOS should both be checked for real persistence across
      Activity/app restart, not only same-process warm state.
 

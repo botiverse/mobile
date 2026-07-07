@@ -92,9 +92,9 @@ activity, and route markers.
       `SharedHomeStore` and, when the Activity surface should update, to
       `SharedActivityStore`.
     - `HomeDataSource.applyRealtimeEvents` writes message/thread events through
-      `ComposeLocalWriteThrough.writeRealtimeEvents` and can reload the cached
-      Home snapshot.
-    - `ComposeLocalWriteThrough` ignores transient presence, skips heartbeat
+      current repository/local-store paths and can reload the cached Home
+      snapshot.
+    - Realtime cache handling ignores transient presence, skips heartbeat
       writes, writes new/updated messages, applies `SyncResumeResponse`, and
       writes thread metadata for `ThreadUpdated`.
 

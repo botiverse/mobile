@@ -164,7 +164,7 @@ A follow-up patch would likely do this:
 
 ## What Should Not Be Done
 
-- Do not reintroduce `ComposeLocalWriteThrough` readback for Thread timeline.
+- Do not reintroduce a removed write-through readback layer for the Thread timeline.
 - Do not reintroduce `ThreadRealtimeCacheInvalidationSignal`.
 - Do not add a second Thread UI state store.
 - Do not make route/pageData carry message content, members, tasks, files, or
