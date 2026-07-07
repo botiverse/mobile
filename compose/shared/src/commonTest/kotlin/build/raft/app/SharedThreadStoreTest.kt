@@ -4387,7 +4387,7 @@ class SharedThreadStoreTest {
                 parentMessageId = MessageId("m1"),
                 parentMessagePreview = "parent body",
                 latestActivityMessageId = MessageId("reply-1")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val initialPayload =
             buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
                 .copy(

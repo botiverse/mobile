@@ -1,7 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.InboxItem
+import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.PendingMentionAction
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -12,6 +17,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
@@ -20,6 +26,7 @@ import build.raft.app.model.threadIdentity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
@@ -473,7 +480,7 @@ class SharedInboxPanelTest {
         assertEquals(null, item.primaryActivityPreviewText().senderName)
         assertEquals(emptyList(), item.activityFooterSlots())
 
-        val request = item.toHomeMessageOpenRequest()
+        val request = item.toHomeMessageOpenRequestForTest()
         assertEquals("message-1", request.anchorMessageId)
         assertEquals(ConversationKind.Channel, request.conversationIdentity.kind)
         val rowSummary = item.toConversationSummary()
@@ -520,8 +527,8 @@ class SharedInboxPanelTest {
                 latestActivityMessageId = MessageId("activity-message"),
                 firstUnreadMessageId = MessageId("first-unread")
             )
-        val unreadRequest = item.toHomeMessageOpenRequest()
-        val readRequest = item.copy(unreadCount = 0).toHomeMessageOpenRequest()
+        val unreadRequest = item.toHomeMessageOpenRequestForTest()
+        val readRequest = item.copy(unreadCount = 0).toHomeMessageOpenRequestForTest()
 
         assertEquals(MessageId("activity-message"), item.toConversationSummary().lastMessageId)
         assertEquals("first-unread", unreadRequest.anchorMessageId)
@@ -545,12 +552,12 @@ class SharedInboxPanelTest {
                 latestActivityMessageId = MessageId("latest-visible-reply"),
                 lastMessageId = MessageId("last-reply")
             )
-        val unreadRequest = item.toHomeMessageOpenRequest()
+        val unreadRequest = item.toHomeMessageOpenRequestForTest()
         val readRequest =
             item.copy(
                 unreadCount = 0,
                 firstUnreadMessageId = MessageId("stale-first-unread")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         assertEquals("older-unread-reply", unreadRequest.anchorMessageId)
         assertEquals("latest-visible-reply", readRequest.anchorMessageId)
@@ -570,12 +577,12 @@ class SharedInboxPanelTest {
                 latestActivityMessageId = MessageId("activity-message"),
                 lastMessageId = MessageId("last-message")
             )
-        val unreadRequest = item.toHomeMessageOpenRequest()
+        val unreadRequest = item.toHomeMessageOpenRequestForTest()
         val readRequest =
             item.copy(
                 unreadCount = 0,
                 firstUnreadMessageId = MessageId("stale-first-unread")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         assertEquals("first-unread", unreadRequest.anchorMessageId)
         assertEquals("last-message", readRequest.anchorMessageId)
@@ -607,9 +614,9 @@ class SharedInboxPanelTest {
             )
 
         assertNotEquals(base.toConversationSummary(), updated.toConversationSummary())
-        assertEquals(base.toHomeMessageOpenRequest().conversationIdentity, updated.toHomeMessageOpenRequest().conversationIdentity)
-        assertEquals("first-unread-1", base.toHomeMessageOpenRequest().anchorMessageId)
-        assertEquals("last-message-2", updated.toHomeMessageOpenRequest().anchorMessageId)
+        assertEquals(base.toHomeMessageOpenRequestForTest().conversationIdentity, updated.toHomeMessageOpenRequestForTest().conversationIdentity)
+        assertEquals("first-unread-1", base.toHomeMessageOpenRequestForTest().anchorMessageId)
+        assertEquals("last-message-2", updated.toHomeMessageOpenRequestForTest().anchorMessageId)
     }
 
     @Test
@@ -636,9 +643,9 @@ class SharedInboxPanelTest {
             )
 
         assertEquals(base.key, updated.key)
-        assertEquals(base.toHomeMessageOpenRequest().conversationIdentity, updated.toHomeMessageOpenRequest().conversationIdentity)
-        assertEquals("reply-1", base.toHomeMessageOpenRequest().anchorMessageId)
-        assertEquals("reply-2", updated.toHomeMessageOpenRequest().anchorMessageId)
+        assertEquals(base.toHomeMessageOpenRequestForTest().conversationIdentity, updated.toHomeMessageOpenRequestForTest().conversationIdentity)
+        assertEquals("reply-1", base.toHomeMessageOpenRequestForTest().anchorMessageId)
+        assertEquals("reply-2", updated.toHomeMessageOpenRequestForTest().anchorMessageId)
         assertNotEquals(base.inboxItemOpenGestureKey(), updated.inboxItemOpenGestureKey())
     }
 
@@ -730,11 +737,12 @@ class SharedInboxPanelTest {
 
     @Test
     fun homeOpenRequestDoesNotFallBackToParentForThreadWithoutReplyId() {
-        // Thread item without firstUnreadMessageId / latestActivityMessageId / lastMessageId
-        // must NOT silently fall back to parentMessageId. That field is the parent channel
-        // origin (not a reply id) and mixing it into the anchor chain degrades the reply-stream
-        // anchor (see #275-style contract escapes and the v0.2 thread contract).
-        val request =
+        // Original intent kept: a thread row without reply ids must NOT anchor on
+        // parentMessageId (parent origin, not a reply id). Post t5/#419 A3 the row's unknown
+        // parentChannelKind additionally means it only resolves via the directory (thread
+        // projection + parent channel projection); without one it stays Pending — never a
+        // guessed channel-shaped request.
+        val item =
             InboxItem(
                 key = "thread:thread-channel-1",
                 kind = InboxItemKind.Thread,
@@ -745,11 +753,36 @@ class SharedInboxPanelTest {
                 parentChannelName = "general",
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview"
-            ).toHomeMessageOpenRequest()
+            )
+        val directory =
+            listOf(
+                InboxSnapshot(
+                    server = ServerSummary(ServerId("server-1"), "Raft"),
+                    items = listOf(item)
+                ).toSharedConversationDirectoryState(),
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "channel-1",
+                        aliases = setOf("channel-1"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "general"
+                    )
+                ).toSharedConversationDirectoryState()
+            ).mergedSharedConversationDirectoryState()
+        val request =
+            item.toHomeMessageOpenRequestForTest(serverId = "server-1", conversationDirectory = directory)
 
         assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversationIdentity.threadId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(null, request.anchorMessageId)
+
+        val unresolved =
+            item.toHomeMessageOpenRequest(serverId = "", conversationDirectory = SharedConversationDirectoryState())
+        assertTrue(unresolved is ConversationOpenResolution.Pending)
     }
 
     @Test

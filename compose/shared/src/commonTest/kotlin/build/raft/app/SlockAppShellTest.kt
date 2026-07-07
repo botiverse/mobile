@@ -692,7 +692,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(banner)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
         assertEquals(activityOpenRequest.conversationIdentity, resolved.openRequest.conversationIdentity)
         assertEquals(activityOpenRequest.anchorMessageId, resolved.openRequest.anchorMessageId)
         assertEquals("@Cindy - thread", resolved.context)
@@ -760,7 +760,7 @@ class SlockAppShellTest {
                 latestActivityMessageId = MessageId("reply-1")
             )
         assertEquals(
-            activityItem.toHomeMessageOpenRequest().conversationIdentity,
+            activityItem.toHomeMessageOpenRequestForTest().conversationIdentity,
             resolved.openRequest.conversationIdentity
         )
         assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
@@ -1063,7 +1063,7 @@ class SlockAppShellTest {
                 latestActivityMessageId = MessageId("reply-1")
             )
 
-        val request = activityItem.toHomeMessageOpenRequest()
+        val request = activityItem.toHomeMessageOpenRequestForTest()
 
         assertEquals("reply-1", request.anchorMessageId)
         assertEquals("parent-channel", request.originFallback?.parentChannelId)
@@ -1103,7 +1103,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(openRequest)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
         assertEquals(activityOpenRequest.conversationIdentity, resolved.conversationIdentity)
         assertEquals(activityOpenRequest.anchorMessageId, resolved.anchorMessageId)
         assertEquals(ConversationKind.Thread, resolved.conversationIdentity.kind)
