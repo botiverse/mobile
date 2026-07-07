@@ -700,6 +700,9 @@ private fun SharedConversationDirectoryProjection.matchesForegroundBannerSenderM
     return ids.isNotEmpty() && message.id.value in ids
 }
 
+// Order IS the contract: the message's own stream/channel ids resolve before thread/parent
+// anchors — the banner must land on the conversation the message belongs to before any
+// parent association can claim it (t432 family ③).
 private fun Message.foregroundBannerLookupIds(): List<String> =
     listOfNotNull(
         threadChannelId?.value,
