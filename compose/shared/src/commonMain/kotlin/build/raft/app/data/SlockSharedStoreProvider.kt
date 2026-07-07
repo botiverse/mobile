@@ -93,6 +93,9 @@ internal class SlockSharedStoreProvider private constructor(
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = homeStore
 
+    val sharedHomeStore: SharedHomeStore?
+        get() = homeStore
+
     fun updateEventBus(nextEventBus: SlockEventBus, source: String) {
         eventBus.update(nextEventBus)
         authSessionEvents.updateEventBus(eventBus, source)
@@ -123,6 +126,9 @@ internal class SlockSharedStoreProvider private constructor(
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
+        setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
         pinUpdateFailureCallback: (String) -> Unit = {},
         diagnosticsLogger: (String) -> Unit = {}
     ): SharedHomeStore {
@@ -135,6 +141,7 @@ internal class SlockSharedStoreProvider private constructor(
                 markChannelReadAll = markChannelReadAll,
                 markChannelUnread = markChannelUnread,
                 archiveChannel = archiveChannel,
+                setChannelActivityMuted = setChannelActivityMuted,
                 pinUpdateFailureCallback = pinUpdateFailureCallback
             )
             return store
@@ -149,6 +156,7 @@ internal class SlockSharedStoreProvider private constructor(
             markChannelReadAll = markChannelReadAll,
             markChannelUnread = markChannelUnread,
             archiveChannel = archiveChannel,
+            setChannelActivityMuted = setChannelActivityMuted,
             pinUpdateFailureCallback = pinUpdateFailureCallback,
             persistSlices = listOf(homeIdentityPersistSlice)
         ).also { homeStore = it }

@@ -49,6 +49,9 @@ data class HomeChannelWireDto(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false,
 )
 
 @Serializable
@@ -64,7 +67,10 @@ data class HomeDirectMessageWireDto(
     val peerDisplayName: String? = null,
     val peerDescription: String? = null,
     val peerAvatarUrl: String? = null,
-    val peerGravatarHash: String? = null
+    val peerGravatarHash: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false
 )
 
 fun parseSlockHome(
@@ -221,6 +227,9 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerServerName = jointPeerServerName?.takeIf { it.isNotBlank() },
         jointPeerServerSlug = jointPeerServerSlug?.takeIf { it.isNotBlank() },
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported,
         permissions = ConversationPermissions(
             canSend = joined,
             canAttach = joined,
@@ -247,7 +256,10 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
                 ?: description?.takeIf { it.isNotBlank() },
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
-        lastMessageAt = lastMessageAt
+        lastMessageAt = lastMessageAt,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported
     )
 }
 

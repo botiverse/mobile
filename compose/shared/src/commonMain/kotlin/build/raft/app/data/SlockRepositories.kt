@@ -323,6 +323,7 @@ interface ChannelRepository {
     suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
     suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
     suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult>
+    suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings>
 }
 
 enum class ChannelVisibility(val wireValue: String) {
@@ -331,6 +332,13 @@ enum class ChannelVisibility(val wireValue: String) {
 }
 
 data class ChannelUpdateResult(val channelId: ChannelId)
+
+data class ChannelActivityMuteSettings(
+    val channelId: ChannelId,
+    val activityMuted: Boolean,
+    val muteFromSeq: Long?,
+    val activityMuteSupported: Boolean
+)
 
 interface ReadReceiptRepository {
     suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot>

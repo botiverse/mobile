@@ -61,6 +61,7 @@ import build.raft.app.data.SharedComputersPickerSlice
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationIdentityProvider
+import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersLoadStatus
@@ -571,8 +572,40 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerName: String? = null,
     val dmPeerAvatarUrl: String? = null,
     val dmPeerAvatarLabel: String? = null,
-    val dmPeerGravatarUrl: String? = null
+    val dmPeerGravatarUrl: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false
 )
+
+private data class ThreadActivityMuteUiState(
+    val channelId: String,
+    val muted: Boolean,
+    val supported: Boolean,
+    val muteFromSeq: Long?
+)
+
+private fun KuiklyThreadScreenPayload.threadActivityMuteState(
+    projection: SharedConversationDirectoryProjection?
+): ThreadActivityMuteUiState? {
+    val resolvedSurfaceKind = projection?.surfaceKind ?: surfaceKind
+    if (resolvedSurfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
+    val supported = projection?.activityMuteSupported ?: activityMuteSupported
+    if (!supported) return null
+    val resolvedJoined = projection?.joined ?: joined
+    if (resolvedSurfaceKind != KuiklyThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
+    val channelId =
+        projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
+            ?: streamChannelId?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadActivityMuteUiState(
+        channelId = channelId,
+        muted = projection?.activityMuted ?: activityMuted,
+        supported = supported,
+        muteFromSeq = projection?.muteFromSeq ?: muteFromSeq
+    )
+}
 
 internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
     (parentChannelId?.takeIf { it.isNotBlank() }
@@ -2142,6 +2175,102 @@ internal fun ThreadHeaderVisualScreen() {
 }
 
 @Composable
+internal fun ThreadActivityMuteVisualScreen() {
+    val unmutedPayload =
+        remember {
+            KuiklyThreadScreenPayload(
+                instanceId = "visual-thread-activity-mute-unmuted",
+                title = "#visual-testing",
+                subtitle = "Visual parity and capture automation",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-visual-testing",
+                streamChannelId = "channel-visual-testing",
+                selectedTab = "chat",
+                showModeTabs = true,
+                showSettingsAction = true,
+                showMembersAction = true,
+                membersCount = 8,
+                activityMuted = false,
+                activityMuteSupported = true
+            )
+        }
+    val mutedPayload =
+        remember {
+            unmutedPayload.copy(
+                instanceId = "visual-thread-activity-mute-muted",
+                title = "#announcements",
+                subtitle = "Release notes and high-signal updates",
+                sourceThreadId = "channel-announcements",
+                streamChannelId = "channel-announcements",
+                membersCount = 3,
+                activityMuted = true,
+                muteFromSeq = 45
+            )
+        }
+    Column(modifier = Modifier.width(390.dp).height(844.dp).background(SlockColor.SurfaceWhite)) {
+        ThreadPageHeader(
+            payload = unmutedPayload,
+            applyTopSafeArea = false,
+            onBack = {},
+            onOpenInChannel = {},
+            onOpenMemberProfile = { _, _, _ -> },
+            onOpenSearch = {},
+            onShowMembers = {},
+            onShowSettings = {},
+            onToggleActivityMute = {}
+        )
+        ThreadPageHeader(
+            payload = mutedPayload,
+            applyTopSafeArea = false,
+            onBack = {},
+            onOpenInChannel = {},
+            onOpenMemberProfile = { _, _, _ -> },
+            onOpenSearch = {},
+            onShowMembers = {},
+            onShowSettings = {},
+            onToggleActivityMute = {}
+        )
+        SlockStructuralHomeShell(
+            modifier = Modifier.height(700.dp),
+            currentServerName = "Raft Mobile",
+            currentServerId = "server-visual",
+            servers =
+                listOf(
+                    SlockServerSwitcherItem(
+                        id = "server-visual",
+                        name = "Raft Mobile",
+                        slug = "mobile"
+                    )
+                ),
+            channels =
+                listOf(
+                    SlockHomeConversationItem(
+                        id = "channel-loud",
+                        name = "critical",
+                        kind = "channel",
+                        unreadCount = 7,
+                        joined = true,
+                        activityMuted = false
+                    ),
+                    SlockHomeConversationItem(
+                        id = "channel-muted",
+                        name = "announcements",
+                        kind = "channel",
+                        unreadCount = 7,
+                        joined = true,
+                        activityMuted = true
+                    )
+                ),
+            directMessages = emptyList(),
+            showBottomBar = false,
+            bottomContentPadding = 0.dp,
+            outerPadding = 0.dp
+        )
+    }
+}
+
+@Composable
 internal fun ThreadReactionAtlasVisualScreen() {
     // task #376 (Quiver 389d855b): this standalone visual screen renders reaction
     // glyphs outside ThreadMessagesList, so it provides its own hoisted atlas
@@ -2559,10 +2688,12 @@ internal fun SharedThreadRouteContent(
     onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, String, MemberKind?, String?) -> Unit = { _, _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
-    val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
-    val realtimeDomainEventOwner = remember(bridge) { SlockSharedStoreRegistry.get(bridge).realtimeDomainEventOwner }
-    val foregroundReconciler = remember(bridge) { SlockSharedStoreRegistry.get(bridge).foregroundReconciler }
-    val foregroundBannerCurrentServerStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).localDataStore }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
+    val realtimeDomainEventOwner = remember(sharedStores) { sharedStores.realtimeDomainEventOwner }
+    val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
+    val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
+    val sharedHomeStore = remember(sharedStores) { sharedStores.sharedHomeStore }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
@@ -2696,6 +2827,11 @@ internal fun SharedThreadRouteContent(
     val headerDisplayModel =
         remember(headerProjectionInput, stableHeaderProjection) {
             headerProjectionInput.displayModel(stableHeaderProjection)
+        }
+    val activityMuteState =
+        remember(payload, stableHeaderProjection, sharedHomeStore) {
+            payload.threadActivityMuteState(stableHeaderProjection)
+                ?.takeIf { sharedHomeStore != null }
         }
     val headerProjectionMapDiagnostics =
         remember(directoryConversationProjections) {
@@ -4213,6 +4349,18 @@ internal fun SharedThreadRouteContent(
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
+            activityMuteState = activityMuteState,
+            onToggleActivityMute =
+                activityMuteState?.let { muteState ->
+                    {
+                        sharedHomeStore?.dispatch(
+                            SharedHomeIntent.SetChannelActivityMuted(
+                                conversationId = muteState.channelId,
+                                muted = !muteState.muted
+                            )
+                        )
+                    }
+                },
             forwardServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
             forwardTargetRepository = forwardTargetRepository,
             contentExtrasVisible = true,
@@ -7408,6 +7556,8 @@ private fun ThreadPageContent(
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<SharedMembersMemberSuggestionSlice>,
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
+    activityMuteState: ThreadActivityMuteUiState? = null,
+    onToggleActivityMute: (() -> Unit)? = null,
     forwardServerId: ServerId?,
     forwardTargetRepository: ForwardMessageTargetRepository?,
     contentExtrasVisible: Boolean,
@@ -7842,6 +7992,7 @@ private fun ThreadPageContent(
             ThreadPageHeader(
                 payload = payload,
                 headerDisplay = headerDisplay,
+                activityMuteState = activityMuteState,
                 memberAvatarResolver = memberAvatarResolver,
                 onBack = onBack,
                 onOpenInChannel = {
@@ -7868,7 +8019,8 @@ private fun ThreadPageContent(
                 },
                 onShowSettings = {
                     activeModal = "settings"
-                }
+                },
+                onToggleActivityMute = onToggleActivityMute
             )
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
@@ -8196,6 +8348,7 @@ private fun ThreadPageContent(
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
+    activityMuteState: ThreadActivityMuteUiState? = payload.threadActivityMuteState(null),
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
     onBack: () -> Unit,
@@ -8203,7 +8356,8 @@ private fun ThreadPageHeader(
     onOpenMemberProfile: (String, MemberKind?, String?) -> Unit,
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
-    onShowSettings: () -> Unit
+    onShowSettings: () -> Unit,
+    onToggleActivityMute: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val resolvedDmPeerAvatarWireValue =
@@ -8265,6 +8419,12 @@ private fun ThreadPageHeader(
             }
             if (payload.threadHeaderSearchAction() != null) {
                 ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
+            }
+            if (activityMuteState != null && onToggleActivityMute != null) {
+                ThreadHeaderIconButton(
+                    icon = if (activityMuteState.muted) SlockLucideIconName.BellOff else SlockLucideIconName.Bell,
+                    onClick = onToggleActivityMute
+                )
             }
             if (payload.showSettingsAction) {
                 ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)

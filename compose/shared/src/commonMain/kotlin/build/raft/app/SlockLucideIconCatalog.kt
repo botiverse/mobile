@@ -21,6 +21,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Ban("ban"),
     BadgeInfo("badge-info"),
     Bell("bell"),
+    BellOff("bell-off"),
     BellRing("bell-ring"),
     Blocks("blocks"),
     Bookmark("bookmark"),

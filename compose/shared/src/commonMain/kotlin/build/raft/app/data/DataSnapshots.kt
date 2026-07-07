@@ -76,6 +76,9 @@ sealed interface HomeConversationRow {
     val jointPeerServerName: String?
     val jointPeerServerSlug: String?
     val jointPeerStatus: String?
+    val activityMuted: Boolean
+    val muteFromSeq: Long?
+    val activityMuteSupported: Boolean
     val permissions: ConversationPermissions
 }
 
@@ -110,6 +113,9 @@ data class HomeChannelRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val activityMuted: Boolean = false,
+    override val muteFromSeq: Long? = null,
+    override val activityMuteSupported: Boolean = false,
     override val permissions: ConversationPermissions = ConversationPermissions()
 ) : HomeConversationRow
 
@@ -144,6 +150,9 @@ data class HomeDirectMessageRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val activityMuted: Boolean = false,
+    override val muteFromSeq: Long? = null,
+    override val activityMuteSupported: Boolean = false,
     override val permissions: ConversationPermissions = ConversationPermissions()
 ) : HomeConversationRow
 
@@ -178,6 +187,9 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported,
         permissions = permissions
     )
 
@@ -212,6 +224,9 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported,
         permissions = permissions
     )
 
@@ -240,6 +255,9 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         joined = joined,
         archived = archived,
         memberCount = memberCount,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported,
         permissions = permissions
     )
 

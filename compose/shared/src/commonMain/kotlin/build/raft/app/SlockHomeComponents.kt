@@ -178,7 +178,8 @@ data class SlockHomeConversationItem(
     val presenceMemberId: String? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
-    val archived: Boolean = false
+    val archived: Boolean = false,
+    val activityMuted: Boolean = false
 )
 
 @Serializable
@@ -989,6 +990,7 @@ internal fun SlockStructuralHomeShell(
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
+                                            quietBadge = pinned.activityMuted,
                                             interactionState = rowInteractionState,
                                             captureLongPressAnchor = captureRowAnchors,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
@@ -1003,6 +1005,7 @@ internal fun SlockStructuralHomeShell(
                                             joined = pinned.joined,
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
+                                            quietBadge = pinned.activityMuted,
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             interactionState = rowInteractionState,
                                             captureLongPressAnchor = captureRowAnchors,
@@ -1050,6 +1053,7 @@ internal fun SlockStructuralHomeShell(
                                     joined = channel.joined,
                                     hasDraft = channel.hasDraft,
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                    quietBadge = channel.activityMuted,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = channelInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
@@ -1097,6 +1101,7 @@ internal fun SlockStructuralHomeShell(
                                         joined = channel.joined,
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                        quietBadge = channel.activityMuted,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = jointInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
@@ -1152,6 +1157,7 @@ internal fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
+                                    quietBadge = dm.activityMuted,
                                     interactionState = dmInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
@@ -2419,7 +2425,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, quietBadge: Boolean = false, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -2603,7 +2609,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             if (hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
+                if (joined && !quietBadge) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
             }
             if (dragEnabled) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
@@ -2922,7 +2928,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, quietBadge: Boolean = false, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -3076,7 +3082,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             }
             if (badge != null) {
                 if (isAgent || hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                CountPill(badge, SlockColor.AccentPink)
+                if (quietBadge) DimmedUnreadCount(badge) else CountPill(badge, SlockColor.AccentPink)
             }
         }
         }

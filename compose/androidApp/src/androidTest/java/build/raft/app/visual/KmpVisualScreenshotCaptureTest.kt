@@ -756,6 +756,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadActivityMuteStates() {
+        captureKmpComponentCase(
+            caseId = "components.thread.activity-mute.states",
+            pageName = "compose_thread_activity_mute_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadReactionAtlas() {
         captureKmpComponentCase(
             caseId = "components.thread.reaction-atlas",

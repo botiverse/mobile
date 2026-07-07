@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -154,6 +155,52 @@ class ChannelRepositoryDataSourceTest {
         assertEquals("dm-1", generic.name)
         assertEquals(null, generic.subtitle)
         assertEquals("human", generic.directMessagePeerType)
+    }
+
+    @Test
+    fun channelRepositoryParsesActivityMuteFieldsForChannelsAndDirectMessages() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                pathResponses =
+                    mapOf(
+                        "channels" to """[{"id":"channel-1","name":"general","type":"channel","joined":true,"activityMuted":true,"muteFromSeq":42,"activityMuteSupported":true}]""",
+                        "channels/dm" to """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"human","peerId":"user-2","peerName":"Cindy","activityMuted":false,"muteFromSeq":null,"activityMuteSupported":true}]"""
+                    )
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val channel = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(ServerId("server-1"))).data.channels.single()
+        assertEquals(true, channel.activityMuted)
+        assertEquals(42, channel.muteFromSeq)
+        assertEquals(true, channel.activityMuteSupported)
+
+        val dm = assertIs<DataResult.Content<DirectMessageSnapshot>>(repository.getDirectMessages(ServerId("server-1"))).data.directMessages.single()
+        assertEquals(false, dm.activityMuted)
+        assertEquals(null, dm.muteFromSeq)
+        assertEquals(true, dm.activityMuteSupported)
+    }
+
+    @Test
+    fun setChannelActivityMutedUsesHumanNotificationSettingsEndpoint() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody = """{"activityMuted":true,"muteFromSeq":99,"activityMuteSupported":true}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.setChannelActivityMuted(ChannelId("channel-1"), true)
+
+        val settings = assertIs<DataResult.Content<ChannelActivityMuteSettings>>(result).data
+        assertEquals(ChannelId("channel-1"), settings.channelId)
+        assertEquals(true, settings.activityMuted)
+        assertEquals(99, settings.muteFromSeq)
+        assertEquals(true, settings.activityMuteSupported)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1/notification-settings")),
+            network.requests
+        )
+        val body = network.bodies.single().asJsonObject()
+        assertEquals("true", body["activityMuted"]?.jsonPrimitive?.content)
     }
 
     @Test

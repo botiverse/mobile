@@ -1960,6 +1960,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
+                setChannelActivityMuted = { channelId, muted -> channelRepository.setChannelActivityMuted(channelId, muted) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
             )
         }
@@ -14590,7 +14591,8 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackChannelType: String? = null,
     val fallbackDescription: String? = null,
     val fallbackJoined: Boolean = true,
-    val fallbackArchived: Boolean = false
+    val fallbackArchived: Boolean = false,
+    val fallbackActivityMuted: Boolean = false
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -14619,7 +14621,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
         fallbackJoined = joined && permissions.canRead,
-        fallbackArchived = archived
+        fallbackArchived = archived,
+        fallbackActivityMuted = activityMuted
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -14639,7 +14642,8 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         presenceMemberId = directoryProjection?.peerMemberId ?: fallbackPresenceMemberId,
         hasDraft = draftProjection.hasRootDraft(id),
         joined = directoryProjection?.joined ?: fallbackJoined,
-        archived = directoryProjection?.archived ?: fallbackArchived
+        archived = directoryProjection?.archived ?: fallbackArchived,
+        activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted
     )
 }
 
