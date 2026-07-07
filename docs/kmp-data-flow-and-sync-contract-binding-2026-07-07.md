@@ -96,8 +96,8 @@ composables, never in platform hosts.
 1. **Ordered apply within an epoch.** Frames apply in `scopeSeq` order.
    `seq <= appliedSeq` → idempotent drop (no state change, reference-stable
    no-op per the MVI no-op gate).
-2. **Gap → stop and repair, never guess.** For a dense domain (messages:
-   `seq + 1` continuity), a frame with `seq > appliedSeq + 1` is NOT applied;
+2. **Gap → stop and repair, never guess.** For a dense domain, a frame with
+   `seq > appliedSeq + 1` is NOT applied;
    the store records the deferred frame, requests the difference endpoint
    (today for messages: `/messages/sync` from the visible-stream tail per the
    seq-gap spec), applies the repair batch, then re-stitches deferred frames.
@@ -108,6 +108,18 @@ composables, never in platform hosts.
    of the watermark after repair).
    Sparse domains (agent activity) skip gap detection but keep ordered apply
    and idempotent drop.
+   **Density ruling for the messages domain (赵梓淇 + HanXin, 2026-07-07,
+   normative — same text in the RFC 038 amendment):** the messages density
+   declaration does NOT take effect until the per-scope difference endpoints
+   land (server implementation window, Stone). On the current wire,
+   `messages.seq` is a server-global `bigserial` and delivery is
+   visibility-filtered, so every user's received stream legitimately has
+   holes — the domain is effectively **sparse + visibility-filtered**.
+   Clients may only do **max-advance + repair-trigger** (a suspected gap may
+   trigger `sync:resume`/full re-pull, frames still fan out immediately;
+   consumers dedup by message id). **Stop-gating is forbidden** — a strict
+   `seq == applied + 1` gate at ingress wedges realtime fan-out permanently
+   on the first hole (caught in the task #222 / PR #260 review).
 3. **Epoch discipline.** Watermarks are meaningful only within one epoch.
    Server restart / scope reset / client re-baseline starts a new epoch; a
    frame from a previous epoch arriving after re-baseline must never apply.
