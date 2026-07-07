@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
@@ -2179,6 +2180,39 @@ class ThreadPayloadTest {
         assertEquals("reply-thread-1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
+    }
+
+    @Test
+    fun replyThreadPayloadHidesActivityMuteBellEvenWhenProjectionIsParentChannel() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "reply-message-1",
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "reply-thread-1",
+                streamChannelId = "reply-thread-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                activityMuteSupported = true
+            )
+        val parentProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1", "reply-thread-1"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general",
+                joined = true,
+                activityNotificationPreference =
+                    ChannelActivityNotificationPreference(
+                        activityMuted = true,
+                        activityMuteSupported = true
+                    )
+            )
+
+        assertEquals(null, payload.threadActivityMuteState(parentProjection))
     }
 
     @Test

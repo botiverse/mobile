@@ -584,16 +584,17 @@ internal data class KuiklyThreadScreenPayload(
     val activityMuteSupported: Boolean = false
 )
 
-private data class ThreadActivityMuteUiState(
+internal data class ThreadActivityMuteUiState(
     val channelId: String,
     val muted: Boolean,
     val supported: Boolean,
     val muteFromSeq: Long?
 )
 
-private fun KuiklyThreadScreenPayload.threadActivityMuteState(
+internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     projection: SharedConversationDirectoryProjection?
 ): ThreadActivityMuteUiState? {
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
     val resolvedSurfaceKind = projection?.surfaceKind ?: surfaceKind
     if (resolvedSurfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
     val supported = projection?.activityMuteSupported ?: activityMuteSupported
