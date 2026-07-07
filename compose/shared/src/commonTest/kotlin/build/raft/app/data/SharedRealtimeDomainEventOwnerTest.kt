@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
@@ -10,7 +11,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
+import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
@@ -187,6 +191,142 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
+    fun acceptedMessageEventsAdvancePersistedCursorAfterSharedDedupe() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val logs = mutableListOf<String>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                log = logs::add
+            )
+        )
+        val first = MessageNew(message(id = "m1", seq = 1))
+        val second = MessageUpdated(message(id = "m2", seq = 2, body = "edited"))
+
+        owner.accept("server-1", first, source = "app_shell")
+        owner.accept("server-1", second, source = "app_shell")
+        owner.accept("server-1", second, source = "app_shell")
+
+        assertEquals(
+            listOf(
+                RealtimeEventRecord("server-1", first),
+                RealtimeEventRecord("server-1", second)
+            ),
+            homeEvents
+        )
+        assertEquals(2L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+        assertEquals(true, logs.any { it.contains("reason=duplicate") })
+    }
+
+    @Test
+    fun messageSeqGapRequestsRepairWithoutGatingMainFanout() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
+        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val delivered = mutableListOf<RealtimeEventRecord>()
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val logs = mutableListOf<String>()
+        owner.registerActiveThreadSink { serverId, event ->
+            delivered += RealtimeEventRecord(serverId, event)
+        }
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                log = logs::add
+            )
+        )
+        val gap = MessageNew(message(id = "m3", seq = 3, body = "gap"))
+        val repair =
+            SyncResumeResponse(
+                messages = listOf(
+                    message(id = "m2", seq = 2, body = "repair"),
+                    message(id = "m3", seq = 3, body = "gap")
+                ),
+                currentSeq = 3,
+                hasMore = false
+            )
+
+        owner.accept("server-1", gap, source = "app_shell")
+        owner.accept("server-1", repair, source = "app_shell")
+
+        val expected =
+            listOf(
+                RealtimeEventRecord("server-1", gap),
+                RealtimeEventRecord("server-1", repair)
+            )
+        assertEquals(expected, delivered)
+        assertEquals(expected, homeEvents)
+        assertEquals(3L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+        assertEquals(true, logs.any { it.contains("reason=message_seq_gap") })
+    }
+
+    @Test
+    fun sparseRepairBatchAdvancesCursorAndDoesNotLeaveFanoutStuck() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        cursorStore.saveAppliedLastSeq(ServerId("server-1"), 1)
+        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val logs = mutableListOf<String>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) },
+                log = logs::add
+            )
+        )
+        val gap = MessageNew(message(id = "m4", seq = 4, body = "gap"))
+        val repair =
+            SyncResumeResponse(
+                messages = listOf(
+                    message(id = "m2", seq = 2, body = "visible repair"),
+                    message(id = "m4", seq = 4, body = "same visible message")
+                ),
+                currentSeq = 4,
+                hasMore = false
+            )
+        val next = MessageNew(message(id = "m5", seq = 5, body = "next"))
+
+        owner.accept("server-1", gap, source = "app_shell")
+        owner.accept("server-1", repair, source = "app_shell")
+        owner.accept("server-1", next, source = "app_shell")
+
+        assertEquals(
+            listOf(
+                RealtimeEventRecord("server-1", gap),
+                RealtimeEventRecord("server-1", repair),
+                RealtimeEventRecord("server-1", next)
+            ),
+            homeEvents
+        )
+        assertEquals(5L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+        assertEquals(true, logs.any { it.contains("reason=message_seq_gap") })
+    }
+
+    @Test
+    fun emptySyncResumeAdvancesPersistedCursorAndReachesDomainSinks() {
+        val cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        cursorStore.saveAppliedLastSeq(ServerId("server-1"), 3)
+        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
+            )
+        )
+        val resume = SyncResumeResponse(messages = emptyList(), currentSeq = 5, hasMore = false)
+
+        owner.accept(
+            "server-1",
+            resume,
+            source = "app_shell"
+        )
+
+        assertEquals(listOf(RealtimeEventRecord("server-1", resume)), homeEvents)
+        assertEquals(5L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
+    }
+
+    @Test
     fun activeThreadSinkReceivesDomainEventsAndHeartbeatsButNotBlankServer() {
         val owner = SharedRealtimeDomainEventOwner()
         val delivered = mutableListOf<RealtimeEventRecord>()
@@ -269,4 +409,19 @@ class SharedRealtimeDomainEventOwnerTest {
         val serverId: String,
         val event: Any
     )
+
+    private fun message(
+        id: String,
+        seq: Long,
+        body: String = "hello"
+    ): Message =
+        Message(
+            id = MessageId(id),
+            threadId = ThreadId("channel-1"),
+            channelId = ChannelId("channel-1"),
+            seq = seq,
+            author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
+            timestampLabel = "now",
+            body = body
+        )
 }

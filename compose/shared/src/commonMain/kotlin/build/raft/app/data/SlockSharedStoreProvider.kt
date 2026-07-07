@@ -6,6 +6,11 @@ import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SlockPixelAvatarRuntime
+import build.raft.app.data.realtime.MessageSeqEnvelope
+import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
+import build.raft.app.data.realtime.MessageSeqRecoveryState
+import build.raft.app.data.realtime.MessageSeqRepairBatch
+import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
@@ -387,7 +392,11 @@ internal class SlockSharedStoreProvider private constructor(
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,
-                realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore),
+                realtimeDomainEventOwner =
+                    SharedRealtimeDomainEventOwner(
+                        tasksDataStore = tasksDataStore,
+                        cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
+                    ),
                 messageTranslationStore =
                     SharedMessageTranslationStore(
                         authStore = authStore,
@@ -455,12 +464,14 @@ internal fun interface RealtimeActiveThreadSink {
 }
 
 internal class SharedRealtimeDomainEventOwner(
-    private val tasksDataStore: SharedTasksDataStore? = null
+    private val tasksDataStore: SharedTasksDataStore? = null,
+    private val cursorStore: RealtimeAppliedSeqCursorStore? = null
 ) : RealtimeDomainEventOwner {
     private var sinks: RealtimeDomainEventSinks? = null
     private val activeThreadSinks = mutableListOf<RealtimeActiveThreadSink>()
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
+    private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
@@ -489,37 +500,108 @@ internal class SharedRealtimeDomainEventOwner(
             sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
             return
         }
+        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
+        if (acceptedEvents.isEmpty()) return
+        val activeSinks = sinks
         // Tee to Thread routes before the Heartbeat early-return: Thread
         // consumes Heartbeat seq for realtime gap recovery. Snapshot the list
         // so a sink unregistering during delivery cannot corrupt iteration.
-        activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, event) }
-        if (event is Heartbeat) {
-            sinks?.log?.invoke("realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat")
-            return
-        }
-        val activeSinks = sinks
-        event.patchSharedTaskProjection(resolvedServerId)
-        activeSinks?.applyHomeShell?.invoke(resolvedServerId, event)
-        activeSinks?.applySettings?.invoke(resolvedServerId, event)
-        if (event is DirectMessageCreated) {
-            activeSinks?.joinChannel?.invoke(event.channelId.value)
-        }
-        if (event is ServerPlanUpdated) {
-            activeSinks?.log?.invoke("shared_realtime_server_plan_updated serverId=${event.serverId.value} plan=${event.plan}")
-        }
-        if (event is MemberPresenceUpdated && event.kind == build.raft.app.model.MemberKind.Agent) {
-            activeSinks?.applyAgentActivity?.invoke(event)
-        } else if (event.refreshesMemberDetail()) {
-            if (event is RealtimeRefreshRequired) {
-                activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, event)
+        acceptedEvents.forEach { acceptedEvent ->
+            activeThreadSinks.toList().forEach { sink -> sink.deliver(resolvedServerId, acceptedEvent) }
+            if (acceptedEvent is Heartbeat) {
+                activeSinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=none type=heartbeat"
+                )
+                return@forEach
             }
-            activeSinks?.requestMemberDetailRefresh?.invoke()
+            acceptedEvent.patchSharedTaskProjection(resolvedServerId)
+            activeSinks?.applyHomeShell?.invoke(resolvedServerId, acceptedEvent)
+            activeSinks?.applySettings?.invoke(resolvedServerId, acceptedEvent)
+            if (acceptedEvent is DirectMessageCreated) {
+                activeSinks?.joinChannel?.invoke(acceptedEvent.channelId.value)
+            }
+            if (acceptedEvent is ServerPlanUpdated) {
+                activeSinks?.log?.invoke(
+                    "shared_realtime_server_plan_updated serverId=${acceptedEvent.serverId.value} plan=${acceptedEvent.plan}"
+                )
+            }
+            if (acceptedEvent is MemberPresenceUpdated && acceptedEvent.kind == build.raft.app.model.MemberKind.Agent) {
+                activeSinks?.applyAgentActivity?.invoke(acceptedEvent)
+            } else if (acceptedEvent.refreshesMemberDetail()) {
+                if (acceptedEvent is RealtimeRefreshRequired) {
+                    activeSinks?.applyServerMembersRefresh?.invoke(resolvedServerId, acceptedEvent)
+                }
+                activeSinks?.requestMemberDetailRefresh?.invoke()
+            }
+            activeSinks?.emitRouteMarker?.invoke(acceptedEvent)
+            if (acceptedEvent !is MemberPresenceUpdated) {
+                activeSinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+                )
+            }
         }
-        activeSinks?.emitRouteMarker?.invoke(event)
-        if (event !is MemberPresenceUpdated) {
-            activeSinks?.log?.invoke(
-                "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+    }
+
+    private fun acceptedEventsForFold(serverId: String, event: RealtimeEvent, source: String): List<RealtimeEvent> {
+        val store = cursorStore ?: return listOf(event)
+        val server = ServerId(serverId)
+        val currentState = recoveryStates.getOrPut(serverId) {
+            MessageSeqRecoveryPolicy.initial(
+                appliedSeq = store.readAppliedLastSeq(server),
+                epoch = store.currentEpoch(server)
             )
+        }
+        val result =
+            when (event) {
+                is MessageNew,
+                is MessageUpdated -> {
+                    val frame = event.messageSeqEnvelope(currentState.epoch) ?: return listOf(event)
+                    MessageSeqRecoveryPolicy.onFrame(currentState, frame)
+                }
+                is SyncResumeResponse ->
+                    MessageSeqRecoveryPolicy.onRepairBatch(
+                        currentState,
+                        MessageSeqRepairBatch(
+                            events = event.messages.mapNotNull { message ->
+                                MessageSeqEnvelope(
+                                    seq = message.seq?.takeIf { it > 0L } ?: return@mapNotNull null,
+                                    epoch = currentState.epoch,
+                                    event = MessageNew(message)
+                                )
+                            },
+                            currentSeq = event.currentSeq,
+                            hasMore = event.hasMore,
+                            epoch = currentState.epoch
+                        )
+                    )
+                else -> return listOf(event)
+            }
+        val nextState =
+            result.state.copy(
+                serverSeq = maxOf(result.state.serverSeq, result.state.appliedSeq),
+                appliedEvents = emptyList()
+            )
+        recoveryStates[serverId] = nextState
+        if (nextState.appliedSeq > currentState.appliedSeq) {
+            store.saveAppliedLastSeq(server, nextState.appliedSeq, nextState.epoch)
+        }
+        val frameSeq =
+            when (event) {
+                is MessageNew -> event.message.seq
+                is MessageUpdated -> event.message.seq
+                else -> null
+            }
+        if (frameSeq != null && frameSeq > currentState.appliedSeq + 1L) {
+            sinks?.log?.invoke(
+                "realtime_domain_accept_repair_request source=$source serverId=$serverId " +
+                    "reason=message_seq_gap serverSeq=${result.state.serverSeq} appliedSeq=${result.state.appliedSeq}"
+            )
+        }
+        return when (event) {
+            is MessageNew,
+            is MessageUpdated,
+            is SyncResumeResponse -> listOf(event)
+            else -> result.state.appliedEvents
         }
     }
 
@@ -594,6 +676,19 @@ private fun RealtimeEvent.realtimeDomainKey(serverId: String): String? =
 
 private fun TaskSummary.taskDomainKey(): String =
     "${id.value}:${status.name}:${updatedAtLabel}:${assignee?.id?.value.orEmpty()}"
+
+private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<RealtimeEvent>? =
+    when (this) {
+        is MessageNew ->
+            message.seq
+                ?.takeIf { it > 0L }
+                ?.let { seq -> MessageSeqEnvelope(seq = seq, epoch = epoch, event = this) }
+        is MessageUpdated ->
+            message.seq
+                ?.takeIf { it > 0L }
+                ?.let { seq -> MessageSeqEnvelope(seq = seq, epoch = epoch, event = this) }
+        else -> null
+    }
 
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
