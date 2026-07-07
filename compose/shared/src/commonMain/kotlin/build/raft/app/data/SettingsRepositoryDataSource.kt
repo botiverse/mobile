@@ -655,6 +655,15 @@ class RealSettingsRepository(
         }
     }
 
+    override suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        if (machineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return computersApiClient.updateMachineDescription(ServerId(serverId), machineId, request.description.trim()).mapComputerResult {
+            it.toSettingsComputerSnapshot()
+        }
+    }
+
     override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> {
         val serverId = selectedServerId() ?: return serverRequired()
         val normalizedMachineId = machineId.trim()
@@ -2486,6 +2495,7 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         online = status == ComputerStatus.Online,
         hostname = hostname,
         platform = os,
+        description = description,
         lastSeenLabel = lastHeartbeat,
         runtimes = runtimes,
         createdAt = createdAt,
@@ -2497,10 +2507,12 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
     SettingsComputerWorkspaceSnapshot(
         id = directoryName,
-        name = directoryName,
-        path = directoryName,
+        name = agentName?.takeIf { it.isNotBlank() } ?: directoryName,
+        path = "~/.slock/agents/$directoryName/",
         statusLabel = status,
-        lastActiveLabel = lastModified
+        lastActiveLabel = lastModified,
+        totalSizeBytes = totalSizeBytes,
+        fileCount = fileCount
     )
 
 private fun <T> DataResult<T>.mapSettingsDetailError(

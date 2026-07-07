@@ -23,11 +23,18 @@ class ComputersApiTest {
         assertEquals(listOf("claude", "codex"), firstMachine.runtimes)
         assertEquals(true, firstMachine.isComputer)
         assertEquals("0.0.61", firstMachine.computerVersion)
+        assertEquals("Runs production agents", firstMachine.description)
         assertEquals("2026-06-14T02:00:00.000Z", firstMachine.lastHeartbeat)
         assertEquals("2026-05-01T00:00:00.000Z", firstMachine.createdAt)
 
         assertEquals("machine-1", assertIs<DataResult.Content<ComputerRegistrationSummary>>(client.registerMachine(serverId, "Maria")).data.machine.id)
         assertEquals("Maria Laptop", assertIs<DataResult.Content<ComputerSummary>>(client.renameMachine(serverId, "machine-1", "Maria Laptop")).data.name)
+        assertEquals(
+            "Build host",
+            assertIs<DataResult.Content<ComputerSummary>>(
+                client.updateMachineDescription(serverId, "machine-1", "Build and release host")
+            ).data.description
+        )
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachine(serverId, "machine-1")).data.ok)
         assertEquals("sk_machine_1", assertIs<DataResult.Content<ComputerApiKeyRotationSummary>>(client.rotateMachineKey(serverId, "machine-1")).data.apiKeyPrefix)
         assertEquals(2, assertIs<DataResult.Content<ComputerWorkspacePage>>(client.machineWorkspaces(serverId, "machine-1")).data.itemCount)
@@ -43,6 +50,7 @@ class ComputersApiTest {
                 "GET servers/server-1/machines",
                 """POST servers/server-1/machines body={"name":"Maria"}""",
                 """PATCH servers/server-1/machines/machine-1 body={"name":"Maria Laptop"}""",
+                """PATCH servers/server-1/machines/machine-1 body={"description":"Build and release host"}""",
                 "DELETE servers/server-1/machines/machine-1",
                 "POST servers/server-1/machines/machine-1/rotate-key",
                 "GET servers/server-1/machines/machine-1/workspaces",
@@ -59,7 +67,7 @@ class ComputersApiTest {
         // enrichment). The typed API must accept this shape, NOT flag it as contract
         // mismatch, and still produce a ComputerSummary with name + id propagated.
         val transport = RecordingComputersApi(
-            renameBody = """{"id":"machine-1","name":"Maria Laptop","apiKeyPrefix":"sk_machine_abc","hostname":"maria.local","createdAt":"2026-05-01T00:00:00.000Z"}"""
+            renameBody = """{"id":"machine-1","name":"Maria Laptop","description":"Build host","apiKeyPrefix":"sk_machine_abc","hostname":"maria.local","createdAt":"2026-05-01T00:00:00.000Z"}"""
         )
         val client = SlockComputersApiClient(transport)
         val serverId = ServerId("server-1")
@@ -68,6 +76,7 @@ class ComputersApiTest {
         assertEquals("machine-1", renamed.id)
         assertEquals("Maria Laptop", renamed.name)
         assertEquals("sk_machine_abc", renamed.apiKeyPrefix)
+        assertEquals("Build host", renamed.description)
         assertEquals(ComputerStatus.Unknown, renamed.status)
         assertEquals(0L, renamed.statusVersion)
     }
@@ -86,6 +95,7 @@ class ComputersApiTest {
         assertEquals(true, assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error.retryable)
         assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.code)
         assertEquals(false, assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.retryable)
+        assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.updateMachineDescription(serverId, "m", "d")).error.code)
         assertEquals("computer_has_agents", assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.code)
         assertEquals(false, assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.retryable)
         assertEquals("server_forbidden", assertIs<DataResult.NoPermission>(client.machines(serverId)).blocker.code)
@@ -110,6 +120,7 @@ class ComputersApiTest {
         assertEquals("computers_list_contract_mismatch", assertIs<DataResult.Error>(client.machines(serverId)).error.code)
         assertEquals("computer_register_contract_mismatch", assertIs<DataResult.Error>(client.registerMachine(serverId, "Maria")).error.code)
         assertEquals("computer_rename_contract_mismatch", assertIs<DataResult.Error>(client.renameMachine(serverId, "machine-1", "Maria")).error.code)
+        assertEquals("computer_update_contract_mismatch", assertIs<DataResult.Error>(client.updateMachineDescription(serverId, "machine-1", "Maria host")).error.code)
         assertEquals("computer_delete_contract_mismatch", assertIs<DataResult.Error>(client.deleteMachine(serverId, "machine-1")).error.code)
         assertEquals("computer_rotate_key_contract_mismatch", assertIs<DataResult.Error>(client.rotateMachineKey(serverId, "machine-1")).error.code)
         assertEquals("computer_workspaces_contract_mismatch", assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "machine-1")).error.code)
@@ -118,11 +129,11 @@ class ComputersApiTest {
 
     private class RecordingComputersApi(
         private val machinesBody: String =
-            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
+            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","computerVersion":"0.0.61","isComputer":true,"hostname":"maria.local","os":"darwin","description":"Runs production agents","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0","latestComputerVersion":"0.0.62"}""",
         private val registerBody: String =
             """{"machine":{"id":"machine-1","name":"Maria","status":"offline","statusVersion":0,"apiKeyPrefix":"sk_machine_123456","runtimes":[],"daemonVersion":null,"hostname":null,"os":null,"lastHeartbeat":null,"createdAt":null},"apiKey":"sk_machine_123456"}""",
         private val renameBody: String =
-            """{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}""",
+            """{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","description":"Build host","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}""",
         private val commandBody: String = """{"ok":true}""",
         private val rotateBody: String = """{"apiKey":"sk_machine_123456"}""",
         private val workspacesBody: String =

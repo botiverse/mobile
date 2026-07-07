@@ -309,6 +309,7 @@ sealed interface SharedSettingsIntent {
     data class CreateServerJoinLink(val request: SettingsServerJoinLinkCreateRequest = SettingsServerJoinLinkCreateRequest()) : SharedSettingsIntent
     data class RevokeServerJoinLink(val linkId: String) : SharedSettingsIntent
     data class RenameComputer(val request: SettingsComputerRenameRequest) : SharedSettingsIntent
+    data class UpdateComputerDescription(val request: SettingsComputerDescriptionUpdateRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
     data class RegisterComputer(val request: SettingsComputerRegisterRequest) : SharedSettingsIntent
@@ -619,6 +620,9 @@ class SharedSettingsDataSource(
 
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
         settingsRepository?.renameComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot> =
+        settingsRepository?.updateComputerDescription(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
         settingsRepository?.deleteComputer(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1490,6 +1494,11 @@ class SharedSettingsStore(
             is SharedSettingsIntent.RenameComputer -> {
                 runAction(COMPUTER_ACTION_RENAME, intent.request.machineId) {
                     dataSource.renameComputer(intent.request).applyComputerSnapshotActionResult(COMPUTER_ACTION_RENAME, intent.request.machineId)
+                }
+            }
+            is SharedSettingsIntent.UpdateComputerDescription -> {
+                runAction(COMPUTER_ACTION_DESCRIPTION, intent.request.machineId) {
+                    dataSource.updateComputerDescription(intent.request).applyComputerSnapshotActionResult(COMPUTER_ACTION_DESCRIPTION, intent.request.machineId)
                 }
             }
             is SharedSettingsIntent.DeleteComputer -> {
@@ -2625,6 +2634,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
             is SharedSettingsIntent.RenameComputer,
+            is SharedSettingsIntent.UpdateComputerDescription,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.RegisterComputer,
@@ -2774,6 +2784,7 @@ internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStat
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
+internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
 internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"
 internal const val COMPUTER_ACTION_REGISTER = "registerComputer"

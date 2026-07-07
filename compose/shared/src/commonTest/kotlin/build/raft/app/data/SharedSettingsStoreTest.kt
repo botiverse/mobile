@@ -1012,6 +1012,53 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun updateComputerDescriptionIntentCallsRepositoryAndReloadsDetail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val updated =
+            SettingsComputerSnapshot(
+                id = "machine-42",
+                name = "MacBook Pro",
+                daemonVersion = "0.51.1",
+                online = true,
+                description = "Build farm runner"
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                updateComputerDescriptionResult = DataResult.Content(updated)
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.UpdateComputerDescription(SettingsComputerDescriptionUpdateRequest("machine-42", "Build farm runner")))
+
+        assertEquals(
+            listOf(
+                "computerDetail:machine-42",
+                "updateComputerDescription:machine-42:Build farm runner",
+                "computerDetail:machine-42"
+            ),
+            repository.calls
+        )
+        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
+        assertEquals("updateComputerDescription", actionState.action)
+        assertEquals("machine-42", actionState.itemId)
+        assertEquals(false, actionState.inProgress)
+        assertNull(actionState.errorCode)
+        assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
+        scope.cancel()
+    }
+
+    @Test
     fun deleteComputerIntentClearsRouteAndSurfacesErrorCodeOnFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -2044,6 +2091,7 @@ class SharedSettingsStoreTest {
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var registerComputerResult: DataResult<SettingsComputerRegistrationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var renameComputerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var updateComputerDescriptionResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var deleteComputerResult: DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var rotateComputerKeyResult: DataResult<SettingsComputerKeyRotationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var providerLinkStartResult: DataResult<AccountProviderLinkStartResult> = DataResult.Content(
@@ -2318,6 +2366,11 @@ class SharedSettingsStoreTest {
         override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> {
             calls += "renameComputer:${request.machineId}:${request.name}"
             return renameComputerResult
+        }
+
+        override suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot> {
+            calls += "updateComputerDescription:${request.machineId}:${request.description}"
+            return updateComputerDescriptionResult
         }
 
         override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> {

@@ -795,7 +795,7 @@ class SettingsRepositoryDataSourceTest {
         val network =
             FakeSettingsNetworkClient(
                 machinesJson = """
-                    {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"lastHeartbeat":"2026-05-07T01:00:00Z","createdAt":"2026-04-01T00:00:00Z"}]}
+                    {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","description":"Main build computer","daemonVersion":"1.4.2","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"lastHeartbeat":"2026-05-07T01:00:00Z","createdAt":"2026-04-01T00:00:00Z"}]}
                 """.trimIndent(),
                 membersJson = """
                     [
@@ -820,6 +820,7 @@ class SettingsRepositoryDataSourceTest {
         val detail = result.data
         assertEquals("machine-1", network.workspacesMachineId)
         assertEquals("MacBook", detail.computer.name)
+        assertEquals("Main build computer", detail.computer.description)
         assertEquals("macOS", detail.computer.platform)
         // #74: server read-model fields must propagate to SettingsComputerSnapshot
         // so the React-aligned detail page can render Detected runtimes / Created / etc.
@@ -830,6 +831,9 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("2026-05-07T01:00:00Z", detail.computer.lastHeartbeat)
         assertEquals(1, detail.workspaces.size)
         assertEquals("Slock", detail.workspaces.first().name)
+        assertEquals("~/.slock/agents/Slock/", detail.workspaces.first().path)
+        assertEquals(4096L, detail.workspaces.first().totalSizeBytes)
+        assertEquals(12, detail.workspaces.first().fileCount)
         assertEquals(1, detail.agents.size)
         assertEquals("Settings Integrator", detail.agents.first().name)
         assertEquals("Settings real-data wiring", detail.agents.first().memberProfile?.description)
@@ -878,6 +882,7 @@ class SettingsRepositoryDataSourceTest {
 
         val register = repository.registerComputer(SettingsComputerRegisterRequest("Builder Mac"))
         val rename = repository.renameComputer(SettingsComputerRenameRequest("machine-1", "Builder Mac 2"))
+        val description = repository.updateComputerDescription(SettingsComputerDescriptionUpdateRequest("machine-1", "Build farm runner"))
         val rotate = repository.rotateComputerKey("machine-1")
         val runtimeModels = repository.getComputerRuntimeModels("machine-1", "claude")
         val deleteWorkspace = repository.deleteComputerWorkspace(SettingsComputerWorkspaceDeleteRequest("machine-1", "agent-old"))
@@ -888,6 +893,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("sk_machine_a", register.data.apiKeyPrefix)
         assertTrue(rename is DataResult.Content)
         assertEquals("Builder Mac 2", rename.data.name)
+        assertTrue(description is DataResult.Content)
         assertTrue(rotate is DataResult.Content)
         assertEquals("sk_machine_r", rotate.data.apiKeyPrefix)
         assertTrue(runtimeModels is DataResult.Content)
@@ -898,7 +904,8 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(deleteComputer is DataResult.Content)
         assertEquals("delete", deleteComputer.data.action)
         assertEquals("""{"name":"Builder Mac"}""", network.registerBodies.single())
-        assertEquals("""{"name":"Builder Mac 2"}""", network.renameBodies.single())
+        assertEquals("""{"name":"Builder Mac 2"}""", network.renameBodies.first())
+        assertEquals("""{"description":"Build farm runner"}""", network.renameBodies.last())
         assertEquals("server-1", network.runtimeModelsServerId)
         assertEquals("machine-1", network.runtimeModelsMachineId)
         assertEquals("claude", network.runtimeModelsRuntime)

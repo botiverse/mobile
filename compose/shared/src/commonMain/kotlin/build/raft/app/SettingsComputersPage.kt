@@ -8,6 +8,7 @@ import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.SettingsComputerDescriptionUpdateRequest
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerRenameRequest
 import build.raft.app.data.SettingsComputerSnapshot
@@ -22,6 +23,7 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.isRefreshing
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
@@ -134,6 +136,7 @@ internal data class KuiklySettingsComputerItem(
     val online: Boolean = false,
     val hostname: String? = null,
     val platform: String? = null,
+    val description: String? = null,
     val lastSeenLabel: String? = null,
     val runtimes: List<String> = emptyList(),
     val createdAt: String? = null,
@@ -147,7 +150,9 @@ internal data class KuiklySettingsWorkspaceItem(
     val name: String = "",
     val path: String = "",
     val statusLabel: String? = null,
-    val lastActiveLabel: String? = null
+    val lastActiveLabel: String? = null,
+    val totalSizeLabel: String? = null,
+    val fileCountLabel: String? = null
 )
 
 @Serializable
@@ -554,6 +559,16 @@ private fun handleSettingsComputerDetailAction(
             val name = parts.getOrElse(1) { "" }
             dispatch(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = name)))
         }
+        "updateComputerDescription" -> itemId?.let { payload ->
+            val parts = payload.split("|", limit = 2)
+            val machineId = parts[0]
+            val description = parts.getOrElse(1) { "" }
+            dispatch(
+                SharedSettingsIntent.UpdateComputerDescription(
+                    SettingsComputerDescriptionUpdateRequest(machineId = machineId, description = description)
+                )
+            )
+        }
         "deleteComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
             dispatch(SharedSettingsIntent.DeleteComputer(machineId))
         }
@@ -675,11 +690,14 @@ internal fun SettingsComputerDetailContent(
     val computerId = payload.computer.id
     val computerName = payload.computer.name
     val renameBusy = actionState?.action == "renameComputer" && actionState.inProgress && actionState.itemId == computerId
+    val descriptionBusy = actionState?.action == "updateComputerDescription" && actionState.inProgress && actionState.itemId == computerId
     val deleteBusy = actionState?.action == "deleteComputer" && actionState.inProgress && actionState.itemId == computerId
     val rotateBusy = actionState?.action == "rotateComputerKey" && actionState.inProgress && actionState.itemId == computerId
-    val anyBusy = renameBusy || deleteBusy || rotateBusy
+    val anyBusy = renameBusy || descriptionBusy || deleteBusy || rotateBusy
     var renameDraft by remember(computerId) { mutableStateOf(computerName) }
     var editingName by remember(computerId) { mutableStateOf(false) }
+    var descriptionDraft by remember(computerId) { mutableStateOf(payload.computer.description.orEmpty()) }
+    var editingDescription by remember(computerId) { mutableStateOf(false) }
     fun startRename() {
         renameDraft = computerName
         editingName = true
@@ -695,6 +713,21 @@ internal fun SettingsComputerDetailContent(
         }
         if (!renameBusy) editingName = false
     }
+    fun startDescriptionEdit() {
+        descriptionDraft = payload.computer.description.orEmpty()
+        editingDescription = true
+    }
+    fun cancelDescriptionEdit() {
+        descriptionDraft = payload.computer.description.orEmpty()
+        editingDescription = false
+    }
+    fun saveDescription() {
+        val nextDescription = descriptionDraft.trim()
+        if (nextDescription != payload.computer.description.orEmpty()) {
+            onEvent("updateComputerDescription", "$computerId|$nextDescription")
+        }
+        if (!descriptionBusy) editingDescription = false
+    }
 
     SettingsComputerDetailVisualContent(
         payload = payload,
@@ -704,6 +737,9 @@ internal fun SettingsComputerDetailContent(
         editingName = editingName,
         renameDraft = renameDraft,
         renameBusy = renameBusy,
+        editingDescription = editingDescription,
+        descriptionDraft = descriptionDraft,
+        descriptionBusy = descriptionBusy,
         anyBusy = anyBusy,
         rotateBusy = rotateBusy,
         deleteBusy = deleteBusy,
@@ -712,6 +748,10 @@ internal fun SettingsComputerDetailContent(
         onStartRename = { startRename() },
         onCancelRename = { cancelRename() },
         onSaveRename = { saveRename() },
+        onDescriptionDraftChange = { descriptionDraft = it.replace('\r', '\n').lineSequence().take(4).joinToString("\n") },
+        onStartDescriptionEdit = { startDescriptionEdit() },
+        onCancelDescriptionEdit = { cancelDescriptionEdit() },
+        onSaveDescription = { saveDescription() },
         onEvent = onEvent
     )
 }
@@ -725,6 +765,9 @@ private fun SettingsComputerDetailVisualContent(
     editingName: Boolean = false,
     renameDraft: String = payload.computer.name,
     renameBusy: Boolean = false,
+    editingDescription: Boolean = false,
+    descriptionDraft: String = payload.computer.description.orEmpty(),
+    descriptionBusy: Boolean = false,
     anyBusy: Boolean = false,
     rotateBusy: Boolean = false,
     deleteBusy: Boolean = false,
@@ -733,6 +776,10 @@ private fun SettingsComputerDetailVisualContent(
     onStartRename: () -> Unit = {},
     onCancelRename: () -> Unit = {},
     onSaveRename: () -> Unit = {},
+    onDescriptionDraftChange: (String) -> Unit = {},
+    onStartDescriptionEdit: () -> Unit = {},
+    onCancelDescriptionEdit: () -> Unit = {},
+    onSaveDescription: () -> Unit = {},
     onEvent: (String, String?) -> Unit
 ) {
     val computerId = payload.computer.id
@@ -755,6 +802,21 @@ private fun SettingsComputerDetailVisualContent(
                 onStartEdit = onStartRename,
                 onCancel = onCancelRename,
                 onSave = onSaveRename
+            )
+        }
+        item { VisualDivider() }
+        item {
+            VisualComputerDescriptionSection(
+                description = payload.computer.description,
+                canEdit = payload.canManageMachines,
+                enabled = !anyBusy,
+                editing = editingDescription,
+                draft = descriptionDraft,
+                busy = descriptionBusy,
+                onDraftChange = onDescriptionDraftChange,
+                onStartEdit = onStartDescriptionEdit,
+                onCancel = onCancelDescriptionEdit,
+                onSave = onSaveDescription
             )
         }
         item { VisualDivider() }
@@ -998,6 +1060,87 @@ private fun VisualComputerNameSection(
 }
 
 @Composable
+private fun VisualComputerDescriptionSection(
+    description: String?,
+    canEdit: Boolean,
+    enabled: Boolean,
+    editing: Boolean,
+    draft: String,
+    busy: Boolean,
+    onDraftChange: (String) -> Unit,
+    onStartEdit: () -> Unit,
+    onCancel: () -> Unit,
+    onSave: () -> Unit
+) {
+    val currentDescription = description?.takeIf { it.isNotBlank() }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "DESCRIPTION",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+            if (canEdit) {
+                Box(
+                    modifier = Modifier.size(22.dp).clickable(enabled = enabled && !editing, onClick = onStartEdit),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.Pencil,
+                        modifier = Modifier.size(12.dp),
+                        color = if (enabled && !editing) SlockColor.TextMutedGrayArgb else "#33000000"
+                    )
+                }
+            }
+        }
+        if (editing && canEdit) {
+            SlockBrutalTextField(
+                label = "Computer description",
+                value = draft,
+                placeholder = "What should this computer be used for?",
+                onValueChange = onDraftChange,
+                optional = true,
+                enabled = !busy,
+                maxLines = 4,
+                fieldMinHeight = 86.dp
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                VisualSmallActionButton(
+                    label = if (busy) "Saving" else "Save",
+                    icon = SlockLucideIconName.Save,
+                    onClick = onSave,
+                    backgroundColor = SlockColor.AccentPink,
+                    faceWidth = 64.dp,
+                    enabled = !busy
+                )
+                VisualSmallActionButton(
+                    label = "Cancel",
+                    icon = SlockLucideIconName.X,
+                    onClick = onCancel,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    faceWidth = 72.dp,
+                    enabled = !busy
+                )
+            }
+        } else {
+            Text(
+                currentDescription ?: "No description",
+                style =
+                    SlockType.Input.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = if (currentDescription == null) SlockColor.TextMutedGray else SlockColor.TextBlack
+                    ),
+                color = if (currentDescription == null) SlockColor.TextMutedGray else SlockColor.TextBlack
+            )
+        }
+    }
+}
+
+@Composable
 private fun VisualComputerInfoSection(item: KuiklySettingsComputerItem) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
@@ -1225,6 +1368,11 @@ private fun VisualAgentRow(
 
 @Composable
 private fun VisualWorkspaceRow(item: KuiklySettingsWorkspaceItem) {
+    val metadata =
+        listOf(item.totalSizeLabel, item.fileCountLabel, item.lastActiveLabel?.let { "Modified $it" })
+            .filterNotNull()
+            .filter { it.isNotBlank() }
+            .joinToString("  ")
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1241,13 +1389,13 @@ private fun VisualWorkspaceRow(item: KuiklySettingsWorkspaceItem) {
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            item.path,
+            item.path.takeIf { it.isNotBlank() } ?: item.id,
             style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        listOf(item.statusLabel, item.lastActiveLabel).filterNotNull().filter { it.isNotBlank() }.joinToString("  ").takeIf { it.isNotBlank() }?.let {
+        listOf(item.statusLabel?.uppercase(), metadata).filterNotNull().filter { it.isNotBlank() }.joinToString("  ").takeIf { it.isNotBlank() }?.let {
             Text(
                 it,
                 style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
@@ -1573,6 +1721,7 @@ internal fun SettingsComputerSnapshot.toComputerItem(
         online = online,
         hostname = hostname,
         platform = platform,
+        description = description,
         lastSeenLabel = formatSettingsTimestampLabel(lastSeenLabel, timeContext),
         runtimes = runtimes,
         createdAt = formatSettingsTimestampLabel(createdAt, timeContext),
@@ -1596,7 +1745,9 @@ private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
         name = name,
         path = path,
         statusLabel = statusLabel,
-        lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext)
+        lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext),
+        totalSizeLabel = totalSizeBytes?.let(::formatAttachmentSizeLabel),
+        fileCountLabel = fileCount?.let { count -> "$count ${if (count == 1) "file" else "files"}" }
     )
 
 private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
