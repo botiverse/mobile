@@ -4856,9 +4856,9 @@ class SharedThreadStoreTest {
         assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
         assertNull(localStore.readThread(ThreadId("channel-1")))
-        val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single { it.id == "m2" }
-        assertEquals("pixel:robot", cachedMessage?.avatarWireValue)
-        assertEquals(null, cachedMessage?.gravatarHash)
+        // task #231: the realtime merge no longer writes the first-frame cache;
+        // the avatar-resolution contract is asserted on the visible state above.
+        assertNull(dataSource.cachedPayload("channel-1"))
         scope.cancel()
     }
 
@@ -4977,7 +4977,9 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
         assertEquals(listOf("cached body"), backingStore.readThread(ThreadId("channel-1"))?.messages?.map { it.body })
-        assertEquals(listOf("cached body", "realtime body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
+        // task #231: no first-frame cache write on realtime merge — the stale
+        // candidate is invalidated; the visible payload above stays authoritative.
+        assertNull(dataSource.cachedPayload("channel-1"))
         assertFalse(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
