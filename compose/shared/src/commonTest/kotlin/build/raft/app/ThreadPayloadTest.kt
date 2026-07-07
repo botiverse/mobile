@@ -2269,7 +2269,8 @@ class ThreadPayloadTest {
                 streamChannelId = "reply-thread-1",
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel
             )
         val projection =
             SharedConversationDirectoryProjection(
@@ -2391,6 +2392,7 @@ class ThreadPayloadTest {
             KuiklyThreadScreenPayload(
                 title = ThreadReplyPageTitle,
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
                 parentChannelId = "channel-1",
                 parentMessageId = "message-1",
                 originParentMessageId = "message-1",
