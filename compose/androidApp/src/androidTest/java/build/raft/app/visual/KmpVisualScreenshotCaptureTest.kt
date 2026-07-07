@@ -1135,6 +1135,42 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Full-route Settings captures (task #398 / #388). These drive the real
+    // Settings destination switch (SettingsAppShellContent) through the
+    // seeded-store route entry ASI added (pageName compose_settings_route_visual,
+    // #232): an in-memory visual session + seeded Settings repository behind
+    // SharedSettingsViewModel, no product snapshots/tokens through pageData.
+    // Captured at the normal viewport for now; full-height (long-scroll) is
+    // layered on later behind the fullHeight marker once the eager-render hook
+    // lands (#388 A).
+    @Test
+    fun captureSettingsAdministrationFullRoute() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.administration.full",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "administration")
+                    .put("fixtureKey", "canonical"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureSettingsConnectedAppsFullRoute() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.connected-apps.full",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "connected-apps")
+                    .put("fixtureKey", "canonical"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
     @Test
     fun captureSettingsAdministrationAdmins() {
         captureKmpSettingsPageCase("components.settings.administration.admins", "administration-admins")
