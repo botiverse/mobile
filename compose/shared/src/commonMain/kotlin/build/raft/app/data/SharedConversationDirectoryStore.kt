@@ -29,8 +29,7 @@ internal data class SharedConversationDirectoryProjection(
     val serverId: String,
     val canonicalChannelId: String,
     val aliases: Set<String>,
-    // TODO(#419): make this required once the t5 projection/link cut removes legacy constructors.
-    val conversationKind: ConversationKind = ConversationKind.Channel,
+    val conversationKind: ConversationKind,
     val surfaceKind: String,
     val channelKind: String,
     val title: String,

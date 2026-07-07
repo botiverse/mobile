@@ -445,6 +445,7 @@ class SlockHomeComponentsTest {
                 serverId = "server-1",
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 channelKind = "private",
                 title = "fresh-name",
@@ -489,6 +490,7 @@ class SlockHomeComponentsTest {
                 serverId = "server-1",
                 canonicalChannelId = "channel-1",
                 aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Channel,
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "channel-1"
