@@ -211,6 +211,20 @@ Mobile rules:
   - Raw identity builders guard `kind == Thread &&
     parentConversationKind == null → null`; no null-parent thread
     identity may be constructed anywhere.
+  - **User-initiated entrances (landed with #272 / task #419, t5 A3/A4):**
+    row clicks resolve with the REAL `serverId + conversationDirectory`
+    (explicitly passed — no new globals). A `Pending` verdict at a
+    user-initiated entrance is an **explainable failure**: loud
+    source-tagged log + user-visible toast + no navigation. Direct
+    identity construction that bypasses `resolveOpenRequest` is forbidden
+    (the old zero-arg entry and the Pending→direct-builder fallback are
+    deleted; the violation is no longer expressible in the types).
+    Remaining payload-layer kind defaults are defensive positions only and
+    must emit `thread_launch_parent_kind_defaulted` with a source tag —
+    a hit means a resolver bypass and escalates to hardening.
+    Pending must never lose data: `sourceMessageIdentity.originFallback`
+    (parentChannelId / parentMessageId / preview / sender) is preserved
+    through a Pending verdict.
 - Acceptance includes **cross-surface resolution equality** (artin's
   requirement): for a corpus of source message identities, every entrance's
   resolver output must be identical. Mobile owes the KMP half of that test.
