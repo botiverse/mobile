@@ -136,8 +136,9 @@ composables, never in platform hosts.
 Target contract: a locally-sent message is a **pending shadow**, never a
 canonical row. Every send carries a client-generated **`random_id`** (field
 name ruled by artin in task #83 — Telegram's original name, not a translated
-alias; the wire casing, `random_id` vs `randomId`, is to be pinned with artin
-before implementation); the canonical echo returns it verbatim; shadow
+alias; wire casing ruled by artin 2026-07-07 (#raft-mobile-reconcile): the
+wire field is **`randomId`** (repo camelCase); `random_id` remains the
+concept name); the canonical echo returns it verbatim; shadow
 absorption matches on that id alone. This closes both failure modes:
 duplicate rows on echo, and the "RPC response lost but message delivered"
 trap (shadow stays retryable; the push echo absorbs it by id).
