@@ -9,7 +9,6 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
 
 private val integrationsActionsPushJson = Json {
     ignoreUnknownKeys = true
@@ -254,15 +253,7 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
 private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> =
     mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
         val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
-        val card =
-            wire.metadata
-                ?.let { metadata ->
-                    runCatching {
-                        integrationsActionsPushJson
-                            .decodeFromJsonElement(WireActionCardMetadata.serializer(), metadata)
-                            .toThreadActionCard()
-                    }.getOrNull()
-                }
+        val card = wire.metadata.toThreadActionCard()
         ActionCardResult(messageId = id, metadataPresent = wire.metadata != null, actionCard = card)
     }
 
@@ -413,7 +404,7 @@ private data class IntegrationGrantDto(
 @Serializable
 private data class ActionCardResponseDto(
     val messageId: String,
-    val metadata: JsonObject? = null,
+    val metadata: WireActionCardMetadata? = null,
 )
 
 @Serializable
