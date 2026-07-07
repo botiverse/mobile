@@ -1577,13 +1577,48 @@ class KmpVisualScreenshotCaptureTest {
                 }
             }
         }
+        if (bitmap == null) {
+            // Last-resort system-surface grab: like the validated fallback, it
+            // can capture the ANR dialog instead of content — fail loud rather
+            // than let it false-pass validation (task #398/#399).
+            anrDialogProblem()?.let { problem ->
+                throw AssertionError("$caseId capture aborted: $problem")
+            }
+        }
         return bitmap
             ?: requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
                 "Unable to capture KMP visual screenshot for $caseId"
             }
     }
 
+    /**
+     * Detect the system "<app> isn't responding" ANR dialog (task #398/#399).
+     * The UiAutomation fallback screenshots the real system surface, so when the
+     * app window ANRs the fallback frame is the ANR dialog over a dimmed page —
+     * rich enough in colors to pass [visualValidationProblems] and false-pass as
+     * content (seen on screens.settings.connected-apps.full, run 28860071543).
+     * The dialog is a system window the software root.draw() path can never see,
+     * so this check only matters on the UiAutomation path. Accessibility-based:
+     * when the ANR dialog shows it is the active window, and its message always
+     * contains "isn't responding" (CI emulators run the English locale).
+     * Best-effort: any failure means "not detected", never a capture failure.
+     */
+    private fun anrDialogProblem(): String? =
+        try {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                ?.findAccessibilityNodeInfosByText("isn't responding")
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { "system ANR dialog visible (\"isn't responding\")" }
+        } catch (t: Throwable) {
+            null
+        }
+
     private fun captureUiAutomationFallbackBitmap(caseId: String, crop: VisualCrop): Bitmap? {
+        val anrProblem = anrDialogProblem()
+        if (anrProblem != null) {
+            Log.w(VISUAL_LOG_TAG, "$caseId UiAutomation fallback rejected: $anrProblem")
+            return null
+        }
         val screenshot =
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
                 ?: return null
