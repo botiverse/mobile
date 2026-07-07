@@ -31,6 +31,8 @@ internal class SlockKuiklyPageRenderView(
     private var childDidAttach = false
     private var childVisible = false
     private var childInitPosted = false
+    private var lastChildRootWidthPx: Int? = null
+    private var lastChildRootHeightPx: Int? = null
     private var destroyed = false
     private val lazyChildEvents = mutableListOf<() -> Unit>()
 
@@ -169,6 +171,12 @@ internal class SlockKuiklyPageRenderView(
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         scheduleChildInitIfReady()
+        notifyChildRootSizeChangedIfNeeded(width, height)
+    }
+
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        notifyChildRootSizeChangedIfNeeded(width, height)
     }
 
     override fun onDestroy() {
@@ -231,6 +239,8 @@ internal class SlockKuiklyPageRenderView(
             size = Size(width, height)
         )
         childDidAttach = true
+        lastChildRootWidthPx = width
+        lastChildRootHeightPx = height
         syncChildVisibility()
         performAllLazyChildEvents()
     }
@@ -243,6 +253,8 @@ internal class SlockKuiklyPageRenderView(
         }
         childRenderView = null
         childDidAttach = false
+        lastChildRootWidthPx = null
+        lastChildRootHeightPx = null
         lazyChildEvents.clear()
         child.onDetach()
         removeView(child)
@@ -270,7 +282,9 @@ internal class SlockKuiklyPageRenderView(
                 syncChildVisibility()
             }
             EVENT_WINDOW_SIZE_DID_CHANGED,
-            EVENT_ROOT_VIEW_SIZE_DID_CHANGED,
+            EVENT_ROOT_VIEW_SIZE_DID_CHANGED -> {
+                notifyChildRootSizeChangedIfNeeded(width, height)
+            }
             EVENT_PAGE_FIRST_FRAME_PAINT,
             EVENT_PAGE_WILL_DESTROY,
             EVENT_SET_NEED_LAYOUT,
@@ -279,6 +293,31 @@ internal class SlockKuiklyPageRenderView(
                 performTaskWhenChildAttached { childRenderView?.sendEvent(event, data) }
             }
         }
+    }
+
+    private fun notifyChildRootSizeChangedIfNeeded(widthPx: Int, heightPx: Int) {
+        if (!shouldNotifySlockKuiklyChildRootSizeChange(
+                childAttached = childDidAttach,
+                previousWidthPx = lastChildRootWidthPx,
+                previousHeightPx = lastChildRootHeightPx,
+                nextWidthPx = widthPx,
+                nextHeightPx = heightPx
+            )
+        ) {
+            return
+        }
+        val child = childRenderView ?: return
+        lastChildRootWidthPx = widthPx
+        lastChildRootHeightPx = heightPx
+        child.updateRootViewSize(
+            widthPx = widthPx,
+            heightPx = heightPx,
+            data = slockKuiklyRootViewSizeDidChangedData(
+                widthPx = widthPx,
+                heightPx = heightPx,
+                density = resources.displayMetrics.density
+            )
+        )
     }
 
     private fun syncChildVisibility() {
@@ -321,7 +360,7 @@ internal class SlockKuiklyPageRenderView(
         private const val EVENT_VIEW_DID_APPEAR = "viewDidAppear"
         private const val EVENT_VIEW_DID_DISAPPEAR = "viewDidDisappear"
         private const val EVENT_WINDOW_SIZE_DID_CHANGED = "windowSizeDidChanged"
-        private const val EVENT_ROOT_VIEW_SIZE_DID_CHANGED = "rootViewSizeDidChanged"
+        internal const val EVENT_ROOT_VIEW_SIZE_DID_CHANGED = "rootViewSizeDidChanged"
         private const val EVENT_PAGE_FIRST_FRAME_PAINT = "pageFirstFramePaint"
         private const val EVENT_PAGE_WILL_DESTROY = "pageWillDestroy"
         private const val EVENT_SET_NEED_LAYOUT = "setNeedLayout"
@@ -335,4 +374,33 @@ internal class SlockKuiklyPageRenderView(
 private class SlockKuiklyChildRenderView(
     context: Context,
     delegate: KuiklyRenderViewBaseDelegatorDelegate
-) : KuiklyBaseView(context, delegate)
+) : KuiklyBaseView(context, delegate) {
+    fun updateRootViewSize(widthPx: Int, heightPx: Int, data: Map<String, Any>) {
+        getChildAt(0)?.layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
+        sendEvent(SlockKuiklyPageRenderView.EVENT_ROOT_VIEW_SIZE_DID_CHANGED, data)
+    }
+}
+
+internal fun shouldNotifySlockKuiklyChildRootSizeChange(
+    childAttached: Boolean,
+    previousWidthPx: Int?,
+    previousHeightPx: Int?,
+    nextWidthPx: Int,
+    nextHeightPx: Int
+): Boolean =
+    childAttached &&
+        nextWidthPx > 0 &&
+        nextHeightPx > 0 &&
+        (previousWidthPx != nextWidthPx || previousHeightPx != nextHeightPx)
+
+internal fun slockKuiklyRootViewSizeDidChangedData(
+    widthPx: Int,
+    heightPx: Int,
+    density: Float
+): Map<String, Any> {
+    val resolvedDensity = density.takeIf { it > 0f } ?: 1f
+    return mapOf(
+        "width" to widthPx / resolvedDensity,
+        "height" to heightPx / resolvedDensity
+    )
+}
