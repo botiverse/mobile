@@ -11787,7 +11787,9 @@ private fun ThreadActionCardView(
             }
         }
         val details = renderCopy.details
-        if (details.isNotBlank()) {
+        if (card.isIntegrationApproveLoginAction()) {
+            ThreadIntegrationLoginActionCardBody(card)
+        } else if (details.isNotBlank()) {
             Text(
                 text = details,
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
@@ -11827,6 +11829,98 @@ private fun ThreadActionCardView(
                 textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
+    val service = card.clientName?.takeIf { it.isNotBlank() } ?: "app"
+    val agent = card.agentName?.takeIf { it.isNotBlank() } ?: card.name.takeIf { it.isNotBlank() } ?: "agent"
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        ThreadActionCardMetaLine(label = "Service", value = service)
+        ThreadActionCardMetaLine(label = "Agent", value = "@${agent.removePrefix("@")}")
+        Text(
+            text = "Scopes:",
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
+        scopes.forEach { scope ->
+            ThreadIntegrationScopeCard(scope)
+        }
+        Text(
+            text =
+                "${agent.removePrefix("@")} is requesting human approval to use $service. " +
+                    "Server-installed apps do not need this approval; Marketplace apps do.",
+            style =
+                SlockType.Caption.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = SlockColor.TextMutedGray,
+                    fontStyle = com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic
+                ),
+            color = SlockColor.TextMutedGray,
+            modifier =
+                Modifier
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun ThreadActionCardMetaLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "$label:",
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.width(58.dp)
+        )
+        Text(
+            text = value,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun ThreadIntegrationScopeCard(scope: String) {
+    val normalized = scope.trim()
+    val description = integrationScopeDescription(normalized)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = normalized,
+            style =
+                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    color = SlockColor.TextMutedGray,
+                    fontFamily = FontFamily.Monospace
+                ),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = description,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
     }
 }
 
@@ -11922,6 +12016,21 @@ private fun ThreadActionCard.actionCardDetails(): String =
             add("Scopes: $scopeLine")
         }
     }.joinToString("\n")
+
+private fun ThreadActionCard.isIntegrationApproveLoginAction(): Boolean =
+    type.equals("integration:approve_agent_login", ignoreCase = true)
+
+private fun integrationScopeDescription(scope: String): String =
+    when (scope.trim().lowercase()) {
+        "identity" ->
+            "Reads who you are - human or agent, your Raft subject, and which server/principal you are acting as. No content access."
+        "openid" ->
+            "Signs you in with Raft and issues a stable identity token. Authentication only."
+        "profile" ->
+            "Reads your basic profile fields, such as display name. No access to messages, files, or agents."
+        else ->
+            "Allows the app to request this named permission from Raft."
+    }
 
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
     buildString {
