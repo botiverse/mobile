@@ -35,6 +35,7 @@ enum class SharedSettingsDestination {
     Mobile,
     Storage,
     About,
+    OpenSourceLicenses,
     Developer,
     Diagnostics,
     Router
@@ -60,6 +61,7 @@ data class SharedSettingsState(
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
     val addComputerDialog: AddComputerDialogState? = null,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
+    val openSourceLicenses: ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot> = ScreenLoadState.Loading,
     val developer: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
     val diagnostics: ScreenLoadState<SharedSettingsDiagnosticsSnapshot> = ScreenLoadState.Loading,
     val refreshingDestinations: Set<SharedSettingsDestination> = emptySet(),
@@ -142,6 +144,24 @@ data class SharedSettingsAboutSnapshot(
     val platformLabel: String = "",
     val buildTime: String = "",
     val gitCommit: String = ""
+)
+
+data class SharedSettingsOpenSourceLicensesSnapshot(
+    val schemaVersion: Int = 1,
+    val variant: String = "",
+    val sourceConfiguration: String = "",
+    val items: List<SharedSettingsOpenSourceLicenseItem> = emptyList()
+)
+
+data class SharedSettingsOpenSourceLicenseItem(
+    val id: String,
+    val group: String = "",
+    val name: String,
+    val version: String = "",
+    val displayName: String = "",
+    val licenseName: String,
+    val licenseUrl: String = "",
+    val sourceUrl: String = ""
 )
 
 data class SharedSettingsDeveloperSnapshot(
@@ -403,6 +423,9 @@ interface SharedSettingsPlatformCapabilities {
         DataResult.Error(ScreenError("settings_storage_clear_unavailable", retryable = false))
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadOpenSourceLicenses(): DataResult<SharedSettingsOpenSourceLicensesSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
@@ -901,6 +924,9 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission -> result
         }
     }
+
+    suspend fun loadOpenSourceLicenses(): DataResult<SharedSettingsOpenSourceLicensesSnapshot> =
+        platformCapabilities.loadOpenSourceLicenses()
 
     suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
         apiEnvironmentStore?.developerSnapshot()?.let { DataResult.Content(it) }
@@ -1874,6 +1900,8 @@ class SharedSettingsStore(
             SharedSettingsDestination.Storage -> loadStorage()
             SharedSettingsDestination.About ->
                 loadAboutWithUpdateStatus()
+            SharedSettingsDestination.OpenSourceLicenses ->
+                dataSource.loadOpenSourceLicenses().applyToState(destination) { copy(openSourceLicenses = it) }
             SharedSettingsDestination.Developer ->
                 dataSource.loadDeveloper().applyToState(destination) { copy(developer = it) }
             SharedSettingsDestination.Diagnostics ->
@@ -2723,6 +2751,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.Mobile -> mobile is ScreenLoadState.Content
         SharedSettingsDestination.Storage -> storage is ScreenLoadState.Content
         SharedSettingsDestination.About -> about is ScreenLoadState.Content
+        SharedSettingsDestination.OpenSourceLicenses -> openSourceLicenses is ScreenLoadState.Content
         SharedSettingsDestination.Developer -> developer is ScreenLoadState.Content
         SharedSettingsDestination.Diagnostics -> diagnostics is ScreenLoadState.Content
         SharedSettingsDestination.Router -> home is ScreenLoadState.Content

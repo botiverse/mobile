@@ -132,6 +132,45 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 
+    override suspend fun loadOpenSourceLicenses(): DataResult<SharedSettingsOpenSourceLicensesSnapshot> {
+        val response = settingsCapability(JSONObject().put("action", "loadOpenSourceLicenses"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_open_source_licenses_unavailable" }))
+        }
+        val itemsJson = response.optJSONArray("items")
+        val items =
+            buildList {
+                if (itemsJson != null) {
+                    for (index in 0 until itemsJson.length()) {
+                        val item = itemsJson.optJSONObject(index) ?: continue
+                        val name = item.optString("name")
+                        val displayName = item.optString("displayName")
+                        val licenseName = item.optString("licenseName")
+                        add(
+                            SharedSettingsOpenSourceLicenseItem(
+                                id = item.optString("id").ifBlank { "${item.optString("group")}:$name:${item.optString("version")}" },
+                                group = item.optString("group"),
+                                name = name,
+                                version = item.optString("version"),
+                                displayName = displayName.ifBlank { name },
+                                licenseName = licenseName.ifBlank { "Unknown" },
+                                licenseUrl = item.optString("licenseUrl"),
+                                sourceUrl = item.optString("sourceUrl")
+                            )
+                        )
+                    }
+                }
+            }
+        return DataResult.Content(
+            SharedSettingsOpenSourceLicensesSnapshot(
+                schemaVersion = response.optInt("schemaVersion", 1),
+                variant = response.optString("variant"),
+                sourceConfiguration = response.optString("sourceConfiguration"),
+                items = items
+            )
+        )
+    }
+
     override suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
         val response = settingsCapability(JSONObject().put("action", "loadDeveloper"))
         if (response?.optString("status") != "ok") {

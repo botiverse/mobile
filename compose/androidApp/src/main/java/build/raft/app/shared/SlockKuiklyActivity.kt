@@ -2165,6 +2165,7 @@ internal class SlockKuiklyBridgeModule(
                         "loadStorage" -> loadSettingsStorage()
                         "clearStorage" -> clearSettingsStorage(request.optString("target"))
                         "loadAbout" -> loadSettingsAbout()
+                        "loadOpenSourceLicenses" -> loadOpenSourceLicenses()
                         "loadDeveloper" -> loadSettingsDeveloper()
                         "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
@@ -2576,6 +2577,55 @@ internal class SlockKuiklyBridgeModule(
                 "baseUrl" to AndroidAuthApiFactory.currentBaseUrl(appContext),
                 "buildTime" to BuildConfig.BUILD_TIME,
                 "gitCommit" to BuildConfig.GIT_COMMIT
+        )
+    }
+
+    private fun loadOpenSourceLicenses(): Map<String, Any> {
+        val payload =
+                runCatching {
+                            appContext.assets.open("oss_licenses.json").bufferedReader().use { reader ->
+                                JSONObject(reader.readText())
+                            }
+                        }
+                        .getOrElse { throwable ->
+                            SlockDiagnosticsLogger.record(
+                                    "SlockSettings",
+                                    "open_source_licenses_load_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
+                            )
+                            return mapOf(
+                                    "status" to "error",
+                                    "code" to "settings_open_source_licenses_asset_missing"
+                            )
+                        }
+        val sourceItems = payload.optJSONArray("items") ?: JSONArray()
+        val items =
+                JSONArray().also { array ->
+                    for (index in 0 until sourceItems.length()) {
+                        val source = sourceItems.optJSONObject(index) ?: continue
+                        val id = source.optString("id")
+                        val name = source.optString("name")
+                        val displayName = source.optString("displayName").ifBlank { name.ifBlank { id } }
+                        val licenseName = source.optString("licenseName")
+                        if (id.isBlank() || displayName.isBlank() || licenseName.isBlank()) continue
+                        array.put(
+                                JSONObject()
+                                        .put("id", id)
+                                        .put("group", source.optString("group"))
+                                        .put("name", name)
+                                        .put("version", source.optString("version"))
+                                        .put("displayName", displayName)
+                                        .put("licenseName", licenseName)
+                                        .put("licenseUrl", source.optString("licenseUrl"))
+                                        .put("sourceUrl", source.optString("sourceUrl"))
+                        )
+                    }
+                }
+        return mapOf(
+                "status" to "ok",
+                "schemaVersion" to payload.optInt("schemaVersion", 1),
+                "variant" to payload.optString("variant"),
+                "sourceConfiguration" to payload.optString("sourceConfiguration"),
+                "items" to items
         )
     }
 

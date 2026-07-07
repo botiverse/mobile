@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "overrides": [
+    {
+      "id": "com.tencent.kuikly-open:*",
+      "licenseName": "KuiklyUI License Terms",
+      "licenseUrl": "https://github.com/Tencent-TDS/KuiklyUI/blob/main/LICENSE",
+      "sourceUrl": "https://github.com/Tencent-TDS/KuiklyUI",
+      "reason": "The Kuikly artifacts use Tencent's KuiklyUI license text; keep the Android package disclosure explicit even when POM metadata is incomplete."
+    },
+    {
+      "id": "com.tencent.kuiklybase:*",
+      "licenseName": "KuiklyUI License Terms",
+      "licenseUrl": "https://github.com/Tencent-TDS/KuiklyUI/blob/main/LICENSE",
+      "sourceUrl": "https://github.com/Tencent-TDS/KuiklyUI",
+      "reason": "KuiklyBase fork artifacts are consumed from GitHub Packages and can publish incomplete license metadata."
+    },
+    {
+      "id": "com.google.guava:listenablefuture",
+      "displayName": "Guava ListenableFuture",
+      "licenseName": "Apache License 2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "sourceUrl": "https://github.com/google/guava",
+      "reason": "The module POM inherits its license from the Guava parent POM, which is not resolved by the Android release license generator."
+    },
+    {
+      "id": "io.quiver:quiver-android-updater",
+      "displayName": "Quiver Android Updater",
+      "licenseName": "MIT License",
+      "licenseUrl": "https://opensource.org/licenses/MIT",
+      "sourceUrl": "https://github.com/oranix-io/quiver",
+      "reason": "The artifact's POM declares MIT, but Gradle metadata can be preferred during artifact resolution; keep the Android package disclosure deterministic."
+    },
+    {
+      "id": "org.slf4j:slf4j-api",
+      "displayName": "SLF4J API",
+      "licenseName": "MIT License",
+      "licenseUrl": "https://opensource.org/licenses/MIT",
+      "sourceUrl": "https://www.slf4j.org",
+      "reason": "The module POM inherits its license from the SLF4J parent POM, which is not resolved by the Android release license generator."
+    }
+  ]
+}

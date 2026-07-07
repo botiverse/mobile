@@ -1,8 +1,28 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.maven.MavenModule
+import org.gradle.maven.MavenPomArtifact
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
 
 plugins {
     alias(libs.plugins.android.application)
@@ -96,6 +116,224 @@ fun slockGitCommit(): String =
         "unknown"
     }
 
+data class OssLicenseOverride(
+    val id: String,
+    val displayName: String?,
+    val licenseName: String,
+    val licenseUrl: String?,
+    val sourceUrl: String?,
+    val reason: String?
+)
+
+data class OssLicenseEntry(
+    val id: String,
+    val group: String,
+    val name: String,
+    val version: String,
+    val displayName: String,
+    val licenseName: String,
+    val licenseUrl: String?,
+    val sourceUrl: String?
+)
+
+abstract class GenerateOssLicensesTask : DefaultTask() {
+    @get:Input
+    abstract val sourceConfigurations: ListProperty<String>
+
+    @get:Input
+    abstract val variantName: Property<String>
+
+    @get:Input
+    abstract val sourceConfigurationLabel: Property<String>
+
+    @get:Input
+    abstract val requiredModules: ListProperty<String>
+
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val overridesFile: RegularFileProperty
+
+    @get:OutputFile
+    abstract val outputFile: RegularFileProperty
+
+    @TaskAction
+    fun generate() {
+        val configurationPaths = sourceConfigurations.get()
+        val moduleIds =
+            configurationPaths
+                .flatMap { path ->
+                    path.toConfiguration().incoming.resolutionResult.allComponents
+                        .mapNotNull { it.id as? ModuleComponentIdentifier }
+                }
+                .distinctBy { it.coordinateKey() }
+                .sortedWith(compareBy({ it.group }, { it.module }, { it.version }))
+
+        val moduleKeys = moduleIds.flatMap { listOf(it.coordinateKey(), it.moduleKey()) }.toSet()
+        val missingRequiredModules = requiredModules.get().filterNot { it in moduleKeys }
+        if (missingRequiredModules.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("Missing required OSS disclosure dependencies:")
+                    missingRequiredModules.forEach { appendLine(" - $it") }
+                    appendLine("Checked configurations:")
+                    configurationPaths.forEach { appendLine(" - $it") }
+                }
+            )
+        }
+
+        val pomFiles =
+            project.dependencies
+                .createArtifactResolutionQuery()
+                .forComponents(moduleIds)
+                .withArtifacts(MavenModule::class.java, MavenPomArtifact::class.java)
+                .execute()
+                .resolvedComponents
+                .mapNotNull { component ->
+                    val id = component.id as? ModuleComponentIdentifier ?: return@mapNotNull null
+                    val pom =
+                        component.getArtifacts(MavenPomArtifact::class.java)
+                            .filterIsInstance<ResolvedArtifactResult>()
+                            .firstOrNull()
+                            ?.file
+                    id.coordinateKey() to pom
+                }
+                .toMap()
+
+        val overrides = readOverrides(overridesFile.orNull?.asFile)
+        val missing = mutableListOf<String>()
+        val entries =
+            moduleIds.map { id ->
+                val override = overrides.firstOrNull { it.matches(id) }
+                val pomLicense = pomFiles[id.coordinateKey()]?.readPomLicense()
+                val licenseName = override?.licenseName ?: pomLicense?.first.orEmpty()
+                val licenseUrl = override?.licenseUrl ?: pomLicense?.second
+                if (licenseName.isBlank() || licenseName.equals("unknown", ignoreCase = true)) {
+                    missing += id.coordinateKey()
+                }
+                OssLicenseEntry(
+                    id = id.coordinateKey(),
+                    group = id.group,
+                    name = id.module,
+                    version = id.version,
+                    displayName = override?.displayName?.ifBlank { null } ?: "${id.group}:${id.module}",
+                    licenseName = licenseName,
+                    licenseUrl = licenseUrl?.ifBlank { null },
+                    sourceUrl = override?.sourceUrl?.ifBlank { null }
+                )
+            }
+
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("Missing license metadata for OSS disclosure dependencies:")
+                    missing.forEach { appendLine(" - $it") }
+                    appendLine("Add an entry to ${overridesFile.orNull?.asFile?.relativeToOrSelf(project.rootDir)?.path ?: "the OSS license override file"} or fix the published POM metadata.")
+                }
+            )
+        }
+
+        val json =
+            linkedMapOf(
+                "schemaVersion" to 1,
+                "variant" to variantName.get(),
+                "sourceConfiguration" to sourceConfigurationLabel.get(),
+                "sourceConfigurations" to configurationPaths,
+                "items" to entries.map { entry ->
+                    linkedMapOf(
+                        "id" to entry.id,
+                        "group" to entry.group,
+                        "name" to entry.name,
+                        "version" to entry.version,
+                        "displayName" to entry.displayName,
+                        "licenseName" to entry.licenseName,
+                        "licenseUrl" to entry.licenseUrl,
+                        "sourceUrl" to entry.sourceUrl
+                    ).filterValues { it != null }
+                }
+            )
+        outputFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(JsonOutput.prettyPrint(JsonOutput.toJson(json)) + "\n")
+        }
+    }
+
+    private fun String.toConfiguration(): org.gradle.api.artifacts.Configuration {
+        val separator = lastIndexOf(':')
+        val (projectPath, configurationName) =
+            if (separator > 0) {
+                substring(0, separator) to substring(separator + 1)
+            } else {
+                project.path to this
+            }
+        val sourceProject = project.rootProject.project(projectPath)
+        return sourceProject.configurations.getByName(configurationName)
+    }
+
+    private fun readOverrides(file: File?): List<OssLicenseOverride> {
+        if (file == null || !file.isFile) return emptyList()
+        val parsed = JsonSlurper().parse(file) as? Map<*, *> ?: return emptyList()
+        val items = parsed["overrides"] as? List<*> ?: return emptyList()
+        return items.mapNotNull { raw ->
+            val item = raw as? Map<*, *> ?: return@mapNotNull null
+            val id = item["id"]?.toString()?.trim().orEmpty()
+            val licenseName = item["licenseName"]?.toString()?.trim().orEmpty()
+            if (id.isBlank() || licenseName.isBlank()) return@mapNotNull null
+            OssLicenseOverride(
+                id = id,
+                displayName = item["displayName"]?.toString()?.trim(),
+                licenseName = licenseName,
+                licenseUrl = item["licenseUrl"]?.toString()?.trim(),
+                sourceUrl = item["sourceUrl"]?.toString()?.trim(),
+                reason = item["reason"]?.toString()?.trim()
+            )
+        }
+    }
+
+    private fun OssLicenseOverride.matches(id: ModuleComponentIdentifier): Boolean =
+        this.id == id.coordinateKey() ||
+            this.id == "${id.group}:${id.module}" ||
+            this.id == "${id.group}:${id.module}:*" ||
+            this.id == "${id.group}:*"
+
+    private fun ModuleComponentIdentifier.coordinateKey(): String = "$group:$module:$version"
+
+    private fun ModuleComponentIdentifier.moduleKey(): String = "$group:$module"
+
+    private fun File.readPomLicense(): Pair<String, String?>? =
+        runCatching {
+            val document =
+                DocumentBuilderFactory
+                    .newInstance()
+                    .apply {
+                        isNamespaceAware = false
+                        isExpandEntityReferences = false
+                    }
+                    .newDocumentBuilder()
+                    .parse(this)
+            val licenses = document.getElementsByTagName("license")
+            for (index in 0 until licenses.length) {
+                val license = licenses.item(index) as? Element ?: continue
+                val name = license.childText("name")
+                val url = license.childText("url")
+                if (name.isNotBlank() || url.isNotBlank()) {
+                    return@runCatching (name.ifBlank { url } to url.ifBlank { null })
+                }
+            }
+            null
+        }.getOrNull()
+
+    private fun Element.childText(tag: String): String =
+        getElementsByTagName(tag)
+            .let { nodes ->
+                (0 until nodes.length)
+                    .asSequence()
+                    .mapNotNull { nodes.item(it)?.textContent?.trim() }
+                    .firstOrNull { it.isNotBlank() }
+                    .orEmpty()
+            }
+}
+
 android {
     namespace = "build.raft.app"
     compileSdk {
@@ -154,10 +392,48 @@ android {
         }
     }
     sourceSets {
+        getByName("main") {
+            assets.srcDir(layout.buildDirectory.dir("generated/assets/ossLicenses/main"))
+        }
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
         }
     }
+}
+
+val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::class) {
+    group = "verification"
+    description = "Generates the Open Source Licenses asset from Android and shared KMP dependencies."
+    sourceConfigurations.set(
+        listOf(
+            ":androidApp:releaseRuntimeClasspath",
+            ":shared:commonMainImplementationDependenciesMetadata",
+            ":shared:androidReleaseRuntimeClasspath"
+        )
+    )
+    variantName.set("release")
+    sourceConfigurationLabel.set("Android release runtime + shared KMP metadata")
+    requiredModules.set(
+        listOf(
+            "com.tencent.kuiklybase:network",
+            "com.tencent.kuiklybase:network-android",
+            "com.tencent.kuiklybase:resource-core",
+            "com.tencent.kuiklybase:resource-core-android",
+            "com.tencent.kuikly-open:compose",
+            "com.tencent.kuikly-open:compose-android",
+            "io.quiver:quiver-android-updater"
+        )
+    )
+    overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
+    outputFile.set(layout.buildDirectory.file("generated/assets/ossLicenses/main/oss_licenses.json"))
+}
+
+tasks.named("preBuild") {
+    dependsOn(generateReleaseOssLicenses)
+}
+
+tasks.named("check") {
+    dependsOn(generateReleaseOssLicenses)
 }
 
 kotlin {
