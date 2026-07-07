@@ -82,6 +82,41 @@ class ThreadPayloadTest {
     private val launchJson = Json { ignoreUnknownKeys = true }
 
     @Test
+    fun threadLaunchPayloadLogsDefaultedParentKind() {
+        // t5/#419: every live path resolves the parent kind before payload build, so the
+        // remaining `?: Channel` there is a defensive default that must log loudly (a hit
+        // means a resolver bypass and escalates to a t8 hardening item).
+        val warnings = mutableListOf<String>()
+        val identity =
+            ThreadLaunchConversationIdentity(
+                threadId = ThreadId("thread-1"),
+                channelId = ChannelId("parent-1"),
+                thread =
+                    ThreadConversation(
+                        parentChannelId = ChannelId("parent-1"),
+                        parentMessageId = MessageId("msg-1"),
+                        streamChannelId = ChannelId("thread-1"),
+                        parentSurfaceKind = null,
+                        parentChannelKind = null
+                    ),
+                kind = ConversationKind.Thread
+            )
+
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = identity,
+            timeContext = null,
+            onWarn = { warnings.add(it) }
+        )
+        buildAppShellThreadPayload(
+            conversation = identity,
+            onWarn = { warnings.add(it) }
+        )
+
+        assertTrue(warnings.any { it.startsWith("thread_launch_parent_kind_defaulted source=standalone") })
+        assertTrue(warnings.any { it.startsWith("thread_launch_parent_kind_defaulted source=app_shell") })
+    }
+
+    @Test
     fun composerSendBodyFallsBackToAttachmentLabelWhenDraftIsBlank() {
         assertEquals("[1 attachment]", threadComposerMessageBodyForSend("   ", attachmentCount = 1))
         assertEquals("[2 attachments]", threadComposerMessageBodyForSend("", attachmentCount = 2))
@@ -3020,13 +3055,14 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
                 latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
         val payload =
@@ -3068,12 +3104,13 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
                 latestActivityMessageId = MessageId("reply-message-1")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         val payload =
             buildAppShellThreadPayload(
@@ -3101,10 +3138,11 @@ class ThreadPayloadTest {
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val wrongFallback =
             ThreadLaunchOriginFallback(
                 parentChannelId = "channel-2",
@@ -3470,9 +3508,10 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 latestActivityPreview = "Latest reply"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         val payload = buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
 
@@ -3497,7 +3536,7 @@ class ThreadPayloadTest {
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityPreview = "Latest reply"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
         val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
@@ -3529,7 +3568,7 @@ class ThreadPayloadTest {
                 lastMessagePreview = "Latest channel message",
                 lastMessageId = MessageId("latest-channel-message"),
                 unreadCount = 2
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val conversation = request.conversationIdentity
 
         val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
@@ -3835,11 +3874,12 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
@@ -3892,7 +3932,7 @@ class ThreadPayloadTest {
                 parentMessagePreview = "Can you check this?",
                 latestActivityMessageId = MessageId("dm-reply-1"),
                 latestActivityPreview = "Sure"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
@@ -4287,7 +4327,7 @@ class ThreadPayloadTest {
                 parentMessagePreview = "Can you check this?",
                 latestActivityMessageId = MessageId("joint-reply-1"),
                 latestActivityPreview = "Sure"
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
 
         val launch =
             buildStandaloneConversationThreadLaunchPayload(

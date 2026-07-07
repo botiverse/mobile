@@ -4,6 +4,7 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
@@ -692,7 +693,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(banner)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
         assertEquals(activityOpenRequest.conversationIdentity, resolved.openRequest.conversationIdentity)
         assertEquals(activityOpenRequest.anchorMessageId, resolved.openRequest.anchorMessageId)
         assertEquals("@Cindy - thread", resolved.context)
@@ -760,7 +761,7 @@ class SlockAppShellTest {
                 latestActivityMessageId = MessageId("reply-1")
             )
         assertEquals(
-            activityItem.toHomeMessageOpenRequest().conversationIdentity,
+            activityItem.toHomeMessageOpenRequestForTest().conversationIdentity,
             resolved.openRequest.conversationIdentity
         )
         assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
@@ -1046,7 +1047,12 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun activityPendingFallbackPreservesThreadOriginFallback() {
+    fun activityPendingOpenPreservesOriginFallback() {
+        // Pre-#419 this pinned the Pending->direct-builder fallback (which could navigate on
+        // a guessed identity — the removed leak). Under the resolver-only contract a thread
+        // row with no usable stream/channel id stays Pending(conversation_hydrating), and the
+        // Pending's source identity must still carry the origin fallback so a later retry
+        // (or hydrated resolution) loses nothing.
         val activityItem =
             InboxItem(
                 key = "thread:pending-reply",
@@ -1063,14 +1069,20 @@ class SlockAppShellTest {
                 latestActivityMessageId = MessageId("reply-1")
             )
 
-        val request = activityItem.toHomeMessageOpenRequest()
+        val resolution =
+            activityItem.toHomeMessageOpenRequest(
+                serverId = "",
+                conversationDirectory = SharedConversationDirectoryState()
+            )
 
-        assertEquals("reply-1", request.anchorMessageId)
-        assertEquals("parent-channel", request.originFallback?.parentChannelId)
-        assertEquals("parent-message", request.originFallback?.parentMessageId)
-        assertEquals("Original thread question", request.originFallback?.preview)
-        assertEquals("agent-owner", request.originFallback?.senderId)
-        assertEquals(MemberKind.Agent, request.originFallback?.senderKind)
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("conversation_hydrating", pending.reason)
+        val originFallback = pending.sourceMessageIdentity.originFallback
+        assertEquals("parent-channel", originFallback?.parentChannelId)
+        assertEquals("parent-message", originFallback?.parentMessageId)
+        assertEquals("Original thread question", originFallback?.preview)
+        assertEquals("agent-owner", originFallback?.senderId)
+        assertEquals(MemberKind.Agent, originFallback?.senderKind)
     }
 
     @Test
@@ -1103,7 +1115,7 @@ class SlockAppShellTest {
             )
 
         val resolved = assertNotNull(openRequest)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
         assertEquals(activityOpenRequest.conversationIdentity, resolved.conversationIdentity)
         assertEquals(activityOpenRequest.anchorMessageId, resolved.anchorMessageId)
         assertEquals(ConversationKind.Thread, resolved.conversationIdentity.kind)

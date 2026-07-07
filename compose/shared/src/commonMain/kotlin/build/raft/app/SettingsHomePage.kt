@@ -434,6 +434,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -762,7 +763,8 @@ private data class HomeSecondaryRouteEnvironment(
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
-    val shellScope: SlockAppShellScope
+    val shellScope: SlockAppShellScope,
+    val conversationIdentityProvider: SharedConversationIdentityProvider?
 )
 
 @Composable
@@ -833,7 +835,8 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             threadRowAffordances = threadRowAffordances,
-            shellScope = shellScope
+            shellScope = shellScope,
+            conversationIdentityProvider = sharedStores.conversationIdentityProvider
         )
     }
 }
@@ -983,6 +986,14 @@ private fun HomeSearchRouterContent(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
+    // t5/#419 A3: user-initiated opens resolve against the real directory + server id.
+    val conversationDirectoryFlow =
+        remember(environment.conversationIdentityProvider, searchServerId) {
+            searchServerId?.takeIf { it.isNotBlank() }
+                ?.let { serverId -> environment.conversationIdentityProvider?.observeServer(ServerId(serverId)) }
+                ?: flowOf(SharedConversationDirectoryState())
+        }
+    val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
@@ -992,15 +1003,30 @@ private fun HomeSearchRouterContent(
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
-            environment.pager.openStandaloneHomeMessageRequest(
-                bridge = environment.bridge,
-                request = item.toHomeMessageOpenRequest(),
-                source = "home_search",
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances
-            )
+            when (
+                val resolution =
+                    item.toHomeMessageOpenRequest(
+                        serverId = searchServerId.orEmpty(),
+                        conversationDirectory = conversationDirectory
+                    )
+            ) {
+                is ConversationOpenResolution.Resolved ->
+                    environment.pager.openStandaloneHomeMessageRequest(
+                        bridge = environment.bridge,
+                        request = resolution.request,
+                        source = "home_search",
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                        threadRowAffordances = environment.threadRowAffordances
+                    )
+                is ConversationOpenResolution.Pending -> {
+                    environment.bridge.logWarn(
+                        "search_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
+                    )
+                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                }
+            }
         },
         onOpenEntity = { entity ->
             environment.pager.openHomeSearchEntity(
@@ -1059,6 +1085,14 @@ private fun HomeSavedRouterContent(
         remember(environment.serverMembersStore, savedServerId) {
             slockMemberAvatarResolver(environment.serverMembersStore, savedServerId)
         }
+    // t5/#419 A3: user-initiated opens resolve against the real directory + server id.
+    val conversationDirectoryFlow =
+        remember(environment.conversationIdentityProvider, savedServerId) {
+            savedServerId?.takeIf { it.isNotBlank() }
+                ?.let { serverId -> environment.conversationIdentityProvider?.observeServer(ServerId(serverId)) }
+                ?: flowOf(SharedConversationDirectoryState())
+        }
+    val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
         memberAvatarResolver = memberAvatarResolver,
@@ -1066,15 +1100,30 @@ private fun HomeSavedRouterContent(
         onIntent = searchSavedViewModel::dispatch,
         onClose = { environment.pager.closeHomeSecondaryPage() },
         onOpenItem = { item ->
-            environment.pager.openStandaloneHomeMessageRequest(
-                bridge = environment.bridge,
-                request = item.toHomeMessageOpenRequest(),
-                source = "home_saved",
-                timeContext = environment.timeContext,
-                alignOwnMessagesRight = environment.alignOwnMessagesRight,
-                compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances
-            )
+            when (
+                val resolution =
+                    item.toHomeMessageOpenRequest(
+                        serverId = savedServerId.orEmpty(),
+                        conversationDirectory = conversationDirectory
+                    )
+            ) {
+                is ConversationOpenResolution.Resolved ->
+                    environment.pager.openStandaloneHomeMessageRequest(
+                        bridge = environment.bridge,
+                        request = resolution.request,
+                        source = "home_saved",
+                        timeContext = environment.timeContext,
+                        alignOwnMessagesRight = environment.alignOwnMessagesRight,
+                        compactConsecutiveMessages = environment.compactConsecutiveMessages,
+                        threadRowAffordances = environment.threadRowAffordances
+                    )
+                is ConversationOpenResolution.Pending -> {
+                    environment.bridge.logWarn(
+                        "saved_open_request_pending reason=${resolution.reason} itemKey=${item.key}"
+                    )
+                    environment.bridge.toast("Conversation isn't ready yet — try again")
+                }
+            }
         },
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
@@ -2501,6 +2550,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 threadRowAffordances = threadRowAffordances,
+                onWarn = { bridge.logWarn(it) },
                 anchorMessageId = anchorMessageId,
                 originFallback = originFallback
             )
@@ -2699,6 +2749,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             timeContext = threadTimeContext,
                             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                             compactConsecutiveMessages = compactConsecutiveMessages,
+                            onWarn = { bridge.logWarn(it) },
                             threadRowAffordances = threadRowAffordances
                         ).withDiagnosticsFeedbackDraft(
                             draft = draft
@@ -14926,7 +14977,8 @@ internal fun buildAppShellThreadPayload(
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
-    accessState: ThreadLaunchAccessState = ThreadLaunchAccessState()
+    accessState: ThreadLaunchAccessState = ThreadLaunchAccessState(),
+    onWarn: (String) -> Unit = {}
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
@@ -14951,7 +15003,13 @@ internal fun buildAppShellThreadPayload(
     val routeChannelKind = conversation.resolveThreadRouteIdentity().channelKind
     val parentSurfaceKind =
         if (isReplyThread) {
-            conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel
+            // Defensive: every live path resolves the parent kind (resolver-only exits,
+            // t5/#419). A null here means a caller bypassed the resolver — log loudly; if
+            // this ever fires it escalates to a t8 hardening item.
+            conversation.threadParentSurfaceKind()
+                ?: KuiklyThreadSurfaceKind.Channel.also {
+                    onWarn("thread_launch_parent_kind_defaulted source=app_shell threadId=${conversation.threadId.value}")
+                }
         } else {
             null
         }
@@ -15154,7 +15212,8 @@ private fun Pager.openStandaloneHomeConversation(
             compactConsecutiveMessages = compactConsecutiveMessages,
             threadRowAffordances = threadRowAffordances,
             anchorMessageId = anchorMessageId,
-            originFallback = originFallback
+            originFallback = originFallback,
+            onWarn = { bridge.logWarn(it) }
         )
     bridge.log(
         "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
@@ -15213,7 +15272,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     compactConsecutiveMessages: Boolean = false,
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
-    originFallback: ThreadLaunchOriginFallback? = null
+    originFallback: ThreadLaunchOriginFallback? = null,
+    onWarn: (String) -> Unit = {}
 ): WireThreadLaunchPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
@@ -15240,7 +15300,17 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
-        parentSurfaceKind = if (isReplyThread) conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
+        parentSurfaceKind =
+            if (isReplyThread) {
+                // Defensive (see buildAppShellThreadPayload): null parent kind here means a
+                // resolver bypass — log loudly, never silently.
+                conversation.threadParentSurfaceKind()
+                    ?: KuiklyThreadSurfaceKind.Channel.also {
+                        onWarn("thread_launch_parent_kind_defaulted source=standalone threadId=${conversation.threadId.value}")
+                    }
+            } else {
+                null
+            },
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,
         originParentMessageId = if (isReplyThread) parentMessageId else null,
         focusedMessageId = focusedMessageId,
@@ -16808,7 +16878,7 @@ internal fun HomeActivityVisualContent() {
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
             snapshot = homeActivityVisualSnapshot,
-            onOpenMessage = {},
+            onOpenItem = {},
             onClose = {},
             modifier = Modifier.fillMaxSize()
         )

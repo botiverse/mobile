@@ -4384,10 +4384,11 @@ class SharedThreadStoreTest {
                 channelName = "thread stream hint",
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("m1"),
                 parentMessagePreview = "parent body",
                 latestActivityMessageId = MessageId("reply-1")
-            ).toHomeMessageOpenRequest()
+            ).toHomeMessageOpenRequestForTest()
         val initialPayload =
             buildAppShellThreadPayload(request.conversationIdentity, anchorMessageId = request.anchorMessageId)
                 .copy(

@@ -17,6 +17,7 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityState
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -83,6 +84,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
@@ -159,6 +161,16 @@ internal fun SharedHomeActivityScreen(
             )
         }
     val state by activityStore.state.collectAsState()
+    // t5/#419 A3: user-initiated opens resolve against the real conversation directory
+    // (flow-based single source, #240) with the snapshot's real server id — the resolver is
+    // the only exit; Pending is an explainable failure, never a guessed channel-shaped nav.
+    val conversationDirectoryFlow =
+        remember(sharedStores, state.snapshot?.server?.id) {
+            state.snapshot?.server?.id
+                ?.let { serverId -> sharedStores.conversationIdentityProvider?.observeServer(serverId) }
+                ?: flowOf(SharedConversationDirectoryState())
+        }
+    val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
     val activeDraftRecords by sharedStores.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
         remember(activeDraftRecords) {
@@ -174,7 +186,24 @@ internal fun SharedHomeActivityScreen(
     }
     SharedActivityPanelContent(
         state = state,
-        onOpenMessage = onOpenMessage,
+        onOpenItem = { item ->
+            when (
+                val resolution =
+                    item.toHomeMessageOpenRequest(
+                        serverId = state.snapshot?.server?.id?.value.orEmpty(),
+                        conversationDirectory = conversationDirectory
+                    )
+            ) {
+                is ConversationOpenResolution.Resolved -> onOpenMessage(resolution.request)
+                is ConversationOpenResolution.Pending -> {
+                    bridge.logWarn(
+                        "activity_open_request_pending reason=${resolution.reason} " +
+                            "itemKey=${item.key} kind=${item.kind.name}"
+                    )
+                    bridge.toast("Conversation isn't ready yet — try again")
+                }
+            }
+        },
         onClose = onClose,
         onIntent = activityStore::dispatch,
         bottomContentPadding = bottomContentPadding,
@@ -195,7 +224,7 @@ internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean 
 internal fun SharedHomeActivityScreen(
     state: SharedActivityState,
     onIntent: (SharedActivityIntent) -> Unit,
-    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onOpenItem: (InboxItem) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = true,
@@ -209,7 +238,7 @@ internal fun SharedHomeActivityScreen(
 ) {
     SharedActivityPanelContent(
         state = state,
-        onOpenMessage = onOpenMessage,
+        onOpenItem = onOpenItem,
         onClose = onClose,
         onIntent = onIntent,
         bottomContentPadding = bottomContentPadding,
@@ -227,7 +256,7 @@ internal fun SharedHomeActivityScreen(
 internal fun SharedHomeActivityPanel(
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter = InboxFilter.All,
-    onOpenMessage: (HomeMessageOpenRequest) -> Unit = {},
+    onOpenItem: (InboxItem) -> Unit = {},
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = false,
@@ -246,7 +275,7 @@ internal fun SharedHomeActivityPanel(
     traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
         SharedActivityPanelContent(
             state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
-            onOpenMessage = onOpenMessage,
+            onOpenItem = onOpenItem,
             onClose = onClose,
             onIntent = {},
             bottomContentPadding = bottomContentPadding,
@@ -264,7 +293,7 @@ internal fun SharedHomeActivityPanel(
 @Composable
 private fun SharedActivityPanelContent(
     state: SharedActivityState,
-    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onOpenItem: (InboxItem) -> Unit,
     onClose: (() -> Unit)?,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
@@ -295,7 +324,7 @@ private fun SharedActivityPanelContent(
         )
         SharedActivityBodyContent(
             state = state,
-            onOpenMessage = onOpenMessage,
+            onOpenItem = onOpenItem,
             onIntent = onIntent,
             bottomContentPadding = bottomContentPadding,
             timeContext = timeContext,
@@ -310,7 +339,7 @@ private fun SharedActivityPanelContent(
 @Composable
 private fun SharedActivityBodyContent(
     state: SharedActivityState,
-    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
@@ -376,7 +405,7 @@ private fun SharedActivityBodyContent(
                     pullRefreshing = state.pullRefreshing,
                     loadingMore = state.loadingMore,
                     loadMoreErrorCode = state.loadMoreErrorCode,
-                    onOpenMessage = onOpenMessage,
+                    onOpenItem = onOpenItem,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
                     timeContext = timeContext,
@@ -493,7 +522,7 @@ private fun SharedActivityList(
     pullRefreshing: Boolean,
     loadingMore: Boolean,
     loadMoreErrorCode: String?,
-    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onOpenItem: (InboxItem) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?,
@@ -585,7 +614,7 @@ private fun SharedActivityList(
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
-                        onOpenMessage(item.toHomeMessageOpenRequest())
+                        onOpenItem(item)
                     },
                     onDone = { onIntent(SharedActivityIntent.MarkDone(item)) },
                     onOpenMenu = { anchor ->
@@ -802,22 +831,20 @@ private fun Modifier.activityRowGestures(
         }
 }
 
-internal fun InboxItem.inboxItemOpenGestureKey(): String {
-    val request = toHomeMessageOpenRequest()
-    val identity = request.conversationIdentity
-    val thread = identity.thread
-    return listOf(
+internal fun InboxItem.inboxItemOpenGestureKey(): String =
+    // A stable remember-key for the row's gesture handlers. Derived from the row's own
+    // identity fields — building an open request here would run the resolver per
+    // composition for a value that only needs stability, not routing correctness.
+    listOf(
         key,
         kind.name,
-        identity.threadId.value,
-        identity.channelId?.value.orEmpty(),
-        thread?.streamChannelId?.value.orEmpty(),
-        thread?.parentChannelId?.value.orEmpty(),
-        thread?.parentMessageId?.value.orEmpty(),
-        request.anchorMessageId.orEmpty(),
+        channelId.value,
+        threadChannelId?.value.orEmpty(),
+        parentChannelId?.value.orEmpty(),
+        parentMessageId?.value.orEmpty(),
+        resolveInboxAnchorMessageId()?.value.orEmpty(),
         unreadCount.toString()
     ).joinToString("|")
-}
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -1356,39 +1383,23 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
             }
     }
 
-internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest {
-    val sourceMessageIdentity = toConversationOpenSourceMessageIdentity()
-    return when (
-        val resolution =
-            resolveOpenRequest(
-                serverId = "",
-                sourceMessageIdentity = sourceMessageIdentity
-            )
-    ) {
-        is ConversationOpenResolution.Resolved -> resolution.request
-        is ConversationOpenResolution.Pending -> HomeMessageOpenRequest(
-            conversationIdentity = toThreadLaunchConversationIdentity(),
-            anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() },
-            originFallback = sourceMessageIdentity.originFallback
-        )
-    }
-}
-
-internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
-    val streamChannelId = resolveInboxStreamChannelId()
-    val parentId = parentMessageId
-    val parentChannel = parentChannelId
-    return buildThreadLaunchConversationIdentity(
-        kind =
-            launchConversationKind(),
-        channelId = channelId,
-        threadChannelId = streamChannelId,
-        parentChannelId = parentChannel,
-        parentMessageId = parentId,
-        parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull(),
-        parentChannelKind = parentChannelKind.threadChannelKindWireValue()
+/**
+ * User-initiated row open (Activity/Search/Saved). The resolver is the ONLY exit — the
+ * caller must supply the real server id and conversation directory, and must handle
+ * [ConversationOpenResolution.Pending] as an explainable failure (loud log + toast, no
+ * navigation). The previous Pending fallback rebuilt an identity directly, bypassing the
+ * resolver's parent-kind qualification and misrouting null-parent-kind threads onto the
+ * channel surface (#415, t5/#419 A3/A4); it is intentionally gone.
+ */
+internal fun InboxItem.toHomeMessageOpenRequest(
+    serverId: String,
+    conversationDirectory: SharedConversationDirectoryState
+): ConversationOpenResolution =
+    resolveOpenRequest(
+        serverId = serverId,
+        sourceMessageIdentity = toConversationOpenSourceMessageIdentity(),
+        conversationDirectory = conversationDirectory
     )
-}
 
 private fun InboxItem.launchConversationKind(): ConversationKind =
     when (kind) {
