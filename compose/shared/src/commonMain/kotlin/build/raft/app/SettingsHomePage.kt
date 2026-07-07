@@ -152,6 +152,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsHomeSnapshot
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsNavItem
+import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
@@ -490,6 +491,7 @@ private const val SettingsDestinationNotifications = "notifications"
 private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
+private const val SettingsDestinationOpenSourceLicenses = "open-source-licenses"
 private const val SettingsDestinationReleaseNotes = "releaseNotes"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
@@ -3677,6 +3679,8 @@ private fun SettingsAppShellContent(
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
             SettingsDestinationReleaseNotes ->
                 onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
+            SettingsDestinationOpenSourceLicenses ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.OpenSourceLicenses))
             SettingsDestinationComputers -> Unit
             else ->
                 selectedDestination.toSharedSettingsDestination()?.let { destination ->
@@ -3926,6 +3930,7 @@ private fun SettingsAppShellContent(
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
                 SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationAbout)
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
+                SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
                 else -> onDestinationChange(SettingsDestinationHome)
             }
         },
@@ -4416,7 +4421,14 @@ private fun SettingsAppShellContent(
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
+                    onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                )
+            SettingsDestinationOpenSourceLicenses ->
+                SharedSettingsOpenSourceLicensesContent(
+                    state = settingsState.openSourceLicenses,
+                    bottomContentPadding = bottomContentPadding,
+                    onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
                 )
             SettingsDestinationReleaseNotes -> {
                 val aboutSnapshot =
@@ -7841,6 +7853,7 @@ private fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
+    onOpenSourceLicenses: () -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot =
@@ -7854,7 +7867,23 @@ private fun SharedSettingsAboutContent(
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
+            "openSourceLicenses" -> onOpenSourceLicenses()
             "feedback" -> onSendFeedback()
+        }
+    }
+}
+
+@Composable
+private fun SharedSettingsOpenSourceLicensesContent(
+    state: ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    onOpenUrl: (String) -> Unit
+) {
+    val payload = state.toOpenSourceLicensesPayload()
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
+        when (action) {
+            "openLicenseUrl", "openSourceUrl" ->
+                value.orEmpty().takeIf { it.isNotBlank() }?.let(onOpenUrl)
         }
     }
 }
@@ -9773,6 +9802,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                             }
                             add(
                                 KuiklySharedSettingsRow(
+                                    key = "openSourceLicenses",
+                                    iconName = SlockLucideIconName.FileText,
+                                    title = "Open Source Licenses",
+                                    detail = "Review third-party libraries included in the Android app package.",
+                                    status = "Open",
+                                    enabled = true
+                                )
+                            )
+                            add(
+                                KuiklySharedSettingsRow(
                                     key = "feedback",
                                     iconName = SlockLucideIconName.MessageSquare,
                                     title = "Send feedback",
@@ -9862,6 +9901,89 @@ private fun SharedSettingsAboutSnapshot.buildSummary(): String =
         buildLabel.takeIf { it.isNotBlank() }?.let { append(" ($it)") }
         packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
     }
+
+internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(): KuiklySharedSettingsPayload {
+    val snapshot = (this as? ScreenLoadState.Content<SharedSettingsOpenSourceLicensesSnapshot>)?.data
+    val detail =
+        when (this) {
+            is ScreenLoadState.Content ->
+                "${snapshot?.items.orEmpty().size} libraries from ${snapshot?.sourceConfiguration.orEmpty().ifBlank { "Android release runtime" }}"
+            is ScreenLoadState.Error -> error.settingsUserFacingMessage()
+            is ScreenLoadState.Empty -> reason.settingsUserFacingMessage()
+            is ScreenLoadState.NoPermission -> blocker.settingsUserFacingMessage()
+            ScreenLoadState.Loading -> "Loading generated Android package license metadata."
+        }
+    val sections =
+        when {
+            snapshot == null ->
+                listOf(
+                    KuiklySharedSettingsSection(
+                        title = "Licenses",
+                        rows =
+                            listOf(
+                                KuiklySharedSettingsRow(
+                                    key = "loading",
+                                    iconName = SlockLucideIconName.LoaderCircle,
+                                    title = "Loading",
+                                    detail = detail,
+                                    status = "Wait"
+                                )
+                            )
+                    )
+                )
+            snapshot.items.isEmpty() ->
+                listOf(
+                    KuiklySharedSettingsSection(
+                        title = "Licenses",
+                        rows =
+                            listOf(
+                                KuiklySharedSettingsRow(
+                                    key = "empty",
+                                    iconName = SlockLucideIconName.FileText,
+                                    title = "No licenses found",
+                                    detail = "The generated Android package license asset did not include any dependencies.",
+                                    status = "Empty"
+                                )
+                            )
+                    )
+                )
+            else ->
+                snapshot.items
+                    .sortedWith(compareBy({ it.displayName.ifBlank { it.name }.lowercase() }, { it.version }))
+                    .chunked(32)
+                    .mapIndexed { sectionIndex, items ->
+                        KuiklySharedSettingsSection(
+                            title = if (sectionIndex == 0) "Libraries" else "Libraries ${sectionIndex + 1}",
+                            rows =
+                                items.map { item ->
+                                    val title = item.displayName.ifBlank { item.name.ifBlank { item.id } }
+                                    val coordinates =
+                                        listOf(item.group, item.name, item.version)
+                                            .filter { it.isNotBlank() }
+                                            .joinToString(":")
+                                            .ifBlank { item.id }
+                                    KuiklySharedSettingsRow(
+                                        key = "openLicenseUrl",
+                                        iconName = SlockLucideIconName.Package,
+                                        title = title,
+                                        detail = coordinates,
+                                        value = item.licenseUrl.ifBlank { item.sourceUrl },
+                                        status = item.licenseName.ifBlank { "Unknown" },
+                                        enabled = item.licenseUrl.isNotBlank() || item.sourceUrl.isNotBlank()
+                                    )
+                                }
+                        )
+                    }
+        }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-open-source-licenses",
+        title = "Open Source Licenses",
+        heroIconName = SlockLucideIconName.FileText,
+        heroLabel = "Open Source Licenses",
+        detail = detail,
+        sections = sections
+    )
+}
 
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
@@ -10039,6 +10161,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
+        SettingsDestinationOpenSourceLicenses -> "Open Source Licenses"
         SettingsDestinationReleaseNotes -> "Release Notes"
         SettingsDestinationDeveloper -> "Developer"
         SettingsDestinationApiEnvironment -> "API Environment"
@@ -10062,6 +10185,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationMobile -> "My message alignment"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Version and build information"
+        SettingsDestinationOpenSourceLicenses -> "Third-party library notices"
         SettingsDestinationDeveloper -> "API server, diagnostics, route launcher"
         SettingsDestinationApiEnvironment -> "Presets and custom server URLs"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
@@ -10084,6 +10208,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
         SettingsDestinationAbout -> SlockLucideIconName.BadgeInfo
+        SettingsDestinationOpenSourceLicenses -> SlockLucideIconName.FileText
         SettingsDestinationReleaseNotes -> SlockLucideIconName.FileText
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
@@ -10107,6 +10232,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
         SettingsDestinationMobile -> SharedSettingsDestination.Mobile
         SettingsDestinationStorage -> SharedSettingsDestination.Storage
         SettingsDestinationAbout -> SharedSettingsDestination.About
+        SettingsDestinationOpenSourceLicenses -> SharedSettingsDestination.OpenSourceLicenses
         SettingsDestinationDeveloper -> SharedSettingsDestination.Developer
         SettingsDestinationDiagnostics -> SharedSettingsDestination.Diagnostics
         SettingsDestinationHome -> SharedSettingsDestination.Home
