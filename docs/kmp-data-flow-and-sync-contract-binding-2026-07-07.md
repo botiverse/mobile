@@ -189,10 +189,28 @@ Mobile rules:
   **Entrance-private inference is forbidden.** This is the structural fix for
   the current mis-navigation family (origin-message-not-available, wrong
   thread opened from conversation flow).
-- If the resolver lacks context, it returns a pending/hydrating verdict with a
+- If the resolver lacks context, it returns a pending verdict with a
   conservative fallback; the entrance may render the fallback but the OPEN
   still routes through the resolver after hydration. (This matches the
   launch-contract rule: payloads carry identity + intent only.)
+- **Pending reasons are tiered (three-state resolution, landed with
+  slock-mobile #256 / task #419, LiBai ruling 2026-07-07):**
+  - `conversation_hydrating` — directory projection miss; existing
+    raw/source fallback or wait-for-hydration paths apply.
+  - `thread_parent_unresolved` — projection hit but the thread parent is
+    not resolvable AND the source carries no trusted typed parent kind.
+    This must never reach Resolved (the #415 family is structurally dead
+    here).
+  - **Typed-parent qualification**: if the source carries a
+    server-enriched, typed `parentConversationKind` (e.g. Activity
+    InboxItem, message `conversationContext`), raw rebuild to Resolved is
+    permitted — that is qualification against server facts, not
+    entrance-private guessing. User-initiated entrances must never
+    silently no-op (C13 ruling: MentionAction keeps its explicit product
+    default with a comment; it is not a parse fallback).
+  - Raw identity builders guard `kind == Thread &&
+    parentConversationKind == null → null`; no null-parent thread
+    identity may be constructed anywhere.
 - Acceptance includes **cross-surface resolution equality** (artin's
   requirement): for a corpus of source message identities, every entrance's
   resolver output must be identical. Mobile owes the KMP half of that test.
