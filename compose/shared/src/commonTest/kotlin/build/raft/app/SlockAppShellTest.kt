@@ -887,6 +887,34 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun activityPendingFallbackPreservesThreadOriginFallback() {
+        val activityItem =
+            InboxItem(
+                key = "thread:pending-reply",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId(""),
+                channelName = "home-fixes",
+                parentChannelId = ChannelId("parent-channel"),
+                parentChannelName = "home-fixes",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("parent-message"),
+                parentMessagePreview = "Original thread question",
+                parentMessageSenderId = "agent-owner",
+                parentMessageSenderKind = MemberKind.Agent,
+                latestActivityMessageId = MessageId("reply-1")
+            )
+
+        val request = activityItem.toHomeMessageOpenRequest()
+
+        assertEquals("reply-1", request.anchorMessageId)
+        assertEquals("parent-channel", request.originFallback?.parentChannelId)
+        assertEquals("parent-message", request.originFallback?.parentMessageId)
+        assertEquals("Original thread question", request.originFallback?.preview)
+        assertEquals("agent-owner", request.originFallback?.senderId)
+        assertEquals(MemberKind.Agent, request.originFallback?.senderKind)
+    }
+
+    @Test
     fun notificationLaunchPreservesActivityDmThreadParentKind() {
         val activityItem =
             InboxItem(
@@ -934,6 +962,81 @@ class SlockAppShellTest {
             )
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
+    }
+
+    @Test
+    fun conversationOpenResolverKeepsActivityAndNotificationRoutesEquivalent() {
+        val activityItem =
+            InboxItem(
+                key = "thread:dm-reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-reply-stream"),
+                channelName = "Cindy",
+                threadChannelId = ChannelId("dm-reply-stream"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentChannelName = "Cindy",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("parent-message"),
+                parentMessagePreview = "Original DM question",
+                parentMessageSenderId = "agent-cindy",
+                parentMessageSenderKind = MemberKind.Agent,
+                latestActivityMessageId = MessageId("reply-1")
+            )
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items = listOf(activityItem)
+            ).toSharedConversationDirectoryState()
+        val activityRequest =
+            assertNotNull(
+                (resolveOpenRequest(
+                    serverId = "server-1",
+                    sourceMessageIdentity = activityItem.toConversationOpenSourceMessageIdentity(),
+                    conversationDirectory = directory
+                ) as? ConversationOpenResolution.Resolved)?.request
+            )
+        val notificationRequest =
+            assertNotNull(
+                (resolveOpenRequest(
+                    serverId = "server-1",
+                    sourceMessageIdentity =
+                        AppShellNotificationThreadLaunchRequest(
+                            threadId = "dm-reply-stream",
+                            messageId = "reply-1"
+                        ).toConversationOpenSourceMessageIdentity(),
+                    conversationDirectory = directory
+                ) as? ConversationOpenResolution.Resolved)?.request
+            )
+
+        assertEquals(activityRequest.conversationIdentity, notificationRequest.conversationIdentity)
+        assertEquals(activityRequest.anchorMessageId, notificationRequest.anchorMessageId)
+        assertEquals(ConversationKind.Thread, activityRequest.conversationIdentity.kind)
+        assertEquals("dm-parent", activityRequest.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", activityRequest.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("dm-reply-stream", activityRequest.conversationIdentity.thread?.streamChannelId?.value)
+
+        val activityPayload =
+            buildAppShellThreadPayload(
+                conversation = activityRequest.conversationIdentity,
+                anchorMessageId = activityRequest.anchorMessageId,
+                originFallback = activityRequest.originFallback
+            )
+        val notificationPayload =
+            buildAppShellThreadPayload(
+                conversation = notificationRequest.conversationIdentity,
+                anchorMessageId = notificationRequest.anchorMessageId,
+                originFallback = notificationRequest.originFallback
+            )
+        assertEquals(activityPayload.surfaceKind, notificationPayload.surfaceKind)
+        assertEquals(activityPayload.sourceThreadId, notificationPayload.sourceThreadId)
+        assertEquals(activityPayload.streamChannelId, notificationPayload.streamChannelId)
+        assertEquals(activityPayload.parentChannelId, notificationPayload.parentChannelId)
+        assertEquals(activityPayload.parentMessageId, notificationPayload.parentMessageId)
+        assertEquals(activityPayload.parentSurfaceKind, notificationPayload.parentSurfaceKind)
+        assertEquals(activityPayload.parentChannelKind, notificationPayload.parentChannelKind)
+        assertEquals(activityPayload.focusedMessageId, notificationPayload.focusedMessageId)
+        assertEquals(activityPayload.originParentMessageId, notificationPayload.originParentMessageId)
+        assertEquals(activityPayload.originPreview, notificationPayload.originPreview)
     }
 
     @Test
