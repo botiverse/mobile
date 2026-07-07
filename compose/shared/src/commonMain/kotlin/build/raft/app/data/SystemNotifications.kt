@@ -114,6 +114,29 @@ data class SystemUnreadNotificationRequest(
     val notificationKey: String
 )
 
+data class SystemUnreadNotificationServerGateResult(
+    val shouldPost: Boolean,
+    val code: String
+)
+
+fun systemUnreadNotificationServerGate(
+    notificationServerId: String?,
+    currentServerId: String?
+): SystemUnreadNotificationServerGateResult {
+    val notificationServer = notificationServerId?.trim().takeIf { !it.isNullOrBlank() }
+    val currentServer = currentServerId?.trim().takeIf { !it.isNullOrBlank() }
+    return when {
+        notificationServer == null ->
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing")
+        currentServer == null ->
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "current_server_missing")
+        notificationServer != currentServer ->
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_mismatch")
+        else ->
+            SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed")
+    }
+}
+
 fun shouldShowSystemInboxNotification(
     messageAuthorId: String?,
     currentMemberId: String?,

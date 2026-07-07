@@ -13,7 +13,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import build.raft.app.MainActivity
 import build.raft.app.R
+import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
+import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SystemUnreadNotificationRequest
+import build.raft.app.data.systemUnreadNotificationServerGate
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
 internal object AndroidUnreadNotificationPoster {
@@ -29,6 +33,14 @@ internal object AndroidUnreadNotificationPoster {
 
     fun postUnreadNotification(context: Context, request: JSONObject): Map<String, Any> {
         val appContext = context.applicationContext
+        val serverGate =
+            systemUnreadNotificationServerGate(
+                notificationServerId = request.optString("serverId"),
+                currentServerId = currentSelectedServerId(appContext)
+            )
+        if (!serverGate.shouldPost) {
+            return mapOf("status" to "error", "code" to serverGate.code)
+        }
         if (!hasNotificationPermission(appContext)) {
             return mapOf("status" to "error", "code" to "permission_denied")
         }
@@ -80,6 +92,15 @@ internal object AndroidUnreadNotificationPoster {
             )
         }
     }
+
+    private fun currentSelectedServerId(context: Context): String? =
+        runCatching {
+            runBlocking {
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
+                    .readSession()
+                    ?.currentServerId
+            }
+        }.getOrNull()
 
     fun hasNotificationPermission(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
