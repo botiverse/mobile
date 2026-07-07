@@ -456,11 +456,54 @@ private fun MemberProfile.explicitForegroundBannerAvatarWireValue(): String? =
         ?: avatarUrl?.takeIf { it.isNotBlank() }
         ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
 
+/**
+ * task #425 part 2: conversation identity derived from the server-provided
+ * [build.raft.app.model.MessageConversationContext] alone. Used when the
+ * directory projection has not caught up yet — routing is already correct
+ * from the context, labels stay best-effort until the directory arrives
+ * (product call: correctness now, label richness later). Returns null when
+ * the context cannot yield a safe identity (e.g. a thread context missing
+ * its parent) so callers keep the projection-wait path — never a guessed
+ * Channel.
+ */
+internal fun Message.foregroundBannerContextConversationOrNull(): ThreadLaunchConversationIdentity? {
+    val context = conversationContext ?: return null
+    return when (context.channelKind) {
+        ConversationKind.Thread -> {
+            val parentChannel = context.parentChannelId ?: return null
+            val parentMessage = context.parentMessageId ?: return null
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = parentChannel,
+                threadChannelId = channelId ?: threadChannelId,
+                parentChannelId = parentChannel,
+                parentMessageId = parentMessage,
+                parentSurfaceKind = context.parentChannelKind?.toKuiklySurfaceKind(),
+                parentChannelKind = context.parentChannelKind?.toWireChannelKindOrNull()
+            )
+        }
+        ConversationKind.DirectMessage,
+        ConversationKind.Channel,
+        ConversationKind.Joint -> {
+            val streamChannel = channelId ?: threadChannelId ?: ChannelId(threadId.value)
+            buildThreadLaunchConversationIdentity(
+                kind = context.channelKind,
+                channelId = streamChannel,
+                channelType = context.channelKind.toWireChannelKindOrNull()
+            )
+        }
+        ConversationKind.Inbox,
+        ConversationKind.System,
+        null -> null
+    }
+}
+
 private fun Message.resolveForegroundBannerConversation(
     directory: SharedConversationDirectoryState
 ): ThreadLaunchConversationIdentity? {
     val projection = resolveForegroundBannerProjection(directory)
     if (projection != null) return projection.toThreadLaunchConversationIdentity(directory)
+    foregroundBannerContextConversationOrNull()?.let { return it }
     val parentMessage = parentMessageId
     val parentChannel = channelId ?: threadChannelId
     if (parentMessage != null && parentChannel != null) {
