@@ -3369,10 +3369,18 @@ internal class SharedThreadStore(
                 basePayload = currentPayload,
                 page = page,
                 session = dataSource.readSession()
-            ).preserveStableTimelineFrom(currentPayload)
+            )
+        val appendedCanonicalMessages =
+            appended.messages.filter { appendedMessage ->
+                currentPayload.messages.none { currentMessage -> currentMessage.id == appendedMessage.id }
+            }
+        val deduped =
+            appended
+                .copy(messages = appended.messages.withoutTransientLocalSendEchoesFor(appendedCanonicalMessages))
+                .preserveStableTimelineFrom(currentPayload)
         val selected =
             dataSource
-                .cacheCanonicalPayload(appended)
+                .cacheCanonicalPayload(deduped)
                 .withRouteContext(currentPayload)
                 .preserveStableTimelineFrom(currentPayload)
         reducePayloadPatch { payload ->
@@ -4713,8 +4721,9 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
         }
     if (relevant.isEmpty()) return this
     val incoming = relevant.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+    val baseMessages = this.messages.withoutTransientLocalSendEchoesFor(incoming)
     val merged =
-        (this.messages + incoming)
+        (baseMessages + incoming)
             .distinctBy { item -> item.id }
     return copy(
         status = "content",
@@ -4728,12 +4737,13 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
     pageMessages: List<KuiklyThreadMessageItem>,
     before: Boolean
 ): KuiklyThreadScreenPayload {
-    val incoming = pageMessages.filterNot { pageMessage -> messages.any { it.id == pageMessage.id } }
+    val baseMessages = messages.withoutTransientLocalSendEchoesFor(pageMessages)
+    val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
     val mergedMessages =
         if (before) {
-            (incoming + messages).distinctBy { it.id }
+            (incoming + baseMessages).distinctBy { it.id }
         } else {
-            (messages + incoming).distinctBy { it.id }
+            (baseMessages + incoming).distinctBy { it.id }
         }.sortedByThreadTimeline()
     val hasMore = incoming.size >= SharedThreadPaging.pageSize
     return copy(
@@ -4806,6 +4816,38 @@ private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): Ku
 private fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
+
+private fun List<KuiklyThreadMessageItem>.withoutTransientLocalSendEchoesFor(
+    canonicalMessages: List<KuiklyThreadMessageItem>
+): List<KuiklyThreadMessageItem> {
+    if (canonicalMessages.isEmpty()) return this
+    val retained =
+        filterNot { localMessage ->
+            localMessage.isTransientLocalSendingMessage() &&
+                canonicalMessages.any { canonicalMessage ->
+                    localMessage.matchesCanonicalSendEcho(canonicalMessage)
+                }
+        }
+    return if (retained.size == size) this else retained
+}
+
+private fun KuiklyThreadMessageItem.matchesCanonicalSendEcho(
+    canonicalMessage: KuiklyThreadMessageItem
+): Boolean {
+    val context = pendingSendContext ?: return false
+    if (!isTransientLocalSendingMessage()) return false
+    if (canonicalMessage.id == id || canonicalMessage.isTransientLocalSendingMessage()) return false
+    if (canonicalMessage.pendingSendContext != null) return false
+    if (!canonicalMessage.isOwn) return false
+    if (authorId.isNotBlank() && canonicalMessage.authorId.isNotBlank() && authorId != canonicalMessage.authorId) {
+        return false
+    }
+    if (context.body != canonicalMessage.body) return false
+    if (context.asTask != (canonicalMessage.taskId != null)) return false
+    val pendingAttachmentIds = context.attachmentIds.toSet()
+    val canonicalAttachmentIds = canonicalMessage.attachments.map { attachment -> attachment.id }.toSet()
+    return pendingAttachmentIds == canonicalAttachmentIds
+}
 
 private fun List<KuiklyThreadMessageItem>.withRetainedTransientLocalSendingMessagesFrom(
     previousMessages: List<KuiklyThreadMessageItem>

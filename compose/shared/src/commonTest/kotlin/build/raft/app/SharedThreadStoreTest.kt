@@ -1435,6 +1435,73 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeOwnMessageEchoReplacesTransientLocalSendingBubble() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage("local-send-channel-1-1", "sent body")
+            )
+        )
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("server-1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u1", "Artin"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "sent body",
+                        seq = 11
+                    )
+                )
+            )
+        )
+
+        val messages = store.state.value.payload.messages
+        assertFalse(messages.any { it.id == "local-send-channel-1-1" })
+        assertEquals(1, messages.count { it.id == "server-1" })
+        assertEquals(listOf("cached body", "sent body"), messages.map { it.body })
+        val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
+        assertFalse(cachedMessages.any { it.id == "local-send-channel-1-1" })
+        assertEquals(1, cachedMessages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
+    fun appendSentPageDropsMatchingTransientLocalSendingBubble() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage("local-send-channel-1-1", "sent body")
+            )
+        )
+        store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
+
+        val messages = store.state.value.payload.messages
+        assertFalse(messages.any { it.id == "local-send-channel-1-1" })
+        assertEquals(1, messages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
     fun localSendSuccessCachesCanonicalMessageWithoutTempSendingBubble() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
