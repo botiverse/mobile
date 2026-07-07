@@ -4484,6 +4484,76 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun buildsSharedThreadPayloadPreservingIntegrationApproveLoginActionCardMetadata() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = base,
+                session = session,
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "m-login-card",
+                                    channelId = "channel-1",
+                                    senderType = "agent",
+                                    senderId = "agent-cindy",
+                                    senderName = "Cindy",
+                                    messageType = "system",
+                                    content = "Approve Quiver for @KMP-专家",
+                                    createdAt = "2026-07-07T03:00:00Z",
+                                    actionMetadata =
+                                        WireActionCardMetadata(
+                                            kind = "action-card",
+                                            state = "prepared",
+                                            action =
+                                                WireActionCardAction(
+                                                    type = "integration:approve_agent_login",
+                                                    requestId = "request-1",
+                                                    agentId = "agent-1",
+                                                    agentName = "KMP-专家",
+                                                    clientId = "client-1",
+                                                    clientKey = "quiver",
+                                                    clientName = "Quiver",
+                                                    scopes = listOf("identity", "profile"),
+                                                    draftHint = "KMP-专家 is requesting human approval."
+                                                )
+                                        )
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    )
+            )
+
+        val card = actionCardFromMessageMetadata(payload.messages.single().metadata)
+
+        assertEquals("integration:approve_agent_login", card?.type)
+        assertEquals("request-1", card?.requestId)
+        assertEquals("agent-1", card?.agentId)
+        assertEquals("KMP-专家", card?.agentName)
+        assertEquals("client-1", card?.clientId)
+        assertEquals("quiver", card?.clientKey)
+        assertEquals("Quiver", card?.clientName)
+        assertEquals(listOf("identity", "profile"), card?.scopes)
+        assertEquals("KMP-专家 is requesting human approval.", card?.draftHint)
+    }
+
+    @Test
     fun parsesCanonicalAuthorAndTimestampForOwnUserRow() {
         val base =
             KuiklyThreadScreenPayload(

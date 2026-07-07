@@ -398,7 +398,8 @@ data class HomeNetworkPayload(
 data class HomeNetworkResponse(
     val code: Int,
     val bodyText: String?,
-    val errorBodyText: String? = null
+    val errorBodyText: String? = null,
+    val transportDiagnostics: String? = null
 ) {
     val isSuccessful: Boolean
         get() = code in 200..299

@@ -11791,7 +11791,9 @@ private fun ThreadActionCardView(
             }
         }
         val details = renderCopy.details
-        if (details.isNotBlank()) {
+        if (card.isIntegrationApproveLoginAction()) {
+            ThreadIntegrationLoginActionCardBody(card)
+        } else if (details.isNotBlank()) {
             Text(
                 text = details,
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
@@ -11835,6 +11837,98 @@ private fun ThreadActionCardView(
 }
 
 @Composable
+private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
+    val service = card.clientName?.takeIf { it.isNotBlank() } ?: "app"
+    val agent = card.agentName?.takeIf { it.isNotBlank() } ?: card.name.takeIf { it.isNotBlank() } ?: "agent"
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        ThreadActionCardMetaLine(label = "Service", value = service)
+        ThreadActionCardMetaLine(label = "Agent", value = "@${agent.removePrefix("@")}")
+        Text(
+            text = "Scopes:",
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
+        scopes.forEach { scope ->
+            ThreadIntegrationScopeCard(scope)
+        }
+        Text(
+            text =
+                "${agent.removePrefix("@")} is requesting human approval to use $service. " +
+                    "Server-installed apps do not need this approval; Marketplace apps do.",
+            style =
+                SlockType.Caption.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = SlockColor.TextMutedGray,
+                    fontStyle = com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic
+                ),
+            color = SlockColor.TextMutedGray,
+            modifier =
+                Modifier
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun ThreadActionCardMetaLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "$label:",
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.width(58.dp)
+        )
+        Text(
+            text = value,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun ThreadIntegrationScopeCard(scope: String) {
+    val normalized = scope.trim()
+    val description = integrationScopeDescription(normalized)
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = normalized,
+            style =
+                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
+                    color = SlockColor.TextMutedGray,
+                    fontFamily = FontFamily.Monospace
+                ),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = description,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+    }
+}
+
+@Composable
 private fun ThreadActionCardDoneBadge() {
     Row(
         modifier =
@@ -11860,12 +11954,14 @@ private fun ThreadActionCard.actionCardVerb(): String =
         "channel:create" -> "Create Channel"
         "agent:create" -> "Create Agent"
         "channel:add_member" -> "Add Members"
+        "integration:approve_agent_login" -> "Approve Login"
         else -> "Action"
     }
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {
         "channel:add_member" -> "Adding..."
+        "integration:approve_agent_login" -> "Approving..."
         else -> "Creating..."
     }
 
@@ -11874,6 +11970,7 @@ private fun ThreadActionCard.actionCardSuccessToast(): String =
         "channel:create" -> "Channel created"
         "agent:create" -> "Agent created"
         "channel:add_member" -> "Members added"
+        "integration:approve_agent_login" -> "Login approved"
         else -> "Action completed"
     }
 
@@ -11882,6 +11979,7 @@ private fun ThreadActionCard.actionCardFailureToast(): String =
         "channel:create" -> "Unable to create channel"
         "agent:create" -> "Unable to create agent"
         "channel:add_member" -> "Unable to add members"
+        "integration:approve_agent_login" -> "Unable to approve login"
         else -> "Unable to complete action"
     }
 
@@ -11892,6 +11990,11 @@ private fun ThreadActionCard.actionCardTitle(): String =
         "channel:add_member" -> {
             val count = humans.size + agents.size
             "Add $count member${if (count == 1) "" else "s"} to ${channel?.let { "#${it.removePrefix("#")}" } ?: "channel"}"
+        }
+        "integration:approve_agent_login" -> {
+            val service = clientName?.takeIf { it.isNotBlank() } ?: "app"
+            val agent = agentName?.takeIf { it.isNotBlank() } ?: name.takeIf { it.isNotBlank() } ?: "agent"
+            "Approve $service for @${agent.removePrefix("@")}"
         }
         else -> actionCardVerb()
     }
@@ -11910,7 +12013,28 @@ private fun ThreadActionCard.actionCardDetails(): String =
         if (initialAgents.isNotEmpty()) add("Agents: ${initialAgents.joinToString(", ")}")
         if (humans.isNotEmpty()) add("Humans: ${humans.joinToString(", ")}")
         if (agents.isNotEmpty()) add("Agents: ${agents.joinToString(", ")}")
+        if (type.equals("integration:approve_agent_login", ignoreCase = true)) {
+            clientName?.takeIf { it.isNotBlank() }?.let { add("Service: $it") }
+            agentName?.takeIf { it.isNotBlank() }?.let { add("Agent: @${it.removePrefix("@")}") }
+            val scopeLine = scopes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
+            add("Scopes: $scopeLine")
+        }
     }.joinToString("\n")
+
+private fun ThreadActionCard.isIntegrationApproveLoginAction(): Boolean =
+    type.equals("integration:approve_agent_login", ignoreCase = true)
+
+private fun integrationScopeDescription(scope: String): String =
+    when (scope.trim().lowercase()) {
+        "identity" ->
+            "Reads who you are - human or agent, your Raft subject, and which server/principal you are acting as. No content access."
+        "openid" ->
+            "Signs you in with Raft and issues a stable identity token. Authentication only."
+        "profile" ->
+            "Reads your basic profile fields, such as display name. No access to messages, files, or agents."
+        else ->
+            "Allows the app to request this named permission from Raft."
+    }
 
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
     buildString {
@@ -11921,6 +12045,15 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
             "channel-members" -> {
                 val total = resultAddedHumanIds.size + resultAddedAgentIds.size
                 resultChannelName?.let { "$total added to #${it.removePrefix("#")}" }
+            }
+            "agent-integration-login" -> {
+                val service = resultName?.takeIf { it.isNotBlank() } ?: clientName
+                val agent = agentName?.takeIf { it.isNotBlank() }
+                when {
+                    !service.isNullOrBlank() && !agent.isNullOrBlank() -> "$service approved for @${agent.removePrefix("@")}"
+                    !service.isNullOrBlank() -> "$service approved"
+                    else -> "Login approved"
+                }
             }
             else -> null
         }

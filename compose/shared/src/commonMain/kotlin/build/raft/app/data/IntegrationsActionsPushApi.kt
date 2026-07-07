@@ -220,7 +220,11 @@ internal data class AgentIntegrationsPage(
             loadState = if (items.isEmpty()) AgentAppLoginLoadState.Empty else AgentAppLoginLoadState.Content
         )
 }
-internal data class ActionCardResult(val messageId: String, val metadataPresent: Boolean)
+internal data class ActionCardResult(
+    val messageId: String,
+    val metadataPresent: Boolean,
+    val actionCard: ThreadActionCard? = null
+)
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
@@ -249,7 +253,8 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
 private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> =
     mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
         val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
-        ActionCardResult(messageId = id, metadataPresent = wire.metadata != null)
+        val card = wire.metadata.toThreadActionCard()
+        ActionCardResult(messageId = id, metadataPresent = wire.metadata != null, actionCard = card)
     }
 
 private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult<PushCommandResult> =
@@ -399,7 +404,7 @@ private data class IntegrationGrantDto(
 @Serializable
 private data class ActionCardResponseDto(
     val messageId: String,
-    val metadata: JsonObject? = null,
+    val metadata: WireActionCardMetadata? = null,
 )
 
 @Serializable

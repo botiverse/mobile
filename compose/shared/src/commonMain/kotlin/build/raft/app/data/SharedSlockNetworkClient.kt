@@ -12,6 +12,7 @@ import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.SlockRequestTimeoutException
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.toSafeDiagnosticsToken
 import kotlin.time.TimeSource
 
 internal class SharedSlockNetworkClient(
@@ -68,7 +69,9 @@ internal class SharedSlockNetworkClient(
                         "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                         "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                        "result=${response.networkDiagnosticsResult()}"
+                        "result=${response.networkDiagnosticsResult()}" +
+                        response.errorBodyLogSuffix() +
+                        response.transportDiagnosticsLogSuffix()
                 )
                 response
             }
@@ -271,11 +274,15 @@ internal class SharedSlockNetworkClient(
                     }
                 warningLogger(
                     "endpoint category=$category path=$diagnosticPath method=POST " +
-                        "fileCount=${files.size} requestBytes=$requestBytes " +
+                        "fieldKeys=${fields.networkDiagnosticsFieldKeys()} " +
+                        "fileCount=${files.size} fileFields=${files.networkDiagnosticsFileFields()} " +
+                        "fileNameMeta=${files.networkDiagnosticsFileNameMeta()} requestBytes=$requestBytes " +
                         "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                         "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                        "result=${response.networkDiagnosticsResult()}"
+                        "result=${response.networkDiagnosticsResult()}" +
+                        response.errorBodyLogSuffix() +
+                        response.transportDiagnosticsLogSuffix()
                 )
                 response
             }
@@ -403,7 +410,12 @@ class SharedSlockAuthTransport internal constructor(
 }
 
 private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkResponse =
-    HomeNetworkResponse(code = code, bodyText = bodyText, errorBodyText = errorBodyText)
+    HomeNetworkResponse(
+        code = code,
+        bodyText = bodyText,
+        errorBodyText = errorBodyText,
+        transportDiagnostics = transportDiagnostics
+    )
 
 private fun SlockRequestTimeoutException.toTimeoutNetworkResponse(
     category: String,
@@ -548,6 +560,48 @@ private fun HomeNetworkResponse.networkDiagnosticsResult(): String =
         code == 401 || code == 403 -> "auth_or_permission_error"
         else -> "http_error"
     }
+
+private fun HomeNetworkResponse.transportDiagnosticsLogSuffix(): String {
+    val diagnostics = transportDiagnostics?.takeIf { it.isNotBlank() } ?: return ""
+    return " $diagnostics"
+}
+
+private fun HomeNetworkResponse.errorBodyLogSuffix(): String {
+    if (isSuccessful) return ""
+    val error = errorBodyText?.takeIf { it.isNotBlank() } ?: return ""
+    return " errorBody=${error.toSafeDiagnosticsToken()}"
+}
+
+private fun Map<String, String>.networkDiagnosticsFieldKeys(): String =
+    keys
+        .sorted()
+        .joinToString("|")
+        .ifBlank { "none" }
+        .toSafeDiagnosticsToken()
+
+private fun List<MultipartFile>.networkDiagnosticsFileFields(): String =
+    map { it.name.ifBlank { "blank" } }
+        .distinct()
+        .sorted()
+        .joinToString("|")
+        .ifBlank { "none" }
+        .toSafeDiagnosticsToken()
+
+private fun List<MultipartFile>.networkDiagnosticsFileNameMeta(): String {
+    if (isEmpty()) return "none"
+    val extensions =
+        map { file ->
+            file.fileName
+                .substringAfterLast('.', missingDelimiterValue = "")
+                .lowercase()
+                .ifBlank { "none" }
+        }
+            .distinct()
+            .sorted()
+            .joinToString("|")
+            .toSafeDiagnosticsToken()
+    return "named=${count { it.fileName.isNotBlank() }};ext=$extensions"
+}
 
 private fun String.percentEncode(): String {
     val bytes = encodeToByteArray()
