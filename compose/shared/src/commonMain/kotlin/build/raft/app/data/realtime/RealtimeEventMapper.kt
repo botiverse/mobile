@@ -139,7 +139,9 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.MessageNew ->
                 decodeMessageWire(element)?.toDomain()?.let(::MessageNew)
             RealtimeSocketEvents.MessageUpdated ->
-                decodeMessageWire(element)?.toDomain()?.let(::MessageUpdated)
+                decodeMessageWire(element)?.toDomain()
+                    ?.withRealtimeReactionsClearedIfExplicitNull(element)
+                    ?.let(::MessageUpdated)
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
@@ -499,6 +501,21 @@ private fun MessageWireDto.toDomain(): Message {
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
     )
 }
+
+// A `message:updated` event that omits the `reactions` field is a partial update
+// (e.g. a content or attachment edit) and must keep the message's existing reactions.
+// An event carrying `reactions: null` (or `[]`) is authoritative-empty and must clear
+// them — this is how a web-side "remove last reaction" reaches mobile. kotlinx collapses
+// both "field absent" and "explicit null" into a null DTO field, so we consult the raw
+// JSON to recover the tri-state: only an explicit JSON null becomes an empty list here.
+// `[]` already decodes to a non-null empty list, and an absent field stays null so the
+// realtime merge (mergeRealtimeUpdate) preserves existing reactions.
+private fun Message.withRealtimeReactionsClearedIfExplicitNull(element: JsonObject): Message =
+    if (reactions == null && element["reactions"] is JsonNull) {
+        copy(reactions = emptyList())
+    } else {
+        this
+    }
 
 private fun MessageReactionWireDto.toDomain(): MessageReaction? {
     val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
