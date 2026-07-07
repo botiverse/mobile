@@ -14995,7 +14995,8 @@ internal fun buildAppShellThreadPayload(
     accessState: ThreadLaunchAccessState = ThreadLaunchAccessState(),
     onWarn: (String) -> Unit = {}
 ): KuiklyThreadScreenPayload {
-    val surfaceKind = conversation.threadSurfaceKind()
+    val routeIdentity = conversation.resolveThreadRouteIdentity()
+    val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val streamChannelId =
         if (isReplyThread) {
@@ -15015,7 +15016,7 @@ internal fun buildAppShellThreadPayload(
         } else {
             null
         }
-    val routeChannelKind = conversation.resolveThreadRouteIdentity().channelKind
+    val routeChannelKind = routeIdentity.channelKind
     val parentSurfaceKind =
         if (isReplyThread) {
             // Defensive: every live path resolves the parent kind (resolver-only exits,
@@ -15059,7 +15060,7 @@ internal fun buildAppShellThreadPayload(
     val originHeaderContext =
         SharedThreadHeaderContextStore.launchOriginContext(
             surfaceKind = surfaceKind,
-            routeIdentity = conversation.resolveThreadRouteIdentity(),
+            routeIdentity = routeIdentity,
             originMessage = null,
             parentMessageId = parentMessageId,
             originFallback = originFallback
@@ -15290,7 +15291,8 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     originFallback: ThreadLaunchOriginFallback? = null,
     onWarn: (String) -> Unit = {}
 ): WireThreadLaunchPayload {
-    val surfaceKind = conversation.threadSurfaceKind()
+    val routeIdentity = conversation.resolveThreadRouteIdentity()
+    val surfaceKind = routeIdentity.surfaceKind
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val streamChannelId =
         if (isReplyThread) {
@@ -15304,7 +15306,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
-        channelKind = conversation.resolveThreadRouteIdentity().channelKind,
+        channelKind = routeIdentity.channelKind,
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,

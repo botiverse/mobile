@@ -118,6 +118,43 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadLaunchIdentityBuilderParsesDirectParentSurfaceKindThroughContract() {
+        // t6/#420 construction-side: the final legacy parent-surface table did not accept
+        // "direct" and could drop a DM parent shape before the payload builders saw it.
+        // Parent-surface strings now go through the #417 contract, so "direct" qualifies as
+        // the dm parent shape consistently with "dm"/"direct_message".
+        val identity =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = ChannelId("reply-stream-1"),
+                threadChannelId = ChannelId("reply-stream-1"),
+                parentChannelId = ChannelId("dm-parent-1"),
+                parentMessageId = MessageId("parent-message-1"),
+                parentSurfaceKind = "direct"
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, identity.thread?.parentSurfaceKind)
+
+        val payload = buildStandaloneConversationThreadLaunchPayload(identity, timeContext = null)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.parentSurfaceKind)
+    }
+
+    @Test
+    fun screenPayloadWireLaunchPreservesDirectParentSurfaceKind() {
+        val launch =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "dm-parent-1",
+                parentMessageId = "parent-message-1",
+                parentSurfaceKind = "direct",
+                sourceThreadId = "reply-stream-1",
+                streamChannelId = "reply-stream-1"
+            ).toWireThreadLaunchPayload()
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
+    }
+
+    @Test
     fun composerSendBodyFallsBackToAttachmentLabelWhenDraftIsBlank() {
         assertEquals("[1 attachment]", threadComposerMessageBodyForSend("   ", attachmentCount = 1))
         assertEquals("[2 attachments]", threadComposerMessageBodyForSend("", attachmentCount = 2))
