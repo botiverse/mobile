@@ -1,6 +1,7 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
@@ -576,5 +577,109 @@ class RealtimeEventMapperTest {
         assertEquals(RealtimeRefreshScope.Machines, refresh.scope)
         assertEquals(RealtimeSocketEvents.DaemonStatus, refresh.reason)
         assertEquals("machine-legacy", refresh.subjectId)
+    }
+
+    // task #425: message:new conversationContext (server task #86)
+
+    @Test
+    fun messageNewMapsThreadConversationContext() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "message-1",
+                  "channelId": "thread-channel-1",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "content": "reply in dm thread",
+                  "conversationContext": {
+                    "channelType": "thread",
+                    "parentMessageId": "parent-message-1",
+                    "parentChannelId": "dm-channel-1",
+                    "parentChannelType": "dm"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val context = assertIs<MessageNew>(event).message.conversationContext
+        assertEquals(ConversationKind.Thread, context?.channelKind)
+        assertEquals("parent-message-1", context?.parentMessageId?.value)
+        assertEquals("dm-channel-1", context?.parentChannelId?.value)
+        assertEquals(ConversationKind.DirectMessage, context?.parentChannelKind)
+    }
+
+    @Test
+    fun messageNewMapsDmConversationContextAndFoldsVisibilityToChannel() {
+        val dm =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "content": "hi",
+                  "conversationContext": { "channelType": "dm" }
+                }
+                """.trimIndent()
+            )
+        assertEquals(
+            ConversationKind.DirectMessage,
+            assertIs<MessageNew>(dm).message.conversationContext?.channelKind
+        )
+
+        // "private" is visibility, not kind — folds to Channel per the #417 contract.
+        val privateChannel =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m2", "channelId": "c2", "senderType": "user", "senderId": "u1",
+                  "content": "hi",
+                  "conversationContext": { "channelType": "private" }
+                }
+                """.trimIndent()
+            )
+        assertEquals(
+            ConversationKind.Channel,
+            assertIs<MessageNew>(privateChannel).message.conversationContext?.channelKind
+        )
+    }
+
+    @Test
+    fun messageNewWithoutConversationContextKeepsNullForOldServers() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "content": "hi"
+                }
+                """.trimIndent()
+            )
+
+        assertNull(assertIs<MessageNew>(event).message.conversationContext)
+    }
+
+    @Test
+    fun messageNewDropsConversationContextWithOnlyUnknownValues() {
+        // Unknown kind strings parse to null (never a guessed Channel); a
+        // context carrying nothing is dropped so consumers treat it exactly
+        // like an old server omitting the field.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "content": "hi",
+                  "conversationContext": { "channelType": "mystery-kind", "parentChannelType": " " }
+                }
+                """.trimIndent()
+            )
+
+        assertNull(assertIs<MessageNew>(event).message.conversationContext)
     }
 }

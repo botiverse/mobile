@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.parseConversationKindOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentStatus
@@ -15,6 +16,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageCommentHostSource
 import build.raft.app.model.MessageCommentRef
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageNew
@@ -325,6 +327,21 @@ private data class MessageWireDto(
     val actionMetadata: WireActionCardMetadata? = null,
     val commentRef: CommentRefWireDto? = null,
     val forwardBundle: WireForwardMessageBundle? = null,
+    val conversationContext: ConversationContextWireDto? = null,
+)
+
+/**
+ * Optional conversation identity on `message:*` emits (server task #86 /
+ * mobile task #425). `channelType` carries `channels.type` verbatim
+ * (channel|private|joint|dm|thread); the parent fields are set only for
+ * thread messages. Absent on servers that pre-date the field.
+ */
+@Serializable
+private data class ConversationContextWireDto(
+    val channelType: String? = null,
+    val parentMessageId: String? = null,
+    val parentChannelId: String? = null,
+    val parentChannelType: String? = null,
 )
 
 @Serializable
@@ -499,7 +516,26 @@ private fun MessageWireDto.toDomain(): Message {
         reactions = reactions?.mapNotNull { it.toDomain() },
         commentRef = commentRef?.toDomain(),
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
+        conversationContext = conversationContext?.toDomain(),
     )
+}
+
+// Kind strings parse through the #417 contract: unknown values become null
+// (never a guessed Channel), and the whole context is dropped when it says
+// nothing — consumers treat that the same as an old server omitting it.
+private fun ConversationContextWireDto.toDomain(): MessageConversationContext? {
+    val context = MessageConversationContext(
+        channelKind = parseConversationKindOrNull(channelType),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        parentChannelKind = parseConversationKindOrNull(parentChannelType),
+    )
+    return context.takeIf {
+        it.channelKind != null ||
+            it.parentMessageId != null ||
+            it.parentChannelId != null ||
+            it.parentChannelKind != null
+    }
 }
 
 // A `message:updated` event that omits the `reactions` field is a partial update

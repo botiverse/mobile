@@ -14843,6 +14843,12 @@ private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityTh
     message: Message
 ): Boolean {
     if (sharedProjection != null) return false
+    // task #425 part 2: a usable server-provided conversationContext already
+    // yields a correct identity (routing-safe); show immediately with
+    // best-effort labels instead of waiting for the directory projection.
+    // An unusable context (e.g. thread missing its parent) falls through to
+    // the wait path below.
+    if (message.foregroundBannerContextConversationOrNull() != null) return false
     if (message.parentMessageId != null || message.threadChannelId != null) return true
     val banner = banner ?: return false
     if (banner.conversation.kind != ConversationKind.Channel) return false

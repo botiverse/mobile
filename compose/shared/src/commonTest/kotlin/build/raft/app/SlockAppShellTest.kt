@@ -17,6 +17,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
 import build.raft.app.model.ServerId
@@ -711,6 +712,165 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
     }
 
+    // task #425 part 2: server-provided conversationContext short-circuits the
+    // projection wait — routing correct immediately, labels best-effort.
+
+    @Test
+    fun foregroundBannerContextResolvesDmThreadWithoutDirectory() {
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-1",
+                channelId = "dm-reply-stream",
+                threadId = "dm-reply-stream",
+                body = "DM reply body",
+                conversationContext =
+                    MessageConversationContext(
+                        channelKind = ConversationKind.Thread,
+                        parentMessageId = MessageId("parent-message"),
+                        parentChannelId = ChannelId("dm-parent"),
+                        parentChannelKind = ConversationKind.DirectMessage
+                    )
+            )
+
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        val resolved = assertNotNull(banner)
+
+        // Identity parity: the context-derived open request must equal the one
+        // an enriched Activity row would build for the same ids.
+        val activityItem =
+            InboxItem(
+                key = "thread:dm-reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-reply-stream"),
+                channelName = "Cindy",
+                threadChannelId = ChannelId("dm-reply-stream"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentChannelName = "Cindy",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("parent-message"),
+                latestActivityMessageId = MessageId("reply-1")
+            )
+        assertEquals(
+            activityItem.toHomeMessageOpenRequest().conversationIdentity,
+            resolved.openRequest.conversationIdentity
+        )
+        assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
+        assertEquals(
+            KuiklyThreadSurfaceKind.DirectMessage,
+            resolved.openRequest.conversationIdentity.thread?.parentSurfaceKind
+        )
+        assertEquals(
+            KuiklyThreadSurfaceKind.DirectMessage,
+            resolved.openRequest.conversationIdentity.thread?.parentChannelKind
+        )
+
+        // Usable context means no defer: pending decision is Complete without
+        // any directory projection.
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                refreshAttempts = 0
+            )
+        )
+    }
+
+    @Test
+    fun foregroundBannerIncompleteThreadContextStillWaits() {
+        // A context claiming Thread but missing its parent must not shortcut:
+        // it cannot yield a safe identity, so the projection wait stays.
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-2",
+                channelId = "reply-stream",
+                threadId = "reply-stream",
+                conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+            )
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Retry,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+    }
+
+    @Test
+    fun foregroundBannerDmContextShowsImmediatelyWhereLegacyWaited() {
+        val withContext =
+            appShellForegroundTestMessage(
+                id = "dm-msg-1",
+                channelId = "dm-1",
+                threadId = "dm-1",
+                conversationContext = MessageConversationContext(channelKind = ConversationKind.DirectMessage)
+            )
+        val contextResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = withContext,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(ConversationKind.DirectMessage, contextResult.banner?.conversation?.kind)
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = contextResult,
+                message = withContext,
+                refreshAttempts = 0
+            )
+        )
+
+        // Same message from an old server (no context): channel-shaped guess is
+        // gated behind the wait machinery, unchanged.
+        val withoutContext =
+            appShellForegroundTestMessage(id = "dm-msg-2", channelId = "dm-1", threadId = "dm-1")
+        val legacyResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = withoutContext,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Retry,
+            appShellForegroundBannerPendingDecision(
+                projection = legacyResult,
+                message = withoutContext,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+    }
+
     @Test
     fun foregroundBannerProjectionResultTracksActivityThreadEnrich() {
         val message =
@@ -1371,13 +1531,15 @@ private fun appShellForegroundTestMessage(
     threadId: String = threadChannelId ?: channelId ?: "thread-1",
     parentMessageId: String? = null,
     body: String = "Hello from another route",
-    messageType: MessageType = MessageType.Chat
+    messageType: MessageType = MessageType.Chat,
+    conversationContext: MessageConversationContext? = null
 ): Message =
     Message(
         id = MessageId(id),
         threadId = ThreadId(threadId),
         channelId = channelId?.let(::ChannelId),
         threadChannelId = threadChannelId?.let(::ChannelId),
+        conversationContext = conversationContext,
         author =
             MemberProfile(
                 id = MemberId(authorId),
