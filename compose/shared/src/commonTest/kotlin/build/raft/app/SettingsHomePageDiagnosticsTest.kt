@@ -39,6 +39,39 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun routeVisualPageDataFieldsStayIntentOnly() {
+        assertEquals(
+            setOf(
+                "destination",
+                "fixtureKey",
+                "itemId",
+                "machineId",
+                "fullHeight",
+                "slockVisualFullHeight"
+            ),
+            SettingsRouteVisualPageDataFields
+        )
+
+        val forbiddenProductPayloadFields =
+            setOf(
+                "server",
+                "serverSnapshot",
+                "connectedApps",
+                "connectedAppsSnapshot",
+                "apps",
+                "members",
+                "plans",
+                "computers",
+                "accessToken",
+                "refreshToken",
+                "authorization",
+                "clientSecret",
+                "oneTimeClientSecret"
+            )
+        assertTrue(SettingsRouteVisualPageDataFields.none { it in forbiddenProductPayloadFields })
+    }
+
+    @Test
     fun administrationRoleOptionsMatchServerRolePolicy() {
         assertEquals(listOf("owner", "admin"), settingsAdminRoleOptions("owner", "member"))
         assertEquals(listOf("owner"), settingsAdminRoleOptions("owner", "admin"))
