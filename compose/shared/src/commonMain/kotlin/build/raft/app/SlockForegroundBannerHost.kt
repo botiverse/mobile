@@ -22,10 +22,13 @@ import build.raft.app.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectVerticalDragGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -42,6 +45,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -60,6 +64,21 @@ private val ForegroundBannerAvatarSize = 30.dp
 private val ForegroundBannerReplyGlyphSize = 13.dp
 
 internal fun slockForegroundBannerAutoDismissMs(): Long = ForegroundBannerAutoDismissMs
+
+// Swiping the banner up dismisses it (matching the platform notification
+// gesture). The banner follows the finger upward only; releasing past the
+// threshold dismisses, otherwise it snaps back.
+private val ForegroundBannerSwipeDismissThreshold = 24.dp
+
+internal fun shouldDismissForegroundBannerOnSwipeRelease(
+    dragOffsetYDp: Float,
+    thresholdDp: Float = ForegroundBannerSwipeDismissThreshold.value
+): Boolean = dragOffsetYDp <= -thresholdDp
+
+internal fun foregroundBannerDragOffsetAfterDelta(
+    currentOffsetYDp: Float,
+    deltaYDp: Float
+): Float = (currentOffsetYDp + deltaYDp).coerceAtMost(0f)
 
 internal enum class SlockForegroundMessageBannerIconKind {
     Channel,
@@ -129,6 +148,10 @@ internal fun SlockForegroundMessageBannerView(
         } else {
             ForegroundBannerThreadReplyHeight
         }
+    // Upward-only drag offset in dp. Reset per banner id so a new banner
+    // always starts seated; on a dismissing release the offset is left as-is
+    // (the host unmounts the view) to avoid a one-frame snap-back flash.
+    var swipeOffsetYDp by remember(banner.id) { mutableStateOf(0f) }
     Box(
         modifier =
             Modifier
@@ -143,6 +166,26 @@ internal fun SlockForegroundMessageBannerView(
                     .widthIn(max = 640.dp)
                     .align(Alignment.TopCenter)
                     .height(bannerHeight)
+                    .offset(y = swipeOffsetYDp.dp)
+                    .pointerInput(banner.id) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (shouldDismissForegroundBannerOnSwipeRelease(swipeOffsetYDp)) {
+                                    onDismiss()
+                                } else {
+                                    swipeOffsetYDp = 0f
+                                }
+                            },
+                            onDragCancel = { swipeOffsetYDp = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                swipeOffsetYDp =
+                                    foregroundBannerDragOffsetAfterDelta(
+                                        currentOffsetYDp = swipeOffsetYDp,
+                                        deltaYDp = dragAmount.toDp().value
+                                    )
+                            }
+                        )
+                    }
         ) {
             Box(
                 modifier =
