@@ -2877,12 +2877,15 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 394
             )
+        // Full 390dp screen width (task #400): the message row lays out across
+        // the whole screen, so the old 342dp crop cut its right edge and shifted
+        // every wrap point vs React. React's harness container is 390px to match.
         private val THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
-                widthDp = 342,
-                heightDp = 760
+                widthDp = 390,
+                heightDp = 844
             )
 
         @BeforeClass
