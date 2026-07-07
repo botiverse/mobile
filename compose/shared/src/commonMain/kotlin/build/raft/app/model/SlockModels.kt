@@ -406,37 +406,6 @@ enum class InboxItemKind {
     System
 }
 
-@Serializable
-data class InboxItem(
-    val key: String,
-    val kind: InboxItemKind,
-    val channelId: ChannelId,
-    val channelName: String,
-    val unreadCount: Int = 0,
-    val hasMention: Boolean = false,
-    val hasDraft: Boolean = false,
-    val firstUnreadMessageId: MessageId? = null,
-    val lastMessageId: MessageId? = null,
-    val lastMessagePreview: String? = null,
-    val lastMessageAt: String? = null,
-    val lastMessageSenderName: String? = null,
-    val threadChannelId: ChannelId? = null,
-    val parentChannelId: ChannelId? = null,
-    val parentChannelName: String? = null,
-    val parentChannelKind: ConversationKind? = null,
-    val parentMessageId: MessageId? = null,
-    val parentMessagePreview: String? = null,
-    val latestActivityMessageId: MessageId? = null,
-    val latestActivityPreview: String? = null,
-    val latestActivityAt: String? = null,
-    val latestActivitySenderName: String? = null,
-    val replyCount: Int = 0,
-    val participantIds: List<MemberId> = emptyList(),
-    val taskNumber: Int? = null,
-    val taskStatus: TaskStatus? = null,
-    val taskClaimedByName: String? = null
-)
-
 // Realtime Event Models
 @Serializable
 sealed interface RealtimeEvent
