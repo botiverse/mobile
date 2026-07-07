@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
@@ -137,10 +138,16 @@ data class OssLicenseEntry(
 
 abstract class GenerateOssLicensesTask : DefaultTask() {
     @get:Input
-    abstract val configurationName: Property<String>
+    abstract val sourceConfigurations: ListProperty<String>
 
     @get:Input
     abstract val variantName: Property<String>
+
+    @get:Input
+    abstract val sourceConfigurationLabel: Property<String>
+
+    @get:Input
+    abstract val requiredModules: ListProperty<String>
 
     @get:Optional
     @get:InputFile
@@ -152,12 +159,28 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
 
     @TaskAction
     fun generate() {
-        val configuration = project.configurations.getByName(configurationName.get())
+        val configurationPaths = sourceConfigurations.get()
         val moduleIds =
-            configuration.incoming.resolutionResult.allComponents
-                .mapNotNull { it.id as? ModuleComponentIdentifier }
+            configurationPaths
+                .flatMap { path ->
+                    path.toConfiguration().incoming.resolutionResult.allComponents
+                        .mapNotNull { it.id as? ModuleComponentIdentifier }
+                }
                 .distinctBy { it.coordinateKey() }
                 .sortedWith(compareBy({ it.group }, { it.module }, { it.version }))
+
+        val moduleKeys = moduleIds.flatMap { listOf(it.coordinateKey(), it.moduleKey()) }.toSet()
+        val missingRequiredModules = requiredModules.get().filterNot { it in moduleKeys }
+        if (missingRequiredModules.isNotEmpty()) {
+            throw GradleException(
+                buildString {
+                    appendLine("Missing required OSS disclosure dependencies:")
+                    missingRequiredModules.forEach { appendLine(" - $it") }
+                    appendLine("Checked configurations:")
+                    configurationPaths.forEach { appendLine(" - $it") }
+                }
+            )
+        }
 
         val pomFiles =
             project.dependencies
@@ -203,7 +226,7 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
         if (missing.isNotEmpty()) {
             throw GradleException(
                 buildString {
-                    appendLine("Missing license metadata for release runtime dependencies:")
+                    appendLine("Missing license metadata for OSS disclosure dependencies:")
                     missing.forEach { appendLine(" - $it") }
                     appendLine("Add an entry to ${overridesFile.orNull?.asFile?.relativeToOrSelf(project.rootDir)?.path ?: "the OSS license override file"} or fix the published POM metadata.")
                 }
@@ -214,7 +237,8 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
             linkedMapOf(
                 "schemaVersion" to 1,
                 "variant" to variantName.get(),
-                "sourceConfiguration" to configurationName.get(),
+                "sourceConfiguration" to sourceConfigurationLabel.get(),
+                "sourceConfigurations" to configurationPaths,
                 "items" to entries.map { entry ->
                     linkedMapOf(
                         "id" to entry.id,
@@ -232,6 +256,18 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
             parentFile.mkdirs()
             writeText(JsonOutput.prettyPrint(JsonOutput.toJson(json)) + "\n")
         }
+    }
+
+    private fun String.toConfiguration(): org.gradle.api.artifacts.Configuration {
+        val separator = lastIndexOf(':')
+        val (projectPath, configurationName) =
+            if (separator > 0) {
+                substring(0, separator) to substring(separator + 1)
+            } else {
+                project.path to this
+            }
+        val sourceProject = project.rootProject.project(projectPath)
+        return sourceProject.configurations.getByName(configurationName)
     }
 
     private fun readOverrides(file: File?): List<OssLicenseOverride> {
@@ -261,6 +297,8 @@ abstract class GenerateOssLicensesTask : DefaultTask() {
             this.id == "${id.group}:*"
 
     private fun ModuleComponentIdentifier.coordinateKey(): String = "$group:$module:$version"
+
+    private fun ModuleComponentIdentifier.moduleKey(): String = "$group:$module"
 
     private fun File.readPomLicense(): Pair<String, String?>? =
         runCatching {
@@ -365,9 +403,27 @@ android {
 
 val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::class) {
     group = "verification"
-    description = "Generates the Open Source Licenses asset from Android release runtime dependencies."
-    configurationName.set("releaseRuntimeClasspath")
+    description = "Generates the Open Source Licenses asset from Android and shared KMP dependencies."
+    sourceConfigurations.set(
+        listOf(
+            ":androidApp:releaseRuntimeClasspath",
+            ":shared:commonMainImplementationDependenciesMetadata",
+            ":shared:androidReleaseRuntimeClasspath"
+        )
+    )
     variantName.set("release")
+    sourceConfigurationLabel.set("Android release runtime + shared KMP metadata")
+    requiredModules.set(
+        listOf(
+            "com.tencent.kuiklybase:network",
+            "com.tencent.kuiklybase:network-android",
+            "com.tencent.kuiklybase:resource-core",
+            "com.tencent.kuiklybase:resource-core-android",
+            "com.tencent.kuikly-open:compose",
+            "com.tencent.kuikly-open:compose-android",
+            "io.quiver:quiver-android-updater"
+        )
+    )
     overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
     outputFile.set(layout.buildDirectory.file("generated/assets/ossLicenses/main/oss_licenses.json"))
 }
