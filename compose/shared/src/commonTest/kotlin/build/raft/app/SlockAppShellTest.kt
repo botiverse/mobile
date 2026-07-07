@@ -531,6 +531,7 @@ class SlockAppShellTest {
                         serverId = "server-1",
                         canonicalChannelId = "parent-channel",
                         aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
                         surfaceKind = KuiklyThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         title = "team-ops"
@@ -539,6 +540,7 @@ class SlockAppShellTest {
                         serverId = "server-1",
                         canonicalChannelId = "reply-stream",
                         aliases = setOf("reply-stream", "parent-channel", "parent-message"),
+                        conversationKind = ConversationKind.Thread,
                         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                         channelKind = "thread",
                         title = "deploy checklist",
@@ -1376,6 +1378,7 @@ class SlockAppShellTest {
                         serverId = "server-1",
                         canonicalChannelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
                         aliases = setOf("a8ebbc3c-a3d6-4b6e-8714-123456789abc"),
+                        conversationKind = ConversationKind.Channel,
                         surfaceKind = KuiklyThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         title = "a8ebbc3c-a3d6-4b6e-8714-123456789abc"
@@ -1409,6 +1412,7 @@ class SlockAppShellTest {
                         serverId = "server-1",
                         canonicalChannelId = "a8ebbc3c-a3d6-4b6e-8714-123456789abc",
                         aliases = setOf("a8ebbc3c-a3d6-4b6e-8714-123456789abc"),
+                        conversationKind = ConversationKind.Channel,
                         surfaceKind = KuiklyThreadSurfaceKind.Channel,
                         channelKind = "channel",
                         title = "home-fixes"
@@ -1442,6 +1446,7 @@ class SlockAppShellTest {
                         serverId = "server-1",
                         canonicalChannelId = "dm-1",
                         aliases = setOf("dm-1", "agent-1"),
+                        conversationKind = ConversationKind.DirectMessage,
                         surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
                         channelKind = "directmessage",
                         title = "Cindy",
