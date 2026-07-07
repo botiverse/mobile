@@ -2464,9 +2464,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             val cachedSession =
                 runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
             val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
-            val identityChanged =
-                cachedSession?.user?.id != currentSession?.user?.id ||
-                    cachedSession?.currentServerId != currentSession?.currentServerId
+            val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
             bridge.log(
                 "app_shell_session_change_received fingerprint=$fingerprint " +
                     "hasSession=${cachedSession != null} identityChanged=$identityChanged"
@@ -2476,7 +2474,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 bridge.realtimeDisconnect("auth_changed")
                 resetAppShellSessionState()
             }
-            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+            authGateViewModel.dispatch(appShellSessionChangeRestoreIntent(identityChanged))
         }
     }
 
@@ -15102,6 +15100,16 @@ internal fun shouldApplyHomeAuthErrorGate(
     if (cachedSession != null) return false
     return true
 }
+
+internal fun appShellSessionIdentityChanged(
+    cachedSession: StoredAuthSession?,
+    currentSession: StoredAuthSession?
+): Boolean =
+    cachedSession?.user?.id != currentSession?.user?.id ||
+        cachedSession?.currentServerId != currentSession?.currentServerId
+
+internal fun appShellSessionChangeRestoreIntent(identityChanged: Boolean): SharedAuthGateIntent =
+    if (identityChanged) SharedAuthGateIntent.Restore else SharedAuthGateIntent.RefreshSilently
 
 private fun SharedAuthGateState.authGateDiagnosticsName(): String =
     when (this) {

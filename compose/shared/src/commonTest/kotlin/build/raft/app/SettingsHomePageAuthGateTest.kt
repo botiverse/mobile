@@ -1,10 +1,12 @@
 package build.raft.app
 
+import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -53,13 +55,39 @@ class SettingsHomePageAuthGateTest {
         )
     }
 
-    private fun storedSession(): StoredAuthSession =
+    @Test
+    fun sessionChangeSameIdentityUsesSilentRefreshIntent() {
+        val current = storedSession(userId = "user-1", selectedServerId = "server-1", accessToken = "access-token-1")
+        val cached = storedSession(userId = "user-1", selectedServerId = "server-1", accessToken = "access-token-2")
+
+        val identityChanged = appShellSessionIdentityChanged(cached, current)
+
+        assertFalse(identityChanged)
+        assertEquals(SharedAuthGateIntent.RefreshSilently, appShellSessionChangeRestoreIntent(identityChanged))
+    }
+
+    @Test
+    fun sessionChangeDifferentIdentityUsesFullRestoreIntent() {
+        val current = storedSession(userId = "user-1", selectedServerId = "server-1")
+        val cached = storedSession(userId = "user-1", selectedServerId = "server-2")
+
+        val identityChanged = appShellSessionIdentityChanged(cached, current)
+
+        assertTrue(identityChanged)
+        assertEquals(SharedAuthGateIntent.Restore, appShellSessionChangeRestoreIntent(identityChanged))
+    }
+
+    private fun storedSession(
+        userId: String = "user-1",
+        selectedServerId: String = "server-1",
+        accessToken: String = "access-token"
+    ): StoredAuthSession =
         StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "user@slock.ai", displayName = "Artin"),
-            accessToken = "access-token",
+            user = StoredAuthUser(id = userId, email = "user@slock.ai", displayName = "Artin"),
+            accessToken = accessToken,
             refreshToken = "refresh-token",
-            selectedServerId = "server-1",
+            selectedServerId = selectedServerId,
             selectedServerSlug = "slock",
-            servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+            servers = listOf(StoredAuthServer(id = selectedServerId, name = "Slock", slug = "slock"))
         )
 }

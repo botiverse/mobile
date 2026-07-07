@@ -9,6 +9,7 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SharedAuthGateStoreTest {
@@ -155,6 +156,66 @@ class SharedAuthGateStoreTest {
     }
 
     @Test
+    fun silentRefreshSuccessKeepsReadyPathWithoutRestoring() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val logs = mutableListOf<String>()
+        val refreshedSession = storedSession(selectedServerId = "server-1", accessToken = "access-token-2")
+        val store =
+            SharedAuthGateStore(
+                restoreSession = { SharedAuthResult.Success(refreshedSession) },
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+        store.accept(SharedAuthGateIntent.SignedIn(storedSession(selectedServerId = "server-1")))
+
+        store.accept(SharedAuthGateIntent.RefreshSilently)
+
+        val state = store.state.value
+        assertTrue(state is SharedAuthGateState.Ready)
+        assertEquals("access-token-2", state.session.accessToken)
+        assertFalse(logs.any { it.contains("source=restore_start state=restoring") })
+        assertContains(logs, "auth_gate_state source=silent_refresh_result state=ready selectedServer=true")
+        scope.cancel()
+    }
+
+    @Test
+    fun silentRefreshUnauthenticatedMovesToAuthRequired() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val store =
+            SharedAuthGateStore(
+                restoreSession = { SharedAuthResult.Unauthenticated },
+                scope = scope
+            )
+        store.accept(SharedAuthGateIntent.SignedIn(storedSession(selectedServerId = "server-1")))
+
+        store.accept(SharedAuthGateIntent.RefreshSilently)
+
+        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun silentRefreshFailureKeepsPreviousReadySessionAndLogs() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val logs = mutableListOf<String>()
+        val previousSession = storedSession(selectedServerId = "server-1")
+        val store =
+            SharedAuthGateStore(
+                restoreSession = { SharedAuthResult.Failure(SharedAuthErrorCode.Network, "offline") },
+                scope = scope,
+                diagnosticsLogger = logs::add
+            )
+        store.accept(SharedAuthGateIntent.SignedIn(previousSession))
+
+        store.accept(SharedAuthGateIntent.RefreshSilently)
+
+        assertEquals(SharedAuthGateState.Ready(previousSession), store.state.value)
+        assertContains(logs, "auth_gate_silent_refresh_failure code=Network message=offline keeping_ready=true")
+        assertContains(logs, "auth_gate_state source=silent_refresh_keep_ready state=ready selectedServer=true")
+        scope.cancel()
+    }
+
+    @Test
     fun restoreExceptionUsesRecoverableMessageAndLogsMapping() = runBlocking {
         val scope = CoroutineScope(SupervisorJob())
         val logs = mutableListOf<String>()
@@ -177,7 +238,8 @@ class SharedAuthGateStoreTest {
 
     private fun storedSession(
         selectedServerId: String?,
-        emailVerified: Boolean? = null
+        emailVerified: Boolean? = null,
+        accessToken: String = "access-token"
     ): StoredAuthSession =
         StoredAuthSession(
             user =
@@ -187,7 +249,7 @@ class SharedAuthGateStoreTest {
                     displayName = "Artin",
                     emailVerified = emailVerified
                 ),
-            accessToken = "access-token",
+            accessToken = accessToken,
             refreshToken = "refresh-token",
             selectedServerId = selectedServerId,
             selectedServerSlug = selectedServerId?.let { "slock" },
