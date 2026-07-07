@@ -656,6 +656,95 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun pinnedItemsResolvePinnedAgentIdsThroughAgentDirectMessages() {
+        val agentDm =
+            SlockHomeConversationItem(
+                id = "dm-agent-1",
+                name = "Cindy",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-1"
+            )
+        val channel =
+            SlockHomeConversationItem(
+                id = "channel-1",
+                name = "general",
+                kind = KuiklyThreadSurfaceKind.Channel,
+                channelType = "channel"
+            )
+
+        val pinned =
+            pinnedItemsForSidebar(
+                channels = listOf(channel),
+                directMessages = listOf(agentDm),
+                pinnedIds = listOf("channel-1"),
+                pinnedAgentIds = listOf("agent-1"),
+                pinnedOrder = listOf("agent-1", "channel-1"),
+                mode = SlockSidebarSortMode.Manual
+            )
+
+        assertEquals(listOf("dm-agent-1", "channel-1"), pinned.map { it.id })
+    }
+
+    @Test
+    fun pinnedItemsDropPinnedAgentIdsWithoutDirectMessageRows() {
+        val channel =
+            SlockHomeConversationItem(
+                id = "channel-1",
+                name = "general",
+                kind = KuiklyThreadSurfaceKind.Channel,
+                channelType = "channel"
+            )
+
+        val pinned =
+            pinnedItemsForSidebar(
+                channels = listOf(channel),
+                directMessages = emptyList(),
+                pinnedIds = listOf("channel-1"),
+                pinnedAgentIds = listOf("agent-missing"),
+                pinnedOrder = listOf("agent-missing", "channel-1"),
+                mode = SlockSidebarSortMode.Manual
+            )
+
+        assertEquals(listOf("channel-1"), pinned.map { it.id })
+    }
+
+    @Test
+    fun pinnedItemsDeduplicateSameAgentDirectMessageAcrossPinFamiliesInAzMode() {
+        val agentDm =
+            SlockHomeConversationItem(
+                id = "dm-agent-1",
+                name = "Cindy",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-1"
+            )
+        val otherDm =
+            SlockHomeConversationItem(
+                id = "dm-human-1",
+                name = "Alice",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "human",
+                presenceMemberId = "user-1"
+            )
+
+        val pinned =
+            pinnedItemsForSidebar(
+                channels = emptyList(),
+                directMessages = listOf(agentDm, otherDm),
+                pinnedIds = listOf("dm-agent-1", "dm-human-1"),
+                pinnedAgentIds = listOf("agent-1"),
+                pinnedOrder = listOf("dm-agent-1", "agent-1", "dm-human-1"),
+                mode = SlockSidebarSortMode.Az
+            )
+
+        assertEquals(listOf("dm-human-1", "dm-agent-1"), pinned.map { it.id })
+    }
+
+    @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
             15,
