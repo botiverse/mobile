@@ -504,6 +504,40 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationItemKeepsSeedKindWhenDirectoryProjectionDisagrees() {
+        val seed =
+            SharedHomeConversationRowSeed(
+                id = "dm-cindy",
+                kind = ConversationKind.DirectMessage,
+                fallbackName = "Cindy",
+                fallbackPresenceMemberId = "user-cindy",
+                fallbackChannelType = "dm"
+            )
+        val wrongProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-cindy",
+                aliases = setOf("dm-cindy", "channel-cindy"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "Cindy",
+                peerMemberId = "user-cindy",
+                joined = true
+            )
+
+        val item =
+            SharedHomeConversationRowProjector(
+                directoryProjections = mapOf("dm-cindy" to wrongProjection)
+            ).project(seed)
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, item.kind)
+        assertEquals("dm", item.channelType)
+        assertEquals("dm", item.homeChannelKind())
+        assertEquals("user-cindy", item.presenceMemberId)
+    }
+
+    @Test
     fun homeConversationItemDoesNotLetGenericDirectoryTitleReplaceFallbackName() {
         val seed =
             SharedHomeConversationRowSeed(
