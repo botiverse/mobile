@@ -216,26 +216,55 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun focusedMessageAnchorRequestKeyChangesForRepeatedOpenIntentNonce() {
-        val sharedContent = listOf(message("m1"), message("m2"), message("m3"))
-        val slice = payload(messages = sharedContent).copy(focusedMessageId = "m2").timelineSlice()
-
-        val first =
-            focusedMessageAnchorRequestKey(
-                messageId = "m2",
-                requestNonce = 1,
-                targetSignature = slice.focusedMessageTargetSignature(),
-                lazyItemCount = 5
-            )
-        val second =
-            focusedMessageAnchorRequestKey(
-                messageId = "m2",
-                requestNonce = 2,
-                targetSignature = slice.focusedMessageTargetSignature(),
-                lazyItemCount = 5
-            )
+    fun focusedMessageAnchorIdentityChangesForRepeatedOpenIntentNonce() {
+        val first = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+        val second = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 2)
 
         assertNotEquals(first, second)
+    }
+
+    @Test
+    fun focusedMessageAnchorIdentityIgnoresTimelineGrowth() {
+        // task #554: secondary refresh / realtime arrivals / older pages change
+        // the timeline signature and lazy item count — the request identity must
+        // NOT change with them, or a consumed anchor re-scrolls mid-drag.
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        assertEquals(identity, focusedMessageAnchorIdentity(messageId = " m2 ", requestNonce = 1))
+        assertFalse(
+            shouldRunFocusedMessageAnchor(
+                targetIdentity = identity,
+                consumedIdentity = identity,
+                scrollInterruptedIdentity = null
+            )
+        )
+    }
+
+    @Test
+    fun focusedMessageAnchorDoesNotRerunAfterUserScrollInterruption() {
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        assertFalse(
+            shouldRunFocusedMessageAnchor(
+                targetIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = identity
+            )
+        )
+    }
+
+    @Test
+    fun focusedMessageAnchorRerunsForNewNonceAfterConsumeOrInterruption() {
+        val consumed = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+        val renewed = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 2)
+
+        assertTrue(
+            shouldRunFocusedMessageAnchor(
+                targetIdentity = renewed,
+                consumedIdentity = consumed,
+                scrollInterruptedIdentity = consumed
+            )
+        )
     }
 
     @Test
