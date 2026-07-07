@@ -2216,6 +2216,42 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun channelPayloadKeepsActivityMuteBellWhenProjectionClaimsReplyThread() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                joined = true,
+                activityMuteSupported = true
+            )
+        val wrongProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = ConversationKind.Thread,
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = "channel",
+                title = "general",
+                joined = true,
+                activityNotificationPreference =
+                    ChannelActivityNotificationPreference(
+                        activityMuted = true,
+                        activityMuteSupported = true
+                    )
+            )
+
+        val muteState = payload.threadActivityMuteState(wrongProjection)
+
+        assertEquals("channel-1", muteState?.channelId)
+        assertEquals(true, muteState?.muted)
+        assertEquals(true, muteState?.supported)
+    }
+
+    @Test
     fun conversationHeaderProjectionDoesNotRenderIdentityAsTitle() {
         val uuid = "123e4567-e89b-12d3-a456-426614174000"
         val conversation =

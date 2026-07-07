@@ -594,13 +594,13 @@ internal data class ThreadActivityMuteUiState(
 internal fun KuiklyThreadScreenPayload.threadActivityMuteState(
     projection: SharedConversationDirectoryProjection?
 ): ThreadActivityMuteUiState? {
+    // Route payload self-identity is authoritative (§5): projection enriches mute data,
+    // but must not rewrite what surface this page is.
     if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
-    val resolvedSurfaceKind = projection?.surfaceKind ?: surfaceKind
-    if (resolvedSurfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
     val supported = projection?.activityMuteSupported ?: activityMuteSupported
     if (!supported) return null
     val resolvedJoined = projection?.joined ?: joined
-    if (resolvedSurfaceKind != KuiklyThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
+    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage && !resolvedJoined) return null
     val channelId =
         projection?.canonicalChannelId?.takeIf { it.isNotBlank() }
             ?: streamChannelId?.takeIf { it.isNotBlank() }
