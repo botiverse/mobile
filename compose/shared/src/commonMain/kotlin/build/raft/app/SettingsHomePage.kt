@@ -4904,9 +4904,6 @@ private fun SettingsConnectedAppsContent(
                                 onOpenDetail = onOpenMarketplaceDetail
                             )
                         }
-                        item {
-                            SettingsConnectedAppsMarketplaceFrameworkCard()
-                        }
                     }
                 }
             }
@@ -6307,27 +6304,6 @@ private fun SettingsConnectedAppsMarketplaceCard(
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_INSTALL, app.id)?.let { SettingsFormErrorText(it) }
                 actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)?.let { SettingsFormErrorText(it) }
             }
-        }
-    }
-}
-
-@Composable
-private fun SettingsConnectedAppsMarketplaceFrameworkCard() {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Storage Sync") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Marketplace framework", style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-                Text(
-                    "Third-party listings appear here after review. Server installs stay isolated from built-in Raft apps.",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
-                )
-            }
-            SettingsConnectedAppsBadge("Review required", SlockColor.SurfaceWhite)
         }
     }
 }
@@ -16363,6 +16339,17 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
                     callbackDomain = "github.com",
                     origin = "marketplace",
                     editable = false
+                ),
+                SettingsConnectedAppInstalledSnapshot(
+                    id = "client_1",
+                    clientId = "client_slack_bridge",
+                    name = "Slack Bridge",
+                    developer = "This server",
+                    description = "Server-local OAuth client.",
+                    homepageDomain = "example.com",
+                    callbackDomain = "example.com",
+                    origin = "private",
+                    editable = true
                 )
             ),
         registered =
@@ -16371,7 +16358,7 @@ private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot
                     id = "client_1",
                     serverId = "srv_design",
                     clientId = "client_slack_bridge",
-                    appType = "oauth",
+                    appType = "server_local",
                     publishStatus = "draft",
                     category = "productivity",
                     dataAccessSummary = "Messages and channel metadata",

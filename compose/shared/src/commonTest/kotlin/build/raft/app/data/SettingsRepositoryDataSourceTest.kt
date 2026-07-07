@@ -198,6 +198,15 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(listOf("Calendar"), apps.data.marketplace.map { it.name })
         assertEquals(listOf("Raft Actions"), apps.data.builtIn.map { it.name })
         assertEquals(listOf("market-1", "client-1"), apps.data.installed.map { it.id })
+        assertEquals(listOf("client-1"), apps.data.registered.map { it.id })
+        assertEquals(
+            listOf(false, true),
+            apps.data.installed.map { it.editable }
+        )
+        assertEquals(
+            listOf("marketplace", "private"),
+            apps.data.installed.map { it.origin }
+        )
         assertEquals(true, apps.data.canManage)
 
         val created =

@@ -303,7 +303,7 @@ fun buildSettingsConnectedAppsSnapshot(
                 editable = false
             )
         } +
-            clients.filter { it.appType == "server_local" }.map {
+            clients.filter { it.isPrivateInstalledConnectedAppClient() }.map {
                 SettingsConnectedAppInstalledSnapshot(
                     id = it.id,
                     clientId = it.clientId,
@@ -325,6 +325,11 @@ fun buildSettingsConnectedAppsSnapshot(
         canManage = canManage,
         oneTimeClientSecret = oneTimeClientSecret
     )
+}
+
+private fun SettingsConnectedAppClientSnapshot.isPrivateInstalledConnectedAppClient(): Boolean {
+    val type = appType.trim().lowercase()
+    return type == "server_local"
 }
 
 private fun WireConnectedAppClient.toConnectedAppClientSnapshot(): SettingsConnectedAppClientSnapshot {
