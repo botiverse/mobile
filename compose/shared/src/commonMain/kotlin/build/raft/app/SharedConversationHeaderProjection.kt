@@ -35,6 +35,9 @@ internal data class ThreadHeaderDisplayModel(
 )
 
 internal sealed interface ThreadHeaderProjectionInput {
+    // Order IS the contract (t432 family ③): implementations list ids that name the
+    // header's own conversation before parent/related ids, so the first directory hit is
+    // the surface being rendered, never a parent association claiming it.
     val lookupIds: List<String>
     val surfaceKind: String
 

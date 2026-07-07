@@ -5667,6 +5667,8 @@ private fun ThreadSnapshot.withConversationAccessFallback(
     return if (nextConversation == current) this else copy(conversation = nextConversation)
 }
 
+// Order IS the contract: the page's own thread/stream ids resolve before the parent id,
+// so access falls back to the page's own conversation before the parent's (t432 family ③).
 private fun KuiklyThreadScreenPayload.conversationHeaderFallbackIds(): Set<String> =
     listOfNotNull(
         sourceThreadId,

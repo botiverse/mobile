@@ -27,6 +27,9 @@ internal data class ConversationOpenSourceMessageIdentity(
     val unreadCount: Int = 0,
     val originFallback: ThreadLaunchOriginFallback? = null
 ) {
+    // Order IS the contract: ids that name the conversation itself (stream, channel)
+    // resolve before parent/anchor ids, so a row lands on its OWN projection before any
+    // parent or message-derived association can claim it (t432 family ③).
     fun lookupIds(): List<String> =
         listOfNotNull(
             threadChannelId,

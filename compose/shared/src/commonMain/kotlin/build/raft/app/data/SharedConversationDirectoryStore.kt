@@ -69,6 +69,10 @@ internal data class SharedConversationDirectoryState(
         projectionsByCanonicalId[normalized]?.let { return it }
         val canonicalIds = aliasesById[normalized].orEmpty()
         return when {
+            // Observation point (t432 family ③): a single alias claim wins by default —
+            // e.g. a thread stream id can resolve to a related DM row while the thread's
+            // own projection is absent. Reply-like consumers defer/drop upstream, so this
+            // stays acceptable; revisit if a non-deferred consumer surfaces.
             canonicalIds.size == 1 -> projectionsByCanonicalId[canonicalIds.single()]
             else -> null
         }
@@ -126,37 +130,36 @@ private fun sharedConversationDirectoryState(
     serverId: ServerId,
     conversations: List<HomeConversationRow>,
     logger: (String) -> Unit
-): SharedConversationDirectoryState {
-    val projections =
-        conversations
-            .mapNotNull { conversation -> conversation.toSharedConversationDirectoryProjection(serverId) }
-            .associateBy { it.canonicalChannelId }
-    val aliasesById =
-        buildMap<String, MutableSet<String>> {
-            projections.values.forEach { projection ->
-                putAlias(projection.canonicalChannelId, projection.canonicalChannelId)
-                projection.aliases.forEach { alias -> putAlias(alias, projection.canonicalChannelId) }
-            }
-        }.mapValues { (_, values) -> values.toSet() }
-    val duplicateAliases = aliasesById.filterValues { it.size > 1 }
-    duplicateAliases.forEach { (alias, canonicalIds) ->
-        logger("conversation_identity_alias_conflict alias=$alias canonicalIds=${canonicalIds.joinToString(",")}")
-    }
-    return SharedConversationDirectoryState(
-        projectionsByCanonicalId = projections,
-        aliasesById = aliasesById,
-        duplicateAliases = duplicateAliases
+): SharedConversationDirectoryState =
+    // One registration rule for every directory source (t432 PR-C): this Home-row builder
+    // previously skipped the parent-id alias registration the projection builder performs,
+    // so the same projection set produced different alias tables depending on entry point.
+    // Home-source directories now also resolve by parent ids — a safe gain under
+    // canonical-first resolution (#281) and the parent-never-claims-child rule.
+    sharedConversationDirectoryStateFromProjections(
+        projections = conversations.mapNotNull { it.toSharedConversationDirectoryProjection(serverId) },
+        logger = logger
     )
-}
 
 private fun sharedConversationDirectoryStateFromProjections(
     projections: Iterable<SharedConversationDirectoryProjection>,
     logger: (String) -> Unit
 ): SharedConversationDirectoryState {
-    val byCanonicalId =
-        projections
-            .filter { it.canonicalChannelId.isNotBlank() }
-            .associateBy { it.canonicalChannelId }
+    val claimed = projections.filter { it.canonicalChannelId.isNotBlank() }
+    val byCanonicalId = claimed.associateBy { it.canonicalChannelId }
+    if (claimed.size != byCanonicalId.size) {
+        // Two projections self-attesting the SAME canonical id is an identity conflict the
+        // associateBy silently resolves last-wins. Log it explicitly (t432 family ③) —
+        // adjudication stays last-wins until a real case motivates provenance rules.
+        claimed.groupBy { it.canonicalChannelId }
+            .filterValues { it.size > 1 }
+            .forEach { (canonicalId, claims) ->
+                logger(
+                    "conversation_identity_canonical_conflict canonicalId=$canonicalId " +
+                        "claims=${claims.joinToString(",") { it.conversationKind.name }} lastWins=true"
+                )
+            }
+    }
     val aliasesById =
         buildMap<String, MutableSet<String>> {
             byCanonicalId.values.forEach { projection ->
