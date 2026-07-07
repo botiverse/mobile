@@ -3515,6 +3515,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
                             onOpenReleaseNotes = { pager.openReleaseNotesPage() },
+                            onOpenBilling = { pager.openSettingsBillingPage() },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
                             },
@@ -3717,6 +3718,7 @@ private fun SettingsAppShellContent(
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
     onOpenReleaseNotes: () -> Unit,
+    onOpenBilling: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -3977,6 +3979,7 @@ private fun SettingsAppShellContent(
                 when (key) {
                     SettingsDestinationRouter -> onOpenRouter()
                     SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
+                    SettingsDestinationBilling -> onOpenBilling()
                     else -> onDestinationChange(key)
                 }
             }
@@ -17026,6 +17029,7 @@ private fun SettingsRouteVisualScreen() {
         onOpenComputer = {},
         onOpenRouter = {},
         onOpenReleaseNotes = {},
+        onOpenBilling = {},
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
