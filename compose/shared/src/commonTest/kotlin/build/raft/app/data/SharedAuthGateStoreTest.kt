@@ -1,9 +1,11 @@
 package build.raft.app.data
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -92,6 +94,31 @@ class SharedAuthGateStoreTest {
             )
 
         store.accept(SharedAuthGateIntent.Restore)
+
+        assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
+        scope.cancel()
+    }
+
+    @Test
+    fun signedOutCancelsInFlightRestoreResult() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob())
+        val restoreStarted = CompletableDeferred<Unit>()
+        val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
+        val store =
+            SharedAuthGateStore(
+                restoreSession = {
+                    restoreStarted.complete(Unit)
+                    restoreResult.await()
+                },
+                scope = scope
+            )
+
+        store.dispatch(SharedAuthGateIntent.Restore)
+        restoreStarted.await()
+
+        store.dispatch(SharedAuthGateIntent.SignedOut)
+        restoreResult.complete(SharedAuthResult.Success(storedSession(selectedServerId = "server-1")))
+        yield()
 
         assertEquals(SharedAuthGateState.AuthRequired, store.state.value)
         scope.cancel()

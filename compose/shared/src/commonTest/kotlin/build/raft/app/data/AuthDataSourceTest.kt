@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuthDataSourceTest {
@@ -877,6 +878,38 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersDropsResponseWhenSessionWasClearedDuringRequest() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "old-token",
+                    refreshToken = "old-refresh",
+                    servers = listOf(StoredAuthServer(id = "server-old", name = "Old", slug = "old"))
+                )
+            )
+        val api =
+            FakeAuthApi(
+                serversResponse = AuthNetworkResponse(200, """[{"id":"server-new","name":"New","slug":"new"}]"""),
+                onServersRequest = { store.clearSession() }
+            )
+        val source =
+            SharedAuthDataSource(
+                transport = api,
+                sessionStore = store,
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.loadServers()
+
+        assertEquals(SharedAuthResult.Unauthenticated, result)
+        assertNull(store.readSession())
+        assertEquals(listOf("Bearer old-token"), api.serversAuthorizations)
+        assertContains(logs, "auth_servers_load_result result=stale source=access_token action=drop")
+    }
+
+    @Test
     fun createServerSelectsCreatedServerInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -968,7 +1001,8 @@ class AuthDataSourceTest {
         private val serversResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val throwCurrentUser: Boolean = false,
         private val resendVerificationResponse: AuthNetworkResponse =
-            AuthNetworkResponse(200, """{"ok":true}""")
+            AuthNetworkResponse(200, """{"ok":true}"""),
+        private val onServersRequest: suspend () -> Unit = {}
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
@@ -1079,6 +1113,7 @@ class AuthDataSourceTest {
         override suspend fun servers(authorization: String): AuthNetworkResponse {
             serversAuthorization = authorization
             serversAuthorizations += authorization
+            onServersRequest()
             return serversResponses?.let { responses ->
                 if (responses.size > 1) {
                     responses.removeFirst()

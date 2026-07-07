@@ -690,6 +690,13 @@ class SharedAuthDataSource(
         servers: List<StoredAuthServer>,
         source: String
     ): SharedAuthResult<StoredAuthSession> {
+        val current = sessionStore.readSession()
+        if (current?.authSessionClearFingerprint() != session.authSessionClearFingerprint()) {
+            diagnosticsLogger(
+                "auth_servers_load_result result=stale source=$source action=drop"
+            )
+            return SharedAuthResult.Unauthenticated
+        }
         val updated = session.withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         diagnosticsLogger(
