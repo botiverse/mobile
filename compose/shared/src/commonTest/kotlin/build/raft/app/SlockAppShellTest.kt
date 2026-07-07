@@ -500,6 +500,9 @@ class SlockAppShellTest {
 
     @Test
     fun foregroundBannerProjectionShowsOnSettingsEvenWithSelectedHomeConversation() {
+        // t434 migration (criterion (a)): the visibility logic under test needs a PROVEN
+        // banner — the raw guess that used to conjure one is gone, so the fixture supplies
+        // directory evidence; the visibility assertions are unchanged.
         val banner =
             slockForegroundMessageBannerProjection(
                 serverId = "server-1",
@@ -511,7 +514,20 @@ class SlockAppShellTest {
                         selectedTab = "settings",
                         selectedHomeDestination = null,
                         selectedConversationId = "channel-1"
-                    )
+                    ),
+                conversationDirectory =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items =
+                            listOf(
+                                InboxItem(
+                                    key = "channel:channel-1",
+                                    kind = InboxItemKind.Channel,
+                                    channelId = ChannelId("channel-1"),
+                                    channelName = "home-fixes"
+                                )
+                            )
+                    ).toSharedConversationDirectoryState()
             )
 
         val resolved = assertNotNull(banner)
@@ -519,7 +535,7 @@ class SlockAppShellTest {
         assertEquals("message-1", resolved.focusedMessageId)
         assertEquals("channel-1", resolved.conversation.threadId.value)
         assertEquals("Cindy", resolved.title)
-        assertEquals("", resolved.context)
+        assertEquals("#home-fixes", resolved.context)
         assertNull(resolved.threadContext)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.Hash, resolved.iconName)
@@ -1761,6 +1777,28 @@ class SlockAppShellTest {
 
     @Test
     fun foregroundBannerProjectionCarriesReplyThreadRouteIdentityOnly() {
+        // t434 migration (criterion (a)): route-identity carriage needs a PROVEN reply
+        // thread — the fixture supplies the thread + parent directory evidence the raw
+        // guess used to fake; the route assertions are unchanged.
+        val replyDirectory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
         val banner =
             slockForegroundMessageBannerProjection(
                 serverId = "server-1",
@@ -1773,7 +1811,8 @@ class SlockAppShellTest {
                         parentMessageId = "parent-message"
                     ),
                 currentMemberId = "user-1",
-                visibleConversationKey = null
+                visibleConversationKey = null,
+                conversationDirectory = replyDirectory
             )
 
         val resolved = assertNotNull(banner)
@@ -1798,9 +1837,11 @@ class SlockAppShellTest {
                     ),
                 currentMemberId = "user-1",
                 visibleConversationKey = null,
-                visibleRouteIdentity = resolved.conversation.resolveThreadRouteIdentity()
+                visibleRouteIdentity = resolved.conversation.resolveThreadRouteIdentity(),
+                conversationDirectory = replyDirectory
             )
 
+        // Proven banner, visible route: suppressed for visibility (not conversation_missing).
         assertNull(suppressed)
     }
 

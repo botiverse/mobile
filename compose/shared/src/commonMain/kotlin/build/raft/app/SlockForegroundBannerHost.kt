@@ -348,6 +348,18 @@ internal fun slockConversationDirectoryStateFromProjections(
 ): SharedConversationDirectoryState =
     projections.toSharedConversationDirectoryState()
 
+/**
+ * Terminal suppress reasons are decided — the message must never enter the wait/retry loop.
+ * `conversation_missing` is intentionally NOT terminal: post-#434 (raw guess fallback gone)
+ * it marks the "unproven yet, waitable" state the defer machinery exists for.
+ */
+internal fun String?.isTerminalForegroundSuppress(): Boolean =
+    when (this) {
+        "own_message", "system_message", "visible_conversation",
+        "server_missing", "current_server_missing", "server_mismatch" -> true
+        else -> false
+    }
+
 internal fun slockForegroundMessageBannerProjection(
     serverId: String,
     currentServerId: String?,

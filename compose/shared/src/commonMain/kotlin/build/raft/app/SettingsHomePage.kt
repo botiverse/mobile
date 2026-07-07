@@ -14965,10 +14965,9 @@ private fun Message.appShellForegroundStreamId(): String? =
 private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
     message: Message
 ): Boolean {
-    // A suppressed message is already decided (own/system/visible/server mismatch) — it
-    // must never enter the wait/retry loop. This was implicit in the deleted guessed-banner
-    // null-check; it is now the explicit first gate (t434, LiBai's required fix).
-    if (suppressReason != null) return false
+    // A terminally suppressed message is decided (own/system/visible/server mismatch) and
+    // never waits; conversation_missing is the waitable "unproven yet" state (t434).
+    if (suppressReason.isTerminalForegroundSuppress()) return false
     if (sharedProjection != null) return false
     // task #425 part 2: a usable server-provided conversationContext already
     // yields a correct identity (routing-safe); show immediately with
@@ -14996,10 +14995,13 @@ internal fun appShellForegroundBannerPendingDecision(
     refreshAttempts: Int,
     maxAttempts: Int = AppShellForegroundBannerActivityProjectionMaxAttempts
 ): AppShellForegroundBannerPendingDecision {
-    projection.banner ?: return AppShellForegroundBannerPendingDecision.Complete
-    val ready = !projection.shouldWaitForActivityThreadProjection(message)
+    // Wait-first (t434): with the raw guess fallback gone, an unproven message has NO banner
+    // — a banner-null early exit would make Retry unreachable. Whether to keep waiting is
+    // shouldWait's decision alone; Complete then shows the banner if one exists (terminal
+    // suppresses and unwaitable messages complete bannerless = decided silently).
     return when {
-        ready -> AppShellForegroundBannerPendingDecision.Complete
+        !projection.shouldWaitForActivityThreadProjection(message) ->
+            AppShellForegroundBannerPendingDecision.Complete
         refreshAttempts >= maxAttempts -> AppShellForegroundBannerPendingDecision.Drop
         else -> AppShellForegroundBannerPendingDecision.Retry
     }
