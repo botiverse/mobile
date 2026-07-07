@@ -106,6 +106,38 @@ class SystemNotificationsTest {
     }
 
     @Test
+    fun unreadNotificationServerGateAllowsCurrentServerOnly() {
+        assertEquals(
+            SystemUnreadNotificationServerGateResult(shouldPost = true, code = "allowed"),
+            systemUnreadNotificationServerGate(
+                notificationServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertEquals(
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_mismatch"),
+            systemUnreadNotificationServerGate(
+                notificationServerId = "server-2",
+                currentServerId = "server-1"
+            )
+        )
+        assertEquals(
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "server_missing"),
+            systemUnreadNotificationServerGate(
+                notificationServerId = "",
+                currentServerId = "server-1"
+            )
+        )
+        assertEquals(
+            SystemUnreadNotificationServerGateResult(shouldPost = false, code = "current_server_missing"),
+            systemUnreadNotificationServerGate(
+                notificationServerId = "server-1",
+                currentServerId = null
+            )
+        )
+    }
+
+    @Test
     fun unreadNotificationRequestBuildsChannelPayload() {
         val request =
             buildSystemUnreadNotificationRequest(
