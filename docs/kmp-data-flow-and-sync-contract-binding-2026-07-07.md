@@ -225,6 +225,22 @@ Mobile rules:
     Pending must never lose data: `sourceMessageIdentity.originFallback`
     (parentChannelId / parentMessageId / preview / sender) is preserved
     through a Pending verdict.
+  - **Identity-priority corollary (LiBai + HanXin ruling 2026-07-07; fixes
+    landing as #226 and #429):**
+    - Where a surface has **self-attestation** (the route payload declares
+      its own `surfaceKind`), that declaration is authoritative for
+      "what surface am I" decisions. Projections/directory may enrich
+      missing data; they may never rewrite the declared kind (a
+      parent-channel projection must not turn a reply-thread page into a
+      channel page — the #226 bell-gate leak).
+    - Where a surface has **no self-attestation** (e.g. foreground banner
+      over raw `message:new`, which carries no kind — the reason task #86
+      exists), the adjudicator (directory/context) decides by an EXPLICIT
+      priority table: canonical declarations beat alias declarations (a
+      ReplyThread canonical must not be displaced by a DM stream-alias —
+      the #429 banner misroute).
+    - In all cases: a projection never silently rewrites an established
+      identity.
 - Acceptance includes **cross-surface resolution equality** (artin's
   requirement): for a corpus of source message identities, every entrance's
   resolver output must be identical. Mobile owes the KMP half of that test.
