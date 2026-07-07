@@ -492,6 +492,7 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
     val valueStart = start + 1
     if (valueStart >= length) return null
     if (this[valueStart].isDigit()) {
+        if (!hasThreadTaskReferencePrefix(start)) return null
         var endExclusive = valueStart + 1
         while (endExclusive < length && this[endExclusive].isDigit()) endExclusive++
         if (endExclusive < length && this[endExclusive].isThreadTaskTrailingPart()) return null
@@ -521,6 +522,17 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
         return null
     }
     return start until nameEndExclusive
+}
+
+private fun String.hasThreadTaskReferencePrefix(hashIndex: Int): Boolean {
+    var index = hashIndex - 1
+    while (index >= 0 && this[index].isWhitespace()) index--
+    val wordEndExclusive = index + 1
+    while (index >= 0 && this[index].isLetter()) index--
+    val wordStart = index + 1
+    if (wordStart == wordEndExclusive) return false
+    if (!substring(wordStart, wordEndExclusive).equals("task", ignoreCase = true)) return false
+    return index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
 }
 
 private fun Char.isThreadMentionPart(): Boolean =

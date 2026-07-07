@@ -180,7 +180,7 @@ class SlockMarkdownTest {
         val body =
             """
             - 请看 #markdown专修
-            - 继续看 #markdown专修:7933cf78 和 #50
+            - 继续看 #markdown专修:7933cf78 和 task #50
             """.trimIndent()
         val isTagValid = validThreadMarkdownTags(knownChannels = setOf("markdown专修"))
         val rendered =
@@ -199,9 +199,9 @@ class SlockMarkdownTest {
             setOf("slock:5"),
             rendered[0].slockMarkdownClickableTags()
         )
-        assertEquals("继续看 #markdown专修:7933cf78 和 #50", rendered[1].text)
+        assertEquals("继续看 #markdown专修:7933cf78 和 task #50", rendered[1].text)
         assertEquals(
-            setOf("slock:23", "slock:46"),
+            setOf("slock:23", "slock:51"),
             rendered[1].slockMarkdownClickableTags()
         )
     }
@@ -314,7 +314,7 @@ class SlockMarkdownTest {
 
     @Test
     fun userMentionsRenderAsClickableTags() {
-        val body = "Ping @Android-App-Integrator in #markdown专修 for #15"
+        val body = "Ping @Android-App-Integrator in #markdown专修 for task #15"
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
                 content = body,
@@ -329,7 +329,7 @@ class SlockMarkdownTest {
                     )
             )
 
-        assertEquals(setOf("slock:5", "slock:32", "slock:48"), annotated.slockMarkdownClickableTags())
+        assertEquals(setOf("slock:5", "slock:32", "slock:53"), annotated.slockMarkdownClickableTags())
     }
 
     @Test
@@ -338,7 +338,9 @@ class SlockMarkdownTest {
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body)
 
         assertEquals("Ping @not-a-member in #not-a-channel for #15", annotated.text)
-        assertEquals(setOf("slock:41"), annotated.slockMarkdownClickableTags())
+        assertEquals(emptySet(), annotated.slockMarkdownClickableTags())
+        assertEquals(emptySet(), annotated.slockMarkdownClickableLinkTags())
+        assertEquals(emptyList(), annotated.slockMarkdownTagChromeAnnotations())
     }
 
     @Test
@@ -516,7 +518,7 @@ class SlockMarkdownTest {
 
     @Test
     fun markdownReferenceTagsDeclareChromeKindSeparatelyFromClicks() {
-        val body = "Ping @artin and @Android-App-Integrator in #markdown专修 #markdown专修:692d9e88 for #42"
+        val body = "Ping @artin and @Android-App-Integrator in #markdown专修 #markdown专修:692d9e88 for task #42"
         val validator =
             validThreadMarkdownTags(
                 knownChannels = setOf("markdown专修"),
@@ -534,7 +536,7 @@ class SlockMarkdownTest {
             )
 
         assertEquals(
-            setOf("slock:5", "slock:16", "slock:43", "slock:55", "slock:80"),
+            setOf("slock:5", "slock:16", "slock:43", "slock:55", "slock:85"),
             annotated.slockMarkdownClickableTags()
         )
         assertEquals(
@@ -554,8 +556,8 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun ordinaryMentionBeforeTaskReferenceKeepsCompactUnderlineAndVisibleText() {
-        val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
+    fun ordinaryMentionBeforeExplicitTaskReferenceKeepsCompactUnderlineAndVisibleText() {
+        val body = "@KMP-专家 task #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
         val validator =
             validThreadMarkdownTags(
                 knownMentions = setOf("KMP-专家")
@@ -572,15 +574,35 @@ class SlockMarkdownTest {
 
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
-        assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
+        assertEquals(setOf("slock:0", "slock:13"), annotated.slockMarkdownClickableTags())
         assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
     @Test
+    fun unresolvedMentionAndNakedNumberReferenceStayPlainText() {
+        val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        isTagValid = validThreadMarkdownTags(knownMentions = emptySet())
+                    )
+            )
+
+        assertEquals(body, annotated.text)
+        assertEquals(listOf("@KMP-专家"), body.threadInlineTagMatches().map { it.tag.label })
+        assertEquals(emptySet(), annotated.slockMarkdownClickableTags())
+        assertEquals(emptySet(), annotated.slockMarkdownClickableLinkTags())
+        assertEquals(emptyList(), annotated.slockMarkdownTagChromeAnnotations())
+    }
+
+    @Test
     fun task25ReferenceScenarioKeepsReactTokenColorsAndBoundaries() {
         val body =
-            "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25; " +
+            "Ping @artin in #raft-mobile and #raft-mobile:4752266f for task #25; " +
                 "ignore #a67dddad #3adea0d5 #34xxx and #missing-channel:4752266f."
 
         val plan =
@@ -856,7 +878,7 @@ class SlockMarkdownTest {
 
     @Test
     fun fullRendererTagLinksRemainAndCompactCodeUsesMarkdownCodeSpan() {
-        val body = "Ping @artin for #405 and `mimo`"
+        val body = "Ping @artin for task #405 and `mimo`"
         val annotator =
             slockMarkdownAnnotator(
                 content = body,
@@ -867,8 +889,8 @@ class SlockMarkdownTest {
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
 
         val annotated = buildSlockMarkdownParagraphAnnotatedString(body, annotator)
-        assertEquals("Ping @artin for #405 and ${inlineCodeSegment("mimo")}", annotated.text)
-        assertEquals(setOf("slock:5", "slock:16"), annotated.slockMarkdownClickableTags())
+        assertEquals("Ping @artin for task #405 and ${inlineCodeSegment("mimo")}", annotated.text)
+        assertEquals(setOf("slock:5", "slock:21"), annotated.slockMarkdownClickableTags())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
         assertEquals(listOf(inlineCodeSegment("mimo")), annotated.slockInlineCodeMarkerTextSegments())
     }
@@ -898,7 +920,7 @@ class SlockMarkdownTest {
 
     @Test
     fun inlineTagPlanFindsTokensForTextNodeRange() {
-        val body = "Ping @artin for #405 and #markdown专修:7933cf78"
+        val body = "Ping @artin for task #405 and #markdown专修:7933cf78"
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(
                 body,
@@ -910,8 +932,8 @@ class SlockMarkdownTest {
             )
 
         assertEquals(listOf("@artin"), plan.tagTokensInRange(0, 12).map { it.label })
-        assertEquals(listOf("#405"), plan.tagTokensInRange(12, 22).map { it.label })
-        assertEquals(listOf("#markdown专修:7933cf78"), plan.tagTokensInRange(22, body.length).map { it.label })
+        assertEquals(listOf("#405"), plan.tagTokensInRange(12, 27).map { it.label })
+        assertEquals(listOf("#markdown专修:7933cf78"), plan.tagTokensInRange(27, body.length).map { it.label })
         assertTrue(plan.tagTokensInRange(5, 8).isEmpty())
     }
 
@@ -952,7 +974,7 @@ class SlockMarkdownTest {
 
     @Test
     fun fullMarkdownRendererKeepsChannelThreadClickableTags() {
-        val body = "Final #markdown专修:9579b48a @artin #markdown专修 #37."
+        val body = "Final #markdown专修:9579b48a @artin #markdown专修 task #37."
         val isTagValid =
             validThreadMarkdownTags(
                 knownChannels = setOf("markdown专修"),
@@ -975,11 +997,11 @@ class SlockMarkdownTest {
             plan.tagTokens().map { it.label }
         )
         assertEquals(
-            setOf("slock:6", "slock:27", "slock:34", "slock:46"),
+            setOf("slock:6", "slock:27", "slock:34", "slock:51"),
             annotated.slockMarkdownClickableTags()
         )
         assertEquals(
-            setOf("slock:6", "slock:27", "slock:34", "slock:46"),
+            setOf("slock:6", "slock:27", "slock:34", "slock:51"),
             annotated.slockMarkdownClickableLinkTags()
         )
     }
@@ -1078,7 +1100,7 @@ class SlockMarkdownTest {
 
     @Test
     fun emptyChannelCallbackSuppressesAllChannelReferences() {
-        val body = "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25"
+        val body = "Ping @artin in #raft-mobile and #raft-mobile:4752266f for task #25"
 
         val plan =
             SlockMarkdownInlineTokenRegistry.plan(
@@ -1095,7 +1117,11 @@ class SlockMarkdownTest {
 
     @Test
     fun numericTaskReferencesDoNotMatchInsideShortIds() {
-        assertEquals(listOf("#3", "#382", "#383"), "Tasks #3 and #382-#383".threadInlineTagMatches().map { it.tag.label })
+        assertTrue("Tasks #3 and #382-#383".threadInlineTagMatches().isEmpty())
+        assertEquals(
+            listOf("#3", "#382", "#383"),
+            "Tasks task #3 and task #382 and task #383".threadInlineTagMatches().map { it.tag.label }
+        )
         assertTrue("#3adea0d5".threadInlineTagMatches().isEmpty())
         assertTrue("#34xxx".threadInlineTagMatches().isEmpty())
         assertTrue("#a67dddad".threadInlineTagMatches().isEmpty())
