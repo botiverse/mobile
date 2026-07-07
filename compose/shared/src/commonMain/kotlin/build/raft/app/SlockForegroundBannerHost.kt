@@ -545,7 +545,15 @@ private fun Message.resolveForegroundBannerConversation(
     directory: SharedConversationDirectoryState
 ): ThreadLaunchConversationIdentity? {
     val projection = resolveForegroundBannerProjection(directory)
-    if (projection != null) return projection.toThreadLaunchConversationIdentity(directory)
+    if (projection != null) {
+        return projection.toThreadLaunchConversationIdentity(directory)
+            // t430 context rescue: the projection resolved but its reply-thread parent shape
+            // is unresolvable (builder null). A server-provided conversationContext is a
+            // trusted typed identity (same qualification as the resolver's typed-parent
+            // rescue) and may still open the banner correctly; without one this stays null
+            // -> the conversation_missing suppress, byte-identical to pre-context servers.
+            ?: foregroundBannerContextConversationOrNull()
+    }
     foregroundBannerContextConversationOrNull()?.let { return it }
     val parentMessage = parentMessageId
     val parentChannel = channelId ?: threadChannelId
