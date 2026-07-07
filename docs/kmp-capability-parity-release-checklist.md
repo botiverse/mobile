@@ -6,19 +6,25 @@ Scope: release/build validation for any KMP migration that replaces or bypasses 
 
 ## Release/Build Validation Command
 
-For shared KMP changes that affect Android packaging, run the executable shared
+For shared KMP changes that affect Android packaging, run the direct shared
 release gate:
 
 ```bash
 cd compose
-./gradlew validateKmpSharedRelease
+./gradlew --no-daemon --console=plain \
+  :shared:generateCommonMainSlockDatabaseInterface \
+  :shared:testDebugUnitTest \
+  --tests build.raft.app.data.SqlDelightComposeLocalDataStoreTest \
+  --tests build.raft.app.SharedThreadStoreTest
+
+./gradlew --no-daemon --console=plain :androidApp:compileDebugKotlin
 ```
 
-This generates SQLDelight interfaces, runs focused Thread SQLDelight/write-through
+This generates SQLDelight interfaces, runs focused shared local-store / Thread
 tests, and compiles `:androidApp` against `:shared` as a direct project
-dependency.
+dependency. The old shared-release wrapper task/script has been removed.
 
-For OHOS SQLDelight/native-driver validation, run the script form with `--ohos`.
+For OHOS SQLDelight/native-driver validation, run the OHOS Gradle settings.
 The OHOS Gradle settings initialize the SQLDelight fork submodules and publish
 the required Stately, SQLiter, SQLDelight plugin/compiler/dialect/runtime/native
 driver artifacts to MavenLocal when they are missing, then compile shared OHOS
@@ -26,7 +32,9 @@ Kotlin:
 
 ```bash
 cd compose
-../scripts/validate_kmp_shared_release.sh --ohos
+./gradlew --no-daemon --console=plain \
+  -c settings.ohos.gradle.kts \
+  :shared:compileKotlinOhosArm64
 ```
 
 ## Required Checklist

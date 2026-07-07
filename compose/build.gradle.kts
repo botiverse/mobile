@@ -30,14 +30,3 @@ buildscript {
         classpath(BuildPlugin.kuikly)
     }
 }
-
-val slockRoot = layout.projectDirectory.dir("..")
-
-val validateKmpSharedRelease by tasks.registering(Exec::class) {
-    group = "verification"
-    description = "Validates compose/shared SQLDelight Thread cache and compiles the merged Android app."
-
-    commandLine(
-        slockRoot.file("scripts/validate_kmp_shared_release.sh").asFile.absolutePath,
-    )
-}

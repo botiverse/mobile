@@ -66,7 +66,7 @@ Canonical realtime flow:
    - OHOS: `SlockOhosRealtimeBridge` must follow the same single-owner rule.
 2. The owner decodes/maps the event once, updates `RealtimeCursorPolicy` once, joins any derived rooms once, and dispatches typed domain intents.
 3. Domain stores/repositories consume their own event slice:
-   - `SharedHomeShellStore` / `SharedHomeStore` updates Home, Activity, Inbox/Saved/Search projections and durable `ComposeLocalWriteThrough`.
+   - `SharedHomeShellStore` / `SharedHomeStore` updates Home, Activity, Inbox/Saved/Search projections and durable repository/local-store caches.
    - `SharedTasksStore` consumes `TaskCreated` / `TaskUpdated` / `TaskDeleted` and exposes task selectors.
    - `SharedSettingsStore` consumes machine/settings/session relevant invalidations.
    - `SharedMembersStore` / agent detail stores consume member, presence, agent, and machine projections.
