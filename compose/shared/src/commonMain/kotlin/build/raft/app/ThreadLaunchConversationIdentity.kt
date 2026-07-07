@@ -96,6 +96,25 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
     )
 }
 
+/**
+ * The reply-thread origin fallback carried by a directory projection. Shared by the
+ * foreground banner and the notification-tap open paths, which build identical
+ * `HomeMessageOpenRequest.originFallback` values from the same projection fields — the
+ * nullable receiver subsumes both (the notification caller passes a non-null projection).
+ */
+internal fun SharedConversationDirectoryProjection?.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
+    if (this?.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
+    return ThreadLaunchOriginFallback(
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
+        parentMessageId = parentId,
+        preview = subtitle?.takeIf { it.isNotBlank() },
+        senderId = null,
+        senderKind = null,
+        expected = true
+    )
+}
+
 internal fun ConversationSummary.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity =
     ThreadLaunchConversationIdentity(
         threadId = threadId,
