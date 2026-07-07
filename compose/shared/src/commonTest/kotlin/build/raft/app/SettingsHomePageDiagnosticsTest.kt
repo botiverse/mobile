@@ -12,6 +12,8 @@ import build.raft.app.data.DEVELOPER_ACTION_QUIVER_UPDATE_CHECK
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import build.raft.app.data.SERVER_ACTION_MEMBER_REMOVE
 import build.raft.app.data.SERVER_ACTION_MEMBER_ROLE
+import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
+import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SettingsServerAdminSnapshot
@@ -290,6 +292,65 @@ class SettingsHomePageDiagnosticsTest {
         assertTrue(environmentRow.enabled)
         assertTrue(environmentRow.detail.contains("Choose presets"))
         assertFalse(apiRows.any { it.key == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK })
+    }
+
+    @Test
+    fun openSourceLicensesPayloadUsesThreeLineLibraryRows() {
+        val payload =
+            ScreenLoadState.Content(
+                SharedSettingsOpenSourceLicensesSnapshot(
+                    sourceConfiguration = "debugRuntimeClasspath",
+                    items =
+                        listOf(
+                            SharedSettingsOpenSourceLicenseItem(
+                                id = "com.squareup.okio:okio:3.9.0",
+                                group = "com.squareup.okio",
+                                name = "okio",
+                                version = "3.9.0",
+                                displayName = "Okio",
+                                licenseName = "Apache-2.0",
+                                licenseUrl = "https://www.apache.org/licenses/LICENSE-2.0",
+                                sourceUrl = "https://github.com/square/okio"
+                            ),
+                            SharedSettingsOpenSourceLicenseItem(
+                                id = "org.example:source-only",
+                                group = "org.example",
+                                name = "source-only",
+                                displayName = "Source Only",
+                                licenseName = "",
+                                sourceUrl = "https://github.com/example/source-only"
+                            ),
+                            SharedSettingsOpenSourceLicenseItem(
+                                id = "local:missing-link",
+                                name = "missing-link",
+                                licenseName = "MIT"
+                            )
+                        )
+                )
+            ).toOpenSourceLicensesPayload()
+
+        val rows = payload.sections.single { it.title == "Libraries" }.rows.associateBy { it.title }
+
+        val okio = rows.getValue("Okio")
+        assertEquals("com.squareup.okio:okio:3.9.0", okio.detail)
+        assertEquals("Apache-2.0 / License link", okio.supportingDetail)
+        assertEquals("License", okio.status)
+        assertEquals("https://www.apache.org/licenses/LICENSE-2.0", okio.value)
+        assertTrue(okio.enabled)
+
+        val sourceOnly = rows.getValue("Source Only")
+        assertEquals("org.example:source-only", sourceOnly.detail)
+        assertEquals("License unknown / Source link", sourceOnly.supportingDetail)
+        assertEquals("Source", sourceOnly.status)
+        assertEquals("https://github.com/example/source-only", sourceOnly.value)
+        assertTrue(sourceOnly.enabled)
+
+        val missingLink = rows.getValue("missing-link")
+        assertEquals("missing-link", missingLink.detail)
+        assertEquals("MIT / No link", missingLink.supportingDetail)
+        assertEquals("Unavailable", missingLink.status)
+        assertEquals("", missingLink.value)
+        assertFalse(missingLink.enabled)
     }
 
     @Test
