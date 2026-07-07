@@ -1417,6 +1417,11 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
         inlineCodeText = SlockColor.TextBlack,
         linkText = SlockMarkdownLinkBlue,
         codeBackground = SlockMarkdownCodeBlockBackground,
+        // Canonical inline-code fill, confirmed against react's true source
+        // (MarkdownContent.tsx `bg-soft-signal/40`, --color-brutal-yellow
+        // #FFD440 → 0x66FFD440). OHOS/iOS draw this span background directly;
+        // Android's chrome suppresses it and draws its own fill — its drawer
+        // constant (0x66FFD84D) is the outlier being aligned to this value.
         inlineCodeBackground = SlockColor.BrandYellow.copy(alpha = 0.4f),
         dividerColor = SlockColor.BorderBlack,
         tableText = SlockColor.TextBlack,
