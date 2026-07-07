@@ -10269,11 +10269,10 @@ private fun ThreadMessagesList(
         taskStatusMenuMessageId?.let { messageId ->
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
-                SlockBaseMenuOverlay(
+                SlockTaskStatusMenuOverlay(
                     anchor = taskStatusMenuAnchor,
                     items = ThreadTaskStatusMenuItems,
                     selectedId = selectedStatus.key,
-                    selectedRowColor = SlockColor.BrandYellow,
                     onDismiss = { taskStatusMenuMessageId = null },
                     onSelect = { selectedId ->
                         taskStatusMenuMessageId = null

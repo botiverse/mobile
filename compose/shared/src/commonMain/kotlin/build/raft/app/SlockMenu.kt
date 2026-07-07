@@ -162,6 +162,44 @@ internal fun SlockBaseMenuOverlay(
     }
 }
 
+/**
+ * The task-status dropdown, aligned to react (#370/#112). This is the single
+ * source of truth for that menu's styling — the Tasks page and the thread
+ * conversation flow (#394) both go through here so the two can never drift back
+ * to the SlockBaseMenuOverlay defaults (uppercase labels, yellow selected row,
+ * leading check, estimated width) that read as the "old" menu. Callers pass only
+ * their own status items + selection/dispatch; the visual style lives here.
+ */
+@Composable
+internal fun SlockTaskStatusMenuOverlay(
+    anchor: Offset,
+    items: List<SlockBaseMenuItem>,
+    selectedId: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    SlockBaseMenuOverlay(
+        anchor = anchor,
+        items = items,
+        selectedId = selectedId,
+        selectedRowColor = SlockColor.SurfaceWhite,
+        uppercaseLabels = false,
+        // react's status menu renders at exactly its 140px min-width (the longest
+        // label "In Progress" is narrower); the char estimate overshoots to 172dp.
+        width = 140.dp,
+        rowHeight = 36.dp,
+        labelFontSize = 14.sp,
+        labelLineHeight = 18.sp,
+        labelLetterSpacing = 0.sp,
+        selectedIndicatorPlacement = SlockMenuSelectedIndicatorPlacement.Trailing,
+        horizontalOffset = 0.dp,
+        verticalOffset = 4.dp,
+        verticalPlacement = SlockFloatingVerticalPlacement.Below,
+        onDismiss = onDismiss,
+        onSelect = onSelect
+    )
+}
+
 private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: Boolean, minWidth: Dp): Dp {
     val widestLabelWidth =
         items.maxOfOrNull { item ->
