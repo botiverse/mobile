@@ -10591,22 +10591,29 @@ private fun AppShellServerGateContent(
     var createSlug by remember { mutableStateOf("") }
     var pendingServerId by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
+    var loadingServers by remember(session, skipInitialLoad) {
+        mutableStateOf(!authChooseServerShouldSkipInitialLoad(skipInitialLoad, session.servers.size))
+    }
+    var loadAttempt by remember { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val showPinnedSignOut = serverGateShouldPinSignOut(errorMessage)
 
-    LaunchedEffect(Unit) {
-        if (skipInitialLoad) {
+    LaunchedEffect(loadAttempt) {
+        if (authChooseServerShouldSkipInitialLoad(skipInitialLoad, latestSession.servers.size)) {
             authDataSource.logDiagnostics(
-                "auth_choose_server_load_result result=skipped reason=fresh_no_server_session cachedServers=${latestSession.servers.size}"
+                "auth_choose_server_load_result result=skipped reason=cached_servers_present cachedServers=${latestSession.servers.size}"
             )
+            loadingServers = false
             return@LaunchedEffect
         }
+        loadingServers = true
         when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
             is SharedAuthResult.Success -> {
                 authDataSource.logDiagnostics(
                     "auth_choose_server_load_result result=success serversCount=${result.data.servers.size} selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                 )
                 latestSession = result.data
+                errorMessage = null
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=${result.code}")
@@ -10621,6 +10628,7 @@ private fun AppShellServerGateContent(
                 errorMessage = "Could not load servers."
             }
         }
+        loadingServers = false
     }
     LaunchedEffect(latestSession.servers.size) {
         if (mode != "create") {
@@ -10649,7 +10657,7 @@ private fun AppShellServerGateContent(
             text =
                 when (mode) {
                     "create" -> "Create server"
-                    "empty" -> "Create your first server"
+                    "empty" -> if (loadingServers) "Checking servers" else "Create your first server"
                     else -> "Choose server"
                 },
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
@@ -10674,7 +10682,24 @@ private fun AppShellServerGateContent(
                     enabled = !loading
                 )
             }
-            if (mode == "create") {
+            if (loadingServers) {
+                Text(
+                    text = "Loading your servers...",
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    textAlign = TextAlign.Center
+                )
+            } else if (latestSession.servers.isEmpty() && errorMessage != null) {
+                AuthActionButton(
+                    text = "Retry",
+                    onClick = {
+                        errorMessage = null
+                        loadAttempt += 1
+                    },
+                    tone = AuthButtonTone.Pink,
+                    enabled = !loading
+                )
+            } else if (mode == "create") {
                 Text(
                     text = "Create the workspace you want to land in. You can rename it later in settings.",
                     style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
@@ -10799,6 +10824,12 @@ private fun AppShellServerGateContent(
     }
 
 }
+
+internal fun authChooseServerShouldSkipInitialLoad(
+    skipInitialLoad: Boolean,
+    cachedServersCount: Int
+): Boolean =
+    skipInitialLoad && cachedServersCount > 0
 
 private fun serverGateUnauthenticatedMessage(): String =
     "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
