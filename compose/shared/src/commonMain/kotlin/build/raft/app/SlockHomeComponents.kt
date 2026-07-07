@@ -45,7 +45,6 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGestures
 import com.tencent.kuikly.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
-import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
@@ -1235,33 +1234,44 @@ internal fun SlockStructuralHomeShell(
             }
             }
             if (serverSwitcherExpanded) {
-                HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
-                ServerSwitcherPanel(
-                    servers,
-                    currentServerId,
-                    pendingServerId,
-                    prefersChineseCommunity,
-                    labels,
-                    onServerSelected,
-                    onCreateServerClick,
-                    Modifier.padding(
-                        top = homeServerSwitcherPanelTopOffset(topSafeArea),
-                        start = SlockSpacing.Lg
+                // task #436: both home popovers ride the shared floating-overlay
+                // infrastructure (touch-guard barrier + tap-outside dismiss) instead
+                // of per-popover dismiss layers, so nothing beneath stays interactive.
+                SlockFloatingOverlayHost(onDismiss = onServerSwitcherDismiss) { _ ->
+                    ServerSwitcherPanel(
+                        servers,
+                        currentServerId,
+                        pendingServerId,
+                        prefersChineseCommunity,
+                        labels,
+                        onServerSelected,
+                        onCreateServerClick,
+                        Modifier
+                            .padding(
+                                top = homeServerSwitcherPanelTopOffset(topSafeArea),
+                                start = SlockSpacing.Lg
+                            )
+                            .slockFloatingContentClickTarget()
                     )
-                )
+                }
             }
             if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {
-                HomeNotificationPopover(
-                    visibleNotifications,
-                    onNotificationView,
-                    onNotificationDismiss,
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(
-                            top = homeNotificationPopoverTopOffset(topSafeArea),
-                            end = SlockSpacing.Md
+                SlockFloatingOverlayHost(onDismiss = { notificationCenterExpanded = false }) { _ ->
+                    Box(Modifier.fillMaxSize()) {
+                        HomeNotificationPopover(
+                            visibleNotifications,
+                            onNotificationView,
+                            onNotificationDismiss,
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(
+                                    top = homeNotificationPopoverTopOffset(topSafeArea),
+                                    end = SlockSpacing.Md
+                                )
+                                .slockFloatingContentClickTarget()
                         )
-                )
+                    }
+                }
             }
             activeSortMenu?.let { section ->
                 SlockBaseMenuOverlay(
@@ -1898,34 +1908,6 @@ internal fun pinnedItemsForSidebar(
             )
     }
 }
-@Composable
-private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
-    val currentOnDismiss by rememberUpdatedState(onDismiss)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = 0.01f))
-            .pointerInput(Unit) {
-                forEachGesture {
-                    awaitPointerEventScope {
-                        var moved = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            event.changes.forEach { change ->
-                                moved = moved || change.positionChanged()
-                                change.consume()
-                            }
-                            if (event.changes.all { !it.pressed }) break
-                        }
-                        if (!moved) {
-                            currentOnDismiss()
-                        }
-                    }
-                }
-            }
-    )
-}
-
 @Composable
 private fun HomeTitlebar(
     serverName: String,
