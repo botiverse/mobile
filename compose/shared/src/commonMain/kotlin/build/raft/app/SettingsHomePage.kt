@@ -211,7 +211,6 @@ import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SharedCreateAgentCoordinator
 import build.raft.app.data.SharedActivityIntent
-import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailStore
@@ -2146,8 +2145,25 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
-    val latestHomeState by rememberUpdatedState(homeState)
-    val latestHomeActivityState by rememberUpdatedState(homeActivityState)
+    val homeConversationDirectoryFlow =
+        remember(homeStore, readyServerId) {
+            val serverId = readyServerId?.takeIf { it.isNotBlank() }
+            if (serverId == null) {
+                MutableStateFlow(SharedConversationDirectoryState())
+            } else {
+                homeStore.observeServer(ServerId(serverId))
+            }
+        }
+    val homeConversationDirectory by homeConversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val appShellConversationDirectory =
+        remember(homeConversationDirectory, homeActivityState.snapshot) {
+            val activityDirectory =
+                homeActivityState.snapshot?.toSharedConversationDirectoryState()
+                    ?: SharedConversationDirectoryState()
+            listOf(homeConversationDirectory, activityDirectory)
+                .mergedSharedConversationDirectoryState()
+        }
+    val latestAppShellConversationDirectory by rememberUpdatedState(appShellConversationDirectory)
     val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
     LaunchedEffect(sharedStores.serverMembersStore, readyServerId, foregroundMessageBannersEnabled) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -2512,6 +2528,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         notificationThreadLaunchRequest?.messageId,
         notificationThreadLaunchRequest?.parentChannelId,
         homeState.content,
+        appShellConversationDirectory,
         threadTimeContext,
         myMessageAlignment
     ) {
@@ -2570,8 +2587,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         val openRequest =
-            appShellConversationDirectory(homeState, homeActivityState)
-                .notificationThreadLaunchRequest(launchRequest)
+            appShellConversationDirectory.notificationThreadLaunchRequest(launchRequest)
         if (openRequest == null) {
             consumedNotificationLaunchKey = launchKey
             bridge.logWarn(
@@ -3115,11 +3131,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                     if (event is MessageNew) {
-                        val directory =
-                            appShellConversationDirectory(
-                                homeState = latestHomeState,
-                                activityState = latestHomeActivityState
-                            )
+                        val directory = latestAppShellConversationDirectory
                         if (latestForegroundMessageBannersEnabled) {
                             val projection =
                                 slockForegroundMessageBannerProjectionResult(
@@ -3178,8 +3190,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
 
     LaunchedEffect(
         pendingForegroundMessage,
-        homeState.content,
-        homeActivityState.snapshot,
+        appShellConversationDirectory,
         foregroundMessageBannersEnabled
     ) {
         val pending = pendingForegroundMessage ?: return@LaunchedEffect
@@ -3200,7 +3211,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         selectedHomeDestination = selectedHomeDestination,
                         selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId
                     ),
-                conversationDirectory = appShellConversationDirectory(homeState, homeActivityState)
+                conversationDirectory = appShellConversationDirectory
         )
         bridge.log(projection.appShellForegroundBannerProjectionLog(pending.message, source = "pending_retry"))
         when (
@@ -14831,23 +14842,6 @@ private fun SlockForegroundMessageBannerProjectionResult.appShellForegroundBanne
         "resolvedKind=${resolvedKind?.name ?: "_"} " +
         "threadContext=${!banner?.threadContext.isNullOrBlank()} " +
         "suppressReason=${suppressReason.orEmpty()}"
-
-private fun appShellConversationDirectory(
-    homeState: SharedHomeState,
-    activityState: SharedActivityState
-): SharedConversationDirectoryState {
-    val homeDirectory =
-        (homeState.content as? SharedHomeContentState.Content)
-            ?.snapshot
-            ?.toSharedConversationDirectoryState()
-            ?: SharedConversationDirectoryState()
-    val activityDirectory =
-        activityState
-            .snapshot
-            ?.toSharedConversationDirectoryState()
-            ?: SharedConversationDirectoryState()
-    return listOf(homeDirectory, activityDirectory).mergedSharedConversationDirectoryState()
-}
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest
