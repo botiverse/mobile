@@ -310,9 +310,9 @@ class SharedActivityStore internal constructor(
                             .reconcileLocallyDoneItems()
                     val items =
                         if (append) {
-                            (current.items + pageItems.items).distinctBy { it.key }
+                            (current.items + pageItems.items).dedupeActivityItems()
                         } else {
-                            pageItems.items
+                            pageItems.items.dedupeActivityItems()
                         }
                     val nextState =
                         current.copy(
@@ -794,6 +794,13 @@ private data class ActivityReconcileResult(
     val suppressedDoneUnreadCount: Int = 0,
     val removedDoneRows: Int = 0
 )
+
+internal fun List<InboxItem>.dedupeActivityItems(): List<InboxItem> =
+    if (size <= 1) {
+        this
+    } else {
+        distinctBy { it.key }
+    }
 
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
