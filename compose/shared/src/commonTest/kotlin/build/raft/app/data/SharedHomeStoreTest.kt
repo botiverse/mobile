@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.SlockSidebarSortMode
 import build.raft.app.homeLazyItemCount
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -83,7 +84,7 @@ class SharedHomeStoreTest {
         assertTrue(content is SharedHomeContentState.Content)
         assertEquals("server-new", content.snapshot.server.id.value)
         assertContains(refreshedLogs, "home_runtime_integrations_updated")
-        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_receive intent=Start") })
+        assertTrue(refreshedLogs.any { it.startsWith("home_dispatch_receive intent=hydrate:start") })
         assertEquals(emptyList(), originalLogs)
         storeScope.cancel()
     }
@@ -1496,7 +1497,7 @@ class SharedHomeStoreTest {
             1,
             logs.count {
                 it.contains("home_load_debounce") &&
-                    it.contains("intent=Start") &&
+                    it.contains("intent=hydrate:start") &&
                     it.contains("reason=in_flight_load")
             }
         )
@@ -1541,7 +1542,7 @@ class SharedHomeStoreTest {
             1,
             logs.count {
                 it.contains("home_load_debounce") &&
-                    it.contains("intent=Start") &&
+                    it.contains("intent=hydrate:start") &&
                     it.contains("reason=in_flight_load")
             }
         )
@@ -1594,7 +1595,7 @@ class SharedHomeStoreTest {
             0,
             logs.count {
                 it.contains("home_load_debounce") &&
-                    it.contains("intent=ForegroundRefresh")
+                    it.contains("intent=hydrate:foreground")
             }
         )
 
@@ -2629,6 +2630,9 @@ class SharedHomeStoreTest {
             name = name
         )
 
+    private fun supportedActivityPreference(): ChannelActivityNotificationPreference =
+        ChannelActivityNotificationPreference(activityMuteSupported = true)
+
     private fun directMessage(
         id: String,
         name: String,
@@ -3167,7 +3171,7 @@ class SharedHomeStoreTest {
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
-                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
                         )
                     ),
                 scope = scope,
@@ -3205,7 +3209,7 @@ class SharedHomeStoreTest {
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
-                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
                         )
                     ),
                 scope = scope,
@@ -3236,8 +3240,8 @@ class SharedHomeStoreTest {
                         sampleHome(ServerId("server-1")).copy(
                             channels =
                                 listOf(
-                                    channel("channel-a", "alpha").copy(activityMuteSupported = true),
-                                    channel("channel-b", "bravo").copy(activityMuteSupported = true)
+                                    channel("channel-a", "alpha").copy(activityNotificationPreference = supportedActivityPreference()),
+                                    channel("channel-b", "bravo").copy(activityNotificationPreference = supportedActivityPreference())
                                 )
                         )
                     ),
@@ -3295,7 +3299,7 @@ class SharedHomeStoreTest {
                 dataSource =
                     sourceWithSnapshot(
                         sampleHome(ServerId("server-1")).copy(
-                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
                         )
                     ),
                 scope = scope,

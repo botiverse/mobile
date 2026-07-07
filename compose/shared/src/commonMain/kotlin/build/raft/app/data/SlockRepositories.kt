@@ -335,10 +335,30 @@ data class ChannelUpdateResult(val channelId: ChannelId)
 
 data class ChannelActivityMuteSettings(
     val channelId: ChannelId,
-    val activityMuted: Boolean,
-    val muteFromSeq: Long?,
+    val activityNotificationPreference: ChannelActivityNotificationPreference
+) {
+    constructor(
+        channelId: ChannelId,
+        activityMuted: Boolean,
+        muteFromSeq: Long?,
+        activityMuteSupported: Boolean
+    ) : this(
+        channelId = channelId,
+        activityNotificationPreference =
+            ChannelActivityNotificationPreference(
+                activityMuted = activityMuted,
+                muteFromSeq = muteFromSeq,
+                activityMuteSupported = activityMuteSupported
+            )
+    )
+
+    val activityMuted: Boolean
+        get() = activityNotificationPreference.activityMuted
+    val muteFromSeq: Long?
+        get() = activityNotificationPreference.muteFromSeq
     val activityMuteSupported: Boolean
-)
+        get() = activityNotificationPreference.activityMuteSupported
+}
 
 interface ReadReceiptRepository {
     suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot>

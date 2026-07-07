@@ -120,7 +120,7 @@ class SharedHomeShellStore(
         )
         when (intent) {
             SharedHomeShellIntent.Start -> {
-                diagnosticsLogger("home_shell_forward_home intent=Start source=shell_start")
+                diagnosticsLogger("home_shell_forward_home intent=hydrate:start source=shell_start")
                 dispatchHome(SharedHomeIntent.Start)
             }
             SharedHomeShellIntent.ForegroundRefresh -> refreshVisibleHomeDestination()
@@ -253,29 +253,29 @@ private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): Str
 
 private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): String =
     when (this) {
-        SharedHomeIntent.Start -> "Start"
-        SharedHomeIntent.Refresh -> "Refresh"
-        SharedHomeIntent.ForegroundRefresh -> "ForegroundRefresh"
-        SharedHomeIntent.ToggleServerSwitcher -> "ToggleServerSwitcher"
-        SharedHomeIntent.DismissServerSwitcher -> "DismissServerSwitcher"
-        is SharedHomeIntent.SelectConversation -> "SelectConversation:$threadId"
-        is SharedHomeIntent.SelectTopAction -> "SelectTopAction:$action"
-        is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
-        is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId"
-        SharedHomeIntent.RefreshNotifications -> "RefreshNotifications"
-        is SharedHomeIntent.UpsertNotification -> "UpsertNotification:${notification.id}"
-        is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
-        is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
-        is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
-        is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
-        is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
-        is SharedHomeIntent.SetChannelSortMode -> "SetChannelSortMode:$mode"
-        is SharedHomeIntent.ReorderSidebar -> "ReorderSidebar:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
-        is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
-        is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
-        is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
-        is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
-        is SharedHomeIntent.SetChannelActivityMuted -> "SetChannelActivityMuted:$conversationId:$muted"
+        SharedHomeIntent.Start -> "hydrate:start"
+        SharedHomeIntent.Refresh -> "hydrate:refresh"
+        SharedHomeIntent.ForegroundRefresh -> "hydrate:foreground"
+        SharedHomeIntent.ToggleServerSwitcher -> "patch:server-switcher"
+        SharedHomeIntent.DismissServerSwitcher -> "patch:server-switcher-dismiss"
+        is SharedHomeIntent.SelectConversation -> "patch:select:$threadId"
+        is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
+        is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
+        is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:$serverId"
+        SharedHomeIntent.RefreshNotifications -> "patch:notifications-refresh"
+        is SharedHomeIntent.UpsertNotification -> "patch:notification:${notification.id}"
+        is SharedHomeIntent.DismissNotification -> "patch:notification-dismiss:$id"
+        is SharedHomeIntent.ChannelCreated -> "ensure:${channel.threadId.value}"
+        is SharedHomeIntent.SetSurfaceVisible -> "patch:surface-visible:$visible"
+        is SharedHomeIntent.TogglePinned -> "patch:pin:$conversationId"
+        is SharedHomeIntent.SetPinnedSortMode -> "patch:pinned-sort:$mode"
+        is SharedHomeIntent.SetChannelSortMode -> "patch:channel-sort:$mode"
+        is SharedHomeIntent.ReorderSidebar -> "patch:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
+        is SharedHomeIntent.MarkRead -> "patch:read:$conversationId"
+        is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
+        is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"
+        is SharedHomeIntent.ArchiveChannel -> "remove:archive:$conversationId"
+        is SharedHomeIntent.SetChannelActivityMuted -> "mute:$conversationId:$muted"
     }
 
 private fun SharedHomeState.toSharedHomeShellHomeSummary(): String =

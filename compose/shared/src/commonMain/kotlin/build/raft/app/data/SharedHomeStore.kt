@@ -1246,9 +1246,11 @@ internal class SharedHomeStore(
             it.withChannelActivityMute(
                 ChannelActivityMuteSettings(
                     channelId = channelId,
-                    activityMuted = muted,
-                    muteFromSeq = if (muted) target.muteFromSeq else null,
-                    activityMuteSupported = target.activityMuteSupported
+                    activityNotificationPreference =
+                        target.activityNotificationPreference.copy(
+                            activityMuted = muted,
+                            muteFromSeq = if (muted) target.muteFromSeq else null
+                        )
                 )
             )
         }
@@ -1492,31 +1494,51 @@ private data class ChannelActivityMuteRequest(
     val muted: Boolean
 )
 
+private enum class SharedHomeChannelFoldEvent(val wireName: String) {
+    Hydrate("hydrate"),
+    HydrateDirectMessage("hydrate:dm"),
+    Ensure("ensure"),
+    Patch("patch"),
+    Remove("remove"),
+    TouchActivity("touch-activity"),
+    Mute("mute")
+}
+
 private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
     when (this) {
-        SharedHomeIntent.Start -> "Start"
-        SharedHomeIntent.Refresh -> "Refresh"
-        SharedHomeIntent.ForegroundRefresh -> "ForegroundRefresh"
-        SharedHomeIntent.ToggleServerSwitcher -> "ToggleServerSwitcher"
-        SharedHomeIntent.DismissServerSwitcher -> "DismissServerSwitcher"
-        is SharedHomeIntent.SelectConversation -> "SelectConversation:$threadId"
-        is SharedHomeIntent.SelectTopAction -> "SelectTopAction:$action"
-        is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
-        is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
-        SharedHomeIntent.RefreshNotifications -> "RefreshNotifications"
-        is SharedHomeIntent.UpsertNotification -> "UpsertNotification:${notification.id}"
-        is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
-        is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
-        is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
-        is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
-        is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
-        is SharedHomeIntent.SetChannelSortMode -> "SetChannelSortMode:$mode"
-        is SharedHomeIntent.ReorderSidebar -> "ReorderSidebar:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
-        is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
-        is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
-        is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
-        is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
-        is SharedHomeIntent.SetChannelActivityMuted -> "SetChannelActivityMuted:$conversationId:$muted"
+        SharedHomeIntent.Start -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:start"
+        SharedHomeIntent.Refresh -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:refresh"
+        SharedHomeIntent.ForegroundRefresh -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:foreground"
+        SharedHomeIntent.ToggleServerSwitcher -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-switcher"
+        SharedHomeIntent.DismissServerSwitcher -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-switcher-dismiss"
+        is SharedHomeIntent.SelectConversation -> "${SharedHomeChannelFoldEvent.Patch.wireName}:select:$threadId"
+        is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
+        is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
+        is SharedHomeIntent.ApplyRealtimeEvent -> "${event.toSharedHomeChannelFoldEvent().wireName}:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+        SharedHomeIntent.RefreshNotifications -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notifications-refresh"
+        is SharedHomeIntent.UpsertNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification:${notification.id}"
+        is SharedHomeIntent.DismissNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification-dismiss:$id"
+        is SharedHomeIntent.ChannelCreated -> "${SharedHomeChannelFoldEvent.Ensure.wireName}:${channel.threadId.value}"
+        is SharedHomeIntent.SetSurfaceVisible -> "${SharedHomeChannelFoldEvent.Patch.wireName}:surface-visible:$visible"
+        is SharedHomeIntent.TogglePinned -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pin:$conversationId"
+        is SharedHomeIntent.SetPinnedSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pinned-sort:$mode"
+        is SharedHomeIntent.SetChannelSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-sort:$mode"
+        is SharedHomeIntent.ReorderSidebar -> "${SharedHomeChannelFoldEvent.Patch.wireName}:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
+        is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
+        is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
+        is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
+        is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
+        is SharedHomeIntent.SetChannelActivityMuted -> "${SharedHomeChannelFoldEvent.Mute.wireName}:$conversationId:$muted"
+    }
+
+private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
+    when (this) {
+        is DirectMessageCreated -> SharedHomeChannelFoldEvent.HydrateDirectMessage
+        is MessageNew,
+        is MessageUpdated,
+        is SyncResumeResponse -> SharedHomeChannelFoldEvent.TouchActivity
+        is RealtimeRefreshRequired -> SharedHomeChannelFoldEvent.Hydrate
+        else -> SharedHomeChannelFoldEvent.Patch
     }
 
 private fun RealtimeEvent.toSharedHomeRealtimeEventDiagnosticsLabel(): String =
@@ -1812,9 +1834,7 @@ private fun HomeConversationRow.messageStreamChannelId(): ChannelId =
 private fun HomeConversationRow.toChannelActivityMuteSettings(channelId: ChannelId): ChannelActivityMuteSettings =
     ChannelActivityMuteSettings(
         channelId = channelId,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported
+        activityNotificationPreference = activityNotificationPreference
     )
 
 private fun HomeSnapshot.withChannelActivityMute(settings: ChannelActivityMuteSettings): HomeSnapshot =
@@ -1822,9 +1842,7 @@ private fun HomeSnapshot.withChannelActivityMute(settings: ChannelActivityMuteSe
         channels = channels.map { channel ->
             if (channel.messageStreamChannelId() == settings.channelId) {
                 channel.copy(
-                    activityMuted = settings.activityMuted,
-                    muteFromSeq = settings.muteFromSeq,
-                    activityMuteSupported = settings.activityMuteSupported
+                    activityNotificationPreference = settings.activityNotificationPreference
                 )
             } else {
                 channel
@@ -1833,9 +1851,7 @@ private fun HomeSnapshot.withChannelActivityMute(settings: ChannelActivityMuteSe
         directMessages = directMessages.map { directMessage ->
             if (directMessage.messageStreamChannelId() == settings.channelId) {
                 directMessage.copy(
-                    activityMuted = settings.activityMuted,
-                    muteFromSeq = settings.muteFromSeq,
-                    activityMuteSupported = settings.activityMuteSupported
+                    activityNotificationPreference = settings.activityNotificationPreference
                 )
             } else {
                 directMessage

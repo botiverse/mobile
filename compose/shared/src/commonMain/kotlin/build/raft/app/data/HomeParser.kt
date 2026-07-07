@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -227,9 +228,12 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerServerName = jointPeerServerName?.takeIf { it.isNotBlank() },
         jointPeerServerSlug = jointPeerServerSlug?.takeIf { it.isNotBlank() },
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported,
+        activityNotificationPreference =
+            ChannelActivityNotificationPreference(
+                activityMuted = activityMuted,
+                muteFromSeq = muteFromSeq,
+                activityMuteSupported = activityMuteSupported
+            ),
         permissions = ConversationPermissions(
             canSend = joined,
             canAttach = joined,
@@ -257,9 +261,12 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt,
-        activityMuted = activityMuted,
-        muteFromSeq = muteFromSeq,
-        activityMuteSupported = activityMuteSupported
+        activityNotificationPreference =
+            ChannelActivityNotificationPreference(
+                activityMuted = activityMuted,
+                muteFromSeq = muteFromSeq,
+                activityMuteSupported = activityMuteSupported
+            )
     )
 }
 

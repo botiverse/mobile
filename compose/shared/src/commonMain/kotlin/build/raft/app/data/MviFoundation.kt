@@ -117,8 +117,15 @@ class MviActionScope<StoreIntent, UiEvent>(
 data class MviTransition<Intent>(
     val intent: Intent,
     val emitted: Boolean,
-    val reason: String? = null
+    val reason: String? = null,
+    val outcome: MviTransitionOutcome = if (emitted) MviTransitionOutcome.Applied else MviTransitionOutcome.Noop
 )
+
+enum class MviTransitionOutcome(val wireValue: String) {
+    Applied("applied"),
+    Noop("noop"),
+    Conflict("conflict")
+}
 
 class MviEffectEmitter<Effect>(
     extraBufferCapacity: Int = 64

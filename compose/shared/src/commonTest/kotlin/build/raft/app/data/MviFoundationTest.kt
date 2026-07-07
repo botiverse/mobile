@@ -31,6 +31,8 @@ class MviFoundationTest {
             MviTransition<CounterIntent>(intent = CounterIntent.Increment, emitted = true),
             transitions.single()
         )
+        assertEquals(MviTransitionOutcome.Applied, transitions.single().outcome)
+        assertEquals("applied", transitions.single().outcome.wireValue)
         scope.cancel()
     }
 
@@ -48,6 +50,9 @@ class MviFoundationTest {
             MviTransition<CounterIntent>(intent = CounterIntent.Noop, emitted = false, reason = "unchanged"),
             transitions.single()
         )
+        assertEquals(MviTransitionOutcome.Noop, transitions.single().outcome)
+        assertEquals("noop", transitions.single().outcome.wireValue)
+        assertEquals("conflict", MviTransitionOutcome.Conflict.wireValue)
         scope.cancel()
     }
 
