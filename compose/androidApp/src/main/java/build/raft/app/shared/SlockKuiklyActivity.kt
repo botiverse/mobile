@@ -41,6 +41,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
@@ -104,6 +105,8 @@ import com.tencent.kuikly.core.render.android.adapter.IKRLogAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRRouterAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRUncaughtExceptionHandlerAdapter
 import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
+import com.tencent.kuikly.core.render.android.context.KuiklyRenderCoreExecuteModeBase
+import com.tencent.kuikly.core.render.android.exception.ErrorReason
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegator
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegatorDelegate
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
@@ -309,6 +312,98 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         Log.i("SlockKuiklyActivity", "app_shell_close_to_background")
         moveTaskToBack(true)
         return true
+    }
+
+    // Controlled host error surface (task #230, kuikly-host-alignment-audit
+    // row 81): fatal render failures log diagnostics and show a recoverable
+    // native fallback instead of leaving a dead view or leaking a raw stack.
+    private var hostErrorSurfaceShown = false
+
+    override fun onUnhandledException(
+        throwable: Throwable,
+        errorReason: ErrorReason,
+        executeMode: KuiklyRenderCoreExecuteModeBase
+    ) {
+        super.onUnhandledException(throwable, errorReason, executeMode)
+        SlockAndroidAppDiagnostics.reportCaughtException(
+            name = "KuiklyUnhandledException",
+            throwable = throwable,
+            extraData =
+                mapOf(
+                    "source" to "host_delegate",
+                    "reason" to errorReason.name,
+                    "executeMode" to executeMode.mode.toString()
+                )
+        )
+        runOnUiThread { showHostErrorSurface(errorReason.name) }
+    }
+
+    override fun onPageLoadComplete(
+        isSucceed: Boolean,
+        errorReason: ErrorReason?,
+        executeMode: KuiklyRenderCoreExecuteModeBase
+    ) {
+        super.onPageLoadComplete(isSucceed, errorReason, executeMode)
+        if (isSucceed) return
+        SlockDiagnosticsLogger.e(
+            "SlockKuiklyHost",
+            "page_load_failed reason=${errorReason?.name ?: "unknown"} mode=${executeMode.mode}"
+        )
+        runOnUiThread { showHostErrorSurface(errorReason?.name ?: "PAGE_LOAD_FAILED") }
+    }
+
+    private fun showHostErrorSurface(reasonCode: String) {
+        if (hostErrorSurfaceShown || isFinishing || isDestroyed) return
+        val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
+        hostErrorSurfaceShown = true
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+        val surface =
+            android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                setBackgroundColor(Color.WHITE)
+                setPadding(dp(32), dp(32), dp(32), dp(32))
+                isClickable = true
+            }
+        surface.addView(
+            android.widget.TextView(this).apply {
+                text = "Something went wrong"
+                textSize = 20f
+                setTextColor(Color.BLACK)
+                typeface = Typeface.DEFAULT_BOLD
+            }
+        )
+        surface.addView(
+            android.widget.TextView(this).apply {
+                text = "This page hit a rendering problem. A report was recorded. ($reasonCode)"
+                textSize = 14f
+                setTextColor(0xFF737373.toInt())
+                setPadding(0, dp(8), 0, dp(24))
+                gravity = android.view.Gravity.CENTER
+            }
+        )
+        surface.addView(
+            android.widget.Button(this).apply {
+                text = "Reload"
+                setOnClickListener { recreate() }
+            }
+        )
+        if (!isTaskRoot) {
+            surface.addView(
+                android.widget.Button(this).apply {
+                    text = "Close"
+                    setOnClickListener { finish() }
+                }
+            )
+        }
+        container.addView(
+            surface,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
     }
 
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
@@ -672,14 +767,68 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         return runCatching { resources.getInteger(resourceId) }.getOrNull()
     }
 
+    // Ported from the upstream Kuikly demo host (KuiklyRenderActivity
+    // setupImmersiveMode, kuikly-host-alignment-audit rows 43/78): proper
+    // edge-to-edge via setDecorFitsSystemWindows(false) on API 30+ instead of
+    // deprecated layout flags alone, plus cutout, bar-contrast, and light
+    // status/navigation appearance handling. Slock stays light-on-white, so
+    // both bars keep the light appearance.
     private fun setupImmersiveMode() {
-        window?.apply {
-            addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            statusBarColor = Color.TRANSPARENT
-            decorView.systemUiVisibility =
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        val window = window ?: return
+        applyDecorFitsSystemWindows(window)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor =
+                if (Build.VERSION.SDK_INT >= 26) Color.TRANSPARENT else 0x66000000.toInt()
+        if (Build.VERSION.SDK_INT >= 28) {
+            val cutoutMode =
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    } else {
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+            val attrs = window.attributes
+            if (attrs.layoutInDisplayCutoutMode != cutoutMode) {
+                attrs.layoutInDisplayCutoutMode = cutoutMode
+                window.attributes = attrs
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+        applyLightSystemBarsAppearance(window)
+    }
+
+    private fun applyDecorFitsSystemWindows(window: Window) {
+        if (Build.VERSION.SDK_INT < 35) {
+            val flags =
+                    if (Build.VERSION.SDK_INT >= 30) {
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    } else {
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    }
+            window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or flags
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+        }
+    }
+
+    private fun applyLightSystemBarsAppearance(window: Window) {
+        window.decorView.systemUiVisibility =
+                window.decorView.systemUiVisibility or
+                        View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                        (if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.setSystemBarsAppearance(
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            )
         }
     }
 

@@ -36,7 +36,7 @@
 
 16. **Fork 产物远程化（`fork-artifact-github-packages-publishing-spec.md`）→ #native task #205**：OHOS render 仍 `file:./libs/*.har`、SQLDelight 栈仍本地自动发布；CI 侧 mavenLocal 缓存（07-04 已由 CC-Wow2 落地）解决了速度，但可复现的远程发布 + `publish-fork-artifacts.yml` 仍未做。
 17. **OHOS → #native task #206**：07-05 完结关闭。已落：HDS tabbar 官方材质（#53 HdsTabs systemMaterialEffect）、widget/forms、前台保活开关 #113。两个残留并入 task #207：composer 换行菜单 Phase 2（OHOS render fork 未接，prop 目前 OHOS no-op）、SQLDelight smoke DB 双驱动（现仅 androidUnitTest JVM 驱动有测试，native 驱动 smoke 未建）。
-18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；perf marker 缺口（modal/cache/icon-batch）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
+18. **性能/工具**：per-surface KuiklyProfiler 审计未跑（spec 已定）；~~perf marker 缺口（modal/cache/icon-batch）~~ 07-07 按 artin 决定不补反删（日志已过宽，#229 按不做关闭，tooling 文档已标 Retired）；#137 OHOS 设备侧证据、#139 代码审计；release lane 缺 `--sign`/zipalign、R8 关闭无 mapping。
 19. **未建产品面（owner 决策）→ #native task #208**：Owner onboarding、Release Notes 入口、Announcements modal、Reminders 入口；Auth 补页（邮箱验证/重置密码/邀请接受/社交回调，MVP-optional）；WebView billing 契约（等 server 签认）。
 20. **杂项 → #native task #207**：Quiver diagnostics follow-up（OHOS user-context、feedback/upload 拆分、Android 稳定 uniqueId）；Kuikly host 窗口/adapter 对齐；`ConversationSummary` Phase 3/4 收尾；markdown iOS/OHOS inline-code 对齐 + Mermaid/outline/copy-code；android realtime SSOT 清理尾巴。
 
@@ -61,7 +61,7 @@
 | im-message-lifecycle-state-machine-2026-07-03 | `SharedMessageLifecycleStore` 未建（IM 集群基石） |
 | im-shortcomings-kmp-analysis-2026-07-02 | 7 项优先级由上述文档承载 |
 | kmp-settings-action-wiring-audit | #38/#39 slices 待复核后收尾 |
-| kuikly-host-alignment-audit | 窗口处理/adapter 决策/host error surface |
+| kuikly-host-alignment-audit | ~~窗口处理/host error surface~~ 07-07 随 task #230 落地（沉浸式迁移+错误兜底页）；余 adapter 决策项 |
 | kuikly-profiler-surface-audit-spec | per-surface 审计报告未产出 |
 | kuikly-route-ui-layer-audit-matrix | #137 设备证据、#139 代码审计 |
 | mobile-file-preview-mp4-text-spec-2026-06-24（+06-26-update） | 文本/文档服务端契约（worktree B/C/F） |
@@ -80,7 +80,7 @@ react-kmp-{activity, auth, home, members, native, saved, search, settings, tasks
 
 ### CURRENT — 现行有效的契约/规范/runbook（约 24）
 
-android-emulator-setup、android-quiver-release-practices-2026-07-02、android-realtime-code-path-2026-06-27（含 SSOT 清理尾巴）、android-release-lane-pi-perfprofiler（含 sign/R8 backlog）、commit-signoff-policy、common-sqldelight-schema-review、kmp-capability-parity-release-checklist、kmp-network-threading-model、kuikly-bridge-module-contract、kuikly-overlay-coordinate-contract、kuikly-route-realtime-performance-checklist、kuikly-performance-attribution-tooling（含 marker 缺口）、mobile-device-automation、mobile-native-push-notification-analysis-2026-06-25、new-agent-landing、ohos-kmp-commonmain-compatibility、ohos-screenshot-capture、raft-ui-kmp-component-library-audit-2026-07-03、raft-ui-kmp-product-gap-plan-2026-07-03、raft-ui-kmp-visual-similarity-priority-2026-07-03、react-kmp-realtime-alignment-2026-06-26、realtime-event-contract-2026-06-23、shared-mvi-foundation、slock-app-state-first-principles、visual-testing-android-provider。
+android-emulator-setup、android-quiver-release-practices-2026-07-02、android-realtime-code-path-2026-06-27（含 SSOT 清理尾巴）、android-release-lane-pi-perfprofiler（含 sign/R8 backlog）、commit-signoff-policy、common-sqldelight-schema-review、kmp-capability-parity-release-checklist、kmp-network-threading-model、kuikly-bridge-module-contract、kuikly-overlay-coordinate-contract、kuikly-route-realtime-performance-checklist、kuikly-performance-attribution-tooling（marker 缺口已按 #229 标 Retired）、mobile-device-automation、mobile-native-push-notification-analysis-2026-06-25、new-agent-landing、ohos-kmp-commonmain-compatibility、ohos-screenshot-capture、raft-ui-kmp-component-library-audit-2026-07-03、raft-ui-kmp-product-gap-plan-2026-07-03、raft-ui-kmp-visual-similarity-priority-2026-07-03、react-kmp-realtime-alignment-2026-06-26、realtime-event-contract-2026-06-23、shared-mvi-foundation、slock-app-state-first-principles、visual-testing-android-provider。
 
 ### DONE — 所述工作已落地（约 20）
 
