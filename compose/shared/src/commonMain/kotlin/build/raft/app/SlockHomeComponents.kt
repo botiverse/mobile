@@ -141,7 +141,7 @@ private const val HomeLoadingSkeletonLineWeight = 0.6f
 private val HomeLoadingSkeletonLineHeight = 12.dp
 private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
-private val HomeServerSwitcherRowMinHeight = 46.dp
+private val HomeServerSwitcherRowMinHeight = 52.dp
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
@@ -1611,9 +1611,9 @@ internal fun homeServerSwitcherJoinCommunityActions(
 internal fun homeServerSwitcherPanelTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + SlockSize.PageHeaderHeight + HomeServerSwitcherTopGap
 
-internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp {
-    val visibleRows = serverCount.coerceIn(1, HomeServerSwitcherMaxVisibleRows)
-    return (HomeServerSwitcherRowMinHeight.value * visibleRows).dp
+internal fun homeServerSwitcherServerListMaxHeight(serverCount: Int): Dp? {
+    if (serverCount <= HomeServerSwitcherMaxVisibleRows) return null
+    return (HomeServerSwitcherRowMinHeight.value * HomeServerSwitcherMaxVisibleRows).dp
 }
 
 internal data class SlockHomeSidebarSelection(
@@ -2266,11 +2266,15 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
         } else {
+            val serverListMaxHeight = homeServerSwitcherServerListMaxHeight(servers.size)
+            val serverListModifier =
+                if (serverListMaxHeight == null) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier.fillMaxWidth().heightIn(max = serverListMaxHeight)
+                }
             LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = homeServerSwitcherServerListMaxHeight(servers.size)),
+                modifier = serverListModifier,
                 beyondBoundsItemCount = homeListBeyondBoundsItemCount(servers.size)
             ) {
                 items(servers.size, key = { index -> servers[index].id }) { index ->

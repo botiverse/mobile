@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
@@ -107,21 +108,17 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeServerSwitcherServerListHeightCapsLongLists() {
+    fun homeServerSwitcherServerListHeightOnlyCapsScrollableLists() {
+        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 0))
+        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 1))
+        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 2))
+        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 6))
         assertEquals(
-            46.dp,
-            homeServerSwitcherServerListMaxHeight(serverCount = 1)
+            312.dp,
+            homeServerSwitcherServerListMaxHeight(serverCount = 7)
         )
         assertEquals(
-            46.dp,
-            homeServerSwitcherServerListMaxHeight(serverCount = 0)
-        )
-        assertEquals(
-            276.dp,
-            homeServerSwitcherServerListMaxHeight(serverCount = 6)
-        )
-        assertEquals(
-            276.dp,
+            312.dp,
             homeServerSwitcherServerListMaxHeight(serverCount = 30)
         )
     }
