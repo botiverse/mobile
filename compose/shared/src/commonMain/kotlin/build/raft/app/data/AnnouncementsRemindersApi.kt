@@ -102,7 +102,15 @@ data class AnnouncementItem(
     val body: String,
     val actionLabel: String = "View",
     val targetId: String? = null,
-    val kind: AnnouncementKind = AnnouncementKind.Info
+    val kind: AnnouncementKind = AnnouncementKind.Info,
+    // Full multi-page content for the announcement modal (task #226). `body`
+    // stays as the first page so the home-notification path keeps working.
+    val pages: List<AnnouncementPageItem> = emptyList()
+)
+
+data class AnnouncementPageItem(
+    val title: String?,
+    val body: String
 )
 
 enum class AnnouncementKind {
@@ -198,5 +206,6 @@ private fun AnnouncementWireDto.toDomain(): AnnouncementItem? {
         // actionLabel / targetId / kind are not part of the server Announcement
         // contract. Keep the data-class defaults; never sniff `kind`/`type`
         // strings to fabricate severity.
+        pages = pages.map { page -> AnnouncementPageItem(title = page.title, body = page.body) }
     )
 }
