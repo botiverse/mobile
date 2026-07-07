@@ -9762,7 +9762,10 @@ private fun ThreadMessagesList(
             val anchor = pendingOlderPageAnchor
             pendingOlderPageAnchor = null
             allowBottomAutoAnchor = false
-            if (anchor != null) {
+            // Restoring the anchor cancels an active drag; a dragging user is
+            // already re-positioning themselves, so let the gesture win and
+            // skip the programmatic restore (task #554 pattern scan).
+            if (anchor != null && !listState.isScrollInProgress) {
                 val targetIndex = renderPayload.threadMessageListItemIndex(anchor.messageId)
                 if (targetIndex >= 0) {
                     listState.scrollToItem(targetIndex, -anchor.offset)
@@ -9883,6 +9886,13 @@ private fun ThreadMessagesList(
         if (focusedMessageTargetIndex >= 0) {
             return@LaunchedEffect
         }
+        // A drag during the initial-anchor window wins: reveal the list where
+        // the user already is instead of yanking to the bottom (task #554
+        // pattern scan — entry-window race).
+        if (!initialBottomAnchorReady && listState.isScrollInProgress) {
+            initialBottomAnchorReady = true
+            return@LaunchedEffect
+        }
         if (!initialBottomAnchorReady && !listState.isThreadItemVisible(latestItemIndex)) {
             listState.scrollToItem(latestItemIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
@@ -9890,6 +9900,10 @@ private fun ThreadMessagesList(
         }
         if (!initialBottomAnchorReady) {
             while (!initialBottomAnchorReady) {
+                if (listState.isScrollInProgress) {
+                    initialBottomAnchorReady = true
+                    return@LaunchedEffect
+                }
                 val anchored =
                     listState.anchorInitialThreadBottomToLatest(
                         latestItemIndex = latestItemIndex
