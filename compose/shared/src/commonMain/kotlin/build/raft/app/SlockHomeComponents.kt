@@ -126,6 +126,8 @@ private val ChannelRowHeight = 32.dp
 private const val EdgeAutoScrollStepPx = 18f
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
+private val ChannelRowMutedIconSize = 12.dp
+private val ChannelRowMutedIconGap = 4.dp
 private val DirectMessageStatusDotSize = SlockStatusIndicatorTokens.InlineSize
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
@@ -166,6 +168,19 @@ internal data class HomeConversationBadgeInput(
     val mentionPierced: Boolean = false,
     val followed: Boolean = false
 )
+
+internal fun homeConversationTitleColor(
+    muted: Boolean,
+    joined: Boolean = true
+): Color =
+    when {
+        muted -> SlockColor.TextMutedGray
+        joined -> SlockColor.TextBlack
+        else -> SlockColor.TextBlack.copy(alpha = 0.46f)
+    }
+
+internal fun homeConversationMutedIndicatorIcon(muted: Boolean): SlockLucideIconName? =
+    if (muted) SlockLucideIconName.BellOff else null
 
 internal data class HomeActivitySidebarProjection(
     val unreadLabel: String?,
@@ -1015,6 +1030,7 @@ internal fun SlockStructuralHomeShell(
                                         memberAvatarResolver = memberAvatarResolver,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         hasDraft = pinned.hasDraft,
+                                        muted = pinned.activityMuted,
                                         badge = badgeProjection.label,
                                         badgeTone = badgeProjection.tone,
                                         interactionState = rowInteractionState,
@@ -1031,6 +1047,7 @@ internal fun SlockStructuralHomeShell(
                                         symbol = pinned.homeChannelSymbol(),
                                         joined = pinned.joined,
                                         hasDraft = pinned.hasDraft,
+                                        muted = pinned.activityMuted,
                                         badge = badgeProjection.label,
                                         badgeTone = badgeProjection.tone,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1080,6 +1097,7 @@ internal fun SlockStructuralHomeShell(
                                     symbol = channel.homeChannelSymbol(),
                                     joined = channel.joined,
                                     hasDraft = channel.hasDraft,
+                                    muted = channel.activityMuted,
                                     badge = badgeProjection.label,
                                     badgeTone = badgeProjection.tone,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1129,6 +1147,7 @@ internal fun SlockStructuralHomeShell(
                                         symbol = channel.homeChannelSymbol(),
                                         joined = channel.joined,
                                         hasDraft = channel.hasDraft,
+                                        muted = channel.activityMuted,
                                         badge = badgeProjection.label,
                                         badgeTone = badgeProjection.tone,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1186,6 +1205,7 @@ internal fun SlockStructuralHomeShell(
                                     memberAvatarResolver = memberAvatarResolver,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
+                                    muted = dm.activityMuted,
                                     badge = badgeProjection.label,
                                     badgeTone = badgeProjection.tone,
                                     interactionState = dmInteractionState,
@@ -2504,7 +2524,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -2534,6 +2554,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    val titleColor = homeConversationTitleColor(muted = muted, joined = joined)
+    val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
     val rowTopLeft = remember { SlockMutableOffsetRef() }
     var captureAnchorForPress by remember { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
@@ -2683,7 +2705,30 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                     Text(symbol, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), textAlign = TextAlign.Center)
                 }
             }
-            Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(
+                modifier =
+                    Modifier
+                        .padding(start = SidebarActionLabelGap)
+                        .weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    name,
+                    style = SlockType.Button,
+                    color = titleColor,
+                    modifier = Modifier.weight(1f, fill = false),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (mutedIndicatorIcon != null) {
+                    Spacer(Modifier.width(ChannelRowMutedIconGap))
+                    SlockLucideIcon(
+                        mutedIndicatorIcon,
+                        Modifier.size(ChannelRowMutedIconSize),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                }
+            }
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
             if (hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             if (badge != null) {
@@ -3010,7 +3055,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -3019,6 +3064,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, memberId)
+    val titleColor = homeConversationTitleColor(muted = muted)
+    val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
     val effectiveInteractionState = when {
         selected -> ChannelRowInteractionState.Selected
         pressed -> ChannelRowInteractionState.Pressed
@@ -3125,16 +3172,24 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 Text(
                     name,
                     style = if (unread) SlockType.ButtonBold else SlockType.Button,
-                    color = SlockColor.TextBlack,
+                    color = titleColor,
                     modifier =
                         if (descriptionText != null) {
                             Modifier.widthIn(max = 260.dp)
                         } else {
-                            Modifier.weight(1f)
+                            Modifier.weight(1f, fill = false)
                         },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (mutedIndicatorIcon != null) {
+                    Spacer(Modifier.width(ChannelRowMutedIconGap))
+                    SlockLucideIcon(
+                        mutedIndicatorIcon,
+                        Modifier.size(ChannelRowMutedIconSize),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                }
                 if (descriptionText != null) {
                     Spacer(Modifier.width(SlockSpacing.Xs))
                     Text(
