@@ -6740,7 +6740,7 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         ?: this.parentMessageId?.takeIf { it.isNotBlank() }
     val parentThreadId = parentChannelId?.takeIf { it.isNotBlank() }
     val parentSurfaceKind =
-        this.parentSurfaceKind.threadLaunchParentSurfaceKindOrNull()
+        this.parentSurfaceKind.parsedThreadParentSurfaceKindOrNull()
             ?: if (channelKind.equals("dm", ignoreCase = true) || memberScopedMentions && parentThreadId == null) {
                 KuiklyThreadSurfaceKind.DirectMessage
             } else {
@@ -7386,7 +7386,7 @@ internal fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boo
     when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> false
         KuiklyThreadSurfaceKind.ReplyThread ->
-            parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
+            parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
         else -> memberScopedMentions
     }
 
@@ -7394,7 +7394,7 @@ internal fun KuiklyThreadScreenPayload.threadComposerMemberSuggestionHeadersVisi
     when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> false
         KuiklyThreadSurfaceKind.ReplyThread ->
-            parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
+            parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != KuiklyThreadSurfaceKind.DirectMessage
         else -> true
     }
 

@@ -47,7 +47,7 @@ internal fun buildThreadLaunchConversationIdentity(
                     parentChannelId = parentChannelId,
                     parentMessageId = parentMessageId,
                     streamChannelId = threadChannelId,
-                    parentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull(),
+                    parentSurfaceKind = parentSurfaceKind.parsedThreadParentSurfaceKindOrNull(),
                     parentChannelKind = parentChannelKind.normalizedThreadChannelKind()
                 )
             } else {
@@ -152,16 +152,24 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         kind = kind
     )
 
-internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity =
-    resolveThreadRouteIdentity(
-        surfaceKind = threadSurfaceKind(),
+internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity {
+    val surfaceKind = threadSurfaceKind()
+    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    return resolveThreadRouteIdentity(
+        surfaceKind = surfaceKind,
         channelKind = threadRouteChannelKind(),
         instanceId = null,
         sourceThreadId = threadId.value,
-        streamChannelId = threadRouteStreamChannelId(),
-        parentChannelId = threadParentChannelId(),
-        parentMessageId = threadParentMessageId()
+        streamChannelId =
+            if (isReplyThread) {
+                threadRouteStreamChannelId()
+            } else {
+                threadStreamChannelId()
+            },
+        parentChannelId = if (isReplyThread) threadParentChannelId() else null,
+        parentMessageId = if (isReplyThread) threadParentMessageId() else null
     )
+}
 
 internal fun ThreadLaunchConversationIdentity.threadSurfaceKind(): String =
     kind.toKuiklySurfaceKind()

@@ -282,7 +282,7 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
                 (
                     surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
                         originParentMessageId?.isNotBlank() == true &&
-                        parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != null
+                        parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() != null
                     ),
         showSettingsAction = showSettingsAction && showModeTabs,
         showMembersAction = showMembersAction && showModeTabs
@@ -303,7 +303,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         streamChannelId = streamChannelId.nonBlank(),
         parentChannelId = parentChannelId.nonBlank(),
         parentMessageId = parentMessageId.nonBlank(),
-        parentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull(),
+        parentSurfaceKind = parentSurfaceKind.parsedThreadParentSurfaceKindOrNull(),
         parentChannelKind = parentChannelKind.normalizedThreadChannelKind(),
         parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
@@ -391,20 +391,6 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
             .takeIf { it.hasRouteIdentity() }
             ?.toInitialPayloadOrNull(instanceId)
     }.getOrNull()
-
-internal fun String?.threadLaunchParentSurfaceKindOrNull(): String? =
-    when (this?.trim()?.lowercase()) {
-        KuiklyThreadSurfaceKind.DirectMessage,
-        "direct_message",
-        "direct-message",
-        "directmessage" -> KuiklyThreadSurfaceKind.DirectMessage
-        KuiklyThreadSurfaceKind.Channel,
-        "public",
-        "private",
-        "joint",
-        "group" -> KuiklyThreadSurfaceKind.Channel
-        else -> null
-    }
 
 internal const val ThreadParentNavigationPrevious = "previous"
 
