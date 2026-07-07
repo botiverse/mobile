@@ -287,14 +287,54 @@ internal fun slockForegroundMessageBannerProjection(
     visibleConversationKey: String?,
     visibleRouteIdentity: ThreadRouteIdentity? = null,
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
-): SlockForegroundMessageBanner? {
-    val normalizedServerId = serverId.takeIf { it.isNotBlank() } ?: return null
-    if (!currentServerId.isNullOrBlank() && currentServerId != normalizedServerId) return null
-    if (!currentMemberId.isNullOrBlank() && message.author.id.value == currentMemberId) return null
-    if (message.messageType == MessageType.System || message.author.kind == MemberKind.System) return null
+): SlockForegroundMessageBanner? =
+    slockForegroundMessageBannerProjectionResult(
+        serverId = serverId,
+        currentServerId = currentServerId,
+        message = message,
+        currentMemberId = currentMemberId,
+        visibleConversationKey = visibleConversationKey,
+        visibleRouteIdentity = visibleRouteIdentity,
+        conversationDirectory = conversationDirectory
+    ).banner
+
+internal data class SlockForegroundMessageBannerProjectionResult(
+    val banner: SlockForegroundMessageBanner?,
+    val sharedProjection: SharedConversationDirectoryProjection?,
+    val suppressReason: String? = null
+) {
+    val resolvedKind: ConversationKind?
+        get() = banner?.conversation?.kind
+}
+
+internal fun slockForegroundMessageBannerProjectionResult(
+    serverId: String,
+    currentServerId: String?,
+    message: Message,
+    currentMemberId: String?,
+    visibleConversationKey: String?,
+    visibleRouteIdentity: ThreadRouteIdentity? = null,
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
+): SlockForegroundMessageBannerProjectionResult {
+    val normalizedServerId =
+        serverId.takeIf { it.isNotBlank() }
+            ?: return SlockForegroundMessageBannerProjectionResult(null, null, "server_missing")
+    if (!currentServerId.isNullOrBlank() && currentServerId != normalizedServerId) {
+        return SlockForegroundMessageBannerProjectionResult(null, null, "server_mismatch")
+    }
+    if (!currentMemberId.isNullOrBlank() && message.author.id.value == currentMemberId) {
+        return SlockForegroundMessageBannerProjectionResult(null, null, "own_message")
+    }
+    if (message.messageType == MessageType.System || message.author.kind == MemberKind.System) {
+        return SlockForegroundMessageBannerProjectionResult(null, null, "system_message")
+    }
     val projection = message.resolveForegroundBannerProjection(conversationDirectory)
-    val conversation = message.resolveForegroundBannerConversation(conversationDirectory) ?: return null
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) return null
+    val conversation =
+        message.resolveForegroundBannerConversation(conversationDirectory)
+            ?: return SlockForegroundMessageBannerProjectionResult(null, projection, "conversation_missing")
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+        return SlockForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
+    }
     val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
     val context = message.resolveForegroundBannerContext(projection, conversationDirectory)
     val threadContext = projection.resolveForegroundBannerThreadContext(conversation)
@@ -302,20 +342,24 @@ internal fun slockForegroundMessageBannerProjection(
     val iconName = projection.resolveForegroundBannerIconName(conversation)
     val body = message.body.toForegroundBannerPreview().ifBlank { "Sent a new message." }
     val openRequest = message.resolveForegroundBannerOpenRequest(projection, conversation)
-    return SlockForegroundMessageBanner(
-        id = "foreground:$normalizedServerId:${message.id.value}",
-        serverId = normalizedServerId,
-        focusedMessageId = message.id.value,
-        conversation = conversation,
-        openRequest = openRequest,
-        title = sender,
-        context = context,
-        threadContext = threadContext,
-        body = body,
-        iconKind = iconKind,
-        iconName = iconName,
-        avatarWireValue = message.author.avatarWireValueForRenderedAvatar(),
-        avatarLabel = message.author.avatarLabel.takeIf { it.isNotBlank() } ?: sender.take(2).uppercase()
+    return SlockForegroundMessageBannerProjectionResult(
+        banner =
+            SlockForegroundMessageBanner(
+                id = "foreground:$normalizedServerId:${message.id.value}",
+                serverId = normalizedServerId,
+                focusedMessageId = message.id.value,
+                conversation = conversation,
+                openRequest = openRequest,
+                title = sender,
+                context = context,
+                threadContext = threadContext,
+                body = body,
+                iconKind = iconKind,
+                iconName = iconName,
+                avatarWireValue = message.author.avatarWireValueForRenderedAvatar(),
+                avatarLabel = message.author.avatarLabel.takeIf { it.isNotBlank() } ?: sender.take(2).uppercase()
+            ),
+        sharedProjection = projection
     )
 }
 

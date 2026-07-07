@@ -2225,6 +2225,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
     val latestHomeState by rememberUpdatedState(homeState)
+    val latestHomeActivityState by rememberUpdatedState(homeActivityState)
     val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
     LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
         bridge.log(
@@ -2342,6 +2343,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
     var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
+    var pendingForegroundMessage by remember { mutableStateOf<AppShellPendingForegroundMessage?>(null) }
 
     fun refreshVisibleAppShellRoute(reason: String) {
         if (latestReadySession == null) return
@@ -3193,11 +3195,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         val directory =
                             appShellConversationDirectory(
                                 homeState = latestHomeState,
-                                activityState = homeActivityState
+                                activityState = latestHomeActivityState
                             )
-                        foregroundMessageBanner =
-                            if (latestForegroundMessageBannersEnabled) {
-                                slockForegroundMessageBannerProjection(
+                        if (latestForegroundMessageBannersEnabled) {
+                            val projection =
+                                slockForegroundMessageBannerProjectionResult(
                                     serverId = serverId,
                                     currentServerId = activeSession?.currentServerId,
                                     message = event.message,
@@ -3209,14 +3211,116 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                             selectedConversationId = latestSelectedHomeConversationId
                                         ),
                                     conversationDirectory = directory
-                                ) ?: foregroundMessageBanner
+                                )
+                            bridge.log(projection.appShellForegroundBannerProjectionLog(event.message, source = "message_new"))
+                            if (projection.shouldWaitForActivityThreadProjection(event.message)) {
+                                pendingForegroundMessage =
+                                    AppShellPendingForegroundMessage(
+                                        serverId = serverId,
+                                        message = event.message
+                                    )
+                                bridge.log(
+                                    "foreground_banner_projection_defer reason=activity_thread_projection_pending " +
+                                        "messageId=${event.message.id.value} streamId=${event.message.appShellForegroundStreamId().orEmpty()}"
+                                )
+                                homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
                             } else {
-                                null
+                                projection.banner?.let { banner ->
+                                    foregroundMessageBanner = banner
+                                    pendingForegroundMessage =
+                                        pendingForegroundMessage?.takeUnless { it.message.id == event.message.id }
+                                }
                             }
+                        } else {
+                            foregroundMessageBanner = null
+                            pendingForegroundMessage = null
+                        }
+                    } else if (event is ThreadUpdated) {
+                        val pending = pendingForegroundMessage
+                        if (pending != null && pending.matchesThreadUpdate(event)) {
+                            pendingForegroundMessage = pending.withThreadUpdate(event)
+                            bridge.log(
+                                "foreground_banner_projection_thread_update " +
+                                    "messageId=${pending.message.id.value} streamId=${event.threadChannelId.value} " +
+                                    "parentMessageId=${event.parentMessageId.value}"
+                            )
+                            homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
+                        }
                     }
                 }
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
+    }
+
+    LaunchedEffect(
+        pendingForegroundMessage,
+        homeState.content,
+        homeActivityState.snapshot,
+        foregroundMessageBannersEnabled
+    ) {
+        val pending = pendingForegroundMessage ?: return@LaunchedEffect
+        if (!foregroundMessageBannersEnabled) {
+            pendingForegroundMessage = null
+            return@LaunchedEffect
+        }
+        val session = readySession
+        val projection =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = pending.serverId,
+                currentServerId = session?.currentServerId,
+                message = pending.message,
+                currentMemberId = session?.user?.id,
+                visibleConversationKey =
+                    appShellVisibleForegroundConversationKey(
+                        selectedTab = selectedTab,
+                        selectedHomeDestination = selectedHomeDestination,
+                        selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId
+                    ),
+                conversationDirectory = appShellConversationDirectory(homeState, homeActivityState)
+            )
+        bridge.log(projection.appShellForegroundBannerProjectionLog(pending.message, source = "pending_retry"))
+        if (projection.isReadyForPendingForegroundMessage(pending)) {
+            projection.banner?.let { banner -> foregroundMessageBanner = banner }
+            pendingForegroundMessage = null
+            return@LaunchedEffect
+        }
+        if (pending.parentMessageId == null) {
+            delay(AppShellForegroundBannerInitialProjectionDelayMs)
+            if (pendingForegroundMessage?.key == pending.key && pendingForegroundMessage?.parentMessageId == null) {
+                val delayedProjection =
+                    slockForegroundMessageBannerProjectionResult(
+                        serverId = pending.serverId,
+                        currentServerId = session?.currentServerId,
+                        message = pending.message,
+                        currentMemberId = session?.user?.id,
+                        visibleConversationKey =
+                            appShellVisibleForegroundConversationKey(
+                                selectedTab = selectedTab,
+                                selectedHomeDestination = selectedHomeDestination,
+                                selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId
+                            ),
+                        conversationDirectory = appShellConversationDirectory(homeState, homeActivityState)
+                    )
+                bridge.log(delayedProjection.appShellForegroundBannerProjectionLog(pending.message, source = "pending_delay_elapsed"))
+                delayedProjection.banner?.let { banner -> foregroundMessageBanner = banner }
+                pendingForegroundMessage = null
+            }
+            return@LaunchedEffect
+        }
+        if (pending.refreshAttempts >= AppShellForegroundBannerActivityProjectionMaxAttempts) {
+            bridge.logWarn(
+                "foreground_banner_projection_drop reason=activity_thread_projection_missing " +
+                    "messageId=${pending.message.id.value} streamId=${pending.streamId.orEmpty()} " +
+                    "parentMessageId=${pending.parentMessageId.orEmpty()} attempts=${pending.refreshAttempts}"
+            )
+            pendingForegroundMessage = null
+            return@LaunchedEffect
+        }
+        homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
+        delay(AppShellForegroundBannerActivityProjectionRetryDelayMs)
+        if (pendingForegroundMessage?.key == pending.key) {
+            pendingForegroundMessage = pending.copy(refreshAttempts = pending.refreshAttempts + 1)
+        }
     }
 
     val showAppShellBottomTabs =
@@ -14609,6 +14713,72 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
+
+private const val AppShellForegroundBannerInitialProjectionDelayMs = 280L
+private const val AppShellForegroundBannerActivityProjectionRetryDelayMs = 360L
+private const val AppShellForegroundBannerActivityProjectionMaxAttempts = 5
+
+private data class AppShellPendingForegroundMessage(
+    val serverId: String,
+    val message: Message,
+    val parentMessageId: String? = null,
+    val refreshAttempts: Int = 0
+) {
+    val streamId: String?
+        get() = message.appShellForegroundStreamId()
+
+    val key: String
+        get() = "${serverId}:${message.id.value}:${parentMessageId.orEmpty()}:$refreshAttempts"
+
+    fun matchesThreadUpdate(event: ThreadUpdated): Boolean =
+        streamId?.let { it == event.threadChannelId.value } == true
+
+    fun withThreadUpdate(event: ThreadUpdated): AppShellPendingForegroundMessage =
+        copy(
+            parentMessageId = event.parentMessageId.value,
+            refreshAttempts = 0
+        )
+}
+
+private fun Message.appShellForegroundStreamId(): String? =
+    listOfNotNull(
+        threadChannelId?.value,
+        channelId?.value,
+        threadId.value
+    ).firstOrNull { it.isNotBlank() }
+
+private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
+    message: Message
+): Boolean {
+    val banner = banner ?: return false
+    if (sharedProjection != null) return false
+    if (banner.conversation.kind != ConversationKind.Channel) return false
+    if (message.parentMessageId != null || message.threadChannelId != null) return false
+    return message.appShellForegroundStreamId() != null
+}
+
+private fun SlockForegroundMessageBannerProjectionResult.isReadyForPendingForegroundMessage(
+    pending: AppShellPendingForegroundMessage
+): Boolean {
+    val banner = banner ?: return true
+    if (pending.parentMessageId == null) {
+        return !shouldWaitForActivityThreadProjection(pending.message)
+    }
+    return banner.conversation.kind == ConversationKind.Thread &&
+        sharedProjection?.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+}
+
+private fun SlockForegroundMessageBannerProjectionResult.appShellForegroundBannerProjectionLog(
+    message: Message,
+    source: String
+): String =
+    "foreground_banner_projection source=$source messageId=${message.id.value} " +
+        "streamId=${message.appShellForegroundStreamId().orEmpty()} " +
+        "parentMessageId=${message.parentMessageId?.value.orEmpty()} " +
+        "sharedProjection=${sharedProjection?.surfaceKind ?: "_"} " +
+        "resolvedKind=${resolvedKind?.name ?: "_"} " +
+        "threadContext=${!banner?.threadContext.isNullOrBlank()} " +
+        "suppressReason=${suppressReason.orEmpty()}"
 
 private fun appShellConversationDirectory(
     homeState: SharedHomeState,
