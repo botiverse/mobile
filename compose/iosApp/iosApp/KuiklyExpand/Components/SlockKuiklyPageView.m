@@ -8,6 +8,7 @@
 static NSString *const SlockKuiklyPageViewPageNameProp = @"pageName";
 static NSString *const SlockKuiklyPageViewPageDataProp = @"pageData";
 static NSString *const SlockKuiklyPageViewGlassStyleProp = @"glassStyle";
+static NSString *const SlockKuiklyPageViewActiveProp = @"active";
 static NSString *const SlockKuiklyPageViewLoadSuccessProp = @"loadSuccess";
 static NSString *const SlockKuiklyPageViewLoadFailureProp = @"loadFailure";
 static NSString *const SlockKuiklyPageViewSendEventMethod = @"sendEvent";
@@ -30,6 +31,7 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
 @property (nonatomic, strong) KuiklyBaseView *childView;
 @property (nonatomic, assign) BOOL viewDidAppear;
 @property (nonatomic, assign) BOOL pageDidAppear;
+@property (nonatomic, assign) BOOL childActive;
 @property (nonatomic, assign) BOOL childVisible;
 
 @end
@@ -43,6 +45,7 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
         _pageName = @"";
         _pageDataText = @"{}";
         _glassStyle = @"";
+        _childActive = YES;
         self.backgroundColor = UIColor.clearColor;
         _contentContainerView = [[UIView alloc] initWithFrame:CGRectZero];
         _contentContainerView.backgroundColor = UIColor.clearColor;
@@ -59,6 +62,8 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
         [self updatePageDataText:[self stringFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockKuiklyPageViewGlassStyleProp]) {
         [self updateGlassStyle:[self stringFromValue:propValue]];
+    } else if ([propKey isEqualToString:SlockKuiklyPageViewActiveProp]) {
+        [self updateChildActive:[self boolFromValue:propValue]];
     } else if ([propKey isEqualToString:SlockKuiklyPageViewLoadSuccessProp]) {
         self.loadSuccessCallback = propValue;
     } else if ([propKey isEqualToString:SlockKuiklyPageViewLoadFailureProp]) {
@@ -146,11 +151,23 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
     [self setNeedsLayout];
 }
 
+- (void)updateChildActive:(BOOL)active {
+    if (self.childActive == active) {
+        return;
+    }
+    self.childActive = active;
+    [self syncChildVisibility];
+    if (active) {
+        [self attachChildIfReady];
+    }
+}
+
 - (void)resetChildIfAttached {
     if (!self.childView) {
         return;
     }
     [self detachChild];
+    [self attachChildIfReady];
     [self setNeedsLayout];
 }
 
@@ -302,12 +319,14 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
 }
 
 - (void)syncChildVisibility {
-    BOOL shouldBeVisible = self.viewDidAppear && self.pageDidAppear && self.childView != nil;
-    if (self.childVisible == shouldBeVisible) {
+    BOOL shouldBeRendered = self.childActive && self.childView != nil;
+    BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
+    self.childView.hidden = !shouldBeRendered;
+    if (self.childVisible == shouldBeLifecycleVisible) {
         return;
     }
-    self.childVisible = shouldBeVisible;
-    if (shouldBeVisible) {
+    self.childVisible = shouldBeLifecycleVisible;
+    if (shouldBeLifecycleVisible) {
         [self.childView viewWillAppear];
         [self.childView viewDidAppear];
     } else {
@@ -333,6 +352,14 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
         return [value stringValue];
     }
     return value ? [value description] : @"";
+}
+
+- (BOOL)boolFromValue:(id)value {
+    if ([value respondsToSelector:@selector(boolValue)]) {
+        return [value boolValue];
+    }
+    NSString *text = [[self stringFromValue:value] lowercaseString];
+    return [text isEqualToString:@"true"] || [text isEqualToString:@"1"] || [text isEqualToString:@"yes"];
 }
 
 @end

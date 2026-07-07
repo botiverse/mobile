@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import android.view.View
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -67,6 +68,81 @@ class SlockKuiklyPageRenderViewTest {
                 widthPx = 1080,
                 heightPx = 2460,
                 density = 3f
+            )
+        )
+    }
+
+    @Test
+    fun childRenderVisibilityHidesInactiveNativeLayer() {
+        assertEquals(View.VISIBLE, slockKuiklyChildRenderVisibility(visible = true))
+        assertEquals(View.INVISIBLE, slockKuiklyChildRenderVisibility(visible = false))
+    }
+
+    @Test
+    fun childRenderVisibilityFollowsActiveAttachedState() {
+        assertTrue(slockKuiklyChildShouldRender(childActive = true, childAttached = true))
+        assertFalse(slockKuiklyChildShouldRender(childActive = false, childAttached = true))
+        assertFalse(slockKuiklyChildShouldRender(childActive = true, childAttached = false))
+    }
+
+    @Test
+    fun childInitCanBeScheduledAfterDetachedResetWithoutWaitingForAnotherLayout() {
+        assertTrue(
+            shouldScheduleSlockKuiklyChildInit(
+                destroyed = false,
+                childAttached = false,
+                childInitPosted = false,
+                pageName = "compose_app_shell_child_tab",
+                widthPx = 1170,
+                heightPx = 2215
+            )
+        )
+        assertFalse(
+            shouldScheduleSlockKuiklyChildInit(
+                destroyed = false,
+                childAttached = true,
+                childInitPosted = false,
+                pageName = "compose_app_shell_child_tab",
+                widthPx = 1170,
+                heightPx = 2215
+            )
+        )
+        assertFalse(
+            shouldScheduleSlockKuiklyChildInit(
+                destroyed = false,
+                childAttached = false,
+                childInitPosted = false,
+                pageName = "compose_app_shell_child_tab",
+                widthPx = 0,
+                heightPx = 2215
+            )
+        )
+    }
+
+    @Test
+    fun childLifecycleVisibilityRequiresRenderedAndAppearedState() {
+        assertTrue(
+            slockKuiklyChildLifecycleVisible(
+                childActive = true,
+                childAttached = true,
+                viewDidAppear = true,
+                pageDidAppear = true
+            )
+        )
+        assertFalse(
+            slockKuiklyChildLifecycleVisible(
+                childActive = false,
+                childAttached = true,
+                viewDidAppear = true,
+                pageDidAppear = true
+            )
+        )
+        assertFalse(
+            slockKuiklyChildLifecycleVisible(
+                childActive = true,
+                childAttached = true,
+                viewDidAppear = false,
+                pageDidAppear = true
             )
         )
     }

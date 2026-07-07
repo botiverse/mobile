@@ -14,6 +14,7 @@ import globalNativeManager from '../MyNativeManager';
 const kPageName = 'pageName';
 const kPageData = 'pageData';
 const kGlassStyle = 'glassStyle';
+const kActive = 'active';
 const kLoadSuccess = 'loadSuccess';
 const kLoadFailure = 'loadFailure';
 const kSendEvent = 'sendEvent';
@@ -30,6 +31,7 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   private delegate: IKuiklyViewDelegate = new KuiklyViewDelegate();
   private viewDidAppear = false;
   private pageDidAppear = false;
+  childActive: boolean = true;
   private childVisible = false;
   renderRevision: number = 0;
 
@@ -51,6 +53,9 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
         this.updatePageData(normalizePageData(propValue));
         return true;
       case kGlassStyle:
+        return true;
+      case kActive:
+        this.updateChildActive(normalizeBoolean(propValue));
         return true;
       case kLoadSuccess:
         this.loadSuccessCallback = propValue as KuiklyRenderCallback;
@@ -128,6 +133,15 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
     this.updateArkUI();
   }
 
+  private updateChildActive(next: boolean): void {
+    if (this.childActive === next) {
+      return;
+    }
+    this.childActive = next;
+    this.syncChildVisibility();
+    this.updateArkUI();
+  }
+
   private onPageLoadComplete(isSucceed: boolean, errorReason?: string): void {
     if (isSucceed) {
       this.loadSuccessCallback?.({});
@@ -177,7 +191,7 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
   }
 
   private syncChildVisibility(): void {
-    const shouldBeVisible = this.viewDidAppear && this.pageDidAppear;
+    const shouldBeVisible = this.childActive && this.viewDidAppear && this.pageDidAppear;
     if (this.childVisible === shouldBeVisible) {
       return;
     }
@@ -187,6 +201,10 @@ export class SlockKuiklyPageView extends KuiklyRenderBaseView {
     } else {
       this.delegate.pageDidDisappear();
     }
+  }
+
+  childRenderVisibility(): Visibility {
+    return this.childActive ? Visibility.Visible : Visibility.Hidden;
   }
 }
 
@@ -215,6 +233,7 @@ export struct SlockKuiklyPageViewComponent {
               height: this.renderView.getViewHeight(),
             },
           })
+            .visibility(this.renderView.childRenderVisibility())
         }, (renderKey: string) => renderKey)
       }
     }
@@ -233,6 +252,14 @@ function normalizeText(value: KRAny | KuiklyRenderCallback): string {
 function normalizePageData(value: KRAny | KuiklyRenderCallback): string {
   const text = normalizeText(value);
   return text.length > 0 ? text : '{}';
+}
+
+function normalizeBoolean(value: KRAny | KuiklyRenderCallback): boolean {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  const text = normalizeText(value).toLowerCase();
+  return text === 'true' || text === '1' || text === 'yes';
 }
 
 @Builder

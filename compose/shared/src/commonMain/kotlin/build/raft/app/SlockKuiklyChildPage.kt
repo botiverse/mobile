@@ -106,6 +106,7 @@ internal class SlockKuiklyChildPageView :
     fun updateActive(next: Boolean) {
         if (active == next) return
         active = next
+        getViewAttr().active(next)
         syncChildLifecycleVisibility()
     }
 
@@ -153,6 +154,11 @@ internal class SlockKuiklyChildPageAttr : Attr() {
         } else {
             "glassStyle" with value
         }
+        return this
+    }
+
+    fun active(value: Boolean): SlockKuiklyChildPageAttr {
+        "active" with value
         return this
     }
 
