@@ -14733,7 +14733,7 @@ internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     return HomeMessageOpenRequest(
         conversationIdentity = conversation,
         anchorMessageId = conversation.notificationAnchorMessageId(request),
-        originFallback = projection.toNotificationThreadLaunchOriginFallback()
+        originFallback = projection.toThreadLaunchOriginFallback()
     )
 }
 
@@ -14746,19 +14746,6 @@ private fun SharedConversationDirectoryState.resolveNotificationThreadProjection
         request.parentMessageId,
         request.parentChannelId
     ).firstNotNullOfOrNull { id -> resolve(id) }
-
-private fun SharedConversationDirectoryProjection.toNotificationThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
-    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
-    return ThreadLaunchOriginFallback(
-        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
-        parentMessageId = parentId,
-        preview = subtitle?.takeIf { it.isNotBlank() },
-        senderId = null,
-        senderKind = null,
-        expected = true
-    )
-}
 
 private fun ThreadLaunchConversationIdentity.notificationAnchorMessageId(
     request: AppShellNotificationThreadLaunchRequest

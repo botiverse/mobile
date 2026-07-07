@@ -580,7 +580,7 @@ private fun Message.resolveForegroundBannerOpenRequest(
     HomeMessageOpenRequest(
         conversationIdentity = conversation,
         anchorMessageId = id.value.takeIf { it.isNotBlank() },
-        originFallback = projection.toForegroundThreadLaunchOriginFallback()
+        originFallback = projection.toThreadLaunchOriginFallback()
     )
 
 private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSenderMemberId(message: Message): String? =
@@ -601,19 +601,6 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSender
 private fun SharedConversationDirectoryProjection.matchesForegroundBannerSenderMessage(message: Message): Boolean {
     val ids = senderMessageIds
     return ids.isNotEmpty() && message.id.value in ids
-}
-
-private fun SharedConversationDirectoryProjection?.toForegroundThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
-    if (this?.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
-    val parentId = parentMessageId?.takeIf { it.isNotBlank() } ?: return null
-    return ThreadLaunchOriginFallback(
-        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
-        parentMessageId = parentId,
-        preview = subtitle?.takeIf { it.isNotBlank() },
-        senderId = null,
-        senderKind = null,
-        expected = true
-    )
 }
 
 private fun Message.foregroundBannerLookupIds(): List<String> =
