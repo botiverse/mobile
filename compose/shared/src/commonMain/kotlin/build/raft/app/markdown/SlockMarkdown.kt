@@ -4,6 +4,7 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
+import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withResolvedSlockFontFamily
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
@@ -1087,10 +1088,16 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
             range.item.fontFamily == null ||
                 range.item.fontFamily == FontFamily.Monospace
         val family =
-            if (shouldNormalizeFamily) {
-                explicitWeight?.let(::slockFontFamilyForWeight) ?: resolvedBase.fontFamily
-            } else {
-                range.item.fontFamily
+            when {
+                // Monospace intent (code spans) maps to Space Mono for react
+                // parity (task #407) — NOT the Slock body family, which made
+                // inline code render in Space Grotesk (bigger x-height, denser)
+                // than react's Space Mono.
+                range.item.fontFamily == FontFamily.Monospace ->
+                    slockMonoFamilyForWeight(explicitWeight)
+                shouldNormalizeFamily ->
+                    explicitWeight?.let(::slockFontFamilyForWeight) ?: resolvedBase.fontFamily
+                else -> range.item.fontFamily
             }
         if (shouldNormalizeFamily &&
             (range.item.fontFamily == FontFamily.Monospace || family != resolvedBase.fontFamily)
@@ -1518,8 +1525,16 @@ internal fun slockMarkdownInlineChipWidthSp(
         .coerceAtLeast(40f)
         .sp
 
+// react parity (task #407): web inline code is `font-mono` = Space Mono at the
+// inherited body size (MarkdownContent.tsx / index.css --font-mono). The old
+// "keep the Slock body font" behavior predated the Space Mono wiring (#130) —
+// back then FontFamily.Monospace meant the platform Roboto Mono, so pinning
+// the body font was the lesser evil. Space Mono exists now; use it.
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    base.withSlockFontWeight(FontWeight.Normal).withResolvedSlockFontFamily()
+    base.copy(
+        fontFamily = slockMonoFamilyForWeight(FontWeight.Normal),
+        fontWeight = FontWeight.Normal
+    )
 
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 12f
 

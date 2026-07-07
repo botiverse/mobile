@@ -3,6 +3,7 @@ package build.raft.app.markdown
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
+import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withSlockFontWeight
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
@@ -616,18 +617,22 @@ class SlockMarkdownTest {
         )
     }
 
+    // react parity (task #407): web inline code renders in Space Mono
+    // (`--font-mono`) at the inherited body size. The previous pin
+    // ("keep the Slock body font") predated the Space Mono wiring (#130), when
+    // FontFamily.Monospace still meant the platform Roboto Mono.
     @Test
-    fun inlineCodeKeepsSlockFontInsteadOfMono() {
+    fun inlineCodeUsesSpaceMonoAtBodyMetrics() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
         val inlineCodeStyleFromBoldText =
             slockMarkdownInlineCodeTextStyle(SlockType.Body.withSlockFontWeight(FontWeight.Bold))
 
-        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyle.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyle.fontWeight)
         assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
         assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
-        assertEquals(slockFontFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
     }
 
@@ -777,7 +782,9 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun markdownCodeSpansDoNotKeepExplicitMonospaceFont() {
+    fun markdownCodeSpansMapMonospaceToSpaceMono() {
+        // react parity (task #407): Monospace-intent spans (code) render in
+        // Space Mono, not the generic platform mono and not the body family.
         val annotated =
             AnnotatedString(
                 "normal code",
@@ -793,7 +800,7 @@ class SlockMarkdownTest {
 
         val codeFontSpan = annotated.spanStyles.last { it.start == 7 && it.end == 11 }
 
-        assertEquals(SlockType.Body.fontFamily, codeFontSpan.item.fontFamily)
+        assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), codeFontSpan.item.fontFamily)
         assertFalse(codeFontSpan.item.fontFamily == FontFamily.Monospace)
     }
 
