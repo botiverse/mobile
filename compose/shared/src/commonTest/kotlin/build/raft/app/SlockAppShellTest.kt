@@ -978,7 +978,10 @@ class SlockAppShellTest {
                 visibleConversationKey = null
             )
         assertEquals(null, rawResult.sharedProjection)
-        assertEquals(ConversationKind.Channel, rawResult.resolvedKind)
+        // t434: the raw stage no longer fabricates a Channel identity — unproven means no
+        // banner (and a deferred retry), not a guessed kind.
+        assertEquals(null, rawResult.resolvedKind)
+        assertNull(rawResult.banner)
 
         val enrichedDirectory =
             InboxSnapshot(
@@ -1219,6 +1222,73 @@ class SlockAppShellTest {
             )
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
+    }
+
+    @Test
+    fun plainChannelMessageDefersThenPopsWhenProjectionArrives() {
+        // t434 key regression (LiBai): deleting the raw guess fallback must not turn "pop
+        // after the directory catches up" into "never pop". Unproven -> Retry (no banner,
+        // no guessed chrome); projection arrives -> Complete with the real channel banner.
+        val message =
+            appShellForegroundTestMessage(
+                id = "message-9",
+                channelId = "channel-9",
+                threadId = "channel-9",
+                body = "Plain channel message"
+            )
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertNull(rawResult.banner)
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Retry,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+
+        val enrichedResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items =
+                            listOf(
+                                InboxItem(
+                                    key = "channel:channel-9",
+                                    kind = InboxItemKind.Channel,
+                                    channelId = ChannelId("channel-9"),
+                                    channelName = "home-fixes",
+                                    lastMessageId = MessageId("message-9")
+                                )
+                            )
+                    ).toSharedConversationDirectoryState()
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = enrichedResult,
+                message = message,
+                refreshAttempts = 1,
+                maxAttempts = 2
+            )
+        )
+        val banner = assertNotNull(enrichedResult.banner)
+        assertEquals(ConversationKind.Channel, banner.conversation.kind)
+        assertEquals("channel-9", banner.conversation.channelId?.value)
     }
 
     @Test

@@ -14973,8 +14973,10 @@ private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityTh
     // the wait path below.
     if (message.foregroundBannerContextConversationOrNull() != null) return false
     if (message.parentMessageId != null || message.threadChannelId != null) return true
-    val banner = banner ?: return false
-    if (banner.conversation.kind != ConversationKind.Channel) return false
+    // t434 compensation (identity-proof-required): with the raw guess fallback gone there is
+    // no banner to inspect for an unproven message — no projection and no usable typed
+    // context simply means WAIT whenever there is a stream id to wait on, so a plain channel
+    // message whose projection arrives late still pops (deferred, never "never").
     return message.appShellForegroundStreamId() != null
 }
 

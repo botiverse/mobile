@@ -555,32 +555,12 @@ private fun Message.resolveForegroundBannerConversation(
             ?: foregroundBannerContextConversationOrNull()
     }
     foregroundBannerContextConversationOrNull()?.let { return it }
-    val parentMessage = parentMessageId
-    val parentChannel = channelId ?: threadChannelId
-    if (parentMessage != null && parentChannel != null) {
-        val streamChannel = threadChannelId?.takeIf { it.value.isNotBlank() }
-        return ThreadLaunchConversationIdentity(
-            threadId = threadIdentity(parentChannel, parentMessage),
-            channelId = parentChannel,
-            channelType = null,
-            thread =
-                ThreadConversation(
-                    parentChannelId = parentChannel,
-                    parentMessageId = parentMessage,
-                    streamChannelId = streamChannel,
-                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                    parentChannelKind = null
-                ),
-            kind = ConversationKind.Thread
-        )
-    }
-    val streamChannel = threadChannelId ?: channelId ?: ChannelId(threadId.value)
-    return ThreadLaunchConversationIdentity(
-        threadId = ThreadId(streamChannel.value),
-        channelId = streamChannel,
-        channelType = KuiklyThreadSurfaceKind.Channel,
-        kind = ConversationKind.Channel
-    )
+    // t434 identity-proof-required: the raw tail that assembled a ReplyThread from
+    // parentMessageId + channelId, or a Channel from bare stream ids, is gone. The banner
+    // only accepts identities proven by a directory projection or a trusted typed
+    // conversationContext; an unproven message returns null and DEFERS (wait -> retry ->
+    // timeout drop, see shouldWaitForActivityThreadProjection) — it never navigates a guess.
+    return null
 }
 
 private fun Message.resolveForegroundBannerContext(
