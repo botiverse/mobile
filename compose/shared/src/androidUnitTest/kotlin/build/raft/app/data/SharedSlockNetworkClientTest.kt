@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
@@ -185,6 +186,44 @@ class SharedSlockNetworkClientTest {
         assertEquals("Bearer access-token", request.headers["Authorization"])
         assertEquals(listOf("avatar"), request.files.map { it.name })
         assertTrue(request.files.single().bytes?.isNotEmpty() == true)
+    }
+
+    @Test
+    fun threadAttachmentUploadResolvesFileRefAndKeepsFilesFieldName() = runBlocking {
+        val executor = RecordingExecutor { ok("""{"attachments":[]}""", code = 200) }
+        val resolver = RecordingPlatformFileResolver()
+        val file =
+            MultipartFile(
+                name = "files",
+                fileName = "photo.png",
+                mimeType = "image/png",
+                fileRef = "content://picker/photo",
+                sizeBytes = 42
+            )
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                platformFileResolver = resolver,
+                executor = executor
+            )
+
+        val response = client.uploadAttachments(DataRequestPriority.Foreground, ChannelId("channel-1"), listOf(file))
+
+        assertEquals(200, response.code)
+        assertEquals(listOf("content://picker/photo"), resolver.calls)
+        val request = executor.multiparts.single()
+        assertEquals("https://api.slock.test/api/attachments/upload", request.url)
+        assertEquals(mapOf("channelId" to "channel-1"), request.fields)
+        assertEquals("Bearer access-token", request.headers["Authorization"])
+        assertEquals("server-1", request.headers[HEADER_SERVER_ID])
+        assertEquals(listOf("files"), request.files.map { it.name })
+        val resolvedFile = request.files.single()
+        assertEquals("photo.png", resolvedFile.fileName)
+        assertEquals("image/png", resolvedFile.mimeType)
+        assertEquals(null, resolvedFile.fileRef)
+        assertEquals(42, resolvedFile.sizeBytes)
+        assertEquals(listOf<Byte>(1, 2, 3), resolvedFile.bytes.toList())
     }
 
     private class RecordingPlatformFileResolver : SlockPlatformFileResolver {
