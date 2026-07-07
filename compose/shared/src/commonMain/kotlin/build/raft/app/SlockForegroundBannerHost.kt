@@ -460,7 +460,7 @@ private fun Message.resolveForegroundBannerConversation(
     directory: SharedConversationDirectoryState
 ): ThreadLaunchConversationIdentity? {
     val projection = resolveForegroundBannerProjection(directory)
-    if (projection != null) return projection.toForegroundThreadLaunchConversationIdentity(directory)
+    if (projection != null) return projection.toThreadLaunchConversationIdentity(directory)
     val parentMessage = parentMessageId
     val parentChannel = channelId ?: threadChannelId
     if (parentMessage != null && parentChannel != null) {
@@ -510,13 +510,20 @@ private fun SharedConversationDirectoryProjection.toForegroundBannerSourceLabel(
         KuiklyThreadSurfaceKind.DirectMessage ->
             safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId, peerMemberId.orEmpty()) + aliases)
                 ?.let { "@$it" }
-        KuiklyThreadSurfaceKind.ReplyThread ->
-            parentChannelId
-                ?.let(directory::resolve)
-                ?.safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
-                ?.let { "#$it" }
-                ?: safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
-                    ?.let { "#$it" }
+        KuiklyThreadSurfaceKind.ReplyThread -> {
+            val parentProjection = parentChannelId?.let(directory::resolve)
+            val title =
+                parentProjection
+                    ?.safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
+                    ?: safeForegroundBannerTitle(identityIds = setOfNotNull(parentChannelId, canonicalChannelId, parentMessageId))
+            title?.let { value ->
+                if (parentProjection?.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                    "@${value.removePrefix("@")}"
+                } else {
+                    "#${value.removePrefix("#")}"
+                }
+            }
+        }
         else ->
             safeForegroundBannerTitle(identityIds = setOf(canonicalChannelId) + aliases)
                 ?.let { "#$it" }
@@ -616,55 +623,6 @@ private fun Message.foregroundBannerLookupIds(): List<String> =
         threadId.value,
         parentMessageId?.value
     ).map { it.trim() }.filter { it.isNotBlank() }.distinct()
-
-private fun SharedConversationDirectoryProjection.toForegroundThreadLaunchConversationIdentity(
-    directory: SharedConversationDirectoryState
-): ThreadLaunchConversationIdentity {
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
-    val streamChannel = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val normalizedChannelKind = channelKind.takeIf { it.isNotBlank() }
-    val normalizedParentChannelKind =
-        if (isReplyThread) {
-            parentChannelId
-                ?.let(directory::resolve)
-                ?.channelKind
-                ?.takeIf { it.isNotBlank() }
-                ?.takeUnless { it == KuiklyThreadSurfaceKind.ReplyThread }
-                ?: KuiklyThreadSurfaceKind.Channel
-        } else {
-            null
-        }
-    return ThreadLaunchConversationIdentity(
-        threadId =
-            if (isReplyThread && parentChannel != null && parentMessage != null) {
-                threadIdentity(parentChannel, parentMessage)
-            } else {
-                ThreadId(canonicalChannelId)
-            },
-        channelId = if (isReplyThread) parentChannel else streamChannel,
-        channelType = if (isReplyThread) null else normalizedChannelKind,
-        thread =
-            if (isReplyThread && parentChannel != null && parentMessage != null) {
-                ThreadConversation(
-                    parentChannelId = parentChannel,
-                    parentMessageId = parentMessage,
-                    streamChannelId = streamChannel,
-                    parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                    parentChannelKind = normalizedParentChannelKind
-                )
-            } else {
-                null
-            },
-        kind =
-            when (surfaceKind) {
-                KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
-                KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
-                else -> if (channelKind.equals("joint", ignoreCase = true)) ConversationKind.Joint else ConversationKind.Channel
-            }
-    )
-}
 
 private fun ThreadLaunchConversationIdentity.matchesForegroundVisibleRoute(
     visibleConversationKey: String?,

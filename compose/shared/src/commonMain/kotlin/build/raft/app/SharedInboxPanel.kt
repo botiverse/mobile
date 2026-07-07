@@ -1411,27 +1411,7 @@ internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConvers
     val streamChannelId = resolveInboxStreamChannelId()
     val parentId = parentMessageId
     val parentChannel = parentChannelId
-    val stableThreadIdentity =
-        if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
-            threadIdentity(parentChannel, parentId)
-        } else {
-            null
-        }
-    return ThreadLaunchConversationIdentity(
-        threadId = stableThreadIdentity ?: topLevelThreadId(channelId),
-        channelId = if (kind == InboxItemKind.Thread) parentChannel else channelId,
-        thread =
-            if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
-                ThreadConversation(
-                    parentChannelId = parentChannel,
-                    parentMessageId = parentId,
-                    streamChannelId = streamChannelId,
-                    parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull(),
-                    parentChannelKind = parentChannelKind.threadChannelKindWireValue()
-                )
-            } else {
-                null
-            },
+    return buildThreadLaunchConversationIdentity(
         kind =
             when (kind) {
                 InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
@@ -1439,7 +1419,13 @@ internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConvers
                 InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
                 InboxItemKind.System -> ConversationKind.System
                 InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
-            }
+            },
+        channelId = channelId,
+        threadChannelId = streamChannelId,
+        parentChannelId = parentChannel,
+        parentMessageId = parentId,
+        parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull(),
+        parentChannelKind = parentChannelKind.threadChannelKindWireValue()
     )
 }
 
