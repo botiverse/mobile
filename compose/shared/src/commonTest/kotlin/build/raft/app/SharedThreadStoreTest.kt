@@ -23,6 +23,7 @@ import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.ChannelMemberActionResult
 import build.raft.app.data.ChannelMemberSnapshot
 import build.raft.app.data.ChannelArchiveResult
+import build.raft.app.data.ChannelActivityMuteSettings
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ChannelJoinResult
 import build.raft.app.data.ChannelLeaveResult
@@ -7049,6 +7050,7 @@ class SharedThreadStoreTest {
         override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
         override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
         override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> = error("unused")
+        override suspend fun setChannelActivityMuted(channelId: ChannelId, muted: Boolean): DataResult<ChannelActivityMuteSettings> = error("unused")
     }
 
     private class RecordingAgentsApi : SlockAgentsApi {

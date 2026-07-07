@@ -3158,6 +3158,196 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun setChannelActivityMutedAppliesAuthoritativeResponse() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<Pair<ChannelId, Boolean>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                        )
+                    ),
+                scope = scope,
+                setChannelActivityMuted = { channelId, muted ->
+                    calls += channelId to muted
+                    DataResult.Content(
+                        ChannelActivityMuteSettings(
+                            channelId = channelId,
+                            activityMuted = muted,
+                            muteFromSeq = 88,
+                            activityMuteSupported = true
+                        )
+                    )
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(listOf(ChannelId("channel-1") to true), calls)
+        assertEquals(true, channel.activityMuted)
+        assertEquals(88, channel.muteFromSeq)
+        assertEquals(true, channel.activityMuteSupported)
+        scope.cancel()
+    }
+
+    @Test
+    fun setChannelActivityMutedRollsBackLatestFailure() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failureMessages = mutableListOf<String>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                        )
+                    ),
+                scope = scope,
+                setChannelActivityMuted = { _, _ -> DataResult.Error(ScreenError("server_unavailable", retryable = true)) },
+                pinUpdateFailureCallback = { message -> failureMessages += message }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(false, channel.activityMuted)
+        assertEquals(listOf("Unable to update channel notifications"), failureMessages)
+        scope.cancel()
+    }
+
+    @Test
+    fun setChannelActivityMutedFailureOnlyRollsBackTargetChannel() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val calls = mutableListOf<Pair<ChannelId, Boolean>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-a", "alpha").copy(activityMuteSupported = true),
+                                    channel("channel-b", "bravo").copy(activityMuteSupported = true)
+                                )
+                        )
+                    ),
+                scope = scope,
+                setChannelActivityMuted = { channelId, muted ->
+                    calls += channelId to muted
+                    if (channelId == ChannelId("channel-a")) {
+                        firstStarted.complete(Unit)
+                        releaseFirst.await()
+                        DataResult.Error(ScreenError("server_unavailable", retryable = true))
+                    } else {
+                        DataResult.Content(
+                            ChannelActivityMuteSettings(
+                                channelId = channelId,
+                                activityMuted = muted,
+                                muteFromSeq = 202,
+                                activityMuteSupported = true
+                            )
+                        )
+                    }
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-a", true))
+        withTimeout(1_000) { firstStarted.await() }
+        store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-b", true))
+        withTimeout(1_000) {
+            while (calls.size < 2) {
+                yield()
+            }
+        }
+
+        releaseFirst.complete(Unit)
+        yield()
+
+        val channels = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.associateBy { it.threadId.value }
+        assertEquals(listOf(ChannelId("channel-a") to true, ChannelId("channel-b") to true), calls)
+        assertEquals(false, channels.getValue("channel-a").activityMuted)
+        assertEquals(null, channels.getValue("channel-a").muteFromSeq)
+        assertEquals(true, channels.getValue("channel-b").activityMuted)
+        assertEquals(202, channels.getValue("channel-b").muteFromSeq)
+        scope.cancel()
+    }
+
+    @Test
+    fun setChannelActivityMutedIgnoresStaleOlderResponse() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val firstStarted = CompletableDeferred<Unit>()
+        val releaseFirst = CompletableDeferred<Unit>()
+        val calls = mutableListOf<Pair<ChannelId, Boolean>>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityMuteSupported = true))
+                        )
+                    ),
+                scope = scope,
+                setChannelActivityMuted = { channelId, muted ->
+                    calls += channelId to muted
+                    if (muted) {
+                        firstStarted.complete(Unit)
+                        releaseFirst.await()
+                        DataResult.Content(
+                            ChannelActivityMuteSettings(
+                                channelId = channelId,
+                                activityMuted = true,
+                                muteFromSeq = 101,
+                                activityMuteSupported = true
+                            )
+                        )
+                    } else {
+                        DataResult.Content(
+                            ChannelActivityMuteSettings(
+                                channelId = channelId,
+                                activityMuted = false,
+                                muteFromSeq = null,
+                                activityMuteSupported = true
+                            )
+                        )
+                    }
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+        withTimeout(1_000) { firstStarted.await() }
+        assertEquals(true, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().activityMuted)
+
+        store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-1", false))
+        withTimeout(1_000) {
+            while (calls.size < 2) {
+                yield()
+            }
+        }
+        assertEquals(false, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().activityMuted)
+
+        releaseFirst.complete(Unit)
+        yield()
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(listOf(ChannelId("channel-1") to true, ChannelId("channel-1") to false), calls)
+        assertEquals(false, channel.activityMuted)
+        assertEquals(null, channel.muteFromSeq)
+        scope.cancel()
+    }
+
+    @Test
     fun pinnedLazyItemCountGrowsWhenPinnedItemsArePresent() {
         val collapsed = homeLazyItemCount(
             channelsCount = 3,

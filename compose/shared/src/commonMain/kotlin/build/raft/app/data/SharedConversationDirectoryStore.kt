@@ -42,6 +42,9 @@ internal data class SharedConversationDirectoryProjection(
     val parentMessageId: String? = null,
     val joined: Boolean = true,
     val archived: Boolean = false,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
 
@@ -197,6 +200,9 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,
         archived = archived,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported,
         permissions = permissions
     )
 }

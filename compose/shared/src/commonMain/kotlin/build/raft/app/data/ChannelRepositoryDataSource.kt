@@ -58,6 +58,13 @@ internal suspend fun SlockNetworkClient.updateChannel(
 private suspend fun SlockNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.setChannelActivityMuted(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/notification-settings", method = "PATCH", bodyText = bodyText)
+
 class RealChannelRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
@@ -175,6 +182,30 @@ class RealChannelRepository(
             block = { networkClient.updateChannel(DataRequestPriority.Foreground, channelId, visibility) },
             source = "channel_update_visibility",
             mapper = { ChannelUpdateResult(channelId) }
+        )
+    }
+
+    override suspend fun setChannelActivityMuted(
+        channelId: ChannelId,
+        muted: Boolean
+    ): DataResult<ChannelActivityMuteSettings> {
+        currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = {
+                networkClient.setChannelActivityMuted(
+                    DataRequestPriority.Foreground,
+                    channelId,
+                    buildChannelActivityMuteBody(muted)
+                )
+            },
+            source = "channel_activity_mute",
+            mapper = { bodyText ->
+                channelRepositoryJson
+                    .decodeFromString(ChannelActivityMuteSettingsResponse.serializer(), bodyText)
+                    .toSettings(channelId)
+            }
         )
     }
 
@@ -319,11 +350,32 @@ data class OpenAgentDirectMessageRequestBody(val agentId: String)
 @Serializable
 data class OpenUserDirectMessageRequestBody(val userId: String)
 
+@Serializable
+private data class ChannelActivityMuteRequestBody(val activityMuted: Boolean)
+
+@Serializable
+private data class ChannelActivityMuteSettingsResponse(
+    val activityMuted: Boolean,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false
+) {
+    fun toSettings(channelId: ChannelId): ChannelActivityMuteSettings =
+        ChannelActivityMuteSettings(
+            channelId = channelId,
+            activityMuted = activityMuted,
+            muteFromSeq = muteFromSeq,
+            activityMuteSupported = activityMuteSupported
+        )
+}
+
 private fun buildOpenAgentDirectMessageBody(agentId: MemberId): String =
     channelRepositoryJson.encodeToString(OpenAgentDirectMessageRequestBody(agentId.value))
 
 private fun buildOpenUserDirectMessageBody(userId: MemberId): String =
     channelRepositoryJson.encodeToString(OpenUserDirectMessageRequestBody(userId.value))
+
+private fun buildChannelActivityMuteBody(muted: Boolean): String =
+    channelRepositoryJson.encodeToString(ChannelActivityMuteRequestBody(muted))
 
 @Serializable
 private data class ChannelErrorBody(

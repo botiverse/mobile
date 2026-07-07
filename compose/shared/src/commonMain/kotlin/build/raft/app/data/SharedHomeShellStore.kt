@@ -275,6 +275,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
         is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
+        is SharedHomeIntent.SetChannelActivityMuted -> "SetChannelActivityMuted:$conversationId:$muted"
     }
 
 private fun SharedHomeState.toSharedHomeShellHomeSummary(): String =

@@ -83,6 +83,14 @@ internal class ComposeThreadHeaderVisualPage : BasePager() {
     }
 }
 
+@Page("compose_thread_activity_mute_visual", supportInLocal = true)
+internal class ComposeThreadActivityMuteVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadActivityMuteVisualScreen() }
+    }
+}
+
 @Page("compose_thread_reaction_atlas_visual", supportInLocal = true)
 internal class ComposeThreadReactionAtlasVisualPage : BasePager() {
     override fun willInit() {

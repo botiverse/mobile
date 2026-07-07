@@ -81,6 +81,9 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
 

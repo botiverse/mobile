@@ -5522,7 +5522,10 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerName = safeDirectMessagePeerName,
         dmPeerAvatarUrl = null,
         dmPeerAvatarLabel = safeDirectMessagePeerName?.take(2)?.uppercase(),
-        dmPeerGravatarUrl = null
+        dmPeerGravatarUrl = null,
+        activityMuted = conversation.activityMuted,
+        muteFromSeq = conversation.muteFromSeq,
+        activityMuteSupported = conversation.activityMuteSupported
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 

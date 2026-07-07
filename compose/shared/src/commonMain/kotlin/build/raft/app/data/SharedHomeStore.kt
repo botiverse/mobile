@@ -65,6 +65,9 @@ internal class SharedHomeStore(
     private var archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
         DataResult.Empty(EmptyReason.NoChannels)
     },
+    private var setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
+        DataResult.Empty(EmptyReason.NoChannels)
+    },
     /**
      * #211: callback invoked when a pin/unpin or pinned-sort-mode PATCH
      * fails. The host (SettingsHomePage) typically wires this to
@@ -96,6 +99,8 @@ internal class SharedHomeStore(
     // base snapshot and clobber any server-side pinned list.
     private val sidebarOrderMutex = Mutex()
     private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
+    private var channelActivityMuteRequestSeq: Long = 0L
+    private val channelActivityMuteRequests = linkedMapOf<ChannelId, ChannelActivityMuteRequest>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
@@ -120,6 +125,9 @@ internal class SharedHomeStore(
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
+        setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
+            DataResult.Empty(EmptyReason.NoChannels)
+        },
         pinUpdateFailureCallback: (String) -> Unit = {}
     ) {
         loadJob?.cancel()
@@ -133,6 +141,7 @@ internal class SharedHomeStore(
         this.markChannelReadAll = markChannelReadAll
         this.markChannelUnread = markChannelUnread
         this.archiveChannel = archiveChannel
+        this.setChannelActivityMuted = setChannelActivityMuted
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
         diagnosticsLogger("home_runtime_integrations_updated")
     }
@@ -320,6 +329,8 @@ internal class SharedHomeStore(
                 closeDirectMessage(intent.conversationId)
             is SharedHomeIntent.ArchiveChannel ->
                 archiveConversationChannel(intent.conversationId)
+            is SharedHomeIntent.SetChannelActivityMuted ->
+                setConversationActivityMuted(intent.conversationId, intent.muted)
             }
         }
     }
@@ -1211,6 +1222,61 @@ internal class SharedHomeStore(
         }
     }
 
+    private suspend fun setConversationActivityMuted(conversationId: String, muted: Boolean) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId)
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to update channel notifications: home not loaded")
+            return
+        }
+        if (!target.activityMuteSupported) {
+            pinUpdateFailureCallback("Unable to update channel notifications")
+            return
+        }
+        if (target.activityMuted == muted) return
+        val channelId = target.messageStreamChannelId()
+        val previousSettings = target.toChannelActivityMuteSettings(channelId)
+        val request =
+            ChannelActivityMuteRequest(
+                id = ++channelActivityMuteRequestSeq,
+                muted = muted
+            )
+        channelActivityMuteRequests[channelId] = request
+        applyHomeSnapshotLocally {
+            it.withChannelActivityMute(
+                ChannelActivityMuteSettings(
+                    channelId = channelId,
+                    activityMuted = muted,
+                    muteFromSeq = if (muted) target.muteFromSeq else null,
+                    activityMuteSupported = target.activityMuteSupported
+                )
+            )
+        }
+        when (val result = setChannelActivityMuted(channelId, muted)) {
+            is DataResult.Content -> {
+                if (channelActivityMuteRequests[channelId] == request) {
+                    channelActivityMuteRequests.remove(channelId)
+                    applyHomeSnapshotLocally { it.withChannelActivityMute(result.data) }
+                }
+            }
+            is DataResult.Empty -> {
+                if (channelActivityMuteRequests[channelId] == request) {
+                    channelActivityMuteRequests.remove(channelId)
+                    applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                    pinUpdateFailureCallback("Unable to update channel notifications")
+                }
+            }
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                if (channelActivityMuteRequests[channelId] == request) {
+                    channelActivityMuteRequests.remove(channelId)
+                    applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                    pinUpdateFailureCallback("Unable to update channel notifications")
+                }
+            }
+        }
+    }
+
     private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot) {
         val current = _state.value.content as? SharedHomeContentState.Content ?: return
         val nextSnapshot = transform(current.snapshot)
@@ -1421,6 +1487,11 @@ internal expect fun defaultNowMillis(): Long
 private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConversationRow? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
 
+private data class ChannelActivityMuteRequest(
+    val id: Long,
+    val muted: Boolean
+)
+
 private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
     when (this) {
         SharedHomeIntent.Start -> "Start"
@@ -1445,6 +1516,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
         is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
+        is SharedHomeIntent.SetChannelActivityMuted -> "SetChannelActivityMuted:$conversationId:$muted"
     }
 
 private fun RealtimeEvent.toSharedHomeRealtimeEventDiagnosticsLabel(): String =
@@ -1737,6 +1809,40 @@ private fun HomeConversationRow.matchesHomeConversation(conversationId: String):
 private fun HomeConversationRow.messageStreamChannelId(): ChannelId =
     thread?.streamChannelId ?: channelId ?: ChannelId(threadId.value)
 
+private fun HomeConversationRow.toChannelActivityMuteSettings(channelId: ChannelId): ChannelActivityMuteSettings =
+    ChannelActivityMuteSettings(
+        channelId = channelId,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
+        activityMuteSupported = activityMuteSupported
+    )
+
+private fun HomeSnapshot.withChannelActivityMute(settings: ChannelActivityMuteSettings): HomeSnapshot =
+    copy(
+        channels = channels.map { channel ->
+            if (channel.messageStreamChannelId() == settings.channelId) {
+                channel.copy(
+                    activityMuted = settings.activityMuted,
+                    muteFromSeq = settings.muteFromSeq,
+                    activityMuteSupported = settings.activityMuteSupported
+                )
+            } else {
+                channel
+            }
+        },
+        directMessages = directMessages.map { directMessage ->
+            if (directMessage.messageStreamChannelId() == settings.channelId) {
+                directMessage.copy(
+                    activityMuted = settings.activityMuted,
+                    muteFromSeq = settings.muteFromSeq,
+                    activityMuteSupported = settings.activityMuteSupported
+                )
+            } else {
+                directMessage
+            }
+        }
+    )
+
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
@@ -1801,6 +1907,7 @@ sealed interface SharedHomeIntent {
     data class MarkUnread(val conversationId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
+    data class SetChannelActivityMuted(val conversationId: String, val muted: Boolean) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -1827,7 +1934,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
-            is SharedHomeIntent.ArchiveChannel -> false
+            is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.SetChannelActivityMuted -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -1854,7 +1962,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
-            is SharedHomeIntent.ArchiveChannel -> false
+            is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.SetChannelActivityMuted -> false
         }
 
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
@@ -1881,7 +1990,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
-            is SharedHomeIntent.ArchiveChannel -> false
+            is SharedHomeIntent.ArchiveChannel,
+            is SharedHomeIntent.SetChannelActivityMuted -> false
         }
 
 sealed interface SharedHomeContentState {
