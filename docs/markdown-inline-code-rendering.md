@@ -96,8 +96,10 @@ Text that follows a chip (e.g. a CJK `的`) should get a bit more breathing room
 space after the code span is tagged `slockInlineCodeTrailingMargin`, passed through, and
 rendered by `KRSlockInlineCodeTrailingMarginSpan` — an invisible `ReplacementSpan`
 (`draw` is empty) whose `getSize` is `SLOCK_INLINE_CODE_TRAILING_MARGIN_RATIO × textSize`
-(default `2/15`). No NBSP, no visible-text change. So the right-hand outside gap is
-`2/15` (edge) `+ 2/15` (this span) `= 4/15`. Tune the following gap with this one ratio.
+(`1/15` — narrowed from an earlier `2/15` by the "narrow/soften inline code trailing
+margin" fixes; source of truth is the constant in `KRRichTextBuilder.kt`). No NBSP, no
+visible-text change. So the right-hand outside gap is `2/15` (edge) `+ 1/15` (this span)
+`= 3/15`. Tune the following gap with this one ratio.
 
 ### What went wrong before (the actual bug fixed in `6fa8a02`)
 
