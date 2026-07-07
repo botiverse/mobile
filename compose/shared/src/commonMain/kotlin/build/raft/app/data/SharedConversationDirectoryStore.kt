@@ -6,7 +6,9 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
@@ -32,6 +34,10 @@ internal data class SharedConversationDirectoryProjection(
     val subtitle: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(2).uppercase(),
+    val senderMessageIds: Set<String> = emptySet(),
+    val senderMemberId: String? = null,
+    val senderAvatarWireValue: String? = null,
+    val senderAvatarLabel: String? = null,
     val peerMemberId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
@@ -268,6 +274,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
             InboxItemKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
             else -> KuiklyThreadSurfaceKind.Channel
         }
+    val sender = toSharedConversationDirectorySender()
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
         canonicalChannelId = canonicalChannelId,
@@ -297,9 +304,67 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
             },
         avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
+        senderMessageIds = sender.messageIds,
+        senderMemberId = sender.memberId,
+        senderAvatarWireValue = sender.avatarWireValue,
+        senderAvatarLabel = sender.label,
         peerMemberId = null,
         parentChannelId = parentId,
         parentMessageId = parentMessage
+    )
+}
+
+private data class SharedConversationDirectorySender(
+    val messageIds: Set<String>,
+    val memberId: String?,
+    val avatarWireValue: String?,
+    val label: String?
+)
+
+private fun InboxItem.toSharedConversationDirectorySender(): SharedConversationDirectorySender {
+    val latestMessageId = latestActivityMessageId?.value?.takeIf { it.isNotBlank() }
+    val lastMessageId = lastMessageId?.value?.takeIf { it.isNotBlank() }
+    val latest =
+        sharedConversationDirectorySenderCandidate(
+            messageIds = setOfNotNull(latestMessageId),
+            kind = latestActivitySenderKind,
+            id = latestActivitySenderId,
+            avatarWireValue = latestActivitySenderAvatarWireValue,
+            label = latestActivitySenderName
+        )
+    if (latest.memberId != null || latest.avatarWireValue != null || latest.label != null) return latest
+    return sharedConversationDirectorySenderCandidate(
+        messageIds = setOfNotNull(lastMessageId),
+        kind = lastMessageSenderKind,
+        id = lastMessageSenderId,
+        avatarWireValue = lastMessageSenderAvatarWireValue,
+        label = lastMessageSenderName
+    )
+}
+
+private fun sharedConversationDirectorySenderCandidate(
+    messageIds: Set<String>,
+    kind: MemberKind?,
+    id: String?,
+    avatarWireValue: String?,
+    label: String?
+): SharedConversationDirectorySender {
+    val cleanId = id?.takeIf { it.isNotBlank() }
+    val resolvedAvatar =
+        if (kind != null && cleanId != null) {
+            avatarWireValueForAvatarSlot(
+                kind = kind,
+                id = cleanId,
+                avatarWireValue = avatarWireValue
+            )
+        } else {
+            avatarWireValue?.takeIf { it.isNotBlank() }
+        }
+    return SharedConversationDirectorySender(
+        messageIds = messageIds,
+        memberId = cleanId,
+        avatarWireValue = resolvedAvatar,
+        label = label?.takeIf { it.isNotBlank() }
     )
 }
 
