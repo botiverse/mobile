@@ -76,6 +76,55 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun messageUpdatedTreatsExplicitNullReactionsAsCleared() {
+        // A web-side "remove last reaction" emits `reactions: null`; realtime must clear
+        // it, not preserve the stale reaction. Explicit JSON null maps to an empty list
+        // so the store's realtime merge drops the removed reaction.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageUpdated,
+                """
+                {
+                  "id": "message-1",
+                  "channelId": "channel-1",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "content": "hello",
+                  "reactions": null
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<MessageUpdated>(event)
+        assertEquals(emptyList(), updated.message.reactions)
+    }
+
+    @Test
+    fun messageUpdatedKeepsReactionsNullWhenFieldAbsent() {
+        // A content-only `message:updated` omits `reactions`; it must stay null so the
+        // realtime merge preserves the message's existing reactions instead of wiping
+        // them on an unrelated edit.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageUpdated,
+                """
+                {
+                  "id": "message-1",
+                  "channelId": "channel-1",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "content": "edited body"
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<MessageUpdated>(event)
+        assertNull(updated.message.reactions)
+    }
+
+    @Test
     fun messageUpdatedPrefersChannelIdForTimelineIdentityWhenThreadIdIsReplyStream() {
         val event =
             RealtimeEventMapper().map(
