@@ -2,19 +2,27 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.ComposeLocalDataStore
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
+import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
+import build.raft.app.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -41,6 +49,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.ui.zIndex
+import kotlinx.coroutines.flow.flowOf
 
 private const val ForegroundBannerAutoDismissMs = 5_000L
 private const val ForegroundBannerPreviewMaxLength = 96
@@ -78,18 +87,26 @@ internal data class SlockForegroundMessageBanner(
 internal fun SlockForegroundBannerHost(
     banner: SlockForegroundMessageBanner?,
     topSafeArea: Dp,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    serverMembersStore: SharedServerMembersStore? = null,
+    currentServerStore: ComposeLocalDataStore? = null,
     onBannerClick: (SlockForegroundMessageBanner) -> Unit,
     onBannerDismiss: (SlockForegroundMessageBanner) -> Unit = {},
     content: @Composable () -> Unit
 ) {
+    val currentSessionFlow =
+        remember(currentServerStore) {
+            currentServerStore?.observeSession() ?: flowOf(null)
+        }
+    val currentSession by currentSessionFlow.collectAsState(null)
+    val currentServerId = currentSession?.currentServerId
     Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (banner != null) {
             SlockForegroundMessageBannerView(
                 banner = banner,
                 topSafeArea = topSafeArea,
-                memberAvatarResolver = memberAvatarResolver,
+                serverMembersStore = serverMembersStore,
+                currentServerId = currentServerId,
                 onClick = { onBannerClick(banner) },
                 onDismiss = { onBannerDismiss(banner) }
             )
@@ -101,7 +118,8 @@ internal fun SlockForegroundBannerHost(
 internal fun SlockForegroundMessageBannerView(
     banner: SlockForegroundMessageBanner,
     topSafeArea: Dp,
-    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    serverMembersStore: SharedServerMembersStore? = null,
+    currentServerId: ServerId? = null,
     onClick: () -> Unit,
     onDismiss: () -> Unit = {}
 ) {
@@ -149,7 +167,11 @@ internal fun SlockForegroundMessageBannerView(
                             .clickable(role = Role.Button, onClick = onClick),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockForegroundBannerAvatar(banner, memberAvatarResolver)
+                    SlockForegroundBannerAvatar(
+                        banner = banner,
+                        serverMembersStore = serverMembersStore,
+                        currentServerId = currentServerId
+                    )
                     Spacer(Modifier.width(10.dp))
                     SlockForegroundBannerText(banner, modifier = Modifier.weight(1f))
                 }
@@ -405,16 +427,34 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerThread
 @Composable
 private fun SlockForegroundBannerAvatar(
     banner: SlockForegroundMessageBanner,
-    memberAvatarResolver: SlockMemberAvatarResolver
+    serverMembersStore: SharedServerMembersStore?,
+    currentServerId: ServerId?
 ) {
-    val memberAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, banner.senderMemberId)
+    val profileFlow =
+        remember(serverMembersStore, currentServerId, banner.senderMemberId) {
+            serverMembersStore?.memberProfileFlow(currentServerId, banner.senderMemberId) ?: flowOf(null)
+        }
+    val profile by profileFlow.collectAsState(null)
+    val memberAvatarWireValue = profile?.explicitForegroundBannerAvatarWireValue()
+    val avatarLabel =
+        profile
+            ?.avatarLabel
+            ?.takeIf { it.isNotBlank() }
+            ?: banner.avatarLabel
     SlockAvatar(
         avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
-        label = banner.avatarLabel,
+        label = avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
         borderWidth = SlockStroke.Default
     )
 }
+
+private fun MemberProfile.explicitForegroundBannerAvatarWireValue(): String? =
+    avatar
+        ?.wireValue
+        ?.takeIf { it.isNotBlank() }
+        ?: avatarUrl?.takeIf { it.isNotBlank() }
+        ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
 
 private fun Message.resolveForegroundBannerConversation(
     directory: SharedConversationDirectoryState

@@ -8,7 +8,6 @@ import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
-import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
@@ -350,20 +349,10 @@ private fun sharedConversationDirectorySenderCandidate(
     label: String?
 ): SharedConversationDirectorySender {
     val cleanId = id?.takeIf { it.isNotBlank() }
-    val resolvedAvatar =
-        if (kind != null && cleanId != null) {
-            avatarWireValueForAvatarSlot(
-                kind = kind,
-                id = cleanId,
-                avatarWireValue = avatarWireValue
-            )
-        } else {
-            avatarWireValue?.takeIf { it.isNotBlank() }
-        }
     return SharedConversationDirectorySender(
         messageIds = messageIds,
         memberId = cleanId,
-        avatarWireValue = resolvedAvatar,
+        avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() },
         label = label?.takeIf { it.isNotBlank() }
     )
 }

@@ -2562,6 +2562,7 @@ internal fun SharedThreadRouteContent(
     val translationStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).messageTranslationStore }
     val realtimeDomainEventOwner = remember(bridge) { SlockSharedStoreRegistry.get(bridge).realtimeDomainEventOwner }
     val foregroundReconciler = remember(bridge) { SlockSharedStoreRegistry.get(bridge).foregroundReconciler }
+    val foregroundBannerCurrentServerStore = remember(bridge) { SlockSharedStoreRegistry.get(bridge).localDataStore }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
@@ -4170,6 +4171,8 @@ internal fun SharedThreadRouteContent(
     SlockForegroundBannerHost(
         banner = foregroundMessageBanner,
         topSafeArea = slockTopSafeAreaPadding(),
+        serverMembersStore = serverMembersStore,
+        currentServerStore = foregroundBannerCurrentServerStore,
         onBannerClick = { target ->
             foregroundMessageBanner = null
             val request = target.openRequest
