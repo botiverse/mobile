@@ -1237,7 +1237,10 @@ internal fun SlockStructuralHomeShell(
                 // task #436: both home popovers ride the shared floating-overlay
                 // infrastructure (touch-guard barrier + tap-outside dismiss) instead
                 // of per-popover dismiss layers, so nothing beneath stays interactive.
-                SlockFloatingOverlayHost(onDismiss = onServerSwitcherDismiss) { _ ->
+                SlockFloatingOverlayHost(
+                    onDismiss = onServerSwitcherDismiss,
+                    dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                ) { _ ->
                     ServerSwitcherPanel(
                         servers,
                         currentServerId,
@@ -1256,7 +1259,10 @@ internal fun SlockStructuralHomeShell(
                 }
             }
             if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {
-                SlockFloatingOverlayHost(onDismiss = { notificationCenterExpanded = false }) { _ ->
+                SlockFloatingOverlayHost(
+                    onDismiss = { notificationCenterExpanded = false },
+                    dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
+                ) { _ ->
                     Box(Modifier.fillMaxSize()) {
                         HomeNotificationPopover(
                             visibleNotifications,

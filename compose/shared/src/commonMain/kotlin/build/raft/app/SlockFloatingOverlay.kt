@@ -95,6 +95,13 @@ internal fun SlockAnchoredPopover(
 internal fun SlockFloatingOverlayHost(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    // task #436 follow-up: the activation delay exists for LONG-PRESS-opened menus,
+    // where the press release lands after the host has composed and would instantly
+    // dismiss. CLICK-opened popovers complete their opening gesture before the host
+    // mounts, so they pass 0 — with a nonzero delay, rapid consecutive taps either
+    // land on the trigger pre-mount (toggling) or inside the window (eaten), which
+    // reads as "the popover won't close".
+    dismissActivationDelayMillis: Long = SlockFloatingOverlayDismissActivationDelayMillis,
     content: @Composable (SlockFloatingOverlayLayout) -> Unit
 ) {
     // #223 fix: keep `origin` and `size` in PIXELS (the same unit as the
@@ -116,13 +123,15 @@ internal fun SlockFloatingOverlayHost(
     // (slockFloatingContentClickTarget) so clicks on the menu do not
     // bubble up; the host only needs to dismiss on clicks outside the
     // menu.
-    var dismissClickableActive by remember { mutableStateOf(false) }
+    var dismissClickableActive by remember { mutableStateOf(dismissActivationDelayMillis <= 0) }
     // #223: defer the dismiss clickable so the long-press release does not
     // immediately propagate to onDismiss. 150ms covers the standard Android
     // long-press threshold (~500ms) minus the time to compose + render the menu.
-    LaunchedEffect(Unit) {
-        delay(150)
-        dismissClickableActive = true
+    if (dismissActivationDelayMillis > 0) {
+        LaunchedEffect(Unit) {
+            delay(dismissActivationDelayMillis)
+            dismissClickableActive = true
+        }
     }
     Box(
         modifier = modifier
@@ -201,6 +210,9 @@ private fun SlockFloatingOverlayDismissBarrier(
 }
 
 private const val SlockFloatingOverlayTouchGuardAlpha = 0.01f
+
+internal const val SlockFloatingOverlayDismissActivationDelayMillis = 150L
+internal const val SlockFloatingOverlayClickTriggeredDismissDelayMillis = 0L
 
 internal fun SlockFloatingOverlayLayout.positionContent(
     anchor: Offset,
