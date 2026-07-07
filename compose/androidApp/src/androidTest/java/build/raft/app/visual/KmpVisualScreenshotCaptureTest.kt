@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import android.app.Activity
@@ -2704,6 +2705,46 @@ class KmpVisualScreenshotCaptureTest {
                 InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
                 "visual-testing/android/$CAPTURE_TIMING_FILE"
             ).delete()
+            // Suppress the immersive-fullscreen education overlay before any case
+            // enters immersive (task #395).
+            confirmImmersiveEducationDismissed()
+        }
+
+        /**
+         * Mark Android's immersive-mode education overlay as already confirmed so
+         * it never appears during capture (task #395).
+         *
+         * [applyVisualFullscreen] forces immersive-sticky fullscreen (hidden
+         * status/nav bars via BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE) so the decor
+         * view fills the full 1170x2532 display and the FULL_VIEWPORT crop lines
+         * up (task #370). The first time an app enters immersive-sticky on a
+         * device, SystemUI shows a transient "Viewing full screen / swipe down to
+         * exit / Got it" education overlay that also dims the page. Software
+         * root.draw() misses it, but Kuikly's hardware-rendered member-detail
+         * pages fall through to the UiAutomation.takeScreenshot() fallback in
+         * [captureActivityScreenshot], which grabs the real system surface — so
+         * the overlay leaked into those captures (e.g. screens.members.agent-
+         * detail.profile) and is a baseline-flake source.
+         *
+         * Setting the `immersive_mode_confirmations` secure value to `confirmed`
+         * tells SystemUI the education was already acknowledged, so the overlay is
+         * suppressed device-wide for the run. It is global device state, so once
+         * per shard JVM (before the first case enters immersive) is sufficient and
+         * adds zero per-case cost. Best-effort: a failure here only means the
+         * overlay might reappear, never a capture failure.
+         */
+        private fun confirmImmersiveEducationDismissed() {
+            val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            try {
+                val fd = uiAutomation.executeShellCommand(
+                    "settings put secure immersive_mode_confirmations confirmed"
+                )
+                // Drain + close the pipe so the shell command completes and the fd
+                // is not leaked.
+                ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
+            } catch (t: Throwable) {
+                Log.w(VISUAL_LOG_TAG, "immersive education suppression failed: ${t.message}")
+            }
         }
 
         private const val STABLE_CAPTURE_TIMEOUT_MS = 20_000L
