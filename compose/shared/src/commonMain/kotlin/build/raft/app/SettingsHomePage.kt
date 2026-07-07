@@ -14965,6 +14965,10 @@ private fun Message.appShellForegroundStreamId(): String? =
 private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
     message: Message
 ): Boolean {
+    // A suppressed message is already decided (own/system/visible/server mismatch) — it
+    // must never enter the wait/retry loop. This was implicit in the deleted guessed-banner
+    // null-check; it is now the explicit first gate (t434, LiBai's required fix).
+    if (suppressReason != null) return false
     if (sharedProjection != null) return false
     // task #425 part 2: a usable server-provided conversationContext already
     // yields a correct identity (routing-safe); show immediately with

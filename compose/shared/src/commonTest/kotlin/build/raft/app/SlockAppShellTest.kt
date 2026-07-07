@@ -1225,6 +1225,41 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun suppressedOwnMessageNeverEntersTheWaitLoop() {
+        // t434 required fix (LiBai): suppression is a terminal decision. An own message —
+        // which has a stream id — must not fall into the unproven-wait path (5 retries +
+        // an Activity refresh each) now that the guessed-banner null-check is gone.
+        val message =
+            appShellForegroundTestMessage(
+                id = "own-1",
+                authorId = "user-1",
+                authorKind = MemberKind.Human,
+                channelId = "channel-1",
+                body = "My own message"
+            )
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(result.banner)
+        assertNotNull(result.suppressReason)
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = result,
+                message = message,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+    }
+
+    @Test
     fun plainChannelMessageDefersThenPopsWhenProjectionArrives() {
         // t434 key regression (LiBai): deleting the raw guess fallback must not turn "pop
         // after the directory catches up" into "never pop". Unproven -> Retry (no banner,
