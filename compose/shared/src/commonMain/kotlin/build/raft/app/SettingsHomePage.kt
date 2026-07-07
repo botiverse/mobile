@@ -11928,6 +11928,7 @@ private fun SharedHomeScreen(
                 dmOrder = snapshot.sidebarOrder?.dmOrder.orEmpty(),
                 dmSortMode = snapshot.sidebarOrder?.dmSortMode ?: "manual",
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
+                pinnedAgentIds = snapshot.sidebarOrder?.pinnedAgentIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
                 hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),

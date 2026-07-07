@@ -326,6 +326,7 @@ internal data class SlockHomePayload(
     val dmOrder: List<String> = emptyList(),
     val dmSortMode: String = "manual",
     val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedAgentIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
     val pinnedSortMode: String = "manual",
     val hiddenDmIds: List<String> = emptyList(),
@@ -448,6 +449,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         dmOrder = payload.dmOrder,
         dmSortMode = payload.dmSortMode,
         pinnedChannelIds = payload.pinnedChannelIds,
+        pinnedAgentIds = payload.pinnedAgentIds,
         pinnedOrder = payload.pinnedOrder,
         pinnedSortMode = payload.pinnedSortMode,
         hiddenDmIds = payload.hiddenDmIds,
@@ -673,6 +675,7 @@ internal fun SlockStructuralHomeShell(
     dmOrder: List<String> = emptyList(),
     dmSortMode: String = "manual",
     pinnedChannelIds: List<String> = emptyList(),
+    pinnedAgentIds: List<String> = emptyList(),
     pinnedOrder: List<String> = emptyList(),
     pinnedSortMode: String = "manual",
     hiddenDmIds: List<String> = emptyList(),
@@ -772,7 +775,19 @@ internal fun SlockStructuralHomeShell(
     // pressed / selected. Dedup still applies *inside* the pinned
     // section itself (handled by `pinnedItemsForSidebar`).
     @Suppress("UNUSED_VARIABLE")
-    val pinnedIdSet = remember(pinnedChannelIds) { pinnedChannelIds.toSet() }
+    val pinnedIdSet =
+        remember(directMessages, pinnedChannelIds, pinnedAgentIds) {
+            buildSet {
+                addAll(pinnedChannelIds)
+                addAll(pinnedAgentIds)
+                val pinnedAgentIdSet = pinnedAgentIds.toSet()
+                directMessages.forEach { dm ->
+                    if (dm.peerType.equals("agent", ignoreCase = true) && dm.presenceMemberId in pinnedAgentIdSet) {
+                        add(dm.id)
+                    }
+                }
+            }
+        }
     var sortOverlaySection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var activeMenuSection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     val allChannelId = remember(channels) { channels.firstOrNull { it.kind != "joint" && it.name == "all" }?.id }
@@ -799,11 +814,12 @@ internal fun SlockStructuralHomeShell(
             .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
             .sortedForSidebar(directMessageSortMode) { it.name }
     }
-    val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedOrder, pinnedSortModeState) {
+    val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedAgentIds, pinnedOrder, pinnedSortModeState) {
         pinnedItemsForSidebar(
             channels = channels,
             directMessages = directMessages,
             pinnedIds = pinnedChannelIds,
+            pinnedAgentIds = pinnedAgentIds,
             pinnedOrder = pinnedOrder,
             mode = pinnedSortModeState
         )
@@ -1864,7 +1880,8 @@ internal fun resolveSortTargetIndex(
 }
 
 /**
- * Reconstruct the Pinned section from raw `pinnedChannelIds` and `pinnedOrder`
+ * Reconstruct the Pinned section from raw `pinnedChannelIds`, `pinnedAgentIds`,
+ * and `pinnedOrder`
  * (server side `SettingsServerSidebarOrderSnapshot`).
  *
  * Manual mode: items in `pinnedOrder` (drop unknown ids), then any remaining
@@ -1873,27 +1890,36 @@ internal fun resolveSortTargetIndex(
  * A-Z mode: sorted by display name asc.
  *
  * Items must be present in either `channels` (regular or joint) or
- * `directMessages`; pinned ids that no longer exist are dropped.
+ * `directMessages`; pinned ids that no longer exist are dropped. Agent ids
+ * are resolved to their corresponding agent DM row through the row's
+ * `presenceMemberId`, matching React's `pinnedAgentIds -> agentDmById` path.
  */
 internal fun pinnedItemsForSidebar(
     channels: List<SlockHomeConversationItem>,
     directMessages: List<SlockHomeConversationItem>,
     pinnedIds: List<String>,
+    pinnedAgentIds: List<String> = emptyList(),
     pinnedOrder: List<String>,
     mode: SlockSidebarSortMode
 ): List<SlockHomeConversationItem> {
-    if (pinnedIds.isEmpty()) return emptyList()
+    if (pinnedIds.isEmpty() && pinnedAgentIds.isEmpty()) return emptyList()
     val byId: Map<String, SlockHomeConversationItem> = buildMap {
         channels.forEach { put(it.id, it) }
         directMessages.forEach { put(it.id, it) }
+        directMessages.forEach { dm ->
+            if (dm.peerType.equals("agent", ignoreCase = true)) {
+                dm.presenceMemberId?.takeIf { it.isNotBlank() }?.let { put(it, dm) }
+            }
+        }
     }
-    val pinnedSet = pinnedIds.toSet()
-    val existingPinned = pinnedIds.mapNotNull { byId[it] }
+    val allPinnedIds = (pinnedIds + pinnedAgentIds).distinct()
+    val pinnedSet = allPinnedIds.toSet()
+    val existingPinned = allPinnedIds.mapNotNull { byId[it] }.distinctBy { it.id }
     return when (mode) {
         SlockSidebarSortMode.Manual -> {
             val ordered = LinkedHashMap<String, SlockHomeConversationItem>()
             pinnedOrder.forEach { id ->
-                byId[id]?.takeIf { it.id in pinnedSet }?.let { ordered.put(it.id, it) }
+                byId[id]?.takeIf { id in pinnedSet }?.let { ordered.put(it.id, it) }
             }
             existingPinned.forEach { item ->
                 if (!ordered.containsKey(item.id)) {
