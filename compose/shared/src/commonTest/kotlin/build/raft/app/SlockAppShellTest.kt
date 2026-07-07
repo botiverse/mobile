@@ -438,6 +438,36 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerProjectionSuppressesWhenCurrentServerMissing() {
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = null,
+                message = appShellForegroundTestMessage(channelId = "channel-1"),
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(result.banner)
+        assertEquals("current_server_missing", result.suppressReason)
+    }
+
+    @Test
+    fun foregroundBannerProjectionSuppressesMismatchedCurrentServer() {
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-2",
+                currentServerId = "server-1",
+                message = appShellForegroundTestMessage(channelId = "channel-1"),
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(result.banner)
+        assertEquals("server_mismatch", result.suppressReason)
+    }
+
+    @Test
     fun foregroundBannerProjectionShowsOnSettingsEvenWithSelectedHomeConversation() {
         val banner =
             slockForegroundMessageBannerProjection(

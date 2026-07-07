@@ -323,7 +323,10 @@ internal fun slockForegroundMessageBannerProjectionResult(
     val normalizedServerId =
         serverId.takeIf { it.isNotBlank() }
             ?: return SlockForegroundMessageBannerProjectionResult(null, null, "server_missing")
-    if (!currentServerId.isNullOrBlank() && currentServerId != normalizedServerId) {
+    val normalizedCurrentServerId =
+        currentServerId?.takeIf { it.isNotBlank() }
+            ?: return SlockForegroundMessageBannerProjectionResult(null, null, "current_server_missing")
+    if (normalizedCurrentServerId != normalizedServerId) {
         return SlockForegroundMessageBannerProjectionResult(null, null, "server_mismatch")
     }
     if (!currentMemberId.isNullOrBlank() && message.author.id.value == currentMemberId) {

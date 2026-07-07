@@ -42,7 +42,7 @@ class LocalPreferencesTest {
         assertEquals(LargeScreenNavigationPreference.LeftRail, snapshot.largeScreenNavigation)
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(false, snapshot.imageAnnotationEnabled)
-        assertEquals(true, snapshot.foregroundMessageBannersEnabled)
+        assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
