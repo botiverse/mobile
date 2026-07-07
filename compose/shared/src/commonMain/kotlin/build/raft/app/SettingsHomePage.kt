@@ -3514,6 +3514,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
+                            onOpenReleaseNotes = { pager.openReleaseNotesPage() },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
                             },
@@ -3715,6 +3716,7 @@ private fun SettingsAppShellContent(
     onSettingsHeaderClick: () -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
+    onOpenReleaseNotes: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onCompactConsecutiveMessagesSelected: (Boolean) -> Unit,
     onForegroundMessageBannersSelected: (Boolean) -> Unit,
@@ -3972,10 +3974,10 @@ private fun SettingsAppShellContent(
             bottomContentPadding = bottomContentPadding,
             onHeaderClick = onSettingsHeaderClick,
             onSelect = { key ->
-                if (key == SettingsDestinationRouter) {
-                    onOpenRouter()
-                } else {
-                    onDestinationChange(key)
+                when (key) {
+                    SettingsDestinationRouter -> onOpenRouter()
+                    SettingsDestinationReleaseNotes -> onOpenReleaseNotes()
+                    else -> onDestinationChange(key)
                 }
             }
         )
@@ -8015,7 +8017,7 @@ private fun SharedSettingsReleaseNotesContent(
     }
 }
 
-private fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
+internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
     val localeTag =
         try {
             KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().kmmResourceLocaleTag
@@ -17023,6 +17025,7 @@ private fun SettingsRouteVisualScreen() {
         onSettingsHeaderClick = {},
         onOpenComputer = {},
         onOpenRouter = {},
+        onOpenReleaseNotes = {},
         onMessageAlignmentSelected = {},
         onCompactConsecutiveMessagesSelected = {},
         onForegroundMessageBannersSelected = {},
