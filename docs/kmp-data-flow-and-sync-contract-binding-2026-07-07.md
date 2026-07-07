@@ -101,6 +101,11 @@ composables, never in platform hosts.
    the store records the deferred frame, requests the difference endpoint
    (today for messages: `/messages/sync` from the visible-stream tail per the
    seq-gap spec), applies the repair batch, then re-stitches deferred frames.
+   The repair batch may already contain frames the client is holding as
+   deferred — re-stitching therefore MUST re-run watermark validation
+   (ordered apply + idempotent drop make this naturally safe; do not
+   "optimize" the re-check away by assuming deferred frames are still ahead
+   of the watermark after repair).
    Sparse domains (agent activity) skip gap detection but keep ordered apply
    and idempotent drop.
 3. **Epoch discipline.** Watermarks are meaningful only within one epoch.
@@ -126,17 +131,19 @@ composables, never in platform hosts.
    different content ⇒ producer violation: deterministically drop the
    later-arriving frame and request reconcile. The client does not arbitrate.
 
-## 4. Send side: pending shadow + `clientSendId` (RFC 038 §6)
+## 4. Send side: pending shadow + `random_id` (RFC 038 §6)
 
 Target contract: a locally-sent message is a **pending shadow**, never a
-canonical row. Every send carries a client-generated `clientSendId`; the
-canonical echo returns it verbatim; shadow absorption matches on that id
-alone. This closes both failure modes: duplicate rows on echo, and the
-"RPC response lost but message delivered" trap (shadow stays retryable; the
-push echo absorbs it by id).
+canonical row. Every send carries a client-generated **`random_id`** (field
+name ruled by artin in task #83 — Telegram's original name, not a translated
+alias; the wire casing, `random_id` vs `randomId`, is to be pinned with artin
+before implementation); the canonical echo returns it verbatim; shadow
+absorption matches on that id alone. This closes both failure modes:
+duplicate rows on echo, and the "RPC response lost but message delivered"
+trap (shadow stays retryable; the push echo absorbs it by id).
 
 **Current server reality (confirmed with the contract DRI, 2026-07-07): the
-server does not accept or echo `clientSendId` yet.** A server-side additive
+server does not accept or echo `random_id` yet.** A server-side additive
 slice is being filed by 赵梓淇; progress tracked in #proj-frontend /
 #raft-mobile-reconcile.
 
@@ -147,7 +154,7 @@ Mobile rules until then:
   section — so the switch to exact matching touches exactly one place.
 - Do not add new content/attachment/task-context matching heuristics anywhere
   else. New send paths must route through the single absorption point.
-- When the server slice lands: generate `clientSendId` per send in the shared
+- When the server slice lands: generate `random_id` per send in the shared
   send path, persist it on the pending shadow, absorb by exact id, and demote
   the heuristic to a migration fallback with a removal milestone.
 
@@ -209,7 +216,7 @@ Per adopting domain, as part of migration acceptance:
 | Machine status | `statusVersion` consumed ad hoc | Await server contract-ization; do not build a private sequence mechanism |
 | Tasks | refresh-shaped | Await server watermark; keep patch-first rules from first-principles doc |
 | Epoch / re-baseline | Foreground reconciliation spec (triggers exist) | Make re-baseline explicit: on reconnect/foreground, drop in-memory watermarks, re-hydrate or difference-from-persisted-cursor; add stale-token guards on hydrate paths that lack them |
-| Send echo | Heuristic absorption in thread merge path | Consolidate to single shared absorption point, mark deprecated (§4); switch to `clientSendId` when server lands it |
+| Send echo | Heuristic absorption in thread merge path | Consolidate to single shared absorption point, mark deprecated (§4); switch to `random_id` when server lands it |
 | ConversationResolver | Per-entrance resolution logic; launch-contract identity-only rule | Introduce shared resolver; migrate notification taps + Activity rows first (the active bug family) |
 | Projections | `SharedConversationHeaderProjection` exists; unread/badge logic partly in composables (`SlockHomeComponents`) | New derived facts (e.g. activity-mute quiet badges, task #553) go through shared projections; migrate existing badge derivations opportunistically |
 | Transition observability | `MviTransition` + structured logs | Future: align naming with web's `slock.state.transition` trace family (RFC 040, pending publication) |
@@ -220,7 +227,7 @@ Per adopting domain, as part of migration acceptance:
 - **B1 — send-echo single point.** Consolidate heuristic absorption into one
   deprecated shared function; add the regression test that a canonical echo
   absorbs the shadow exactly once. (Blocked switch-over: server
-  `clientSendId` slice.)
+  `random_id` slice.)
 - **B2 — messages fold hardening.** Name the gap policy per the seq-gap spec
   slices A–D; add the convergence property with repair-batches-as-events for
   the thread timeline fold; stale tokens on all hydrate paths.
@@ -258,7 +265,7 @@ to the first-principles checklist:
 
 ## 10. Open questions (tracked in #raft-mobile-reconcile)
 
-- Server timeline for `clientSendId` echo slice (赵梓淇 filing; B1 switch-over
+- Server timeline for `random_id` echo slice (赵梓淇 filing; B1 switch-over
   depends on it).
 - Channel-domain event vocabulary publication (web T10 S1, expected this
   week) — B4 trigger.
