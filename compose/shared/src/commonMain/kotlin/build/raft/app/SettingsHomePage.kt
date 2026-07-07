@@ -1459,6 +1459,17 @@ internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest
 internal fun appShellActiveChildPagerTab(selectedTab: String): String? =
     retainedAppShellSelectedTab(selectedTab).takeIf { it in AppShellChildPageTabKeys }
 
+// V2 keepalive stack: the ordered set of child tabs to keep composed (alive) at once.
+// Empty when there is no active child tab (non-child surfaces render directly). The
+// active tab is always included even if [mountedTabs] is momentarily stale, so it can
+// never fail to render.
+internal fun appShellRetainedChildTabs(activeChildTab: String?, mountedTabs: Set<String>): List<String> =
+    if (activeChildTab == null) {
+        emptyList()
+    } else {
+        (AppShellChildPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
+    }
+
 internal fun appShellNextChildTabSwitchEpoch(currentTab: String, nextTab: String, currentEpoch: Int): Int =
     if (retainedAppShellSelectedTab(currentTab) == retainedAppShellSelectedTab(nextTab)) {
         currentEpoch
@@ -1606,20 +1617,31 @@ private fun AppShellTabs(
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     val activeChildTab = appShellActiveChildPagerTab(activeTab)
-    LaunchedEffect(activeChildTab, childTabSwitchEpoch, mountedTabs) {
+    // Keepalive stack (V2): render every retained child tab, not just the active one,
+    // so Home/Tasks/Members/Settings stay alive and switching back is instant with
+    // full state. Only the active child is visible; the rest are hard-hidden via the
+    // native `active` guard (visibility=INVISIBLE), so an inactive child's late render
+    // can never reach the visible layer. Visibility is driven purely by selectedTab —
+    // there is no HorizontalPager/scrollToPage, so none of the pager scroll races
+    // (overlay / blank / stale native page) can occur. The active tab is always in the
+    // list even if mountedTabs is momentarily stale.
+    val retainedChildTabs = appShellRetainedChildTabs(activeChildTab, mountedTabs)
+    LaunchedEffect(activeChildTab, childTabSwitchEpoch, retainedChildTabs) {
         log(
-            "app_shell_single_child tab=$activeChildTab epoch=$childTabSwitchEpoch " +
-                "mountedTabs=$mountedTabs"
+            "app_shell_keepalive_stack active=$activeChildTab epoch=$childTabSwitchEpoch " +
+                "retained=$retainedChildTabs mountedTabs=$mountedTabs"
         )
     }
     Box(modifier = Modifier.fillMaxSize()) {
         if (activeChildTab != null) {
-            key("app-shell-$activeChildTab") {
-                SlockAppShellChildTabHost(
-                    shellId = childHostShellId,
-                    tab = activeChildTab,
-                    active = true
-                )
+            retainedChildTabs.forEach { tab ->
+                key("app-shell-$tab") {
+                    SlockAppShellChildTabHost(
+                        shellId = childHostShellId,
+                        tab = tab,
+                        active = tab == activeChildTab
+                    )
+                }
             }
         } else {
             key("app-shell-$activeTab") {
