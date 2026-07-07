@@ -7910,6 +7910,13 @@ private fun SharedSettingsReleaseNotesContent(
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
+    // The native WebView platform view attaches ahead of the Kuikly-drawn page
+    // header on the destination's first frame, so the page flashed as: full
+    // white → web content → header last (task #227). Hold the WebView out of
+    // composition for the first committed frame so frame one is the header
+    // plus the white placeholder, and the WebView attaches strictly after.
+    var webViewSlotReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { webViewSlotReady = true }
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         // The native WebView applies its own bottom safe-area content inset, so
         // it stops short of the screen bottom and the Box's SurfaceWhite shows
@@ -7917,14 +7924,16 @@ private fun SharedSettingsReleaseNotesContent(
         // the bottom safe-area height so that inset region falls off-screen and
         // the page fills edge-to-edge regardless of page content height.
         val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
-        key(reloadKey, url) {
-            SlockWebView(
-                url = url,
-                modifier = Modifier.fillMaxWidth().height(webViewHeight),
-                allowNavigation = true,
-                onLoadSuccess = { loadError = null },
-                onLoadFailure = { reason -> loadError = reason }
-            )
+        if (webViewSlotReady) {
+            key(reloadKey, url) {
+                SlockWebView(
+                    url = url,
+                    modifier = Modifier.fillMaxWidth().height(webViewHeight),
+                    allowNavigation = true,
+                    onLoadSuccess = { loadError = null },
+                    onLoadFailure = { reason -> loadError = reason }
+                )
+            }
         }
         if (loadError != null) {
             Column(
