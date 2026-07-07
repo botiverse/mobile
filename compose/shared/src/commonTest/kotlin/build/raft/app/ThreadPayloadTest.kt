@@ -118,6 +118,36 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneReplyThreadChannelKindDoesNotChangeResolvedRouteIdentity() {
+        val identity =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = ChannelId("reply-thread-1"),
+                threadChannelId = ChannelId("reply-thread-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("message-1"),
+                parentSurfaceKind = ConversationKind.Channel.threadParentSurfaceKindOrNull(),
+                parentChannelKind = ConversationKind.Channel.threadChannelKindWireValue()
+            )
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = identity,
+                timeContext = null,
+                anchorMessageId = "reply-message-1"
+            )
+
+        val previousShape = launch.copy(channelKind = null)
+        val newRouteIdentity =
+            checkNotNull(launch.toInitialPayloadOrNull("fallback")).resolveThreadRouteIdentity()
+        val previousRouteIdentity =
+            checkNotNull(previousShape.toInitialPayloadOrNull("fallback")).resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.channelKind)
+        assertEquals(null, previousShape.channelKind)
+        assertEquals(previousRouteIdentity, newRouteIdentity)
+    }
+
+    @Test
     fun threadLaunchIdentityBuilderParsesDirectParentSurfaceKindThroughContract() {
         // t6/#420 construction-side: the final legacy parent-surface table did not accept
         // "direct" and could drop a DM parent shape before the payload builders saw it.

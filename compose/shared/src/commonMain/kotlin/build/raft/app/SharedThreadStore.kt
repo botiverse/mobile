@@ -4020,26 +4020,15 @@ internal fun buildMarkdownChannelLaunchPayload(
     channelLabel: String
 ): KuiklyThreadScreenPayload? {
     val channel = resolveMarkdownChannelConversation(home, channelLabel) ?: return null
-    val routeIdentity = channel.resolveThreadRouteIdentity()
-    val streamChannelId =
-        routeIdentity.timelineChannelId
-            ?: channel.messageStreamChannelId().value.takeIf { it.isNotBlank() }
-            ?: return null
-    return WireThreadLaunchPayload(
-        instanceId = "shared-shell-thread-$streamChannelId",
-        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-        channelKind = routeIdentity.routeKind,
-        sourceThreadId = streamChannelId,
-        streamChannelId = streamChannelId,
-        selectedTab = "chat",
-        navigationLabel = "Back",
+    val conversation = channel.toThreadLaunchConversationIdentity()
+    val streamChannelId = conversation.threadStreamChannelId() ?: return null
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation = conversation,
+        timeContext = currentPayload.toSlockTimeContext(),
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
-        localOffsetMinutes = currentPayload.localOffsetMinutes,
-        todayEpochDay = currentPayload.todayEpochDay,
-        nowEpochMillis = currentPayload.nowEpochMillis,
-        timeFormat = currentPayload.timeFormat
-    ).toInitialPayload("shared-shell-thread-$streamChannelId")
+        instanceIdOverride = "shared-shell-thread-$streamChannelId"
+    ).toInitialPayloadOrNull("shared-shell-thread-$streamChannelId")
 }
 
 internal fun buildMarkdownThreadRefLaunchPayload(
@@ -4062,28 +4051,24 @@ internal fun buildMarkdownThreadRefLaunchPayload(
     val instanceId =
         cleanThreadChannelId?.let { "shared-shell-thread-$it" }
             ?: "shared-shell-thread-$parentChannelId-$threadShortId"
-    return WireThreadLaunchPayload(
-        instanceId = instanceId,
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        channelKind = routeIdentity.routeKind,
-        threadId = cleanThreadChannelId,
-        sourceThreadId = cleanThreadChannelId,
-        streamChannelId = cleanThreadChannelId,
-        parentChannelId = parentChannelId,
-        parentMessageId = cleanParentMessageId,
-        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-        parentChannelKind = routeIdentity.routeKind,
-        originParentMessageId = cleanParentMessageId,
-        focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
-        selectedTab = "chat",
-        navigationLabel = "Back",
+    val conversation =
+        buildThreadLaunchConversationIdentity(
+            kind = ConversationKind.Thread,
+            channelId = cleanThreadChannelId?.let(::ChannelId) ?: ChannelId(parentChannelId),
+            threadChannelId = cleanThreadChannelId?.let(::ChannelId),
+            parentChannelId = ChannelId(parentChannelId),
+            parentMessageId = MessageId(cleanParentMessageId),
+            parentSurfaceKind = channel.kind.threadParentSurfaceKindOrNull(),
+            parentChannelKind = routeIdentity.routeKind
+        )
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation = conversation,
+        timeContext = currentPayload.toSlockTimeContext(),
+        anchorMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         alignOwnMessagesRight = currentPayload.alignOwnMessagesRight,
         compactConsecutiveMessages = currentPayload.compactConsecutiveMessages,
-        localOffsetMinutes = currentPayload.localOffsetMinutes,
-        todayEpochDay = currentPayload.todayEpochDay,
-        nowEpochMillis = currentPayload.nowEpochMillis,
-        timeFormat = currentPayload.timeFormat
-    ).toInitialPayload(instanceId)
+        instanceIdOverride = instanceId
+    ).toInitialPayloadOrNull(instanceId)
 }
 
 private fun resolveMarkdownChannelConversation(home: HomeSnapshot, channelLabel: String): ConversationSummary? {

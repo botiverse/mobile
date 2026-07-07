@@ -187,6 +187,33 @@ internal fun HomeConversationRow.toThreadLaunchConversationIdentity(): ThreadLau
         kind = kind
     )
 
+internal fun SlockThreadWebLinkTarget.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    val parentKind =
+        when (routeKind) {
+            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+            KuiklyThreadSurfaceKind.Channel -> ConversationKind.Channel
+            else -> return null
+        }
+    val parentMessageId = threadParentMessageId?.takeIf { it.isNotBlank() }
+    return if (parentMessageId != null) {
+        buildThreadLaunchConversationIdentity(
+            kind = ConversationKind.Thread,
+            channelId = ChannelId(cleanChannelId),
+            parentChannelId = ChannelId(cleanChannelId),
+            parentMessageId = MessageId(parentMessageId),
+            parentSurfaceKind = parentKind.threadParentSurfaceKindOrNull(),
+            parentChannelKind = parentKind.threadChannelKindWireValue()
+        )
+    } else {
+        buildThreadLaunchConversationIdentity(
+            kind = parentKind,
+            channelId = ChannelId(cleanChannelId),
+            channelType = parentKind.threadChannelKindWireValue()
+        )
+    }
+}
+
 internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val surfaceKind = threadSurfaceKind()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
