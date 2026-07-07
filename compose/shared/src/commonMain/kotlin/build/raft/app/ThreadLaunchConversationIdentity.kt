@@ -57,32 +57,51 @@ internal fun buildThreadLaunchConversationIdentity(
     )
 }
 
+/**
+ * Build a launch identity from a directory projection. Returns null for a reply thread
+ * whose parent conversation cannot be resolved — the caller (via [resolveOpenRequest])
+ * then decides drop vs. trusted raw rebuild instead of silently assuming Channel and
+ * misrouting a DM thread onto the channel surface (#415, t5/#419).
+ *
+ * Kind + parent surface/channel kind route through the #417 contract
+ * ([parseConversationKindOrNull] / [toKuiklySurfaceKind] / [toWireChannelKindOrNull])
+ * instead of the old scattered converters and `?: Channel` fallbacks.
+ */
 internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIdentity(
     directory: SharedConversationDirectoryState
-): ThreadLaunchConversationIdentity {
+): ThreadLaunchConversationIdentity? {
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val parentProjection =
         if (isReplyThread) {
-            parentChannelId?.let(directory::resolve)
+            parentChannelId
+                ?.let(directory::resolve)
+                // The parent id is also an alias of the reply thread's OWN projection, so a
+                // resolve can return the thread itself. A parent is never a reply thread, and
+                // never the thread's own canonical id — treat either as an unresolved parent.
+                ?.takeUnless {
+                    it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                        it.canonicalChannelId == canonicalChannelId
+                }
         } else {
             null
         }
-    val parentSurfaceKind =
-        parentProjection
-            ?.surfaceKind
-            .threadLaunchParentSurfaceKindOrNull()
-            ?: KuiklyThreadSurfaceKind.Channel
-    val parentChannelKind =
-        parentProjection
-            ?.channelKind
-            .normalizedThreadChannelKind()
-            ?: parentProjection?.surfaceKind.threadLaunchParentSurfaceKindOrNull()
-            ?: KuiklyThreadSurfaceKind.Channel
+    if (isReplyThread && parentProjection == null) {
+        // Parent conversation isn't resolvable; its DM-vs-channel shape is unknowable. Drop
+        // rather than misroute — the caller applies the two-tier drop policy.
+        return null
+    }
     val kind =
         when (surfaceKind) {
             KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
             KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
-            else -> if (channelKind.equals("joint", ignoreCase = true)) ConversationKind.Joint else ConversationKind.Channel
+            // Channel surface: Joint vs Channel comes from channelKind; an unparsable
+            // channelKind on a channel surface is genuinely a channel (product default,
+            // not a parent-kind fallback).
+            else -> parseConversationKindOrNull(channelKind) ?: ConversationKind.Channel
+        }
+    val parentKind =
+        parentProjection?.let {
+            parseConversationKindOrNull(it.channelKind) ?: parseConversationKindOrNull(it.surfaceKind)
         }
     return buildThreadLaunchConversationIdentity(
         kind = kind,
@@ -91,8 +110,8 @@ internal fun SharedConversationDirectoryProjection.toThreadLaunchConversationIde
         threadChannelId = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
         parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
-        parentSurfaceKind = parentSurfaceKind,
-        parentChannelKind = parentChannelKind
+        parentSurfaceKind = parentKind?.toKuiklySurfaceKind(),
+        parentChannelKind = parentKind?.toWireChannelKindOrNull()
     )
 }
 

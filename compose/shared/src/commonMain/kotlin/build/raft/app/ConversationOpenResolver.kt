@@ -58,10 +58,18 @@ internal fun resolveOpenRequest(
             .lookupIds()
             .firstNotNullOfOrNull(conversationDirectory::resolve)
             ?.takeIf { projection -> serverId.isBlank() || projection.serverId == serverId || projection.serverId.isBlank() }
+    // Two-tier drop (t5/#419): a projection that resolved but whose reply-thread parent shape
+    // is untrustworthy (builder returned null) may only be reconstructed from a trusted typed
+    // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
+    // back to a channel-shaped guess (#415). A projection that never resolved is still just
+    // hydrating. The distinction is the Pending reason.
     val conversation =
         projection?.toThreadLaunchConversationIdentity(conversationDirectory)
             ?: sourceMessageIdentity.toThreadLaunchConversationIdentity()
-            ?: return ConversationOpenResolution.Pending(sourceMessageIdentity, reason = "conversation_hydrating")
+            ?: return ConversationOpenResolution.Pending(
+                sourceMessageIdentity,
+                reason = if (projection != null) "thread_parent_unresolved" else "conversation_hydrating"
+            )
     val anchorMessageId = sourceMessageIdentity.resolveOpenAnchorMessageId(conversation)
     val originFallback =
         sourceMessageIdentity.originFallback
@@ -112,6 +120,11 @@ internal fun AppShellNotificationThreadLaunchRequest.toConversationOpenSourceMes
 private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
     val kind = conversationKind ?: return null
     val channel = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    // A reply thread whose parent kind is unknown must not be reconstructed with a guessed
+    // parent shape — that is exactly the #415 misroute. Only a trusted typed
+    // parentConversationKind (server-enriched, e.g. Activity InboxItem.parentChannelKind) may
+    // rebuild the thread; a null parent kind stays unresolved for the caller to handle.
+    if (kind == ConversationKind.Thread && parentConversationKind == null) return null
     return buildThreadLaunchConversationIdentity(
         kind = kind,
         channelId = channel,
