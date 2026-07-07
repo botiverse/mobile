@@ -6837,11 +6837,14 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
-        store.dispatch(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        val gapJob = launch {
+            store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        }
         api.syncStarted?.await()
         api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
         store.accept(SharedThreadIntent.Refresh)
         api.releaseSync?.complete(Unit)
+        gapJob.join()
 
         val payload = store.state.value.payload
         assertEquals(listOf("foreground body"), payload.messages.map { it.body })
