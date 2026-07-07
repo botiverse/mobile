@@ -7,28 +7,19 @@ import kotlin.test.assertTrue
 
 class MessageSeqRecoveryPolicyTest {
     @Test
-    fun gapFrameIsDeferredUntilRepairBatchCompletesWaterline() {
+    fun gapFrameAppliesImmediatelyAndRequestsRepair() {
         val initial = MessageSeqRecoveryPolicy.initial<String>(appliedSeq = 1)
 
         val gap = MessageSeqRecoveryPolicy.onFrame(initial, frame(seq = 4))
-        val partialRepair =
-            MessageSeqRecoveryPolicy.onRepairBatch(
-                gap.state,
-                MessageSeqRepairBatch(
-                    events = listOf(frame(seq = 2)),
-                    currentSeq = 4,
-                    hasMore = false
-                )
-            )
 
         assertTrue(gap.repairRequired)
-        assertEquals(listOf("event-2"), partialRepair.state.appliedEvents)
-        assertEquals(listOf(4L), partialRepair.state.deferredFrames.map { it.seq })
-        assertTrue(partialRepair.repairRequired)
+        assertEquals(4L, gap.state.appliedSeq)
+        assertEquals(listOf("event-4"), gap.state.appliedEvents)
+        assertEquals(emptyList(), gap.state.deferredFrames)
     }
 
     @Test
-    fun repairBatchRestitchesDeferredFramesByRecheckingWatermarkAndDropsDuplicates() {
+    fun repairBatchAppliesSparseEventsAndAdvancesToCurrentSeq() {
         val initial = MessageSeqRecoveryPolicy.initial<String>(appliedSeq = 1)
         val gap = MessageSeqRecoveryPolicy.onFrame(initial, frame(seq = 4))
 
@@ -36,20 +27,20 @@ class MessageSeqRecoveryPolicyTest {
             MessageSeqRecoveryPolicy.onRepairBatch(
                 gap.state,
                 MessageSeqRepairBatch(
-                    events = listOf(frame(seq = 2), frame(seq = 3), frame(seq = 4)),
-                    currentSeq = 4,
+                    events = listOf(frame(seq = 2), frame(seq = 4)),
+                    currentSeq = 5,
                     hasMore = false
                 )
             )
 
         assertFalse(repaired.repairRequired)
-        assertEquals(4L, repaired.state.appliedSeq)
-        assertEquals(listOf("event-2", "event-3", "event-4"), repaired.state.appliedEvents)
+        assertEquals(5L, repaired.state.appliedSeq)
+        assertEquals(listOf("event-4", "event-2", "event-4"), repaired.state.appliedEvents)
         assertEquals(emptyList(), repaired.state.deferredFrames)
     }
 
     @Test
-    fun hasMoreKeepsRecoveryIncompleteUntilFollowUpBatchClosesGap() {
+    fun hasMoreRequestsFollowUpWithoutBlockingLaterFrames() {
         val initial = MessageSeqRecoveryPolicy.initial<String>(appliedSeq = 1)
         val gap = MessageSeqRecoveryPolicy.onFrame(initial, frame(seq = 3))
 
@@ -63,21 +54,17 @@ class MessageSeqRecoveryPolicyTest {
                 )
             )
         val followUp =
-            MessageSeqRecoveryPolicy.onRepairBatch(
+            MessageSeqRecoveryPolicy.onFrame(
                 firstRepair.state,
-                MessageSeqRepairBatch(
-                    events = listOf(frame(seq = 3)),
-                    currentSeq = 3,
-                    hasMore = false
-                )
+                frame(seq = 4)
             )
 
         assertTrue(firstRepair.state.recoveryIncomplete)
         assertTrue(firstRepair.repairRequired)
-        assertEquals(listOf(3L), firstRepair.state.deferredFrames.map { it.seq })
-        assertFalse(followUp.state.recoveryIncomplete)
-        assertFalse(followUp.repairRequired)
-        assertEquals(listOf("event-2", "event-3"), followUp.state.appliedEvents)
+        assertEquals(emptyList(), firstRepair.state.deferredFrames)
+        assertTrue(followUp.state.recoveryIncomplete)
+        assertTrue(followUp.repairRequired)
+        assertEquals(listOf("event-3", "event-2", "event-4"), followUp.state.appliedEvents)
     }
 
     @Test
@@ -122,9 +109,8 @@ class MessageSeqRecoveryPolicyTest {
     }
 
     @Test
-    fun sameEventSetConvergesAcrossArrivalPermutationsWhenRepairBatchAnchorsTerminalState() {
+    fun sameEventSetConvergesToMaxSeqAcrossArrivalPermutations() {
         val terminalEvents = listOf(frame(seq = 1), frame(seq = 2), frame(seq = 3), frame(seq = 4))
-        val expected = terminalEvents.map { it.event }
 
         terminalEvents.permutations().forEach { arrivalOrder ->
             var state = MessageSeqRecoveryPolicy.initial<String>()
@@ -145,7 +131,10 @@ class MessageSeqRecoveryPolicyTest {
             }
 
             assertEquals(4L, state.appliedSeq, "arrival=${arrivalOrder.map { it.seq }}")
-            assertEquals(expected, state.appliedEvents, "arrival=${arrivalOrder.map { it.seq }}")
+            assertTrue(
+                state.appliedEvents.containsAll(arrivalOrder.map { it.event }),
+                "arrival=${arrivalOrder.map { it.seq }}"
+            )
             assertEquals(emptyList(), state.deferredFrames, "arrival=${arrivalOrder.map { it.seq }}")
             assertFalse(state.recoveryIncomplete, "arrival=${arrivalOrder.map { it.seq }}")
         }

@@ -33,6 +33,18 @@ data class MessageSeqFoldResult<Event>(
 
 const val DefaultMessageSeqEpoch: String = "default"
 
+/**
+ * Tracks the persisted message resume cursor under today's production
+ * `messages.seq` semantics.
+ *
+ * The sequence is server-global and sparse for a given client: messages in
+ * rooms the user cannot see, plus database sequence gaps, can leave permanent
+ * holes in the visible stream. For that reason this policy treats `seq` as a
+ * monotonic max cursor only. Apparent gaps request repair, but frames still
+ * fan out immediately and repair batches may also be sparse. A dense
+ * `seq == applied + 1` stop gate belongs with a future per-scope difference
+ * endpoint, not this app-scope ingress fold.
+ */
 object MessageSeqRecoveryPolicy {
     fun <Event> initial(
         appliedSeq: Long = 0L,
@@ -50,22 +62,16 @@ object MessageSeqRecoveryPolicy {
         frame: MessageSeqEnvelope<Event>
     ): MessageSeqFoldResult<Event> {
         if (frame.epoch != state.epoch) return MessageSeqFoldResult(state = state)
-        if (frame.seq <= state.appliedSeq) return MessageSeqFoldResult(state = state)
-        if (state.awaitingRepair || frame.seq > state.appliedSeq + 1L) {
-            val deferred =
-                (state.deferredFrames + frame)
-                    .distinctBy { it.epoch to it.seq }
-                    .sortedBy { it.seq }
-            return MessageSeqFoldResult(
-                state = state.copy(
-                    serverSeq = maxOf(state.serverSeq, frame.seq),
-                    deferredFrames = deferred
-                ),
-                repairRequired = true
-            )
-        }
+        val probableGap = frame.seq > state.appliedSeq + 1L
         return MessageSeqFoldResult(
-            state = applySequential(state, frame),
+            state =
+                state.copy(
+                    appliedSeq = maxOf(state.appliedSeq, frame.seq),
+                    serverSeq = maxOf(state.serverSeq, frame.seq),
+                    appliedEvents = state.appliedEvents + frame.event,
+                    deferredFrames = emptyList()
+                ),
+            repairRequired = probableGap || state.recoveryIncomplete,
             appliedCount = 1
         )
     }
@@ -75,58 +81,28 @@ object MessageSeqRecoveryPolicy {
         batch: MessageSeqRepairBatch<Event>
     ): MessageSeqFoldResult<Event> {
         if (batch.epoch != state.epoch) return MessageSeqFoldResult(state = state)
-        val afterBatch =
+        val events =
             batch.events
                 .filter { it.epoch == state.epoch }
                 .sortedBy { it.seq }
-                .fold(state.copy(serverSeq = maxOf(state.serverSeq, batch.currentSeq.coerceAtLeast(0L)))) { current, frame ->
-                    if (frame.seq == current.appliedSeq + 1L) {
-                        applySequential(current, frame)
-                    } else {
-                        current
-                    }
-                }
-                .copy(recoveryIncomplete = batch.hasMore)
-        val restitched =
-            restitchDeferred(afterBatch)
+        val batchMaxSeq = events.maxOfOrNull { it.seq } ?: 0L
+        val nextAppliedSeq =
+            maxOf(
+                state.appliedSeq,
+                batch.currentSeq.coerceAtLeast(0L),
+                batchMaxSeq
+            )
         return MessageSeqFoldResult(
-            state = restitched.state,
-            repairRequired = restitched.state.awaitingRepair,
-            appliedCount = restitched.appliedCount
+            state =
+                state.copy(
+                    appliedSeq = nextAppliedSeq,
+                    serverSeq = maxOf(state.serverSeq, nextAppliedSeq),
+                    appliedEvents = state.appliedEvents + events.map { it.event },
+                    deferredFrames = emptyList(),
+                    recoveryIncomplete = batch.hasMore
+                ),
+            repairRequired = batch.hasMore,
+            appliedCount = events.size
         )
     }
-
-    private fun <Event> restitchDeferred(
-        state: MessageSeqRecoveryState<Event>
-    ): MessageSeqFoldResult<Event> {
-        var current = state
-        var appliedCount = 0
-        val remaining = mutableListOf<MessageSeqEnvelope<Event>>()
-        state.deferredFrames.sortedBy { it.seq }.forEach { frame ->
-            when {
-                frame.epoch != current.epoch -> Unit
-                frame.seq <= current.appliedSeq -> Unit
-                frame.seq == current.appliedSeq + 1L && !current.recoveryIncomplete -> {
-                    current = applySequential(current, frame)
-                    appliedCount += 1
-                }
-                else -> remaining += frame
-            }
-        }
-        return MessageSeqFoldResult(
-            state = current.copy(deferredFrames = remaining),
-            repairRequired = current.recoveryIncomplete || remaining.isNotEmpty(),
-            appliedCount = appliedCount
-        )
-    }
-
-    private fun <Event> applySequential(
-        state: MessageSeqRecoveryState<Event>,
-        frame: MessageSeqEnvelope<Event>
-    ): MessageSeqRecoveryState<Event> =
-        state.copy(
-            appliedSeq = frame.seq,
-            serverSeq = maxOf(state.serverSeq, frame.seq),
-            appliedEvents = state.appliedEvents + frame.event
-        )
 }
