@@ -15,3 +15,14 @@ internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 // currently exposed to shared code; unifying would mean plumbing it through
 // the launch payload.)
 internal expect fun slockReleaseNotesAppSlug(): String
+
+// task #401 TEMPORARY A-bridge: Android's Kuikly render draws the inline-code
+// chip natively (atom advance + chrome) and wraps long code at character
+// boundaries; the OHOS and iOS renders have no slockInlineCode handling yet,
+// so long code runs there render as one unbreakable word. Until each native
+// chip lands (OHOS core-render-ohos / iOS core-render-ios task #402), the
+// markdown layer interleaves zero-width spaces into inline-code runs longer
+// than this threshold so those platforms wrap like web/Android. Returns null
+// where the native render already handles wrapping. Remove each platform's
+// non-null value when its native chip ships.
+internal expect fun slockInlineCodeCharWrapBridgeThreshold(): Int?

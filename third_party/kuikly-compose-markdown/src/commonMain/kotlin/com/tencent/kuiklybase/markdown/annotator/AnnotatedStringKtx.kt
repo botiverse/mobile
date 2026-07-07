@@ -31,11 +31,48 @@ import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
+import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 
 private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
 private const val SLOCK_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
     "raft.build.markdown.inlineCodeTrailingMargin"
 private const val SLOCK_INLINE_CODE_EDGE_PADDING = '\u00A0'
+private const val SLOCK_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
+
+// task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
+// longer than [threshold] so renders without native inline-code atomization
+// (OHOS/iOS) can wrap long code at any character boundary, matching web and
+// the Android render's char-level behavior. Never splits a surrogate pair.
+internal fun String.withSlockInlineCodeCharWrapBreaks(threshold: Int): String {
+    if (length <= threshold) return this
+    val result = StringBuilder(length * 2)
+    var index = 0
+    while (index < length) {
+        val char = this[index]
+        if (char.isWhitespace()) {
+            result.append(char)
+            index++
+            continue
+        }
+        var runEnd = index
+        while (runEnd < length && !this[runEnd].isWhitespace()) {
+            runEnd++
+        }
+        val run = substring(index, runEnd)
+        if (run.length > threshold) {
+            run.forEachIndexed { runIndex, runChar ->
+                if (runIndex > 0 && !runChar.isLowSurrogate()) {
+                    result.append(SLOCK_INLINE_CODE_CHAR_WRAP_BREAK)
+                }
+                result.append(runChar)
+            }
+        } else {
+            result.append(run)
+        }
+        index = runEnd
+    }
+    return result.toString()
+}
 
 /**
  * Extension function to build an `AnnotatedString` from a Markdown string.
@@ -324,7 +361,27 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
                         append(SLOCK_INLINE_CODE_EDGE_PADDING)
-                        buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
+                        val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
+                        if (charWrapThreshold != null) {
+                            // task #401 A-bridge (see the expect in
+                            // SlockKuiklyPlatformCapabilities.kt): on platforms whose
+                            // native render lacks the inline-code chip, append the code
+                            // text with zero-width-space break opportunities so long
+                            // runs wrap at character boundaries. Code spans carry no
+                            // nested markup, so flattening the recursion's output text
+                            // is lossless here.
+                            val codeText =
+                                AnnotatedString.Builder().apply {
+                                    buildMarkdownAnnotatedString(
+                                        content,
+                                        child.children.innerList(),
+                                        annotatorSettings
+                                    )
+                                }.toAnnotatedString().text
+                            append(codeText.withSlockInlineCodeCharWrapBreaks(charWrapThreshold))
+                        } else {
+                            buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
+                        }
                         append(SLOCK_INLINE_CODE_EDGE_PADDING)
                         pop()
                         addStringAnnotation(
