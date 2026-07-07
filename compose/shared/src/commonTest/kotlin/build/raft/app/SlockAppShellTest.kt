@@ -791,7 +791,6 @@ class SlockAppShellTest {
             appShellForegroundBannerPendingDecision(
                 projection = rawResult,
                 message = message,
-                parentMessageId = null,
                 refreshAttempts = 0,
                 maxAttempts = 2
             )
@@ -801,7 +800,6 @@ class SlockAppShellTest {
             appShellForegroundBannerPendingDecision(
                 projection = rawResult,
                 message = message,
-                parentMessageId = "parent-message",
                 refreshAttempts = 2,
                 maxAttempts = 2
             )
@@ -841,7 +839,6 @@ class SlockAppShellTest {
             appShellForegroundBannerPendingDecision(
                 projection = enrichedResult,
                 message = message,
-                parentMessageId = "parent-message",
                 refreshAttempts = 0
             )
         )

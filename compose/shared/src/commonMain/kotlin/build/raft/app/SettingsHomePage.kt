@@ -2283,7 +2283,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
     var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
-    var pendingForegroundMessage by remember { mutableStateOf<AppShellPendingForegroundMessage?>(null) }
+    var pendingForegroundMessage by remember { mutableStateOf<AppShellPendingForeground?>(null) }
 
     fun refreshVisibleAppShellRoute(reason: String) {
         if (latestReadySession == null) return
@@ -3152,11 +3152,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             bridge.log(projection.appShellForegroundBannerProjectionLog(event.message, source = "message_new"))
                             if (projection.shouldWaitForActivityThreadProjection(event.message)) {
                                 pendingForegroundMessage =
-                                    AppShellPendingForegroundMessage(
-                                        serverId = serverId,
-                                        message = event.message,
-                                        parentMessageId = event.message.parentMessageId?.value?.takeIf { it.isNotBlank() }
-                                    )
+                                    event.message.toAppShellPendingForeground(serverId)
                                 bridge.log(
                                     "foreground_banner_projection_defer reason=activity_thread_projection_pending " +
                                         "messageId=${event.message.id.value} streamId=${event.message.appShellForegroundStreamId().orEmpty()}"
@@ -3166,7 +3162,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 projection.banner?.let { banner ->
                                     foregroundMessageBanner = banner
                                     pendingForegroundMessage =
-                                        pendingForegroundMessage?.takeUnless { it.message.id == event.message.id }
+                                        pendingForegroundMessage?.takeUnless { it.ticket.messageId == event.message.id.value }
                                 }
                             }
                         } else {
@@ -3179,7 +3175,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             pendingForegroundMessage = pending.withThreadUpdate(event)
                             bridge.log(
                                 "foreground_banner_projection_thread_update " +
-                                    "messageId=${pending.message.id.value} streamId=${event.threadChannelId.value} " +
+                                    "messageId=${pending.ticket.messageId} streamId=${event.threadChannelId.value} " +
                                     "parentMessageId=${event.parentMessageId.value}"
                             )
                             homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
@@ -3200,12 +3196,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             pendingForegroundMessage = null
             return@LaunchedEffect
         }
+        val ticket = pending.ticket
+        val pendingMessage = pending.projectionInput
         val session = readySession
         val projection =
             slockForegroundMessageBannerProjectionResult(
-                serverId = pending.serverId,
+                serverId = ticket.serverId,
                 currentServerId = session?.currentServerId,
-                message = pending.message,
+                message = pendingMessage,
                 currentMemberId = session?.user?.id,
                 visibleConversationKey =
                     appShellVisibleForegroundConversationKey(
@@ -3215,13 +3213,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     ),
                 conversationDirectory = appShellConversationDirectory
         )
-        bridge.log(projection.appShellForegroundBannerProjectionLog(pending.message, source = "pending_retry"))
+        bridge.log(projection.appShellForegroundBannerProjectionLog(pendingMessage, source = "pending_retry"))
         when (
             appShellForegroundBannerPendingDecision(
                 projection = projection,
-                message = pending.message,
-                parentMessageId = pending.parentMessageId,
-                refreshAttempts = pending.refreshAttempts
+                message = pendingMessage,
+                refreshAttempts = ticket.refreshAttempts
             )
         ) {
             AppShellForegroundBannerPendingDecision.Complete -> {
@@ -3232,8 +3229,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             AppShellForegroundBannerPendingDecision.Drop -> {
                 bridge.logWarn(
                     "foreground_banner_projection_drop reason=activity_thread_projection_missing " +
-                        "messageId=${pending.message.id.value} streamId=${pending.streamId.orEmpty()} " +
-                        "parentMessageId=${pending.parentMessageId.orEmpty()} attempts=${pending.refreshAttempts}"
+                        "messageId=${ticket.messageId} streamId=${ticket.streamId.orEmpty()} " +
+                        "parentMessageId=${ticket.threadUpdateParentMessageId.orEmpty()} attempts=${ticket.refreshAttempts}"
                 )
                 pendingForegroundMessage = null
                 return@LaunchedEffect
@@ -3243,7 +3240,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
         delay(AppShellForegroundBannerActivityProjectionRetryDelayMs)
         if (pendingForegroundMessage?.key == pending.key) {
-            pendingForegroundMessage = pending.copy(refreshAttempts = pending.refreshAttempts + 1)
+            pendingForegroundMessage = pending.incrementRefreshAttempts()
         }
     }
 
@@ -14770,27 +14767,62 @@ private fun JSONObject.appShellNotificationServerId(): String? =
 private const val AppShellForegroundBannerActivityProjectionRetryDelayMs = 360L
 private const val AppShellForegroundBannerActivityProjectionMaxAttempts = 5
 
-private data class AppShellPendingForegroundMessage(
-    val serverId: String,
-    val message: Message,
-    val parentMessageId: String? = null,
-    val refreshAttempts: Int = 0
+private data class AppShellPendingForeground(
+    val ticket: AppShellPendingForegroundMessage,
+    val projectionInput: Message
 ) {
-    val streamId: String?
-        get() = message.appShellForegroundStreamId()
-
     val key: String
-        get() = "${serverId}:${message.id.value}:${parentMessageId.orEmpty()}:$refreshAttempts"
+        get() = ticket.key
 
     fun matchesThreadUpdate(event: ThreadUpdated): Boolean =
-        streamId?.let { it == event.threadChannelId.value } == true
+        ticket.matchesThreadUpdate(event)
+
+    fun withThreadUpdate(event: ThreadUpdated): AppShellPendingForeground =
+        copy(ticket = ticket.withThreadUpdate(event))
+
+    fun incrementRefreshAttempts(): AppShellPendingForeground =
+        copy(ticket = ticket.copy(refreshAttempts = ticket.refreshAttempts + 1))
+}
+
+private data class AppShellPendingForegroundMessage(
+    val serverId: String,
+    val messageId: String,
+    val streamId: String?,
+    val threadUpdateParentMessageId: String? = null,
+    val refreshAttempts: Int = 0
+) {
+    val key: String
+        get() = listOf(
+            serverId,
+            messageId,
+            streamId.orEmpty(),
+            threadUpdateParentMessageId.orEmpty(),
+            refreshAttempts.toString()
+        )
+            .joinToString(":")
+
+    fun matchesThreadUpdate(event: ThreadUpdated): Boolean =
+        streamId?.let { it == event.threadChannelId.value } == true &&
+            (threadUpdateParentMessageId?.let { it == event.parentMessageId.value } ?: true)
 
     fun withThreadUpdate(event: ThreadUpdated): AppShellPendingForegroundMessage =
         copy(
-            parentMessageId = event.parentMessageId.value,
+            threadUpdateParentMessageId = event.parentMessageId.value,
             refreshAttempts = 0
         )
 }
+
+private fun Message.toAppShellPendingForeground(serverId: String): AppShellPendingForeground =
+    AppShellPendingForeground(
+        ticket =
+            AppShellPendingForegroundMessage(
+                serverId = serverId,
+                messageId = id.value,
+                streamId = appShellForegroundStreamId(),
+                threadUpdateParentMessageId = parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ),
+        projectionInput = this
+    )
 
 private fun Message.appShellForegroundStreamId(): String? =
     listOfNotNull(
@@ -14818,18 +14850,11 @@ internal enum class AppShellForegroundBannerPendingDecision {
 internal fun appShellForegroundBannerPendingDecision(
     projection: SlockForegroundMessageBannerProjectionResult,
     message: Message,
-    parentMessageId: String?,
     refreshAttempts: Int,
     maxAttempts: Int = AppShellForegroundBannerActivityProjectionMaxAttempts
 ): AppShellForegroundBannerPendingDecision {
-    val banner = projection.banner ?: return AppShellForegroundBannerPendingDecision.Complete
-    val ready =
-        if (parentMessageId == null) {
-            !projection.shouldWaitForActivityThreadProjection(message)
-        } else {
-            banner.conversation.kind == ConversationKind.Thread &&
-                projection.sharedProjection?.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-        }
+    projection.banner ?: return AppShellForegroundBannerPendingDecision.Complete
+    val ready = !projection.shouldWaitForActivityThreadProjection(message)
     return when {
         ready -> AppShellForegroundBannerPendingDecision.Complete
         refreshAttempts >= maxAttempts -> AppShellForegroundBannerPendingDecision.Drop
