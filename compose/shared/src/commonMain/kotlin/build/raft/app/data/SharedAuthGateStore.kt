@@ -30,6 +30,13 @@ class SharedAuthGateStore(
                         restore()
                     }
             }
+            SharedAuthGateIntent.RefreshSilently -> {
+                restoreJob?.cancel()
+                restoreJob =
+                    scope.launch {
+                        refreshSilently()
+                    }
+            }
             is SharedAuthGateIntent.SignedIn ->
                 setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
@@ -50,6 +57,7 @@ class SharedAuthGateStore(
         when (intent) {
             SharedAuthGateIntent.Restore,
             SharedAuthGateIntent.Retry -> restore()
+            SharedAuthGateIntent.RefreshSilently -> refreshSilently()
             is SharedAuthGateIntent.SignedIn ->
                 setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
@@ -81,6 +89,35 @@ class SharedAuthGateStore(
                 SharedAuthGateState.Error("Could not restore session. Retry or sign in again."),
                 source = "restore_exception"
             )
+        }
+    }
+
+    private suspend fun refreshSilently() {
+        val previousReady = _state.value as? SharedAuthGateState.Ready
+        if (previousReady == null) {
+            restore()
+            return
+        }
+        try {
+            when (val result = restoreSession()) {
+                is SharedAuthResult.Success ->
+                    setGateState(result.data.asGateState(), source = "silent_refresh_result")
+                SharedAuthResult.Unauthenticated ->
+                    setGateState(SharedAuthGateState.AuthRequired, source = "silent_refresh_result")
+                is SharedAuthResult.Failure -> {
+                    diagnosticsLogger(
+                        "auth_gate_silent_refresh_failure code=${result.code} message=${result.message.authGateDiagnosticsToken()} keeping_ready=true"
+                    )
+                    setGateState(previousReady, source = "silent_refresh_keep_ready")
+                }
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "auth_gate_silent_refresh_exception errorType=${throwable.safeAuthGateDiagnosticsType()} keeping_ready=true"
+            )
+            setGateState(previousReady, source = "silent_refresh_exception_keep_ready")
         }
     }
 
@@ -141,6 +178,7 @@ class SharedAuthGateViewModel(
 sealed interface SharedAuthGateIntent {
     data object Restore : SharedAuthGateIntent
     data object Retry : SharedAuthGateIntent
+    data object RefreshSilently : SharedAuthGateIntent
     data object ShowSignIn : SharedAuthGateIntent
     data object SignedOut : SharedAuthGateIntent
     data class SignedIn(val session: StoredAuthSession) : SharedAuthGateIntent
@@ -161,6 +199,7 @@ private val SharedAuthGateIntent.logSource: String
         when (this) {
             SharedAuthGateIntent.Restore -> "restore"
             SharedAuthGateIntent.Retry -> "retry"
+            SharedAuthGateIntent.RefreshSilently -> "refresh_silently"
             SharedAuthGateIntent.ShowSignIn -> "show_sign_in"
             SharedAuthGateIntent.SignedOut -> "signed_out"
             is SharedAuthGateIntent.SignedIn -> "signed_in"
@@ -189,3 +228,9 @@ private fun SharedAuthGateState.hasSelectedServer(): Boolean =
 
 private fun Throwable.safeAuthGateDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
+
+private fun String.authGateDiagnosticsToken(): String =
+    trim()
+        .replace(Regex("\\s+"), "_")
+        .take(64)
+        .ifBlank { "blank" }
