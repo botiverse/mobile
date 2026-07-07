@@ -69,20 +69,22 @@ class MembersDirectMessageLaunchTest {
     @Test
     fun membersReminderThreadPermalinkBuildsChannelReplyLaunchPayload() {
         val payload =
-            SlockThreadWebLinkTarget(
-                channelId = "channel-general",
-                messageId = "reply-message",
-                routeKind = KuiklyThreadSurfaceKind.Channel,
-                threadParentMessageId = "parent-message"
-            ).toMembersReminderThreadLaunchPayload(
-                messageId = "reply-message",
-                timeContext =
-                    SlockTimeContext(
-                        localOffsetMinutes = 480,
-                        todayEpochDay = 20_275L,
-                        nowEpochMillis = 1_756_963_200_000L,
-                        timeFormat = SlockTimeFormat12Hour
-                    )
+            requireNotNull(
+                SlockThreadWebLinkTarget(
+                    channelId = "channel-general",
+                    messageId = "reply-message",
+                    routeKind = KuiklyThreadSurfaceKind.Channel,
+                    threadParentMessageId = "parent-message"
+                ).toMembersReminderThreadLaunchPayload(
+                    messageId = "reply-message",
+                    timeContext =
+                        SlockTimeContext(
+                            localOffsetMinutes = 480,
+                            todayEpochDay = 20_275L,
+                            nowEpochMillis = 1_756_963_200_000L,
+                            timeFormat = SlockTimeFormat12Hour
+                        )
+                )
             )
 
         assertEquals("members-reminder-channel-general-reply-message", payload.instanceId)
@@ -103,14 +105,16 @@ class MembersDirectMessageLaunchTest {
     @Test
     fun membersReminderDmThreadPermalinkPreservesDirectMessageParentKind() {
         val payload =
-            SlockThreadWebLinkTarget(
-                channelId = "dm-agent-artin",
-                messageId = "dm-reply",
-                routeKind = KuiklyThreadSurfaceKind.DirectMessage,
-                threadParentMessageId = "dm-parent-message"
-            ).toMembersReminderThreadLaunchPayload(
-                messageId = "dm-reply",
-                timeContext = SlockTimeContext(localOffsetMinutes = 0)
+            requireNotNull(
+                SlockThreadWebLinkTarget(
+                    channelId = "dm-agent-artin",
+                    messageId = "dm-reply",
+                    routeKind = KuiklyThreadSurfaceKind.DirectMessage,
+                    threadParentMessageId = "dm-parent-message"
+                ).toMembersReminderThreadLaunchPayload(
+                    messageId = "dm-reply",
+                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                )
             )
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
@@ -126,13 +130,15 @@ class MembersDirectMessageLaunchTest {
     @Test
     fun membersReminderDmPermalinkBuildsDirectMessageLaunchPayload() {
         val payload =
-            SlockThreadWebLinkTarget(
-                channelId = "dm-agent-artin",
-                messageId = "dm-message",
-                routeKind = KuiklyThreadSurfaceKind.DirectMessage
-            ).toMembersReminderThreadLaunchPayload(
-                messageId = "dm-message",
-                timeContext = SlockTimeContext(localOffsetMinutes = 0)
+            requireNotNull(
+                SlockThreadWebLinkTarget(
+                    channelId = "dm-agent-artin",
+                    messageId = "dm-message",
+                    routeKind = KuiklyThreadSurfaceKind.DirectMessage
+                ).toMembersReminderThreadLaunchPayload(
+                    messageId = "dm-message",
+                    timeContext = SlockTimeContext(localOffsetMinutes = 0)
+                )
             )
 
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)

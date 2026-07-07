@@ -2201,6 +2201,10 @@ private fun Pager.openMembersReminderMessage(
             messageId = messageId,
             timeContext = timeContext
         )
+            ?: run {
+                onUnavailableAction("Unable to open reminder message")
+                return
+            }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(THREAD_PAGE, launchPayload.toThreadPageData())
 }
@@ -2261,45 +2265,13 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
 internal fun SlockThreadWebLinkTarget.toMembersReminderThreadLaunchPayload(
     messageId: String,
     timeContext: SlockTimeContext
-): WireThreadLaunchPayload {
-    val isDm = routeKind == KuiklyThreadSurfaceKind.DirectMessage
-    val parentMessageId = threadParentMessageId?.takeIf { it.isNotBlank() }
+): WireThreadLaunchPayload? {
     val instanceId = "members-reminder-${channelId}-${messageId}"
-    if (parentMessageId != null) {
-        return WireThreadLaunchPayload(
-            instanceId = instanceId,
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-            channelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
-            parentChannelId = channelId,
-            parentMessageId = parentMessageId,
-            parentSurfaceKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
-            parentChannelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
-            originParentMessageId = parentMessageId,
-            focusedMessageId = messageId,
-            localOffsetMinutes = timeContext.localOffsetMinutes,
-            todayEpochDay = timeContext.todayEpochDay,
-            nowEpochMillis = timeContext.nowEpochMillis,
-            timeFormat = timeContext.timeFormat
-        )
-    }
-    val surfaceKind =
-        if (isDm) {
-            KuiklyThreadSurfaceKind.DirectMessage
-        } else {
-            KuiklyThreadSurfaceKind.Channel
-        }
-    return WireThreadLaunchPayload(
-        instanceId = instanceId,
-        surfaceKind = surfaceKind,
-        channelKind = if (isDm) KuiklyThreadSurfaceKind.DirectMessage else KuiklyThreadSurfaceKind.Channel,
-        threadId = channelId.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-        sourceThreadId = channelId,
-        streamChannelId = channelId,
-        focusedMessageId = messageId,
-        localOffsetMinutes = timeContext.localOffsetMinutes,
-        todayEpochDay = timeContext.todayEpochDay,
-        nowEpochMillis = timeContext.nowEpochMillis,
-        timeFormat = timeContext.timeFormat
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation = toThreadLaunchConversationIdentity() ?: return null,
+        timeContext = timeContext,
+        anchorMessageId = messageId,
+        instanceIdOverride = instanceId
     )
 }
 

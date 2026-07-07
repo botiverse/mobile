@@ -15371,6 +15371,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     threadRowAffordances: Set<ThreadRowAffordancePreference> = ThreadRowAffordancePreference.Default,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
+    instanceIdOverride: String? = null,
     onWarn: (String) -> Unit = {}
 ): WireThreadLaunchPayload {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
@@ -15386,9 +15387,14 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     val parentMessageId = if (isReplyThread) conversation.threadParentMessageId() else null
     val focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() }
     return WireThreadLaunchPayload(
-        instanceId = "shared-shell-thread-${conversation.threadId.value}",
+        instanceId = instanceIdOverride?.takeIf { it.isNotBlank() } ?: "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
-        channelKind = routeIdentity.channelKind,
+        channelKind =
+            when (surfaceKind) {
+                KuiklyThreadSurfaceKind.ReplyThread -> conversation.threadParentChannelKind()
+                KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                else -> routeIdentity.channelKind
+            },
         threadId =
             when (surfaceKind) {
                 KuiklyThreadSurfaceKind.ReplyThread,
