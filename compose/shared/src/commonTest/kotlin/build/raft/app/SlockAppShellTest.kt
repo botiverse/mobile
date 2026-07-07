@@ -123,6 +123,33 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellRetainedChildTabsKeepMountedChildrenAliveInFixedOrder() {
+        // Keepalive stack: every mounted child tab stays composed, ordered by the
+        // canonical [home, tasks, members, settings], with the active tab always present.
+        assertEquals(
+            listOf("home", "tasks"),
+            appShellRetainedChildTabs(activeChildTab = "tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("home", "tasks", "members", "settings"),
+            appShellRetainedChildTabs(
+                activeChildTab = "home",
+                mountedTabs = setOf("settings", "home", "members", "tasks")
+            )
+        )
+        // Active tab is included even if mountedTabs is momentarily stale (no missing render).
+        assertEquals(
+            listOf("home", "tasks"),
+            appShellRetainedChildTabs(activeChildTab = "tasks", mountedTabs = setOf("home"))
+        )
+        // No active child tab -> nothing to keep alive here (non-child surface renders directly).
+        assertEquals(
+            emptyList<String>(),
+            appShellRetainedChildTabs(activeChildTab = null, mountedTabs = setOf("home", "tasks"))
+        )
+    }
+
+    @Test
     fun retainedHomeSecondaryDestinationKeepsOnlyActiveKnownDestination() {
         assertEquals(null, retainedHomeSecondaryDestination(null))
         assertEquals("search", retainedHomeSecondaryDestination("search"))
