@@ -75,7 +75,9 @@ import build.raft.app.data.CONNECTED_APPS_ACTION_REGISTER
 import build.raft.app.data.CONNECTED_APPS_ACTION_UNINSTALL
 import build.raft.app.data.CONNECTED_APPS_ACTION_UPDATE
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.AnnouncementItem
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
+import build.raft.app.data.SlockAnnouncementsRemindersApiClient
 import build.raft.app.data.NetworkSlockTasksApi
 import build.raft.app.data.SERVER_ACTION_INVITE_REVOKE
 import build.raft.app.data.SERVER_ACTION_JOIN_LINK_CREATE
@@ -2078,6 +2080,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var threadRowAffordances by remember { mutableStateOf(ThreadRowAffordancePreference.Default) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
+    // task #226: global announcement modal. The API client already exists (the
+    // dismiss is server-persisted per user); the shell fetches the latest active
+    // announcement on session-ready and refetches on the announcement:new socket
+    // event (RealtimeEventMapper maps it to RealtimeRefreshScope.Announcements,
+    // which the home store deliberately ignores — the modal is the sole consumer).
+    var activeAnnouncement by remember { mutableStateOf<AnnouncementItem?>(null) }
+    val announcementsClient =
+        remember(appShellNetworkClient) {
+            SlockAnnouncementsRemindersApiClient(NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient))
+        }
     var createChannelError by remember { mutableStateOf<String?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
@@ -2195,6 +2207,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = readySession?.currentServerId
     val latestReadySession by rememberUpdatedState(readySession)
+    // task #226: fetch the latest active announcement once the session is ready
+    // (keyed by server so switching servers re-pulls that server's announcement).
+    LaunchedEffect(announcementsClient, readySession?.currentServerId) {
+        if (readySession == null) {
+            activeAnnouncement = null
+            return@LaunchedEffect
+        }
+        activeAnnouncement =
+            (announcementsClient.activeAnnouncements() as? DataResult.Content)?.data?.items?.firstOrNull()
+    }
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
     val homeConversationDirectoryFlow =
@@ -3185,6 +3207,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
+                    if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {
+                        // task #226: announcement:new — refetch the latest active
+                        // announcement so the modal pops live.
+                        activeAnnouncement =
+                            (announcementsClient.activeAnnouncements() as? DataResult.Content)?.data?.items?.firstOrNull()
+                    }
                     if (event is MessageNew) {
                         val directory = latestAppShellConversationDirectory
                         if (latestForegroundMessageBannersEnabled) {
@@ -3673,6 +3701,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         onSubmit = { name, description, visibility, agentMemberIds, userMemberIds ->
                             submitCreateChannel(name, description, visibility, agentMemberIds, userMemberIds)
                         }
+                    )
+                }
+                activeAnnouncement?.let { announcement ->
+                    SharedAnnouncementModal(
+                        announcement = announcement,
+                        onDismiss = {
+                            activeAnnouncement = null
+                            appShellCoroutineScope.launch {
+                                announcementsClient.dismissAnnouncement(announcement.id)
+                            }
+                        },
+                        onOpenUrl = { url -> settingsCapabilities.openUrl(url) }
                     )
                 }
             }
