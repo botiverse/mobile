@@ -75,7 +75,7 @@ import build.raft.app.core.data.auth.AndroidMobileOAuthPendingRequest
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
-import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import build.raft.app.core.data.diagnostics.SlockAndroidAppDiagnostics
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
 import build.raft.app.core.data.diagnostics.SlockPerformanceDiagnostics
 import build.raft.app.core.data.storage.StorageClearTarget
@@ -181,7 +181,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
-        SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
+        SlockAndroidAppDiagnostics.reportAppFullLaunch()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -690,11 +690,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             "enter" -> {
                 SlockPerformanceDiagnostics.updateRoute(container, cleanScene)
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_enter")
-                SlockAndroidBuglyDiagnostics.enterScene(cleanScene)
+                SlockAndroidAppDiagnostics.enterScene(cleanScene)
             }
             "exit" -> {
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_exit")
-                SlockAndroidBuglyDiagnostics.exitScene(cleanScene)
+                SlockAndroidAppDiagnostics.exitScene(cleanScene)
             }
             else ->
                     SlockDiagnosticsLogger.w(
@@ -1115,7 +1115,7 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
 private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
     override fun uncaughtException(throwable: Throwable) {
         Log.e("SlockKuikly", "Kuikly render error", throwable)
-        SlockAndroidBuglyDiagnostics.reportCaughtException(
+        SlockAndroidAppDiagnostics.reportCaughtException(
             name = "KuiklyRenderException",
             throwable = throwable,
             extraData =
@@ -1669,7 +1669,7 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
-                SlockAndroidBuglyDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
+                SlockAndroidAppDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
                 null
             }
             "copyToPasteboard" -> {
@@ -1786,7 +1786,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun kuiklyPerformanceSnapshot(params: String?) {
-        SlockAndroidBuglyDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
+        SlockAndroidAppDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
 
     private fun toast(params: String?): Any? {
@@ -2192,7 +2192,7 @@ internal class SlockKuiklyBridgeModule(
                             mapOf("status" to "ok")
                         }
                         "clearDiagnostics" -> {
-                            SlockAndroidBuglyDiagnostics.clearLocalDiagnosticsFiles(appContext)
+                            SlockAndroidAppDiagnostics.clearLocalDiagnosticsFiles(appContext)
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_logs_cleared")
                             mapOf("status" to "ok")
                         }
@@ -2382,7 +2382,7 @@ internal class SlockKuiklyBridgeModule(
         val repository = StorageManagementRepository(appContext)
         val snapshot = repository.clear(clearTarget)
         if (clearTarget == StorageClearTarget.TemporaryAndLogs) {
-            SlockAndroidBuglyDiagnostics.clearLocalDiagnosticsFiles(appContext)
+            SlockAndroidAppDiagnostics.clearLocalDiagnosticsFiles(appContext)
         }
         val feedback =
                 when (clearTarget) {
@@ -3019,7 +3019,7 @@ internal class SlockKuiklyBridgeModule(
                                     .put("tag", "SlockDiagnostics")
                                     .put(
                                             "message",
-                                            "Bugly TDLog is disabled. Send diagnostics exports app-owned JSONL logs."
+                                            "App diagnostics log is disabled. Send diagnostics exports app-owned JSONL logs."
                                     )
                     )
                 }
@@ -3151,8 +3151,8 @@ internal class SlockKuiklyBridgeModule(
 
     private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
         val summaryText = buildMergedSettingsDiagnosticsExportText()
-        val archive = SlockAndroidBuglyDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
-        SlockAndroidBuglyDiagnostics.uploadDiagnostics(
+        val archive = SlockAndroidAppDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
+        SlockAndroidAppDiagnostics.uploadDiagnostics(
                 context = appContext,
                 attachment = archive,
                 summary = "settings_feedback"
@@ -3300,7 +3300,7 @@ internal class SlockKuiklyBridgeModule(
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
-        val recentLogs = SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(appContext)
+        val recentLogs = SlockAndroidAppDiagnostics.exportRecentDiagnosticsText(appContext)
         return buildString {
             appendLine("Raft diagnostics")
             appendLine()
@@ -3317,11 +3317,11 @@ internal class SlockKuiklyBridgeModule(
             appendDiagnosticsLine("Selected server", about.stringValue("selectedServerLabel"))
             appendDiagnosticsLine("Socket", about.stringValue("socketStatusLabel"))
             appendLine()
-            appendLine("Bugly diagnostics")
+            appendLine("App diagnostics")
             appendDiagnosticsLine("TDLog", "disabled")
             appendDiagnosticsLine(
                 "App JSONL log",
-                if (SlockAndroidBuglyDiagnostics.hasFallbackDiagnosticsLogs(appContext)) {
+                if (SlockAndroidAppDiagnostics.hasFallbackDiagnosticsLogs(appContext)) {
                     "enabled"
                 } else {
                     "pending"
@@ -3336,7 +3336,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun recordSettingsDiagnosticsEnvironment(about: Map<String, Any>) {
-        SlockAndroidBuglyDiagnostics.recordLog(
+        SlockAndroidAppDiagnostics.recordLog(
                 "info",
                 "SlockDiagnostics",
                 "environment app=${about.stringValue("appName").ifBlank { "Raft" }} " +

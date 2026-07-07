@@ -211,13 +211,13 @@ mkdir -p "${ARTIFACT_DIR}"
 SYMBOL_ARCHIVE=""
 MAPPING_PATH="${ROOT_DIR}/compose/androidApp/build/outputs/mapping/${VARIANT}/mapping.txt"
 if [ "${COLLECT_SYMBOLS}" = "1" ]; then
-  if "${ROOT_DIR}/scripts/prepare_android_bugly_symbols.sh" \
+  if "${ROOT_DIR}/scripts/prepare_android_quiver_symbols.sh" \
       --variant "${VARIANT}" \
       --version "${VERSION_NAME}" \
       --build-no "${VERSION_CODE}" \
       --build-label "${GIT_SHORT}" \
-      --output-dir "${ARTIFACT_DIR}/bugly-symbols" >/tmp/slock-quiver-symbols.log 2>&1; then
-    SYMBOL_ARCHIVE="$(find "${ARTIFACT_DIR}/bugly-symbols" -maxdepth 1 -name '*.zip' -type f | head -n 1)"
+      --output-dir "${ARTIFACT_DIR}/quiver-symbols" >/tmp/slock-quiver-symbols.log 2>&1; then
+    SYMBOL_ARCHIVE="$(find "${ARTIFACT_DIR}/quiver-symbols" -maxdepth 1 -name '*.zip' -type f | head -n 1)"
   else
     echo "warning: symbol collection skipped; see /tmp/slock-quiver-symbols.log" >&2
   fi

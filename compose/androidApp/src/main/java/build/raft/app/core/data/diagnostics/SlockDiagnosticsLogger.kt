@@ -12,20 +12,20 @@ object SlockDiagnosticsLogger {
 
     fun d(tag: String, message: String) {
         if (!verboseLoggingEnabled.get()) return
-        SlockAndroidBuglyDiagnostics.recordLog("debug", tag, message)
+        SlockAndroidAppDiagnostics.recordLog("debug", tag, message)
     }
 
     fun i(tag: String, message: String) {
         if (!verboseLoggingEnabled.get()) return
-        SlockAndroidBuglyDiagnostics.recordLog("info", tag, message)
+        SlockAndroidAppDiagnostics.recordLog("info", tag, message)
     }
 
     fun w(tag: String, message: String) {
-        SlockAndroidBuglyDiagnostics.recordLog("warn", tag, message)
+        SlockAndroidAppDiagnostics.recordLog("warn", tag, message)
     }
 
     fun e(tag: String, message: String) {
-        SlockAndroidBuglyDiagnostics.recordLog("error", tag, message)
+        SlockAndroidAppDiagnostics.recordLog("error", tag, message)
     }
 
     fun record(tag: String, message: String) {

@@ -1,7 +1,7 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
-import build.raft.app.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import build.raft.app.core.data.diagnostics.SlockAndroidAppDiagnostics
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
 import build.raft.app.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
@@ -119,7 +119,7 @@ internal object AndroidAppScopeMMKV {
         valueLength: Int? = null
     ) {
         if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
-        SlockAndroidBuglyDiagnostics.recordLog(
+        SlockAndroidAppDiagnostics.recordLog(
             "info",
             "SlockKuikly",
             buildString {
@@ -151,7 +151,7 @@ internal object AndroidAppScopeMMKV {
             encodedSession
                 ?.takeIf { it.isNotBlank() }
                 ?.let { runCatching { gson.fromJson(it, StoredAuthSession::class.java) }.getOrNull() }
-        SlockAndroidBuglyDiagnostics.updateUserContext(
+        SlockAndroidAppDiagnostics.updateUserContext(
             context = context.applicationContext,
             userId = session?.user?.id,
             selectedServerId = session?.currentServerId,

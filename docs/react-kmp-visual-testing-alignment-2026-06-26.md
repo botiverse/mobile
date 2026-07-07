@@ -7,7 +7,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## Slice Scope: VisualTesting / Diagnostics / Owner onboarding / Release notes / Announcements / Reminders
 
-包含: visual case registry / capture harness / diff / report / site / gh-pages publish / diagnostics page / Bugly integration / announcements / reminders
+包含: visual case registry / capture harness / diff / report / site / gh-pages publish / diagnostics page / Quiver diagnostics integration / announcements / reminders
 
 ## React source of truth
 
@@ -33,8 +33,8 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 主要类别:
 1. **Visual testing capture** (15 commits): capture auth screens, capture server danger modal, prefix component fixture cases, split component and screen coverage, activate members agent detail tabs, activate members activity route case, activate composer suggestion cases, align thread message row fixture, use thumbs-up reaction fixture, use real search filter popover, unify register input fixture, align settings danger modal, align agent lifecycle action case
-2. **Bugly integration** (5 commits): `feat(ohos)` export Bugly diagnostics feedback archive, `feat(android)` attach diagnostics to Bugly, `feat(android)` export feedback from Bugly diagnose logs, `feat(native)` expand android bugly diagnostics, `chore(diagnostics)` trace composer draft projection
-3. **Native Android diagnostics** (4 commits): `androidUseTdlogAsDiagnosticsSink` (Bugly TDLog), `fix(diagnostics): remove network probe`, `fix(settings): remove diagnostics log preview`, `fix(settings): prune diagnostics profiler detail sections`
+2. **Quiver diagnostics integration** (5 commits): `feat(ohos)` export App diagnostics feedback archive, `feat(android)` attach diagnostics to app diagnostics, `feat(android)` export feedback from app diagnostics logs, `feat(native)` expand android app diagnostics, `chore(diagnostics)` trace composer draft projection
+3. **Native Android diagnostics** (4 commits): `androidUseTdlogAsDiagnosticsSink` (App diagnostics log), `fix(diagnostics): remove network probe`, `fix(settings): remove diagnostics log preview`, `fix(settings): prune diagnostics profiler detail sections`
 
 ## 现状 vs React parity
 
@@ -44,7 +44,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 - 71 cases in sharedCases.json (per 06-23 baseline, 06-24 publish)
 - 52/52 React provider baseline 06-24 (`2057eb39-20260624065206`)
 - 56/61 Android captures 06-24 PUX 跑
-- Bugly 集成 (per #111 done, Android + OHOS + diagnostics zip)
+- Quiver crash + app diagnostics (per #111 done, Android + OHOS + diagnostics zip)
 - Diagnostics log preview 移除 (per `fix(settings): remove diagnostics log preview` done)
 - Diagnostics profiler detail sections pruned
 

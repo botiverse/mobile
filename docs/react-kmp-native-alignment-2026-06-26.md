@@ -7,7 +7,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 
 ## Slice Scope: Native (Android + OHOS)
 
-包含: appBadge / notification / widget / file preview / launcher icon / safe area / Kuikly / MMKV / Bugly / OHOS platform fixes
+包含: appBadge / notification / widget / file preview / launcher icon / safe area / Kuikly / MMKV / Quiver diagnostics / OHOS platform fixes
 
 ## React source of truth
 
@@ -31,7 +31,7 @@ N/A — React is web, no native. PUX scans KMP/Android + OHOS native layer.
 3. **Widgets** (4 features): `feat(ohos)` add activity and agent widgets, `feat(android)` add raft launcher widgets, widget button margins, widget server per native, widget align live agent cards
 4. **Launcher icon** (6 features): `androidUseImageLauncherForeground`, `androidRegenerateLauncherIcons`, `androidShrinkLauncherIconMark`, `androidShrinkAdaptiveLauncherForeground`, `androidRestoreWhiteLauncherIconFill`, `androidInsetAdaptiveLauncherForeground`
 5. **File preview** (8 features): generic download controls, show download progress immediately, show progress and speed, stream attachment download controls, manage downloaded attachment cache, route unsupported uniformly, polish file icons, generate common file icons
-6. **Diagnostics / Bugly** (5 features): `feat(ohos)` export Bugly archive, `feat(android)` attach diagnostics, `feat(android)` export feedback, `feat(native)` expand Bugly, `androidUseTdlogAsDiagnosticsSink`
+6. **Diagnostics / Quiver** (5 features): `feat(ohos)` export app diagnostics archive, `feat(android)` attach diagnostics, `feat(android)` export feedback, `feat(native)` expand app diagnostics, `androidUseTdlogAsDiagnosticsSink`
 7. **Kuikly baseline** (5 features): `androidUse16kbAlignedNativeDeps`, `androidCenterKuiklyTextGlyphMetrics`, `androidAlignKuiklyTextBaseline`, `androidAlignCjkTextBaseline`, `feat(gradle)` add toolchain configuration
 8. **Safe area / IME** (4 features): `androidPreserveGestureNavBottomInset`, `androidAvoidDoubleBottomSafeArea`, `androidRequestNotificationPermissionBeforeTestPush`, `androidGateVerboseTraceLogging`
 9. **Background behavior** (4 features): `androidBackgroundAppShellOnRootBack`, `androidOpenUnreadNotificationsInThread`, `nativeAvoidPullRefreshBridgeCrash`, `nativeLimitRealtimeFanoutToForeground`
@@ -46,7 +46,7 @@ N/A — React is web, no native. PUX scans KMP/Android + OHOS native layer.
 - Widget implementation (per #110 #283 done)
 - Launcher icon polish (per #95 #110 done)
 - File preview download progress + speed (per #377 done)
-- Bugly diagnostics integration (per #111 done)
+- App diagnostics integration (per #111 done)
 - Kuikly text baseline fixes (CJK + glyph metrics)
 - Safe area / IME preservation
 - OHOS platform fixes (8 items)
@@ -74,7 +74,7 @@ N/A — React is web, no native. PUX scans KMP/Android + OHOS native layer.
 7. **Android-Launcher icon font 太大** (per #95 done, #280 todo partial)
 
 ### ❌ 不在 React parity 范围 (KMP 业务扩展 / 工程改造)
-- Bugly 集成 (#111 done)
+- Quiver crash + app diagnostics (#111 done)
 - Kuikly fork artifact publish (#113 done)
 - File preview MP4/text (#421-#425)
 - Reaction sprite atlas (#397)
@@ -94,7 +94,7 @@ N/A — React is web, no native. PUX scans KMP/Android + OHOS native layer.
 - Android launcher icon font (#280)
 
 ### P2 (业务扩展)
-- Bugly 集成 (#111 done)
+- Quiver crash + app diagnostics (#111 done)
 - Kuikly fork publish (#113 done)
 - Reaction sprite atlas (#397)
 

@@ -68,7 +68,7 @@ Worktree: `Slock-worktrees/pux-feature-alignment-2026-06-26`
 ### ❌ 不在 React parity 范围 (KMP 业务扩展 / 工程改造)
 - API environment switching (per `feat(settings)` add, dev mode UI)
 - Account recovery entry points (per #308 future)
-- Bugly 集成 (per #111 done)
+- Quiver crash + app diagnostics (per #111 done)
 - Diagnostics log preview 移除 (per `fix(settings): remove diagnostics log preview` done)
 
 ## P0/P1/P2 缺口分类
