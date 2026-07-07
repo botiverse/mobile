@@ -147,6 +147,31 @@ private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
 
+internal enum class HomeSidebarBadgeTone {
+    Loud,
+    Quiet
+}
+
+internal data class HomeSidebarBadgeProjection(
+    val label: String?,
+    val tone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud,
+    val hasUnread: Boolean = false,
+    val hasAttention: Boolean = false
+)
+
+internal data class HomeConversationBadgeInput(
+    val unreadCount: Int,
+    val joined: Boolean = true,
+    val muted: Boolean = false,
+    val mentionPierced: Boolean = false,
+    val followed: Boolean = false
+)
+
+internal data class HomeActivitySidebarProjection(
+    val unreadLabel: String?,
+    val totalLabel: String?
+)
+
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -761,7 +786,7 @@ internal fun SlockStructuralHomeShell(
     val displayedDirectMessages = remember(directMessages, dmOrder, directMessageSortMode, hiddenDmIdSet) {
         directMessages
             .orderedBySidebarIds(dmOrder)
-            .filter { dm -> dm.id !in hiddenDmIdSet || dm.unreadCount > 0 }
+            .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
             .sortedForSidebar(directMessageSortMode) { it.name }
     }
     val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedOrder, pinnedSortModeState) {
@@ -774,10 +799,10 @@ internal fun SlockStructuralHomeShell(
         )
     }
     val pinnedItemsForSort = displayedPinned
-    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.unreadCount > 0 } }
-    val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.unreadCount > 0 } }
-    val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.unreadCount > 0 } }
-    val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.unreadCount > 0 } }
+    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.homeConversationBadgeProjection().hasUnread } }
+    val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
+    val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.homeConversationBadgeProjection().hasUnread } }
+    val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.homeConversationBadgeProjection().hasUnread } }
     val serverSwitcherHasOtherUnread =
         remember(currentServerId, servers) {
             homeServerSwitcherHasOtherUnread(currentServerId, servers)
@@ -913,10 +938,15 @@ internal fun SlockStructuralHomeShell(
                             item { Spacer(Modifier.height(SlockSpacing.Md)) }
                             item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                             item {
+                                val activityProjection =
+                                    homeActivitySidebarProjection(
+                                        activityUnreadCount = inboxUnreadCount,
+                                        activityTotalCount = inboxTotalCount
+                                    )
                                 SidebarActivityRow(
                                     labels.inbox,
-                                    unreadCount = inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                                    totalCount = inboxTotalCount.takeIf { inboxUnreadCount == 0 && it > 0 }?.toString(),
+                                    unreadCount = activityProjection.unreadLabel,
+                                    totalCount = activityProjection.totalLabel,
                                     selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     onClick = if (sidebarInteractionsEnabled) onInboxClick else null
@@ -978,45 +1008,47 @@ internal fun SlockStructuralHomeShell(
                                         // user reads the menu.
                                         pressedRowKey = null
                                     }
-                                    if (isDirectMessage) {
-                                        DirectMessageRow(
-                                            name = pinned.name,
-                                            description = pinned.description,
-                                            avatarLabel = pinned.avatarLabel,
-                                            peerType = pinned.peerType,
-                                            memberId = pinned.presenceMemberId,
-                                            agentStatusResolver = agentStatusResolver,
-                                            memberAvatarResolver = memberAvatarResolver,
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                            hasDraft = pinned.hasDraft,
-                                            badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
-                                            quietBadge = pinned.activityMuted,
-                                            interactionState = rowInteractionState,
-                                            captureLongPressAnchor = captureRowAnchors,
-                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
-                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
-                                            onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
-                                        )
-                                    } else {
-                                        ChannelRow(
-                                            name = pinned.name,
-                                            symbol = pinned.homeChannelSymbol(),
-                                            joined = pinned.joined,
-                                            hasDraft = pinned.hasDraft,
-                                            badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
-                                            quietBadge = pinned.activityMuted,
-                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                            interactionState = rowInteractionState,
-                                            captureLongPressAnchor = captureRowAnchors,
-                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
-                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
-                                            onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
-                                        )
-                                    }
+                                if (isDirectMessage) {
+                                    val badgeProjection = pinned.homeConversationBadgeProjection()
+                                    DirectMessageRow(
+                                        name = pinned.name,
+                                        description = pinned.description,
+                                        avatarLabel = pinned.avatarLabel,
+                                        peerType = pinned.peerType,
+                                        memberId = pinned.presenceMemberId,
+                                        agentStatusResolver = agentStatusResolver,
+                                        memberAvatarResolver = memberAvatarResolver,
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        hasDraft = pinned.hasDraft,
+                                        badge = badgeProjection.label,
+                                        badgeTone = badgeProjection.tone,
+                                        interactionState = rowInteractionState,
+                                        captureLongPressAnchor = captureRowAnchors,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
+                                        onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
+                                    )
+                                } else {
+                                    val badgeProjection = pinned.homeConversationBadgeProjection()
+                                    ChannelRow(
+                                        name = pinned.name,
+                                        symbol = pinned.homeChannelSymbol(),
+                                        joined = pinned.joined,
+                                        hasDraft = pinned.hasDraft,
+                                        badge = badgeProjection.label,
+                                        badgeTone = badgeProjection.tone,
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        interactionState = rowInteractionState,
+                                        captureLongPressAnchor = captureRowAnchors,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
+                                        onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
+                                    )
                                 }
                             }
+                        }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
@@ -1041,6 +1073,7 @@ internal fun SlockStructuralHomeShell(
                         if (channelsExpanded) {
                             items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
                                 val channel = displayedChannels[index]
+                                val badgeProjection = channel.homeConversationBadgeProjection()
                                 // #211 review (Cindy): selected wins over pressed.
                                 val channelInteractionState = when {
                                     sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
@@ -1052,8 +1085,8 @@ internal fun SlockStructuralHomeShell(
                                     symbol = channel.homeChannelSymbol(),
                                     joined = channel.joined,
                                     hasDraft = channel.hasDraft,
-                                    badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
-                                    quietBadge = channel.activityMuted,
+                                    badge = badgeProjection.label,
+                                    badgeTone = badgeProjection.tone,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = channelInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
@@ -1090,6 +1123,7 @@ internal fun SlockStructuralHomeShell(
                             if (jointChannelsExpanded) {
                                 items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
                                     val channel = displayedJointChannels[index]
+                                    val badgeProjection = channel.homeConversationBadgeProjection()
                                     val jointInteractionState = when {
                                         sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
                                         pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
@@ -1100,8 +1134,8 @@ internal fun SlockStructuralHomeShell(
                                         symbol = channel.homeChannelSymbol(),
                                         joined = channel.joined,
                                         hasDraft = channel.hasDraft,
-                                        badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
-                                        quietBadge = channel.activityMuted,
+                                        badge = badgeProjection.label,
+                                        badgeTone = badgeProjection.tone,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = jointInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
@@ -1141,6 +1175,7 @@ internal fun SlockStructuralHomeShell(
                         if (directMessagesExpanded) {
                             items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
                                 val dm = displayedDirectMessages[index]
+                                val badgeProjection = dm.homeConversationBadgeProjection()
                                 val dmInteractionState = when {
                                     sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
                                     pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
@@ -1156,8 +1191,8 @@ internal fun SlockStructuralHomeShell(
                                     memberAvatarResolver = memberAvatarResolver,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
-                                    badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
-                                    quietBadge = dm.activityMuted,
+                                    badge = badgeProjection.label,
+                                    badgeTone = badgeProjection.tone,
                                     interactionState = dmInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
@@ -1259,7 +1294,7 @@ internal fun SlockStructuralHomeShell(
             val pinTargetIsPinned = activeConversationId != null && activeConversationId in pinnedIdSet
             val pinMenuItems = activeConversation?.let { conversation ->
                 buildList {
-                    val hasUnread = conversation.unreadCount > 0
+                    val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
                     add(
                         SlockBaseMenuItem(
                             id = if (hasUnread) "mark-read" else "mark-unread",
@@ -1493,12 +1528,58 @@ internal fun homeActivitySidebarTotalCount(
 ): Int =
     activityTotalCount.takeIf { activityUnreadCount <= 0 && it > 0 } ?: 0
 
+internal fun formatHomeSidebarBadgeCount(count: Int): String? =
+    when {
+        count <= 0 -> null
+        count >= 100 -> "99+"
+        else -> count.toString()
+    }
+
+internal fun homeConversationBadgeProjection(input: HomeConversationBadgeInput): HomeSidebarBadgeProjection {
+    val label = formatHomeSidebarBadgeCount(input.unreadCount)
+    if (label == null) return HomeSidebarBadgeProjection(label = null)
+    val loud =
+        input.joined &&
+            (!input.muted || input.mentionPierced || input.followed)
+    return HomeSidebarBadgeProjection(
+        label = label,
+        tone = if (loud) HomeSidebarBadgeTone.Loud else HomeSidebarBadgeTone.Quiet,
+        hasUnread = true,
+        hasAttention = loud
+    )
+}
+
+internal fun SlockHomeConversationItem.homeConversationBadgeProjection(
+    muted: Boolean = activityMuted,
+    mentionPierced: Boolean = false,
+    followed: Boolean = false
+): HomeSidebarBadgeProjection =
+    homeConversationBadgeProjection(
+        HomeConversationBadgeInput(
+            unreadCount = unreadCount,
+            joined = joined,
+            muted = muted,
+            mentionPierced = mentionPierced,
+            followed = followed
+        )
+    )
+
+internal fun homeActivitySidebarProjection(
+    activityUnreadCount: Int,
+    activityTotalCount: Int
+): HomeActivitySidebarProjection =
+    HomeActivitySidebarProjection(
+        unreadLabel = formatHomeSidebarBadgeCount(homeActivitySidebarUnreadCount(activityUnreadCount)),
+        totalLabel = formatHomeSidebarBadgeCount(homeActivitySidebarTotalCount(activityUnreadCount, activityTotalCount))
+    )
+
 internal fun homeServerSwitcherHasOtherUnread(
     currentServerId: String,
     servers: List<SlockServerSwitcherItem>
 ): Boolean =
     servers.any { server ->
-        server.id != currentServerId && server.unreadCount > 0
+        server.id != currentServerId &&
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount)).hasUnread
     }
 
 private const val DefaultCommunityServerSlug = "community"
@@ -2263,7 +2344,10 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (!selected && server.unreadCount > 0) HomeUnreadBadge(server.unreadCount.toString())
+        val badgeLabel =
+            homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount))
+                .label
+        if (!selected && badgeLabel != null) HomeUnreadBadge(badgeLabel)
     }
 }
 
@@ -2380,11 +2464,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
 }
 
 internal fun formatHomeSavedCount(savedCount: Int): String? =
-    when {
-        savedCount <= 0 -> null
-        savedCount >= 100 -> "99+"
-        else -> savedCount.toString()
-    }
+    formatHomeSidebarBadgeCount(savedCount)
 
 @Composable
 private fun SidebarTrailingNumberText(text: String, color: Color) {
@@ -2425,7 +2505,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, quietBadge: Boolean = false, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -2609,7 +2689,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
             if (hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                if (joined && !quietBadge) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
+                when (badgeTone) {
+                    HomeSidebarBadgeTone.Loud -> CountPill(badge, SlockColor.AccentPink)
+                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+                }
             }
             if (dragEnabled) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
@@ -2928,7 +3011,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, quietBadge: Boolean = false, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -3082,7 +3165,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             }
             if (badge != null) {
                 if (isAgent || hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-                if (quietBadge) DimmedUnreadCount(badge) else CountPill(badge, SlockColor.AccentPink)
+                when (badgeTone) {
+                    HomeSidebarBadgeTone.Loud -> CountPill(badge, SlockColor.AccentPink)
+                    HomeSidebarBadgeTone.Quiet -> DimmedUnreadCount(badge)
+                }
             }
         }
         }
