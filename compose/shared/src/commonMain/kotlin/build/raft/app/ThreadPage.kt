@@ -98,6 +98,7 @@ import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.MemberId
@@ -679,10 +680,8 @@ internal fun KuiklyThreadScreenPayload.threadMessagePermalink(
 }
 
 private fun String?.isThreadPermalinkDmKind(): Boolean =
-    when (this?.trim()?.lowercase()) {
-        "dm", "direct_message", "direct-message", "directmessage" -> true
-        else -> false
-    }
+    // #417 contract parse (accepts "direct"); no private DM vocab table (t432 PR-A).
+    parseConversationKindOrNull(this) == ConversationKind.DirectMessage
 
 internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
