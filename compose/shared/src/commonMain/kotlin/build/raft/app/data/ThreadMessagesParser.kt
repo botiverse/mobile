@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.commentHostTypeOrNull
+import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.KuiklyThreadAttachmentItem
 import build.raft.app.KuiklyThreadMessageCommentHostSource
 import build.raft.app.KuiklyThreadMessageCommentRef
@@ -335,8 +337,8 @@ private fun WireCommentRef.toMessageCommentRef(): KuiklyThreadMessageCommentRef?
 }
 
 private fun WireCommentHostSource.toMessageCommentHostSource(): KuiklyThreadMessageCommentHostSource? {
-    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
-    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanType = type.commentHostTypeOrNull() ?: return null
+    val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
     return KuiklyThreadMessageCommentHostSource(
         type = cleanType,

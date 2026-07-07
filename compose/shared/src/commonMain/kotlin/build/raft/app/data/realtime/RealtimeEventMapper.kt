@@ -1,5 +1,8 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.commentHostTypeOrNull
+import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
@@ -590,8 +593,8 @@ private fun CommentRefWireDto.toDomain(): MessageCommentRef? {
 }
 
 private fun CommentHostSourceWireDto.toDomain(): MessageCommentHostSource? {
-    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
-    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanType = type.commentHostTypeOrNull() ?: return null
+    val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
     return MessageCommentHostSource(
         type = cleanType,
@@ -638,7 +641,7 @@ private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSum
     parentMessageId = null,
     channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
     threadId = null,
-    isThreadTask = channelType?.lowercase() == "thread",
+    isThreadTask = channelType?.lowercase() == KuiklyThreadSurfaceKind.ReplyThread,
     assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName),
     creator = memberFrom(type = createdByType, id = createdById, name = createdByName),
     channelName = channelName,

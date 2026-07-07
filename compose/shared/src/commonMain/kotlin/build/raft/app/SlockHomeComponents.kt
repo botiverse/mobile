@@ -789,7 +789,7 @@ internal fun SlockStructuralHomeShell(
     }
     val displayedJointChannels = remember(channels, channelOrder, channelSortModeState) {
         channels
-            .filter { it.kind == "joint" }
+            .filter { it.kind == JointChannelKindWireValue }
             .orderedBySidebarIds(channelOrder)
             .sortedForSidebar(channelSortModeState) { it.name }
     }
@@ -997,7 +997,7 @@ internal fun SlockStructuralHomeShell(
                             if (pinnedExpanded) {
                                 items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].id}" }) { index ->
                                     val pinned = displayedPinned[index]
-                                    val isJoint = pinned.homeChannelKind().equals("joint", ignoreCase = true)
+                                    val isJoint = pinned.homeChannelKind() == JointChannelKindWireValue
                                     val isDirectMessage = pinned.isDirectMessageConversation()
                                     // #211 React parity (revised by @artin 23:38): pinned copy and
                                     // original-section copy of the same conversation both
@@ -1299,7 +1299,7 @@ internal fun SlockStructuralHomeShell(
                     channels.firstOrNull { it.id == id } ?: directMessages.firstOrNull { it.id == id }
                 }
             val activeIsDirectMessage = activeConversation?.isDirectMessageConversation() == true
-            val activeIsJoint = activeConversation?.homeChannelKind().equals("joint", ignoreCase = true)
+            val activeIsJoint = activeConversation?.homeChannelKind() == JointChannelKindWireValue
             val activeCanArchive =
                 activeConversation != null &&
                     !activeIsDirectMessage &&
@@ -1697,7 +1697,7 @@ internal fun homeConversationSectionForSelection(
     }
     val channel = channels.firstOrNull { it.id == selectedChannelId }
     if (channel != null) {
-        return if (channel.homeChannelKind().equals("joint", ignoreCase = true)) {
+        return if (channel.homeChannelKind() == JointChannelKindWireValue) {
             SlockHomeConversationSection.JointChannel
         } else {
             SlockHomeConversationSection.Channel
@@ -1713,7 +1713,7 @@ internal fun homeConversationSectionForSelection(
 internal fun SlockHomeConversationItem.homeChannelKind(): String =
     when (parseConversationKindOrNull(kind)) {
         ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-        ConversationKind.Joint -> "joint"
+        ConversationKind.Joint -> JointChannelKindWireValue
         else -> {
             channelType?.takeIf { it.isNotBlank() }?.lowercase()
                 ?: kind.lowercase()
@@ -1729,7 +1729,7 @@ internal fun SlockHomeConversationItem.homeChannelSymbol(): String =
 internal fun String?.toSlockChannelSymbol(): String =
     when (this?.lowercase()) {
         "private" -> "lock"
-        "joint" -> "git-branch"
+        JointChannelKindWireValue -> "git-branch"
         else -> "#"
     }
 

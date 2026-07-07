@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -544,7 +545,7 @@ internal fun TaskWireDto.toTaskSummary(): TaskSummary {
         parentMessageId = resolvedMessageId,
         channelId = channelId?.let(::ChannelId),
         threadId = resolvedThreadId,
-        isThreadTask = channelType == "thread",
+        isThreadTask = channelType == KuiklyThreadSurfaceKind.ReplyThread,
         assignee = memberFrom(claimedByType, claimedById, claimedByName),
         creator = memberFrom(createdByType, createdById, createdByName),
         channelName = channelName,

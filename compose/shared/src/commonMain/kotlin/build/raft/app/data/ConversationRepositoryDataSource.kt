@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -819,7 +820,7 @@ private fun buildSharedThreadSnapshot(
             .copy(archived = payload.channelArchived)
     val conversation =
         if (
-            payload.canonicalTarget?.kind == "thread" &&
+            payload.canonicalTarget?.kind == KuiklyThreadSurfaceKind.ReplyThread &&
             payload.canonicalTarget.channelId != null &&
             payload.canonicalTarget.threadParentMessageId != null
         ) {
