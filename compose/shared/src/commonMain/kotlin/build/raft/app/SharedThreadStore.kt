@@ -29,6 +29,7 @@ import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.MemberRepository
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
+import build.raft.app.data.MviStaleToken
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAuthSessionStore
@@ -2453,6 +2454,8 @@ internal class SharedThreadStore(
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
+    private var routeStaleToken = MviStaleToken.Initial
+    private var routeStaleTokenValue = MviStaleToken.Initial.value
     private val pendingReactionRealtimeGuards = mutableMapOf<String, PendingReactionRealtimeGuard>()
 
     fun dispatch(intent: SharedThreadIntent) {
@@ -2584,6 +2587,7 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob?.cancel()
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
+        advanceRouteStaleToken()
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
@@ -2593,6 +2597,7 @@ internal class SharedThreadStore(
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val routeContextPayload = routeCandidatePayload.withoutTransientLocalSendingMessages()
+        val staleToken = advanceRouteStaleToken()
         lastRoutePayload = routeContextPayload
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
@@ -2636,10 +2641,13 @@ internal class SharedThreadStore(
         launchBackgroundHomeContextHydration(routeContextPayload)
         delay(SharedThreadFirstFrameDelayMillis)
         val session = dataSource.readSession()
-        if (threadId == null || _state.value.payload.sourceThreadId == threadId) {
+        if (
+            staleTokenStillCurrent(staleToken, "thread_start", "highlight_mentions", routeContextPayload) &&
+            (threadId == null || _state.value.payload.sourceThreadId == threadId)
+        ) {
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
-        refresh(routeContextPayload)
+        refresh(routeContextPayload, staleToken)
     }
 
     private fun applyRouteIntent(routePayload: KuiklyThreadScreenPayload) {
@@ -2654,6 +2662,7 @@ internal class SharedThreadStore(
             )
             return
         }
+        advanceRouteStaleToken()
         lastRoutePayload =
             (lastRoutePayload ?: currentPayload)
                 .withRouteIntentFrom(routeCandidatePayload)
@@ -2663,7 +2672,10 @@ internal class SharedThreadStore(
         }
     }
 
-    private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
+    private suspend fun refresh(
+        basePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken = routeStaleToken
+    ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
         if (!routeStillCurrent(basePayload, "thread_refresh", "start", existing)) {
@@ -2696,7 +2708,10 @@ internal class SharedThreadStore(
         }
         val result = dataSource.fetchThreadPayload(basePayload, persistResult = true)
         val latest = _state.value.payload
-        if (!routeStillCurrent(basePayload, "thread_refresh", "after_fetch", latest)) {
+        if (
+            !staleTokenStillCurrent(staleToken, "thread_refresh", "after_fetch", basePayload, latest) ||
+            !routeStillCurrent(basePayload, "thread_refresh", "after_fetch", latest)
+        ) {
             diagnosticsLogger?.invoke(
                 "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
                     "result=${result.threadDiagnosticsResult()} ignored=true reason=stale_route " +
@@ -2742,7 +2757,7 @@ internal class SharedThreadStore(
             nextPayload.hasRenderableThreadContent() &&
             !basePayload.needsReplyThreadStreamResolution()
         ) {
-            launchSecondaryTimelineRefresh(basePayload)
+            launchSecondaryTimelineRefresh(basePayload, staleToken)
         }
         if (nextPayload.hasRenderableThreadContent()) {
             launchBackgroundMembersHydration(basePayload)
@@ -2750,6 +2765,7 @@ internal class SharedThreadStore(
     }
 
     private fun launchBackgroundHomeContextHydration(routePayload: KuiklyThreadScreenPayload) {
+        val staleToken = routeStaleToken
         homeContextHydrationJob?.cancel()
         homeContextHydrationJob =
             scope.launch {
@@ -2765,9 +2781,21 @@ internal class SharedThreadStore(
                 if (hydratedPayload == routePayload) {
                     return@launch
                 }
+                if (!staleTokenStillCurrent(staleToken, "thread_home_context", "after_fetch", routePayload)) {
+                    return@launch
+                }
                 val emitted =
                     reducePayloadPatch { currentPayload ->
-                        if (!routeStillCurrent(routePayload, "thread_home_context", "apply", currentPayload)) {
+                        if (
+                            !staleTokenStillCurrent(
+                                staleToken,
+                                "thread_home_context",
+                                "apply",
+                                routePayload,
+                                currentPayload
+                            ) ||
+                            !routeStillCurrent(routePayload, "thread_home_context", "apply", currentPayload)
+                        ) {
                             return@reducePayloadPatch currentPayload
                         }
                         currentPayload.withHomeContextProjectionFrom(hydratedPayload)
@@ -2782,11 +2810,14 @@ internal class SharedThreadStore(
             }
     }
 
-    private fun launchSecondaryTimelineRefresh(routePayload: KuiklyThreadScreenPayload) {
+    private fun launchSecondaryTimelineRefresh(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken
+    ) {
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob =
             scope.launch {
-                refreshSecondaryTimelineData(routePayload)
+                refreshSecondaryTimelineData(routePayload, staleToken)
             }
     }
 
@@ -2805,7 +2836,10 @@ internal class SharedThreadStore(
             }
     }
 
-    private suspend fun refreshSecondaryTimelineData(routePayload: KuiklyThreadScreenPayload) {
+    private suspend fun refreshSecondaryTimelineData(
+        routePayload: KuiklyThreadScreenPayload,
+        staleToken: MviStaleToken
+    ) {
         val startedAt = TimeSource.Monotonic.markNow()
         val beforeFetch = _state.value.payload
         if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "start", beforeFetch)) {
@@ -2830,7 +2864,10 @@ internal class SharedThreadStore(
             }
         val enriched = dataSource.enrichSavedStatus(followedPayload)
         val latest = _state.value.payload
-        if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)) {
+        if (
+            !staleTokenStillCurrent(staleToken, "thread_secondary_refresh", "after_fetch", routePayload, latest) ||
+            !routeStillCurrent(routePayload, "thread_secondary_refresh", "after_fetch", latest)
+        ) {
             diagnosticsLogger?.invoke(
                 "thread_secondary_refresh_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                     "ignored=true reason=stale_route durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
@@ -2843,7 +2880,16 @@ internal class SharedThreadStore(
                 .preserveStableTimelineFrom(latest)
         val emitted =
             reducePayloadPatchAndCache(cachePayload = true) { currentPayload ->
-                if (!routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)) {
+                if (
+                    !staleTokenStillCurrent(
+                        staleToken,
+                        "thread_secondary_refresh",
+                        "apply",
+                        routePayload,
+                        currentPayload
+                    ) ||
+                    !routeStillCurrent(routePayload, "thread_secondary_refresh", "apply", currentPayload)
+                ) {
                     return@reducePayloadPatchAndCache currentPayload
                 }
                 currentPayload.withThreadContentProjectionFrom(patch)
@@ -3237,6 +3283,7 @@ internal class SharedThreadStore(
 
     private suspend fun recoverRealtimeGap(serverSeq: Long) {
         val initial = _state.value.payload
+        val staleToken = routeStaleToken
         val streamChannelId =
             initial.sourceThreadId
                 ?.takeIf { it.isNotBlank() }
@@ -3251,11 +3298,12 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = initial.newerMessagesStatus == "loading"
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest)
+        recoverRealtimeGap(initial, nextRequest, staleToken)
     }
 
     private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
         val initial = _state.value.payload
+        val staleToken = routeStaleToken
         val streamChannelId =
             initial.sourceThreadId
                 ?.takeIf { it.isNotBlank() }
@@ -3273,12 +3321,14 @@ internal class SharedThreadStore(
                     channelId = streamChannelId,
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
-            )
+            ),
+            staleToken = staleToken
         )
     }
 
     private suspend fun refreshLatestAfterVisibleMaxSeq() {
         val initial = _state.value.payload
+        val staleToken = routeStaleToken
         val streamChannelId =
             initial.sourceThreadId
                 ?.takeIf { it.isNotBlank() }
@@ -3296,20 +3346,25 @@ internal class SharedThreadStore(
                     channelId = streamChannelId,
                     sinceSeq = sinceSeq,
                     serverSeq = sinceSeq + 1L
-                )
+                ),
+            staleToken = staleToken
         )
     }
 
     private suspend fun recoverRealtimeGap(
         initial: KuiklyThreadScreenPayload,
-        initialRequest: RealtimeVisibleStreamGapRequest
+        initialRequest: RealtimeVisibleStreamGapRequest,
+        staleToken: MviStaleToken
     ) {
         var nextRequest = initialRequest
         reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
         while (true) {
             val result = dataSource.fetchRealtimeGapThreadPayload(_state.value.payload, nextRequest.sinceSeq)
             val latest = _state.value.payload
-            if (!routeStillCurrent(initial, "thread_realtime_gap", "after_fetch", latest)) {
+            if (
+                !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "after_fetch", initial, latest) ||
+                !routeStillCurrent(initial, "thread_realtime_gap", "after_fetch", latest)
+            ) {
                 return
             }
             val nextPayload =
@@ -3326,7 +3381,16 @@ internal class SharedThreadStore(
                                 .withRouteContext(initial)
                                 .preserveStableTimelineFrom(latest)
                         reducePayloadPatch { currentPayload ->
-                            if (!routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)) {
+                            if (
+                                !staleTokenStillCurrent(
+                                    staleToken,
+                                    "thread_realtime_gap",
+                                    "apply",
+                                    initial,
+                                    currentPayload
+                                ) ||
+                                !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
+                            ) {
                                 return@reducePayloadPatch currentPayload
                             }
                             currentPayload.withThreadContentProjectionFrom(selected)
@@ -3351,7 +3415,10 @@ internal class SharedThreadStore(
                 }
             if (nextPayload != null) {
                 reducePayloadPatch { currentPayload ->
-                    if (!routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)) {
+                    if (
+                        !staleTokenStillCurrent(staleToken, "thread_realtime_gap", "apply", initial, currentPayload) ||
+                        !routeStillCurrent(initial, "thread_realtime_gap", "apply", currentPayload)
+                    ) {
                         return@reducePayloadPatch currentPayload
                     }
                     currentPayload.withThreadContentProjectionFrom(nextPayload)
@@ -3668,6 +3735,30 @@ internal class SharedThreadStore(
             dataSource.cachePayload(nextPayload)
         }
         return emitted
+    }
+
+    private fun advanceRouteStaleToken(): MviStaleToken {
+        routeStaleTokenValue += 1L
+        routeStaleToken = MviStaleToken(routeStaleTokenValue)
+        return routeStaleToken
+    }
+
+    private fun staleTokenStillCurrent(
+        staleToken: MviStaleToken,
+        source: String,
+        stage: String,
+        routePayload: KuiklyThreadScreenPayload,
+        currentPayload: KuiklyThreadScreenPayload = _state.value.payload
+    ): Boolean {
+        if (staleToken.isCurrent(routeStaleToken)) {
+            return true
+        }
+        diagnosticsLogger?.invoke(
+            "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
+                "reason=stale_token token=${staleToken.value} currentToken=${routeStaleToken.value}"
+        )
+        return false
     }
 
     private fun routeStillCurrent(

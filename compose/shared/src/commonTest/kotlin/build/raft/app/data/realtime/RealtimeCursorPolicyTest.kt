@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.data.InMemorySlockKeyValueStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
@@ -8,6 +9,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.ServerId
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
@@ -61,6 +63,24 @@ class RealtimeCursorPolicyTest {
     }
 
     @Test
+    fun namedVisibleStreamCursorIgnoresGlobalAppliedSeq() {
+        val sinceSeq =
+            RealtimeCursorPolicy.visibleStreamSinceSeq(
+                visibleMaxSeq = 10,
+                globalAppliedSeq = 90
+            )
+
+        assertEquals(10L, sinceSeq)
+        assertTrue(
+            RealtimeCursorPolicy.shouldSyncVisibleStream(
+                channelId = ChannelId("channel-1"),
+                visibleMaxSeq = sinceSeq,
+                serverSeq = 90
+            )
+        )
+    }
+
+    @Test
     fun visibleGapRequestSkipsWhenVisibleStreamCaughtUpOrLoading() {
         assertEquals(
             null,
@@ -79,6 +99,20 @@ class RealtimeCursorPolicyTest {
                 loading = true
             )
         )
+    }
+
+    @Test
+    fun appliedSeqCursorPersistsPerServerAndNeverRegresses() {
+        val store = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val serverOne = ServerId("server-1")
+        val serverTwo = ServerId("server-2")
+
+        store.saveAppliedLastSeq(serverOne, 42)
+        store.saveAppliedLastSeq(serverOne, 41)
+        store.saveAppliedLastSeq(serverTwo, 7)
+
+        assertEquals(42L, store.readAppliedLastSeq(serverOne))
+        assertEquals(7L, store.readAppliedLastSeq(serverTwo))
     }
 
     private fun message(seq: Long): Message =
