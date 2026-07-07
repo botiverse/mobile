@@ -1625,6 +1625,13 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun authChooseServerDoesNotSkipInitialLoadForEmptyCachedServerList() {
+        assertEquals(false, authChooseServerShouldSkipInitialLoad(skipInitialLoad = true, cachedServersCount = 0))
+        assertEquals(true, authChooseServerShouldSkipInitialLoad(skipInitialLoad = true, cachedServersCount = 1))
+        assertEquals(false, authChooseServerShouldSkipInitialLoad(skipInitialLoad = false, cachedServersCount = 1))
+    }
+
+    @Test
     fun appShellRouteCanSuppressPostAuthRestoreLanding() {
         assertEquals(false, appShellPageData().optBoolean("slockSuppressRestoreLanding", false))
         assertEquals(
@@ -1642,7 +1649,7 @@ class SlockAppShellTest {
         assertEquals(AUTH_CHOOSE_SERVER_PAGE, destination.pageData.optString("pageName"))
         assertEquals(true, destination.pageData.optBoolean("slockReplaceCurrentPage", false))
         assertEquals(false, destination.pageData.optBoolean("slockSuppressRestoreLanding", false))
-        assertEquals(true, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
+        assertEquals(false, destination.pageData.optBoolean("slockAuthChooseServerSkipInitialLoad", false))
     }
 
     @Test

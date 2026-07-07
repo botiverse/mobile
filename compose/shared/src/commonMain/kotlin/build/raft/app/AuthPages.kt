@@ -1494,7 +1494,7 @@ internal fun postAuthRouteDestination(session: StoredAuthSession? = null): AuthR
     } else {
         AuthRouteDestination(
             pageName = AUTH_CHOOSE_SERVER_PAGE,
-            pageData = authChooseServerPageData(replaceCurrent = true, skipInitialLoad = true)
+            pageData = authChooseServerPageData(replaceCurrent = true)
         )
     }
 
