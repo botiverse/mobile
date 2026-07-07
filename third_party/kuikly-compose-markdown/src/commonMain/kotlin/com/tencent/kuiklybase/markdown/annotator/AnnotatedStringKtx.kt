@@ -360,8 +360,18 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                     MarkdownElementTypes.CODE_SPAN -> {
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
-                        append(SLOCK_INLINE_CODE_EDGE_PADDING)
                         val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
+                        // NBSP edge padding predates the Android native chip
+                        // chrome, which now reserves real advance padding
+                        // (KRRichTextBuilder EDGE_PADDING/EDGE_MARGIN) — keeping
+                        // the NBSP there double-pads the chip's leading edge
+                        // (task #407: 13px vs react's 5px). Platforms still on
+                        // the A-bridge (charWrapThreshold != null: no native
+                        // chrome, same gate as the char-wrap bridge) keep the
+                        // NBSP as their only visual padding.
+                        if (charWrapThreshold != null) {
+                            append(SLOCK_INLINE_CODE_EDGE_PADDING)
+                        }
                         if (charWrapThreshold != null) {
                             // task #401 A-bridge (see the expect in
                             // SlockKuiklyPlatformCapabilities.kt): on platforms whose
@@ -382,7 +392,9 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         } else {
                             buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
                         }
-                        append(SLOCK_INLINE_CODE_EDGE_PADDING)
+                        if (charWrapThreshold != null) {
+                            append(SLOCK_INLINE_CODE_EDGE_PADDING)
+                        }
                         pop()
                         addStringAnnotation(
                             tag = SLOCK_INLINE_CODE_ANNOTATION_TAG,

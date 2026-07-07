@@ -3,6 +3,7 @@ package build.raft.app.markdown
 import build.raft.app.SlockColor
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
+import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withSlockFontWeight
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -1327,6 +1328,13 @@ class SlockMarkdownTest {
             text.substring(range.start, range.end)
         }
 
+    // Mirrors the CODE_SPAN emission (AnnotatedStringKtx): the NBSP edge
+    // padding only exists on A-bridge platforms (no native chip chrome); the
+    // android target reserves real advance padding instead (task #407).
     private fun inlineCodeSegment(code: String): String =
-        "$inlineCodePadding$code$inlineCodePadding"
+        if (slockInlineCodeCharWrapBridgeThreshold() != null) {
+            "$inlineCodePadding$code$inlineCodePadding"
+        } else {
+            code
+        }
 }
