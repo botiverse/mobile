@@ -16,6 +16,7 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
@@ -997,7 +998,7 @@ internal fun SlockStructuralHomeShell(
                                 items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].id}" }) { index ->
                                     val pinned = displayedPinned[index]
                                     val isJoint = pinned.homeChannelKind().equals("joint", ignoreCase = true)
-                                    val isDirectMessage = pinned.kind.equals("directmessage", ignoreCase = true)
+                                    val isDirectMessage = pinned.isDirectMessageConversation()
                                     // #211 React parity (revised by @artin 23:38): pinned copy and
                                     // original-section copy of the same conversation both
                                     // render Selected when their conversationId matches.
@@ -1297,7 +1298,7 @@ internal fun SlockStructuralHomeShell(
                 activeConversationId?.let { id ->
                     channels.firstOrNull { it.id == id } ?: directMessages.firstOrNull { it.id == id }
                 }
-            val activeIsDirectMessage = activeConversation?.kind.equals("directmessage", ignoreCase = true)
+            val activeIsDirectMessage = activeConversation?.isDirectMessageConversation() == true
             val activeIsJoint = activeConversation?.homeChannelKind().equals("joint", ignoreCase = true)
             val activeCanArchive =
                 activeConversation != null &&
@@ -1710,12 +1711,17 @@ internal fun homeConversationSectionForSelection(
 }
 
 internal fun SlockHomeConversationItem.homeChannelKind(): String =
-    if (kind.equals("joint", ignoreCase = true)) {
-        "joint"
-    } else {
-        channelType?.takeIf { it.isNotBlank() }?.lowercase()
-            ?: kind.lowercase()
+    when (parseConversationKindOrNull(kind)) {
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.Joint -> "joint"
+        else -> {
+            channelType?.takeIf { it.isNotBlank() }?.lowercase()
+                ?: kind.lowercase()
+        }
     }
+
+internal fun SlockHomeConversationItem.isDirectMessageConversation(): Boolean =
+    parseConversationKindOrNull(kind) == ConversationKind.DirectMessage
 
 internal fun SlockHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toSlockChannelSymbol()
@@ -2948,7 +2954,7 @@ private fun SlockSidebarSortOverlay(
                 items(order.size, key = { index -> "sort-${order[index]}" }) { index ->
                     val itemId = order[index]
                     val item = itemsById[itemId] ?: return@items
-                    val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    val isDirectMessage = item.isDirectMessageConversation()
                     // The list never reflows during a drag. The dragged row keeps
                     // its slot as an invisible placeholder (the visible copy is the
                     // floating overlay); every other row stays exactly in place, so
@@ -3010,7 +3016,7 @@ private fun SlockSidebarSortOverlay(
             if (active != null) {
                 val item = itemsById[active]
                 if (item != null) {
-                    val isDirectMessage = item.kind.equals("directmessage", ignoreCase = true)
+                    val isDirectMessage = item.isDirectMessageConversation()
                     // Held row shows its settled landing position (debounced target).
                     val position = previewPositionById[active] ?: (draggedStartIndex + 1)
                     ChannelRow(
