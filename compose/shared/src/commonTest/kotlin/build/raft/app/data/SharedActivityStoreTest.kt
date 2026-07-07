@@ -81,6 +81,43 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun loadInitialDedupesRowsWithSameActivityKey() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val duplicateFirst = activityItem("channel-1", unreadCount = 1)
+        val duplicateSecond =
+            activityItem("channel-1", unreadCount = 2)
+                .copy(
+                    firstUnreadMessageId = MessageId("first-channel-1-duplicate"),
+                    latestActivityMessageId = MessageId("latest-channel-1-duplicate")
+                )
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(
+                            listOf(
+                                duplicateFirst,
+                                duplicateSecond,
+                                activityItem("channel-2", unreadCount = 1),
+                                activityItem("channel-2", unreadCount = 1)
+                            ),
+                            totalCount = 4,
+                            totalUnreadCount = 5
+                        )
+                    )
+            )
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(listOf("channel:channel-1", "channel:channel-2"), store.state.value.items.map { it.key })
+        assertEquals(MessageId("latest-channel-1"), store.state.value.items.first().latestActivityMessageId)
+        assertEquals(4, store.state.value.totalCount)
+        assertEquals(5, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun unreadFilterMarkReadRemovesRowAndCallsReadAll() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
@@ -504,6 +541,48 @@ class SharedActivityStoreTest {
         standaloneInbox.completeNext(activityItem("channel-2"))
         assertEquals(false, standaloneStore.state.value.refreshing)
         assertEquals(listOf("channel:channel-2"), standaloneStore.state.value.items.map { it.key })
+        preloadScope.cancel()
+        standaloneScope.cancel()
+    }
+
+    @Test
+    fun loadInitialDedupesHydratedActivityPersistRows() = runBlocking {
+        val persistStorage = InMemoryPersistStorage()
+        val persistSlice = createSharedActivityPersistSlice(persistStorage)
+        val duplicateRow = activityItem("channel-1")
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val preloadStore =
+            activityStore(
+                scope = preloadScope,
+                inboxRepository =
+                    FakeInboxRepository(
+                        initialSnapshots =
+                            listOf(
+                                snapshot(
+                                    listOf(
+                                        duplicateRow,
+                                        duplicateRow.copy(latestActivityMessageId = MessageId("latest-channel-1-duplicate")),
+                                        activityItem("channel-2")
+                                    )
+                                )
+                            )
+                    ),
+                persistSlices = listOf(persistSlice)
+            )
+        preloadStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val standaloneStore =
+            activityStore(
+                scope = standaloneScope,
+                inboxRepository = DeferredInboxRepository(),
+                persistSlices = listOf(persistSlice)
+            )
+
+        standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(listOf("channel:channel-1", "channel:channel-2"), standaloneStore.state.value.items.map { it.key })
+        assertEquals(true, standaloneStore.state.value.refreshing)
         preloadScope.cancel()
         standaloneScope.cancel()
     }

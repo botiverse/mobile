@@ -56,7 +56,7 @@ private object SharedActivityPersistSpec :
         if (reduced.snapshot != null) return reduced
         if (snapshot.selectedFilterName != reduced.selectedFilter.name) return reduced
         return reduced.copy(
-            snapshot = snapshot.snapshot,
+            snapshot = snapshot.snapshot.dedupeActivitySnapshot(),
             senderProfiles = snapshot.senderProfiles,
             loaded = true,
             loading = false,
@@ -112,3 +112,6 @@ private data class SharedActivityPersistSnapshot(
     val snapshot: InboxSnapshot,
     val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 )
+
+private fun InboxSnapshot.dedupeActivitySnapshot(): InboxSnapshot =
+    copy(items = items.dedupeActivityItems())
