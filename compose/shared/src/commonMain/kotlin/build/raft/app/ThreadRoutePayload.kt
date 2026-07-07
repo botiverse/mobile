@@ -77,7 +77,7 @@ internal data class WireThreadLaunchPayload(
         val resolvedParentSurfaceKind = routeKinds.parentSurfaceKind
         val resolvedParentChannelKind = routeKinds.parentChannelKind
         val taskChannelKind = if (isReplyThread) resolvedParentChannelKind else routeKinds.channelKind
-        val supportsChannelTasks = !taskChannelKind.equals("joint", ignoreCase = true)
+        val supportsChannelTasks = !taskChannelKind.equals(JointChannelKindWireValue, ignoreCase = true)
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =

@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.commentHostTypeOrNull
+import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -428,8 +430,8 @@ private fun MessagesWireCommentRef.toDomain(): MessageCommentRef? {
 }
 
 private fun MessagesWireCommentHostSource.toDomain(): MessageCommentHostSource? {
-    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
-    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanType = type.commentHostTypeOrNull() ?: return null
+    val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
     return MessageCommentHostSource(
         type = cleanType,

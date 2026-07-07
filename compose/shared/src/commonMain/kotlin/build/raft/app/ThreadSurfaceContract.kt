@@ -9,6 +9,20 @@ internal object KuiklyThreadSurfaceKind {
     const val ReplyThread = "thread"
 }
 
+/** Wire value for a joint channel's kind (not a surface — joints render on the channel surface). */
+internal const val JointChannelKindWireValue = "joint"
+
+/**
+ * Comment-host wire validators (t432 PR-B): the same two-line validation was duplicated
+ * byte-for-byte in four wire converters. A comment host's `type` is a channel or reply
+ * thread; its `routeKind` routes as a channel or dm. Unknown values reject (null).
+ */
+internal fun String.commentHostTypeOrNull(): String? =
+    takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.ReplyThread }
+
+internal fun String.commentHostRouteKindOrNull(): String? =
+    takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.DirectMessage }
+
 // t5/#419 finale: the ConversationSummary thread-surface family delegates to the canonical
 // ThreadLaunchConversationIdentity extensions (the conversion is a plain field copy), so the
 // semantics live exactly once. Kind projections route through the #417 contract.

@@ -5574,7 +5574,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         }
     val supportsChannelTasks =
         conversation.permissions.canCreateTask &&
-            !taskChannelKind.equals("joint", ignoreCase = true)
+            !taskChannelKind.equals(JointChannelKindWireValue, ignoreCase = true)
     val resolvedCapabilityComposer =
         resolvedComposer.copy(
             showAsTaskToggle = resolvedComposer.showAsTaskToggle && supportsChannelTasks
@@ -5817,8 +5817,8 @@ private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentR
 }
 
 private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): MessageCommentHostSource? {
-    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
-    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanType = type.commentHostTypeOrNull() ?: return null
+    val cleanRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
     val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
     return MessageCommentHostSource(
         type = cleanType,

@@ -6062,11 +6062,11 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     val segments = path.split('/').filter { it.isNotBlank() }
     val routeIndex = segments.indexOfFirst {
         val segment = it.lowercase()
-        segment == "channel" || segment == "dm"
+        segment == KuiklyThreadSurfaceKind.Channel || segment == KuiklyThreadSurfaceKind.DirectMessage
     }
     if (routeIndex < 0) return null
     val routeKind = segments.getOrNull(routeIndex)?.lowercase()
-        ?.takeIf { it == "channel" || it == "dm" }
+        ?.takeIf { it == KuiklyThreadSurfaceKind.Channel || it == KuiklyThreadSurfaceKind.DirectMessage }
         ?: return null
     val channelId = segments.getOrNull(routeIndex + 1)?.takeIf { it.isNotBlank() } ?: return null
     val threadParam = query.queryParamValue("thread")
@@ -6142,13 +6142,13 @@ internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThread
             parentChannelId = target.channelId,
             parentMessageId = threadParentMessageId,
             parentSurfaceKind =
-                if (target.routeKind == "dm") {
+                if (target.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
                     KuiklyThreadSurfaceKind.DirectMessage
                 } else {
                     KuiklyThreadSurfaceKind.Channel
                 },
             parentChannelKind =
-                if (target.routeKind == "dm") {
+                if (target.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
                     KuiklyThreadSurfaceKind.DirectMessage
                 } else {
                     KuiklyThreadSurfaceKind.Channel
@@ -6208,7 +6208,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
     val hostMessageId = ref.hostMessageId?.takeIf { it.isNotBlank() } ?: return null
     val rootThreadId = source.rootThreadChannelId?.takeIf { it.isNotBlank() }
     val threadStreamId = source.threadChannelId?.takeIf { it.isNotBlank() } ?: rootThreadId
-    val opensReplyThread = rootThreadId != null || source.type == "thread"
+    val opensReplyThread = rootThreadId != null || source.type == KuiklyThreadSurfaceKind.ReplyThread
     if (opensReplyThread) {
         val parentMessageId =
             source.parentMessageId?.takeIf { it.isNotBlank() }
@@ -6254,7 +6254,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
         )
     }
     val surfaceKind =
-        if (source.routeKind == "dm") {
+        if (source.routeKind == KuiklyThreadSurfaceKind.DirectMessage) {
             KuiklyThreadSurfaceKind.DirectMessage
         } else {
             KuiklyThreadSurfaceKind.Channel
@@ -14160,9 +14160,9 @@ private fun KuiklyThreadMessageCommentRef.hasThreadCommentHostSource(): Boolean 
     val source = hostSource ?: return false
     if (hostMessageId.isNullOrBlank() || source.channelId.isBlank()) return false
     return when (source.type) {
-        "channel" -> source.routeKind == "channel" || source.routeKind == "dm"
-        "thread" ->
-            (source.routeKind == "channel" || source.routeKind == "dm") &&
+        KuiklyThreadSurfaceKind.Channel -> source.routeKind == KuiklyThreadSurfaceKind.Channel || source.routeKind == KuiklyThreadSurfaceKind.DirectMessage
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            (source.routeKind == KuiklyThreadSurfaceKind.Channel || source.routeKind == KuiklyThreadSurfaceKind.DirectMessage) &&
                 (!source.parentMessageId.isNullOrBlank() || !source.rootThreadChannelId.isNullOrBlank())
         else -> false
     }
