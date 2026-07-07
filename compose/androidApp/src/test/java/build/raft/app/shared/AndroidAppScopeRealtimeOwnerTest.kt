@@ -167,7 +167,7 @@ class AndroidAppScopeRealtimeOwnerTest {
 
         override fun disconnect() = Unit
 
-        override fun emitRoomCommand(eventName: String, payload: String) = Unit
+        override fun emitRoomCommand(eventName: String, payload: String, force: Boolean) = Unit
 
         override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
             RealtimeSubscription {}

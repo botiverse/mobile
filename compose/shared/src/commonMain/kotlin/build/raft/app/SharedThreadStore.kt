@@ -2532,7 +2532,7 @@ internal class SharedThreadStore(
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
             is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
-            SharedThreadIntent.Refresh -> refresh(lastRoutePayload ?: _state.value.payload)
+            SharedThreadIntent.Refresh -> refresh(lastRoutePayload ?: _state.value.payload, advanceRouteStaleToken())
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure ->

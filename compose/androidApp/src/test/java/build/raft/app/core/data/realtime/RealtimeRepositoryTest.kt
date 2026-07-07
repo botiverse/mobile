@@ -424,6 +424,27 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun clientForcedRoomCommandReemitsJoinedRoom() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
+            )
+        )
+        client.emitRoomCommand(RealtimeSocketEvents.JoinChannel, "channel-1")
+        client.emitRoomCommand(RealtimeSocketEvents.JoinChannel, "channel-1", force = true)
+
+        assertEquals(
+            listOf("channel-1", "channel-1"),
+            transport.emitted
+                .filter { it.first == RealtimeSocketEvents.JoinChannel }
+                .map { it.second["channelId"] }
+        )
+    }
+
+    @Test
     fun androidTransportUsesRawChannelIdForRoomCommands() {
         val joinPayload =
             realtimeSocketIoWirePayload(
@@ -499,7 +520,7 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun clientUsesMessageSequenceWhenResumingAfterReconnect() {
+    fun clientRebaselineSkipsResumeCursorAfterReconnect() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
 
@@ -526,8 +547,7 @@ class RealtimeRepositoryTest {
         assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
         transport.receive(RealtimeSocketEvents.RoomsJoined)
 
-        val resume = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
-        assertEquals(89L, resume.second["lastSeq"])
+        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
     }
 
     @Test

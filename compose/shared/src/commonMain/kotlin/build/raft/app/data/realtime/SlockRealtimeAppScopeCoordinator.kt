@@ -16,7 +16,7 @@ interface SlockRealtimeAppScopeConnection {
 
     suspend fun connect(serverId: ServerId, accessToken: String, lastSeq: Long): DataResult<Unit>
     fun disconnect()
-    fun emitRoomCommand(eventName: String, payload: String)
+    fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false)
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription
     fun observeRawEvents(listener: (eventName: String, rawPayload: String) -> Unit): RealtimeSubscription
 }
@@ -183,7 +183,8 @@ class SlockRealtimeAppScopeEngine {
             state.prepareConnect(
                 serverId = serverId,
                 accessToken = accessToken,
-                requestedLastSeq = requestedLastSeq
+                requestedLastSeq = requestedLastSeq,
+                rebaseline = forceReconnect
             )
         return SlockRealtimeAppScopeConnectDecision(
             shouldConnect = true,
@@ -191,7 +192,8 @@ class SlockRealtimeAppScopeEngine {
             sessionChanged = connectPlan.sessionChanged,
             logMessage =
                 "connect_start sessionChanged=${connectPlan.sessionChanged} " +
-                    "resumeSeq=${connectPlan.resumeSeq} serverId=${serverId.value}"
+                    "resumeSeq=${connectPlan.resumeSeq} epoch=${connectPlan.epoch} " +
+                    "rebaseline=${connectPlan.rebaseline} serverId=${serverId.value}"
         )
     }
 
@@ -290,7 +292,12 @@ class SlockRealtimeAppScopeEngine {
             eventName = RealtimeSocketEvents.JoinChannel,
             payload = channelId.value,
             channelId = channelId,
-            joinedChannelAction = SlockRealtimeRoomJoinedChannelAction.Join,
+            joinedChannelAction =
+                if (force) {
+                    SlockRealtimeRoomJoinedChannelAction.Rejoin
+                } else {
+                    SlockRealtimeRoomJoinedChannelAction.Join
+                },
             logMessage = "room_join_emit reason=$reason force=$force channelId=${channelId.value}"
         )
     }
@@ -483,7 +490,11 @@ class SlockRealtimeAppScopeCoordinator(
         val eventName = decision.eventName ?: return false
         val payload = decision.payload ?: return false
         if (!decision.shouldEmit) return false
-        connection.emitRoomCommand(eventName = eventName, payload = payload)
+        connection.emitRoomCommand(
+            eventName = eventName,
+            payload = payload,
+            force = decision.joinedChannelAction == SlockRealtimeRoomJoinedChannelAction.Rejoin
+        )
         return true
     }
 
@@ -518,7 +529,11 @@ class SlockRealtimeAppScopeCoordinator(
             val eventName = roomCommandDecision.eventName
             val payload = roomCommandDecision.payload
             if (roomCommandDecision.shouldEmit && eventName != null && payload != null) {
-                connection.emitRoomCommand(eventName = eventName, payload = payload)
+                connection.emitRoomCommand(
+                    eventName = eventName,
+                    payload = payload,
+                    force = roomCommandDecision.joinedChannelAction == SlockRealtimeRoomJoinedChannelAction.Rejoin
+                )
             }
         }
         val currentServerId = decision.serverId ?: return

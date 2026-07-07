@@ -104,7 +104,7 @@ class SlockRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun coordinatorSkipsSameConnectedSessionAndReusesHighestSeqOnForcedReconnect() = runBlocking {
+    fun coordinatorSkipsSameConnectedSessionAndRebaselinesForcedReconnect() = runBlocking {
         val connection = FakeAppScopeConnection()
         val coordinator = SlockRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
 
@@ -113,7 +113,7 @@ class SlockRealtimeAppScopePolicyTest {
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false)
         coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = true)
 
-        assertEquals(listOf(7L, 42L), connection.connectedLastSeqs)
+        assertEquals(listOf(7L, 0L), connection.connectedLastSeqs)
     }
 
     @Test
@@ -211,7 +211,7 @@ class SlockRealtimeAppScopePolicyTest {
         assertFalse(sameConnected.shouldConnect)
         assertEquals(42L, sameConnected.resumeSeq)
         assertTrue(forced.shouldConnect)
-        assertEquals(42L, forced.resumeSeq)
+        assertEquals(0L, forced.resumeSeq)
     }
 
     @Test
@@ -347,7 +347,7 @@ class SlockRealtimeAppScopePolicyTest {
             state = RealtimeConnectionState.Disconnected
         }
 
-        override fun emitRoomCommand(eventName: String, payload: String) {
+        override fun emitRoomCommand(eventName: String, payload: String, force: Boolean) {
             roomCommands += eventName to payload
         }
 
@@ -414,6 +414,7 @@ class SlockRealtimeAppScopePolicyTest {
         assertTrue(rejoin.shouldEmit)
         assertEquals(RealtimeSocketEvents.JoinChannel, rejoin.eventName)
         assertEquals("channel-1", rejoin.payload)
+        assertEquals(SlockRealtimeRoomJoinedChannelAction.Rejoin, rejoin.joinedChannelAction)
         // Joined-set stays idempotent: a plain join after force rejoin still dedupes.
         assertFalse(duplicatePlainJoin.shouldEmit)
         // Rejoin also covers rooms the local set never saw (fresh join).

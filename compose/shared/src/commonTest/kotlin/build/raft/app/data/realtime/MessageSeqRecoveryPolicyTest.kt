@@ -96,6 +96,32 @@ class MessageSeqRecoveryPolicyTest {
     }
 
     @Test
+    fun previousEpochRepairBatchDoesNotApplyAfterRebaseline() {
+        val rebaseline = MessageSeqRecoveryPolicy.initial<String>(appliedSeq = 0, epoch = "epoch-b")
+
+        val staleRepair =
+            MessageSeqRecoveryPolicy.onRepairBatch(
+                rebaseline,
+                MessageSeqRepairBatch(
+                    events = listOf(MessageSeqEnvelope(seq = 1, epoch = "epoch-a", event = "old")),
+                    currentSeq = 1,
+                    hasMore = false,
+                    epoch = "epoch-a"
+                )
+            )
+        val staleFrame =
+            MessageSeqRecoveryPolicy.onFrame(
+                staleRepair.state,
+                MessageSeqEnvelope(seq = 2, epoch = "epoch-a", event = "old-late")
+            )
+
+        assertEquals("epoch-b", staleFrame.state.epoch)
+        assertEquals(0L, staleFrame.state.appliedSeq)
+        assertEquals(emptyList(), staleFrame.state.appliedEvents)
+        assertFalse(staleFrame.repairRequired)
+    }
+
+    @Test
     fun sameEventSetConvergesAcrossArrivalPermutationsWhenRepairBatchAnchorsTerminalState() {
         val terminalEvents = listOf(frame(seq = 1), frame(seq = 2), frame(seq = 3), frame(seq = 4))
         val expected = terminalEvents.map { it.event }
