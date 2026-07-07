@@ -308,6 +308,15 @@ internal class SharedThreadDataSource(
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? = payloadCache[threadId]
 
+    // task #231 (SSOT): realtime raw merges no longer write the route
+    // first-frame cache — they only invalidate it. Narrow by design: removes
+    // exactly one thread's candidate; never touches durable stores, the
+    // message resolver, or the active screen's in-memory state.
+    fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
+        val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
+        payloadCache.remove(threadId)
+    }
+
     suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return basePayload
         return basePayload.withConversationAccessFallback(resolveConversationAccessFallback(basePayload, session))
@@ -3050,16 +3059,23 @@ internal class SharedThreadStore(
                 previous = existing,
                 preserveSelectedReactions = false
             )
+        // task #231 (android-realtime-code-path Cleanup Boundary): the raw
+        // realtime merge is a temporary visible projection only. The durable
+        // write belongs to the app-scope domain owner, so Thread stops being a
+        // second writer: no cachePayload here — instead the (now stale) route
+        // first-frame candidate for this thread is dropped, forcing the next
+        // entry to refresh rather than render a candidate missing the merge.
         val emitted =
-            reducePayloadPatch(cachePayload = true) { currentPayload ->
+            reducePayloadPatch(cachePayload = false) { currentPayload ->
                 if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
                     return@reducePayloadPatch currentPayload
                 }
                 currentPayload.withThreadContentProjectionFrom(stableSelected)
             }
+        dataSource.invalidateCachedPayload(existing)
         diagnosticsLogger?.invoke(
             "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                "source=direct emitted=$emitted messages=${stableSelected.messages.size}"
+                "source=direct emitted=$emitted messages=${stableSelected.messages.size} cacheInvalidated=true"
         )
         val replyCountGap =
             stableSelected.realtimeReplyCountGap(

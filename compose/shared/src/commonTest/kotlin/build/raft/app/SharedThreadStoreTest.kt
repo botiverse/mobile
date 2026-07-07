@@ -1472,9 +1472,10 @@ class SharedThreadStoreTest {
         assertFalse(messages.any { it.id == "local-send-channel-1-1" })
         assertEquals(1, messages.count { it.id == "server-1" })
         assertEquals(listOf("cached body", "sent body"), messages.map { it.body })
-        val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
-        assertFalse(cachedMessages.any { it.id == "local-send-channel-1-1" })
-        assertEquals(1, cachedMessages.count { it.id == "server-1" })
+        // task #231: the realtime echo no longer writes the first-frame cache —
+        // it invalidates the stale candidate instead (visible state above is
+        // the authority for the active screen).
+        assertNull(dataSource.cachedPayload("channel-1"))
         scope.cancel()
     }
 
@@ -4632,7 +4633,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMessageNewMergesIntoVisiblePayloadAndMemoryCache() = runBlocking {
+    fun realtimeMergeIsVisibleOnlyAndInvalidatesFirstFrameCache() = runBlocking {
+        // task #231 SSOT: the raw realtime merge updates the ACTIVE screen's
+        // render state but never writes the route first-frame cache (that
+        // durable-adjacent write belongs to the domain owner) — instead the
+        // now-stale candidate is dropped so the next entry refreshes.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -4660,12 +4665,48 @@ class SharedThreadStoreTest {
         )
 
         val payload = store.state.value.payload
+        // Active in-memory state (incl. any expanded/paginated window) keeps
+        // the merge — invalidation must never clear the live screen.
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
-        assertEquals(
-            "realtime body",
-            dataSource.cachedPayload("channel-1")?.messages?.firstOrNull { it.id == "m2" }?.body
-        )
+        // The first-frame candidate is gone, not rewritten with the raw merge.
+        assertNull(dataSource.cachedPayload("channel-1"))
         assertNull(localStore.readThread(ThreadId("channel-1")))
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeForOtherThreadLeavesThisThreadsFirstFrameCacheIntact() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m-other"),
+                        threadId = ThreadId("channel-other"),
+                        channelId = ChannelId("channel-other"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "unrelated realtime body"
+                    )
+                )
+            )
+        )
+
+        // No projection for this thread → no merge, no invalidation.
+        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+        assertEquals(
+            "cached body",
+            dataSource.cachedPayload("channel-1")?.messages?.single()?.body
+        )
         scope.cancel()
     }
 
