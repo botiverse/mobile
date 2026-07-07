@@ -69,6 +69,7 @@ internal data class SlockForegroundMessageBanner(
     val body: String,
     val iconKind: SlockForegroundMessageBannerIconKind,
     val iconName: SlockLucideIconName?,
+    val senderMemberId: String?,
     val avatarWireValue: String?,
     val avatarLabel: String
 )
@@ -77,6 +78,7 @@ internal data class SlockForegroundMessageBanner(
 internal fun SlockForegroundBannerHost(
     banner: SlockForegroundMessageBanner?,
     topSafeArea: Dp,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onBannerClick: (SlockForegroundMessageBanner) -> Unit,
     onBannerDismiss: (SlockForegroundMessageBanner) -> Unit = {},
     content: @Composable () -> Unit
@@ -87,6 +89,7 @@ internal fun SlockForegroundBannerHost(
             SlockForegroundMessageBannerView(
                 banner = banner,
                 topSafeArea = topSafeArea,
+                memberAvatarResolver = memberAvatarResolver,
                 onClick = { onBannerClick(banner) },
                 onDismiss = { onBannerDismiss(banner) }
             )
@@ -98,6 +101,7 @@ internal fun SlockForegroundBannerHost(
 internal fun SlockForegroundMessageBannerView(
     banner: SlockForegroundMessageBanner,
     topSafeArea: Dp,
+    memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onClick: () -> Unit,
     onDismiss: () -> Unit = {}
 ) {
@@ -145,7 +149,7 @@ internal fun SlockForegroundMessageBannerView(
                             .clickable(role = Role.Button, onClick = onClick),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SlockForegroundBannerAvatar(banner)
+                    SlockForegroundBannerAvatar(banner, memberAvatarResolver)
                     Spacer(Modifier.width(10.dp))
                     SlockForegroundBannerText(banner, modifier = Modifier.weight(1f))
                 }
@@ -342,6 +346,9 @@ internal fun slockForegroundMessageBannerProjectionResult(
     val iconName = projection.resolveForegroundBannerIconName(conversation)
     val body = message.body.toForegroundBannerPreview().ifBlank { "Sent a new message." }
     val openRequest = message.resolveForegroundBannerOpenRequest(projection, conversation)
+    val senderMemberId =
+        projection.resolveForegroundBannerSenderMemberId(message)
+            ?: message.author.id.value.takeIf { it.isNotBlank() }
     return SlockForegroundMessageBannerProjectionResult(
         banner =
             SlockForegroundMessageBanner(
@@ -356,8 +363,14 @@ internal fun slockForegroundMessageBannerProjectionResult(
                 body = body,
                 iconKind = iconKind,
                 iconName = iconName,
-                avatarWireValue = message.author.avatarWireValueForRenderedAvatar(),
-                avatarLabel = message.author.avatarLabel.takeIf { it.isNotBlank() } ?: sender.take(2).uppercase()
+                senderMemberId = senderMemberId,
+                avatarWireValue =
+                    projection.resolveForegroundBannerSenderAvatarWireValue(message)
+                        ?: message.author.avatarWireValueForRenderedAvatar(),
+                avatarLabel =
+                    projection.resolveForegroundBannerSenderAvatarLabel(message)
+                        ?: message.author.avatarLabel.takeIf { it.isNotBlank() }
+                        ?: sender.take(2).uppercase()
             ),
         sharedProjection = projection
     )
@@ -387,9 +400,13 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerThread
 }
 
 @Composable
-private fun SlockForegroundBannerAvatar(banner: SlockForegroundMessageBanner) {
+private fun SlockForegroundBannerAvatar(
+    banner: SlockForegroundMessageBanner,
+    memberAvatarResolver: SlockMemberAvatarResolver
+) {
+    val memberAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, banner.senderMemberId)
     SlockAvatar(
-        avatarWireValue = banner.avatarWireValue,
+        avatarWireValue = memberAvatarWireValue ?: banner.avatarWireValue,
         label = banner.avatarLabel,
         avatarSize = ForegroundBannerAvatarSize,
         borderWidth = SlockStroke.Default
@@ -515,6 +532,26 @@ private fun Message.resolveForegroundBannerOpenRequest(
         anchorMessageId = id.value.takeIf { it.isNotBlank() },
         originFallback = projection.toForegroundThreadLaunchOriginFallback()
     )
+
+private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSenderMemberId(message: Message): String? =
+    this?.takeIf { projection -> projection.matchesForegroundBannerSenderMessage(message) }
+        ?.senderMemberId
+        ?.takeIf { it.isNotBlank() }
+
+private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSenderAvatarWireValue(message: Message): String? =
+    this?.takeIf { projection -> projection.matchesForegroundBannerSenderMessage(message) }
+        ?.senderAvatarWireValue
+        ?.takeIf { it.isNotBlank() }
+
+private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSenderAvatarLabel(message: Message): String? =
+    this?.takeIf { projection -> projection.matchesForegroundBannerSenderMessage(message) }
+        ?.senderAvatarLabel
+        ?.takeIf { it.isNotBlank() }
+
+private fun SharedConversationDirectoryProjection.matchesForegroundBannerSenderMessage(message: Message): Boolean {
+    val ids = senderMessageIds
+    return ids.isNotEmpty() && message.id.value in ids
+}
 
 private fun SharedConversationDirectoryProjection?.toForegroundThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
     if (this?.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null

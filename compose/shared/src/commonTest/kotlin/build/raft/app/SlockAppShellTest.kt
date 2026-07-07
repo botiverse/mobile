@@ -696,7 +696,11 @@ class SlockAppShellTest {
                             parentMessageId = MessageId("parent-message"),
                             parentMessagePreview = "Original thread question",
                             latestActivityMessageId = MessageId("reply-1"),
-                            latestActivityPreview = "The newest reply"
+                            latestActivityPreview = "The newest reply",
+                            latestActivitySenderName = "KMP Expert",
+                            latestActivitySenderId = "agent-kmp",
+                            latestActivitySenderKind = MemberKind.Agent,
+                            latestActivitySenderAvatarWireValue = "pixel:paint"
                         )
                     )
             ).toSharedConversationDirectoryState()
@@ -726,6 +730,9 @@ class SlockAppShellTest {
         assertEquals("reply-stream", resolved.conversation.thread?.streamChannelId?.value)
         assertEquals("reply-1", resolved.openRequest.anchorMessageId)
         assertEquals("Original thread question", resolved.openRequest.originFallback?.preview)
+        assertEquals("agent-kmp", resolved.senderMemberId)
+        assertEquals("pixel:paint", resolved.avatarWireValue)
+        assertEquals("KMP Expert", resolved.avatarLabel)
     }
 
     @Test
@@ -784,6 +791,84 @@ class SlockAppShellTest {
         assertEquals("Original thread question", enrichedResult.banner?.threadContext)
         assertEquals("parent-channel", enrichedResult.banner?.conversation?.thread?.parentChannelId?.value)
         assertEquals("parent-message", enrichedResult.banner?.conversation?.thread?.parentMessageId?.value)
+    }
+
+    @Test
+    fun foregroundBannerPendingDecisionWaitsForActivityThreadEnrich() {
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-1",
+                channelId = "reply-stream",
+                threadId = "reply-stream",
+                body = "This should not flash as a plain channel"
+            )
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Retry,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                parentMessageId = null,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Drop,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                parentMessageId = "parent-message",
+                refreshAttempts = 2,
+                maxAttempts = 2
+            )
+        )
+
+        val enrichedDirectory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            parentMessagePreview = "Original thread question",
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val enrichedResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = enrichedDirectory
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = enrichedResult,
+                message = message,
+                parentMessageId = "parent-message",
+                refreshAttempts = 0
+            )
+        )
     }
 
     @Test
