@@ -652,6 +652,66 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerProjectionPreservesActivityDmThreadParentKind() {
+        val activityItem =
+            InboxItem(
+                key = "thread:dm-reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-reply-stream"),
+                channelName = "Cindy",
+                threadChannelId = ChannelId("dm-reply-stream"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentChannelName = "Cindy",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("parent-message"),
+                parentMessagePreview = "Original DM question",
+                latestActivityMessageId = MessageId("reply-1")
+            )
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items = listOf(activityItem)
+            ).toSharedConversationDirectoryState()
+        val banner =
+            slockForegroundMessageBannerProjection(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message =
+                    appShellForegroundTestMessage(
+                        id = "reply-1",
+                        channelId = "dm-reply-stream",
+                        threadId = "dm-reply-stream",
+                        body = "DM reply body"
+                    ),
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        assertEquals(activityOpenRequest.conversationIdentity, resolved.openRequest.conversationIdentity)
+        assertEquals(activityOpenRequest.anchorMessageId, resolved.openRequest.anchorMessageId)
+        assertEquals("@Cindy - thread", resolved.context)
+        assertEquals("Original DM question", resolved.threadContext)
+        assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
+        assertEquals("dm-parent", resolved.openRequest.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.openRequest.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("dm-reply-stream", resolved.openRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.openRequest.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.openRequest.conversationIdentity.thread?.parentChannelKind)
+
+        val launchPayload =
+            buildAppShellThreadPayload(
+                conversation = resolved.openRequest.conversationIdentity,
+                anchorMessageId = resolved.openRequest.anchorMessageId,
+                originFallback = resolved.openRequest.originFallback
+            )
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
+    }
+
+    @Test
     fun foregroundBannerProjectionResultTracksActivityThreadEnrich() {
         val message =
             appShellForegroundTestMessage(
@@ -824,6 +884,56 @@ class SlockAppShellTest {
         assertEquals("reply-stream", resolved.conversationIdentity.thread?.streamChannelId?.value)
         assertEquals("reply-1", resolved.anchorMessageId)
         assertEquals("Original thread question", resolved.originFallback?.preview)
+    }
+
+    @Test
+    fun notificationLaunchPreservesActivityDmThreadParentKind() {
+        val activityItem =
+            InboxItem(
+                key = "thread:dm-reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-reply-stream"),
+                channelName = "Cindy",
+                threadChannelId = ChannelId("dm-reply-stream"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentChannelName = "Cindy",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("parent-message"),
+                parentMessagePreview = "Original DM question",
+                latestActivityMessageId = MessageId("reply-1")
+            )
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items = listOf(activityItem)
+            ).toSharedConversationDirectoryState()
+        val openRequest =
+            directory.notificationThreadLaunchRequest(
+                AppShellNotificationThreadLaunchRequest(
+                    threadId = "dm-reply-stream",
+                    messageId = "reply-1"
+                )
+            )
+
+        val resolved = assertNotNull(openRequest)
+        val activityOpenRequest = activityItem.toHomeMessageOpenRequest()
+        assertEquals(activityOpenRequest.conversationIdentity, resolved.conversationIdentity)
+        assertEquals(activityOpenRequest.anchorMessageId, resolved.anchorMessageId)
+        assertEquals(ConversationKind.Thread, resolved.conversationIdentity.kind)
+        assertEquals("dm-parent", resolved.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("dm-reply-stream", resolved.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, resolved.conversationIdentity.thread?.parentChannelKind)
+
+        val launchPayload =
+            buildAppShellThreadPayload(
+                conversation = resolved.conversationIdentity,
+                anchorMessageId = resolved.anchorMessageId,
+                originFallback = resolved.originFallback
+            )
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
     }
 
     @Test

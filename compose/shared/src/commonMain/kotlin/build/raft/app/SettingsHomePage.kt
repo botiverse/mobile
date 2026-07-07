@@ -3100,7 +3100,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 pendingForegroundMessage =
                                     AppShellPendingForegroundMessage(
                                         serverId = serverId,
-                                        message = event.message
+                                        message = event.message,
+                                        parentMessageId = event.message.parentMessageId?.value?.takeIf { it.isNotBlank() }
                                     )
                                 bridge.log(
                                     "foreground_banner_projection_defer reason=activity_thread_projection_pending " +
@@ -14620,10 +14621,10 @@ private fun Message.appShellForegroundStreamId(): String? =
 private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
     message: Message
 ): Boolean {
-    val banner = banner ?: return false
     if (sharedProjection != null) return false
+    if (message.parentMessageId != null || message.threadChannelId != null) return true
+    val banner = banner ?: return false
     if (banner.conversation.kind != ConversationKind.Channel) return false
-    if (message.parentMessageId != null || message.threadChannelId != null) return false
     return message.appShellForegroundStreamId() != null
 }
 
@@ -14690,7 +14691,7 @@ internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     val projection =
         resolveNotificationThreadProjection(request)
             ?: return null
-    val conversation = projection.toThreadLaunchConversationIdentity()
+    val conversation = projection.toThreadLaunchConversationIdentity(this)
     return HomeMessageOpenRequest(
         conversationIdentity = conversation,
         anchorMessageId = conversation.notificationAnchorMessageId(request),
@@ -14707,49 +14708,6 @@ private fun SharedConversationDirectoryState.resolveNotificationThreadProjection
         request.parentMessageId,
         request.parentChannelId
     ).firstNotNullOfOrNull { id -> resolve(id) }
-
-private fun SharedConversationDirectoryProjection.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity {
-    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
-    val streamChannel = canonicalChannelId.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val normalizedChannelKind = channelKind.takeIf { it.isNotBlank() }
-    val thread =
-        if (isReplyThread && parentChannel != null && parentMessage != null) {
-            ThreadConversation(
-                parentChannelId = parentChannel,
-                parentMessageId = parentMessage,
-                streamChannelId = streamChannel,
-                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-                parentChannelKind = normalizedChannelKind?.takeUnless { it == "thread" }
-            )
-        } else {
-            null
-        }
-    val routeChannelId =
-        if (isReplyThread) {
-            parentChannel
-        } else {
-            streamChannel ?: ChannelId(canonicalChannelId)
-        }
-    return ThreadLaunchConversationIdentity(
-        threadId =
-            if (isReplyThread && parentChannel != null && parentMessage != null) {
-                threadIdentity(parentChannel, parentMessage)
-            } else {
-                ThreadId(canonicalChannelId)
-            },
-        channelId = routeChannelId,
-        channelType = normalizedChannelKind,
-        thread = thread,
-        kind =
-            when (surfaceKind) {
-                KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
-                KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
-                else -> if (channelKind.equals("joint", ignoreCase = true)) ConversationKind.Joint else ConversationKind.Channel
-            }
-    )
-}
 
 private fun SharedConversationDirectoryProjection.toNotificationThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
     if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
