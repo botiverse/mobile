@@ -137,7 +137,12 @@ internal class BridgeSettingsPlatformCapabilities(
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_open_source_licenses_unavailable" }))
         }
-        val itemsJson = response.optJSONArray("items")
+        val payload =
+            response.optString("payloadJson")
+                .takeIf { it.isNotBlank() }
+                ?.let { raw -> runCatching { JSONObject(raw) }.getOrNull() }
+                ?: response
+        val itemsJson = payload.optJSONArray("items")
         val items =
             buildList {
                 if (itemsJson != null) {
@@ -163,9 +168,9 @@ internal class BridgeSettingsPlatformCapabilities(
             }
         return DataResult.Content(
             SharedSettingsOpenSourceLicensesSnapshot(
-                schemaVersion = response.optInt("schemaVersion", 1),
-                variant = response.optString("variant"),
-                sourceConfiguration = response.optString("sourceConfiguration"),
+                schemaVersion = payload.optInt("schemaVersion", response.optInt("schemaVersion", 1)),
+                variant = payload.optString("variant").ifBlank { response.optString("variant") },
+                sourceConfiguration = payload.optString("sourceConfiguration").ifBlank { response.optString("sourceConfiguration") },
                 items = items
             )
         )
