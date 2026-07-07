@@ -6819,6 +6819,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun foregroundRefreshRebaselineDropsInFlightRealtimeGapResult() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("stale gap body", id = "m11", seq = 11)
+            )
+        api.syncStarted = CompletableDeferred()
+        api.releaseSync = CompletableDeferred()
+        val logs = mutableListOf<String>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.dispatch(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        api.syncStarted?.await()
+        api.bodyText = messagesResponse("foreground body", id = "m20", seq = 20, historyLimited = false)
+        store.accept(SharedThreadIntent.Refresh)
+        api.releaseSync?.complete(Unit)
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("foreground body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertTrue(logs.any { it.startsWith("thread_realtime_gap_stale_drop") && it.contains("reason=stale_token") })
+        scope.cancel()
+    }
+
+    @Test
     fun loadNewerMessagesMergesSystemRowsFromChannelAfter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
@@ -6883,6 +6915,8 @@ class SharedThreadStoreTest {
         val releaseChannelMessagesByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
         var channelMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
+        var syncStarted: CompletableDeferred<Unit>? = null
+        var releaseSync: CompletableDeferred<Unit>? = null
 
         override suspend fun channelMessages(
             threadId: String,
@@ -6917,6 +6951,8 @@ class SharedThreadStoreTest {
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse {
             syncSinceSeqs += sinceSeq
             syncLimits += limit
+            syncStarted?.complete(Unit)
+            releaseSync?.await()
             return HomeNetworkResponse(code = 200, bodyText = newerBodyText)
         }
 

@@ -12,6 +12,7 @@ import build.raft.app.model.SyncResumeResponse
 data class RealtimeCursorState(
     val appliedLastSeq: Long = 0L,
     val serverMaxSeq: Long = 0L,
+    val epoch: String = DefaultMessageSeqEpoch,
 ) {
     val resumeLastSeq: Long
         get() = appliedLastSeq
@@ -20,13 +21,27 @@ data class RealtimeCursorState(
 data class RealtimeCursorUpdate(
     val state: RealtimeCursorState,
     val serverAhead: Boolean = false,
+    val rebaselineRequired: Boolean = false,
 )
 
 object RealtimeCursorPolicy {
-    fun fromAppliedSeq(lastSeq: Long): RealtimeCursorState =
+    fun fromAppliedSeq(
+        lastSeq: Long,
+        epoch: String = DefaultMessageSeqEpoch
+    ): RealtimeCursorState =
         RealtimeCursorState(
             appliedLastSeq = lastSeq.coerceAtLeast(0L),
             serverMaxSeq = lastSeq.coerceAtLeast(0L),
+            epoch = epoch.ifBlank { DefaultMessageSeqEpoch },
+        )
+
+    fun rebaseline(
+        state: RealtimeCursorState,
+        nextEpoch: String
+    ): RealtimeCursorUpdate =
+        RealtimeCursorUpdate(
+            state = fromAppliedSeq(lastSeq = 0L, epoch = nextEpoch),
+            rebaselineRequired = state.appliedLastSeq > 0L || state.serverMaxSeq > 0L || state.epoch != nextEpoch
         )
 
     fun updateFromEvent(
@@ -124,19 +139,62 @@ object RealtimeVisibleStreamGapPolicy {
 class RealtimeAppliedSeqCursorStore(
     private val store: SharedPreferenceStore
 ) {
-    fun readAppliedLastSeq(serverId: ServerId): Long =
-        store.getString(key(serverId))?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    fun currentEpoch(serverId: ServerId): String =
+        store.getString(epochKey(serverId))?.takeIf { it.isNotBlank() } ?: DefaultMessageSeqEpoch
 
-    fun saveAppliedLastSeq(serverId: ServerId, seq: Long) {
+    fun readAppliedLastSeq(serverId: ServerId, epoch: String = currentEpoch(serverId)): Long =
+        store.getString(seqKey(serverId, epoch))?.toLongOrNull()?.coerceAtLeast(0L)
+            ?: if (epoch == DefaultMessageSeqEpoch) {
+                store.getString(legacySeqKey(serverId))?.toLongOrNull()?.coerceAtLeast(0L)
+            } else {
+                null
+            }
+            ?: 0L
+
+    fun saveAppliedLastSeq(serverId: ServerId, seq: Long, epoch: String = currentEpoch(serverId)) {
         val nextSeq = seq.coerceAtLeast(0L)
-        val current = readAppliedLastSeq(serverId)
-        store.putString(key(serverId), maxOf(current, nextSeq).toString())
+        val normalizedEpoch = epoch.ifBlank { DefaultMessageSeqEpoch }
+        val current = readAppliedLastSeq(serverId, normalizedEpoch)
+        store.putString(epochKey(serverId), normalizedEpoch)
+        store.putString(seqKey(serverId, normalizedEpoch), maxOf(current, nextSeq).toString())
+        if (normalizedEpoch == DefaultMessageSeqEpoch) {
+            store.putString(legacySeqKey(serverId), maxOf(current, nextSeq).toString())
+        }
     }
 
-    private fun key(serverId: ServerId): String =
-        "$KeyPrefix${serverId.value}"
+    fun reset(serverId: ServerId): String {
+        val nextEpoch = nextEpoch(serverId)
+        store.putString(epochKey(serverId), nextEpoch)
+        store.putString(seqKey(serverId, nextEpoch), null)
+        return nextEpoch
+    }
+
+    private fun nextEpoch(serverId: ServerId): String {
+        val nextGeneration = generation(serverId) + 1L
+        store.putString(generationKey(serverId), nextGeneration.toString())
+        // Cursor epochs scope persisted recovery watermarks only. Keep this
+        // namespace separate from app-scope session epochs.
+        return "cursor-generation-$nextGeneration"
+    }
+
+    private fun generation(serverId: ServerId): Long =
+        store.getString(generationKey(serverId))?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+
+    private fun seqKey(serverId: ServerId, epoch: String): String =
+        "$SeqKeyPrefix${serverId.value}.${epoch.ifBlank { DefaultMessageSeqEpoch }}"
+
+    private fun legacySeqKey(serverId: ServerId): String =
+        "$SeqKeyPrefix${serverId.value}"
+
+    private fun epochKey(serverId: ServerId): String =
+        "$EpochKeyPrefix${serverId.value}"
+
+    private fun generationKey(serverId: ServerId): String =
+        "$GenerationKeyPrefix${serverId.value}"
 
     private companion object {
-        const val KeyPrefix = "realtime.cursor.appliedLastSeq."
+        const val SeqKeyPrefix = "realtime.cursor.appliedLastSeq."
+        const val EpochKeyPrefix = "realtime.cursor.epoch."
+        const val GenerationKeyPrefix = "realtime.cursor.generation."
     }
 }

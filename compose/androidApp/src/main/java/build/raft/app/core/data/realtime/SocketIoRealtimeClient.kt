@@ -115,6 +115,7 @@ class SocketIoRealtimeClient(
         state = RealtimeConnectionState.Connecting
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = nowMillis
+        rebaselineCursor(reason = "heartbeat_silent")
         transport.connect(auth.toWireMap())
         return true
     }
@@ -133,13 +134,13 @@ class SocketIoRealtimeClient(
         emitRoomPayload(RealtimeSocketEvents.LeaveChannel, channelId.value)
     }
 
-    fun emitRoomCommand(eventName: String, payload: String) {
+    fun emitRoomCommand(eventName: String, payload: String, force: Boolean = false) {
         when (eventName) {
             RealtimeSocketEvents.JoinChannel -> {
                 val channelId = ChannelId(payload)
                 val added = joinedChannels.add(channelId)
-                logger("join_room channelId=${channelId.value} replay=false added=$added")
-                if (!added) return
+                logger("join_room channelId=${channelId.value} replay=false added=$added force=$force")
+                if (!added && !force) return
                 emitRoomPayload(eventName, channelId.value)
             }
             RealtimeSocketEvents.LeaveChannel -> {
@@ -214,6 +215,7 @@ class SocketIoRealtimeClient(
             markInbound()
             startHeartbeatWatchdog()
             state = RealtimeConnectionState.Connected
+            rebaselineCursor(reason = "transport_reconnect")
             diagnostics?.onConnected(connectedServerId?.let(::ServerId))
             logger(
                 "client_reconnected serverId=${connectedServerId.orEmpty()} joinedRooms=${joinedChannels.size} " +
@@ -282,6 +284,16 @@ class SocketIoRealtimeClient(
             logger("join_room channelId=${channelId.value} replay=true reason=$reason")
             emitRoomPayload(RealtimeSocketEvents.JoinChannel, channelId.value)
         }
+    }
+
+    private fun rebaselineCursor(reason: String) {
+        val nextEpoch = "${reason}-${clockMillis()}"
+        val update = RealtimeCursorPolicy.rebaseline(cursor, nextEpoch)
+        cursor = update.state
+        logger(
+            "cursor_rebaseline reason=$reason serverId=${connectedServerId.orEmpty()} " +
+                "epoch=${cursor.epoch} rebaselineRequired=${update.rebaselineRequired}"
+        )
     }
 
     private fun emitSyncResume(reason: String) {

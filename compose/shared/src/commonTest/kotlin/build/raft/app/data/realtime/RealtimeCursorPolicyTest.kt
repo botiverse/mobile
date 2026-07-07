@@ -115,6 +115,49 @@ class RealtimeCursorPolicyTest {
         assertEquals(7L, store.readAppliedLastSeq(serverTwo))
     }
 
+    @Test
+    fun appliedSeqCursorResetsIntoNewEpochPerServer() {
+        val store = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore())
+        val serverOne = ServerId("server-1")
+        val serverTwo = ServerId("server-2")
+
+        store.saveAppliedLastSeq(serverOne, 42)
+        store.saveAppliedLastSeq(serverTwo, 9)
+        val nextEpoch = store.reset(serverOne)
+
+        assertEquals(nextEpoch, store.currentEpoch(serverOne))
+        assertEquals(0L, store.readAppliedLastSeq(serverOne))
+        store.saveAppliedLastSeq(serverOne, 5)
+        assertEquals(5L, store.readAppliedLastSeq(serverOne, nextEpoch))
+        assertEquals(42L, store.readAppliedLastSeq(serverOne, DefaultMessageSeqEpoch))
+        assertEquals(9L, store.readAppliedLastSeq(serverTwo))
+    }
+
+    @Test
+    fun appliedSeqCursorCanReadLegacyDefaultEpochKey() {
+        val keyValueStore = InMemorySlockKeyValueStore()
+        val store = RealtimeAppliedSeqCursorStore(keyValueStore)
+        val serverId = ServerId("server-1")
+        keyValueStore.putString("realtime.cursor.appliedLastSeq.server-1", "42")
+
+        assertEquals(42L, store.readAppliedLastSeq(serverId))
+        store.saveAppliedLastSeq(serverId, 43)
+        assertEquals("43", keyValueStore.getString("realtime.cursor.appliedLastSeq.server-1"))
+        assertEquals(43L, store.readAppliedLastSeq(serverId, DefaultMessageSeqEpoch))
+    }
+
+    @Test
+    fun rebaselineDropsInMemoryWatermarkAndAdvancesEpoch() {
+        val state = RealtimeCursorPolicy.fromAppliedSeq(42, epoch = "epoch-a")
+
+        val update = RealtimeCursorPolicy.rebaseline(state, nextEpoch = "epoch-b")
+
+        assertEquals(0L, update.state.appliedLastSeq)
+        assertEquals(0L, update.state.serverMaxSeq)
+        assertEquals("epoch-b", update.state.epoch)
+        assertTrue(update.rebaselineRequired)
+    }
+
     private fun message(seq: Long): Message =
         Message(
             id = MessageId("message-$seq"),

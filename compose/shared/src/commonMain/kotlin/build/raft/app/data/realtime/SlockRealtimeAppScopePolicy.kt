@@ -24,18 +24,22 @@ object SlockRealtimeNotifyContract {
 object SlockRealtimeRoomJoinedChannelAction {
     const val None = "none"
     const val Join = "join"
+    const val Rejoin = "rejoin"
     const val Leave = "leave"
 }
 
 data class SlockRealtimeOwnedSession(
     val serverId: ServerId,
     val accessToken: String,
-    val lastSeq: Long
+    val lastSeq: Long,
+    val epoch: String = DefaultMessageSeqEpoch
 )
 
 data class SlockRealtimeConnectPlan(
     val sessionChanged: Boolean,
-    val resumeSeq: Long
+    val resumeSeq: Long,
+    val epoch: String,
+    val rebaseline: Boolean = false
 )
 
 class SlockRealtimeAppScopeState {
@@ -47,8 +51,11 @@ class SlockRealtimeAppScopeState {
         private set
     var lastSeq: Long = 0L
         private set
+    var epoch: String = DefaultMessageSeqEpoch
+        private set
 
     private var sessionKey: String? = null
+    private var epochGeneration: Long = 0L
 
     val joinedChannelCount: Int
         get() = joinedChannels.size
@@ -59,7 +66,8 @@ class SlockRealtimeAppScopeState {
         return SlockRealtimeOwnedSession(
             serverId = ownedServerId,
             accessToken = ownedAccessToken,
-            lastSeq = lastSeq
+            lastSeq = lastSeq,
+            epoch = epoch
         )
     }
 
@@ -69,7 +77,8 @@ class SlockRealtimeAppScopeState {
     fun prepareConnect(
         serverId: ServerId,
         accessToken: String,
-        requestedLastSeq: Long
+        requestedLastSeq: Long,
+        rebaseline: Boolean = false
     ): SlockRealtimeConnectPlan {
         val nextSessionKey = sessionKey(accessToken, serverId)
         val sessionChanged = sessionKey != null && sessionKey != nextSessionKey
@@ -77,8 +86,12 @@ class SlockRealtimeAppScopeState {
             lastSeq = 0L
             joinedChannels.clear()
         }
+        if (sessionChanged || rebaseline) {
+            epoch = nextEpoch()
+            lastSeq = 0L
+        }
         val resumeSeq =
-            if (sessionChanged) {
+            if (sessionChanged || rebaseline) {
                 0L
             } else {
                 maxOf(requestedLastSeq.coerceAtLeast(0L), lastSeq)
@@ -91,7 +104,9 @@ class SlockRealtimeAppScopeState {
         }
         return SlockRealtimeConnectPlan(
             sessionChanged = sessionChanged,
-            resumeSeq = resumeSeq
+            resumeSeq = resumeSeq,
+            epoch = epoch,
+            rebaseline = rebaseline || sessionChanged
         )
     }
 
@@ -114,11 +129,19 @@ class SlockRealtimeAppScopeState {
         accessToken = null
         sessionKey = null
         lastSeq = 0L
+        epoch = nextEpoch()
         joinedChannels.clear()
     }
 
     private fun sessionKey(accessToken: String, serverId: ServerId): String =
         "$accessToken|${serverId.value}"
+
+    private fun nextEpoch(): String {
+        epochGeneration += 1L
+        // Session epochs are app-scope in-memory guards. They are deliberately
+        // distinct from persisted cursor epochs and must not be compared across domains.
+        return "session-generation-$epochGeneration"
+    }
 }
 
 object SlockRealtimeAppScopePolicy {

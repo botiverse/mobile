@@ -69,8 +69,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         repository.disconnect()
     }
 
-    override fun emitRoomCommand(eventName: String, payload: String) {
-        client.emitRoomCommand(eventName = eventName, payload = payload)
+    override fun emitRoomCommand(eventName: String, payload: String, force: Boolean) {
+        client.emitRoomCommand(eventName = eventName, payload = payload, force = force)
     }
 
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
