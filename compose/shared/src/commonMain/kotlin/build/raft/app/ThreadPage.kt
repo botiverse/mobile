@@ -9381,7 +9381,26 @@ private fun ThreadMessagesList(
     var lastComposerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(threadInstanceKey) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var consumedFocusedMessageAnchorKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // Focused-message anchoring is one-shot per explicit request (message id +
+    // request nonce). Timeline growth (secondary refresh hydrating the origin,
+    // realtime arrivals, older pages) re-runs the effect only to retry a target
+    // that was not yet measurable — never to re-scroll a consumed request, and
+    // never against the user: one user drag stamps the pending identity as
+    // interrupted and retires it (task #554 — thread jumped back to the focused
+    // message ~1s after entry, cancelling the active drag).
+    var consumedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var scrollInterruptedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    val pendingFocusedMessageAnchorIdentityState =
+        rememberUpdatedState(
+            renderPayload.focusedMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { messageId ->
+                    focusedMessageAnchorIdentity(
+                        messageId = messageId,
+                        requestNonce = renderPayload.focusedMessageRequestNonce
+                    )
+                }
+        )
     var inlineSearchQuery by remember(threadInstanceKey) { mutableStateOf("") }
     var inlineSearchCurrentIndex by remember(threadInstanceKey) { mutableStateOf(0) }
     val inlineSearchMatches =
@@ -9812,14 +9831,18 @@ private fun ThreadMessagesList(
         lazyItemCount
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val targetRequestKey =
-            focusedMessageAnchorRequestKey(
+        val targetIdentity =
+            focusedMessageAnchorIdentity(
                 messageId = targetMessageId,
-                requestNonce = renderPayload.focusedMessageRequestNonce,
-                targetSignature = focusedMessageTargetSignature,
-                lazyItemCount = lazyItemCount
+                requestNonce = renderPayload.focusedMessageRequestNonce
             )
-        if (targetRequestKey == consumedFocusedMessageAnchorKey) {
+        if (
+            !shouldRunFocusedMessageAnchor(
+                targetIdentity = targetIdentity,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
+            )
+        ) {
             return@LaunchedEffect
         }
         val targetIndex = renderPayload.focusedMessageListItemIndex()
@@ -9828,6 +9851,12 @@ private fun ThreadMessagesList(
         }
         listState.awaitThreadMessagesLayoutFrame()
         if (!listState.canScrollToThreadItem(targetIndex)) {
+            return@LaunchedEffect
+        }
+        // A drag that starts between the guard above and this point must win:
+        // programmatic scrollToItem would cancel the gesture (task #554).
+        if (listState.isScrollInProgress) {
+            scrollInterruptedFocusedMessageAnchorIdentity = targetIdentity
             return@LaunchedEffect
         }
         if (!listState.isThreadItemVisible(targetIndex)) {
@@ -9849,7 +9878,7 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
-        consumedFocusedMessageAnchorKey = targetRequestKey
+        consumedFocusedMessageAnchorIdentity = targetIdentity
     }
     LaunchedEffect(threadInstanceKey, inlineSearchVisible, activeInlineSearchMatch) {
         val match = activeInlineSearchMatch ?: return@LaunchedEffect
@@ -9959,10 +9988,22 @@ private fun ThreadMessagesList(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
                     .touchListener { type, _ ->
-                        if (type == TouchType.Move && latestLocalSendBottomAnchorActiveKey != null) {
-                            latestLocalSendBottomAnchorActiveKey = null
-                            allowBottomAutoAnchor = false
-                            userScrollGeneration += 1
+                        if (type == TouchType.Move) {
+                            // A user drag retires the pending focused-message
+                            // anchor request: growth-driven retries must never
+                            // scroll against an interacting user (task #554).
+                            val pendingAnchorIdentity = pendingFocusedMessageAnchorIdentityState.value
+                            if (
+                                pendingAnchorIdentity != null &&
+                                scrollInterruptedFocusedMessageAnchorIdentity != pendingAnchorIdentity
+                            ) {
+                                scrollInterruptedFocusedMessageAnchorIdentity = pendingAnchorIdentity
+                            }
+                            if (latestLocalSendBottomAnchorActiveKey != null) {
+                                latestLocalSendBottomAnchorActiveKey = null
+                                allowBottomAutoAnchor = false
+                                userScrollGeneration += 1
+                            }
                         }
                     }
                     .alpha(
@@ -10759,13 +10800,23 @@ private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: Stri
     return firstMessageListItemIndex() + messageIndex
 }
 
-internal fun focusedMessageAnchorRequestKey(
+// A focused-message anchor request is identified by (message id, request
+// nonce) ONLY. Timeline signature / item count deliberately do not participate:
+// they change on secondary refresh, realtime arrivals, and older pages, and a
+// consumed request must not re-scroll on any of those (task #554). They still
+// key the LaunchedEffect so an unmeasured target gets retried as items load.
+internal fun focusedMessageAnchorIdentity(
     messageId: String,
-    requestNonce: Int,
-    targetSignature: String,
-    lazyItemCount: Int
+    requestNonce: Int
 ): String =
-    "${messageId.trim()}:$requestNonce:$targetSignature:$lazyItemCount"
+    "${messageId.trim()}:$requestNonce"
+
+internal fun shouldRunFocusedMessageAnchor(
+    targetIdentity: String,
+    consumedIdentity: String?,
+    scrollInterruptedIdentity: String?
+): Boolean =
+    targetIdentity != consumedIdentity && targetIdentity != scrollInterruptedIdentity
 
 internal fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1
