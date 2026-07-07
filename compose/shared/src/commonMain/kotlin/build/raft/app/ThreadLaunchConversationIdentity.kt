@@ -9,6 +9,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.MessageId
+import build.raft.app.model.TaskSummary
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 
@@ -19,6 +20,40 @@ internal data class ThreadLaunchConversationIdentity(
     val thread: ThreadConversation? = null,
     val kind: ConversationKind
 )
+
+internal data class TaskThreadLaunchTarget(
+    val conversation: ThreadLaunchConversationIdentity,
+    val focusedMessageId: String?
+)
+
+internal fun TaskSummary.toTaskThreadLaunchTarget(): TaskThreadLaunchTarget? {
+    val parentChannelId = channelId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val parentMessageId =
+        parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ?: messageId?.value?.takeIf { it.isNotBlank() }
+            ?: return null
+    val focusedMessageId =
+        messageId
+            ?.value
+            ?.takeIf { it.isNotBlank() && it != parentMessageId }
+    val streamThreadId = threadId?.value?.takeIf { it.isNotBlank() }
+    return TaskThreadLaunchTarget(
+        conversation =
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = streamThreadId?.let(::ChannelId) ?: ChannelId(parentChannelId),
+                threadChannelId = streamThreadId?.let(::ChannelId),
+                parentChannelId = ChannelId(parentChannelId),
+                parentMessageId = MessageId(parentMessageId),
+                // Inherited product assumption from the old bypass: task threads are
+                // channel-parented because TaskSummary wire carries no parent kind. This is
+                // not a parser fallback.
+                parentSurfaceKind = ConversationKind.Channel.threadParentSurfaceKindOrNull(),
+                parentChannelKind = ConversationKind.Channel.threadChannelKindWireValue()
+            ),
+        focusedMessageId = focusedMessageId
+    )
+}
 
 internal fun buildThreadLaunchConversationIdentity(
     kind: ConversationKind,

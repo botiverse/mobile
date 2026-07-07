@@ -1438,39 +1438,22 @@ private fun List<TaskSummary>.threadMarkdownTaskCandidates(currentTaskChannelId:
     )
 
 internal fun KuiklyThreadScreenPayload.markdownTaskNumberLaunchPayload(task: TaskSummary): KuiklyThreadScreenPayload? {
-    val parentChannelId = task.channelId?.value?.takeIf { it.isNotBlank() } ?: return null
-    val parentMessageId =
-        task.parentMessageId?.value?.takeIf { it.isNotBlank() }
-            ?: task.messageId?.value?.takeIf { it.isNotBlank() }
-            ?: return null
-    val focusedMessageId =
-        task.messageId
-            ?.value
-            ?.takeIf { it.isNotBlank() && it != parentMessageId }
-    val threadChannelId = task.threadId?.value?.takeIf { it.isNotBlank() }
-    val instanceId =
-        threadChannelId?.let { "shared-shell-thread-$it" }
-            ?: "shared-shell-thread-$parentChannelId-$parentMessageId"
-    return WireThreadLaunchPayload(
-        instanceId = instanceId,
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        threadId = threadChannelId,
-        sourceThreadId = threadChannelId,
-        streamChannelId = threadChannelId,
-        parentChannelId = parentChannelId,
-        parentMessageId = parentMessageId,
-        parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
-        originParentMessageId = parentMessageId,
-        focusedMessageId = focusedMessageId,
-        selectedTab = KuiklyThreadTab.Chat.wireValue,
-        navigationLabel = "Back",
-        alignOwnMessagesRight = alignOwnMessagesRight,
-        compactConsecutiveMessages = compactConsecutiveMessages,
-        localOffsetMinutes = localOffsetMinutes,
-        todayEpochDay = todayEpochDay,
-        nowEpochMillis = nowEpochMillis,
-        timeFormat = timeFormat
-    ).toInitialPayload(instanceId)
+    val target = task.toTaskThreadLaunchTarget() ?: return null
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = target.conversation,
+            timeContext =
+                SlockTimeContext(
+                    localOffsetMinutes = localOffsetMinutes,
+                    todayEpochDay = todayEpochDay,
+                    nowEpochMillis = nowEpochMillis,
+                    timeFormat = timeFormat
+                ),
+            anchorMessageId = target.focusedMessageId,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            compactConsecutiveMessages = compactConsecutiveMessages
+        )
+    return launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
 }
 
 internal fun KuiklyThreadScreenPayload.canConvertMessagesToTasks(): Boolean =

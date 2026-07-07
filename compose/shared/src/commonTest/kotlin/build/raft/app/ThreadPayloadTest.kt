@@ -4251,38 +4251,40 @@ class ThreadPayloadTest {
     @Test
     fun standaloneTaskThreadLaunchCarriesOnlyIdentityAndIntent() {
         val launch =
-            buildStandaloneTaskThreadLaunchPayload(
-                TaskSummary(
-                    id = TaskId("task-1"),
-                    title = "Fix slow route",
-                    status = TaskStatus.InProgress,
-                    taskNumber = 42,
-                    messageId = MessageId("message-1"),
-                    parentMessageId = MessageId("parent-message-1"),
-                    channelId = ChannelId("parent-channel-1"),
-                    threadId = ThreadId("thread-channel-1"),
-                    assignee =
-                        MemberProfile(
-                            id = MemberId("agent-1"),
-                            displayName = "Android Dev",
-                            handle = "Android-Dev",
-                            kind = MemberKind.Agent
-                        ),
-                    creator =
-                        MemberProfile(
-                            id = MemberId("user-1"),
-                            displayName = "Artin",
-                            handle = "artin",
-                            kind = MemberKind.Human
-                        ),
-                    channelName = "bug triage",
-                    updatedAtLabel = "now"
-                ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
-                alignOwnMessagesRight = true
+            requireNotNull(
+                buildStandaloneTaskThreadLaunchPayload(
+                    TaskSummary(
+                        id = TaskId("task-1"),
+                        title = "Fix slow route",
+                        status = TaskStatus.InProgress,
+                        taskNumber = 42,
+                        messageId = MessageId("message-1"),
+                        parentMessageId = MessageId("parent-message-1"),
+                        channelId = ChannelId("parent-channel-1"),
+                        threadId = ThreadId("thread-channel-1"),
+                        assignee =
+                            MemberProfile(
+                                id = MemberId("agent-1"),
+                                displayName = "Android Dev",
+                                handle = "Android-Dev",
+                                kind = MemberKind.Agent
+                            ),
+                        creator =
+                            MemberProfile(
+                                id = MemberId("user-1"),
+                                displayName = "Artin",
+                                handle = "artin",
+                                kind = MemberKind.Human
+                            ),
+                        channelName = "bug triage",
+                        updatedAtLabel = "now"
+                    ),
+                    AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                    alignOwnMessagesRight = true
+                )
             )
 
-        assertEquals("task-thread-task-1", launch.instanceId)
+        assertEquals("shared-shell-thread-parent-channel-1:parent-message-1", launch.instanceId)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
         assertEquals("thread-channel-1", launch.threadId)
         assertEquals("thread-channel-1", launch.sourceThreadId)
@@ -4301,7 +4303,7 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals("task-thread-task-1", initialPayload.instanceId)
+        assertEquals("shared-shell-thread-parent-channel-1:parent-message-1", initialPayload.instanceId)
         assertEquals("loading", initialPayload.status)
         assertEquals("", initialPayload.title)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
