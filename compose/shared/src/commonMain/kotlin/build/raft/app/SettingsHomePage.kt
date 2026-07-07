@@ -10594,6 +10594,7 @@ private fun AppShellServerGateContent(
     var mode by remember(session.servers) { mutableStateOf(if (session.servers.isEmpty()) "empty" else "choose") }
     var createName by remember { mutableStateOf("") }
     var createSlug by remember { mutableStateOf("") }
+    var createSlugTouched by remember { mutableStateOf(false) }
     var pendingServerId by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var loadingServers by remember(session, skipInitialLoad) {
@@ -10712,14 +10713,24 @@ private fun AppShellServerGateContent(
                 )
                 AuthTextField(
                     value = createName,
-                    onValueChange = { createName = it },
+                    onValueChange = {
+                        createName = it
+                        // Web parity (ServerSelector.tsx): the slug mirrors the
+                        // name until the user edits the slug directly.
+                        if (!createSlugTouched) {
+                            createSlug = authCreateServerSlugFromName(it)
+                        }
+                    },
                     label = "Server name",
                     required = true,
                     enabled = !loading
                 )
                 AuthTextField(
                     value = createSlug,
-                    onValueChange = { createSlug = it.trim().lowercase() },
+                    onValueChange = {
+                        createSlugTouched = true
+                        createSlug = authCreateServerSlugFromName(it)
+                    },
                     label = "URL slug",
                     placeholder = "my-team",
                     enabled = !loading
@@ -10835,6 +10846,15 @@ internal fun authChooseServerShouldSkipInitialLoad(
     cachedServersCount: Int
 ): Boolean =
     skipInitialLoad && cachedServersCount > 0
+
+// Web parity: ServerSelector.tsx `toSlug` — lowercase, then every character
+// outside [a-z0-9-] becomes "-" (no collapsing, no trimming). The create form
+// mirrors the name into the slug through this until the slug is hand-edited,
+// and normalizes direct slug input through it too.
+private val AuthCreateServerSlugDisallowed = Regex("[^a-z0-9-]")
+
+internal fun authCreateServerSlugFromName(value: String): String =
+    value.lowercase().replace(AuthCreateServerSlugDisallowed, "-")
 
 private fun serverGateUnauthenticatedMessage(): String =
     "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
