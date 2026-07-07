@@ -11856,12 +11856,14 @@ private fun ThreadActionCard.actionCardVerb(): String =
         "channel:create" -> "Create Channel"
         "agent:create" -> "Create Agent"
         "channel:add_member" -> "Add Members"
+        "integration:approve_agent_login" -> "Approve Login"
         else -> "Action"
     }
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {
         "channel:add_member" -> "Adding..."
+        "integration:approve_agent_login" -> "Approving..."
         else -> "Creating..."
     }
 
@@ -11870,6 +11872,7 @@ private fun ThreadActionCard.actionCardSuccessToast(): String =
         "channel:create" -> "Channel created"
         "agent:create" -> "Agent created"
         "channel:add_member" -> "Members added"
+        "integration:approve_agent_login" -> "Login approved"
         else -> "Action completed"
     }
 
@@ -11878,6 +11881,7 @@ private fun ThreadActionCard.actionCardFailureToast(): String =
         "channel:create" -> "Unable to create channel"
         "agent:create" -> "Unable to create agent"
         "channel:add_member" -> "Unable to add members"
+        "integration:approve_agent_login" -> "Unable to approve login"
         else -> "Unable to complete action"
     }
 
@@ -11888,6 +11892,11 @@ private fun ThreadActionCard.actionCardTitle(): String =
         "channel:add_member" -> {
             val count = humans.size + agents.size
             "Add $count member${if (count == 1) "" else "s"} to ${channel?.let { "#${it.removePrefix("#")}" } ?: "channel"}"
+        }
+        "integration:approve_agent_login" -> {
+            val service = clientName?.takeIf { it.isNotBlank() } ?: "app"
+            val agent = agentName?.takeIf { it.isNotBlank() } ?: name.takeIf { it.isNotBlank() } ?: "agent"
+            "Approve $service for @${agent.removePrefix("@")}"
         }
         else -> actionCardVerb()
     }
@@ -11906,6 +11915,12 @@ private fun ThreadActionCard.actionCardDetails(): String =
         if (initialAgents.isNotEmpty()) add("Agents: ${initialAgents.joinToString(", ")}")
         if (humans.isNotEmpty()) add("Humans: ${humans.joinToString(", ")}")
         if (agents.isNotEmpty()) add("Agents: ${agents.joinToString(", ")}")
+        if (type.equals("integration:approve_agent_login", ignoreCase = true)) {
+            clientName?.takeIf { it.isNotBlank() }?.let { add("Service: $it") }
+            agentName?.takeIf { it.isNotBlank() }?.let { add("Agent: @${it.removePrefix("@")}") }
+            val scopeLine = scopes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
+            add("Scopes: $scopeLine")
+        }
     }.joinToString("\n")
 
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
@@ -11917,6 +11932,15 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
             "channel-members" -> {
                 val total = resultAddedHumanIds.size + resultAddedAgentIds.size
                 resultChannelName?.let { "$total added to #${it.removePrefix("#")}" }
+            }
+            "agent-integration-login" -> {
+                val service = resultName?.takeIf { it.isNotBlank() } ?: clientName
+                val agent = agentName?.takeIf { it.isNotBlank() }
+                when {
+                    !service.isNullOrBlank() && !agent.isNullOrBlank() -> "$service approved for @${agent.removePrefix("@")}"
+                    !service.isNullOrBlank() -> "$service approved"
+                    else -> "Login approved"
+                }
             }
             else -> null
         }

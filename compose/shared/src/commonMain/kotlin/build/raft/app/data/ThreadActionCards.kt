@@ -39,6 +39,13 @@ internal data class ThreadActionCard(
     val resultChannelName: String? = null,
     val resultAddedHumanIds: List<String> = emptyList(),
     val resultAddedAgentIds: List<String> = emptyList(),
+    val requestId: String? = null,
+    val agentId: String? = null,
+    val agentName: String? = null,
+    val clientId: String? = null,
+    val clientKey: String? = null,
+    val clientName: String? = null,
+    val scopes: List<String> = emptyList(),
 ) {
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
@@ -70,6 +77,13 @@ internal data class WireActionCardAction(
     val initialHumans: List<String> = emptyList(),
     val initialAgents: List<String> = emptyList(),
     val draftHint: String? = null,
+    val requestId: String? = null,
+    val agentId: String? = null,
+    val agentName: String? = null,
+    val clientId: String? = null,
+    val clientKey: String? = null,
+    val clientName: String? = null,
+    val scopes: List<String> = emptyList(),
 )
 
 @Serializable
@@ -110,6 +124,13 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         resultChannelName = meta.result?.channelName?.takeIf { it.isNotBlank() },
         resultAddedHumanIds = meta.result?.addedHumanIds.orEmpty(),
         resultAddedAgentIds = meta.result?.addedAgentIds.orEmpty(),
+        requestId = action.requestId?.takeIf { it.isNotBlank() },
+        agentId = action.agentId?.takeIf { it.isNotBlank() },
+        agentName = action.agentName?.takeIf { it.isNotBlank() },
+        clientId = action.clientId?.takeIf { it.isNotBlank() },
+        clientKey = action.clientKey?.takeIf { it.isNotBlank() },
+        clientName = action.clientName?.takeIf { it.isNotBlank() },
+        scopes = action.scopes,
     )
 }
 
@@ -137,6 +158,13 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("resultChannelName", resultChannelName)
         putList("resultAddedHumanIds", resultAddedHumanIds)
         putList("resultAddedAgentIds", resultAddedAgentIds)
+        putString("requestId", requestId)
+        putString("agentId", agentId)
+        putString("agentName", agentName)
+        putString("clientId", clientId)
+        putString("clientKey", clientKey)
+        putString("clientName", clientName)
+        putList("scopes", scopes)
     }
 
 internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): ThreadActionCard? {
@@ -164,6 +192,13 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         resultChannelName = metadata["${ActionCardMetadataPrefix}resultChannelName"]?.takeIf { it.isNotBlank() },
         resultAddedHumanIds = metadata.decodeList("resultAddedHumanIds"),
         resultAddedAgentIds = metadata.decodeList("resultAddedAgentIds"),
+        requestId = metadata["${ActionCardMetadataPrefix}requestId"]?.takeIf { it.isNotBlank() },
+        agentId = metadata["${ActionCardMetadataPrefix}agentId"]?.takeIf { it.isNotBlank() },
+        agentName = metadata["${ActionCardMetadataPrefix}agentName"]?.takeIf { it.isNotBlank() },
+        clientId = metadata["${ActionCardMetadataPrefix}clientId"]?.takeIf { it.isNotBlank() },
+        clientKey = metadata["${ActionCardMetadataPrefix}clientKey"]?.takeIf { it.isNotBlank() },
+        clientName = metadata["${ActionCardMetadataPrefix}clientName"]?.takeIf { it.isNotBlank() },
+        scopes = metadata.decodeList("scopes"),
     )
 }
 
@@ -205,7 +240,8 @@ internal fun ThreadActionCard.withExecutedChannelMembers(
 internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
     type.equals("agent:create", ignoreCase = true) ||
         type.equals("channel:create", ignoreCase = true) ||
-        type.equals("channel:add_member", ignoreCase = true)
+        type.equals("channel:add_member", ignoreCase = true) ||
+        type.equals("integration:approve_agent_login", ignoreCase = true)
 
 private fun MutableMap<String, String>.putString(key: String, value: String?) {
     val normalized = value?.takeIf { it.isNotBlank() } ?: return

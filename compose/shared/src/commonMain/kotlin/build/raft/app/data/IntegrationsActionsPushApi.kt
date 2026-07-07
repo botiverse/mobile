@@ -9,6 +9,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 private val integrationsActionsPushJson = Json {
     ignoreUnknownKeys = true
@@ -220,7 +221,11 @@ internal data class AgentIntegrationsPage(
             loadState = if (items.isEmpty()) AgentAppLoginLoadState.Empty else AgentAppLoginLoadState.Content
         )
 }
-internal data class ActionCardResult(val messageId: String, val metadataPresent: Boolean)
+internal data class ActionCardResult(
+    val messageId: String,
+    val metadataPresent: Boolean,
+    val actionCard: ThreadActionCard? = null
+)
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
 internal data class PushCommandResult(val ok: Boolean)
@@ -249,7 +254,16 @@ private inline fun <Wire, T> HomeNetworkResponse.mapApiBody(
 private fun HomeNetworkResponse.mapActionCard(contractCode: String): DataResult<ActionCardResult> =
     mapApiBody(contractCode, ActionCardResponseDto.serializer()) { wire ->
         val id = wire.messageId.takeIf { it.isNotBlank() } ?: return@mapApiBody null
-        ActionCardResult(messageId = id, metadataPresent = wire.metadata != null)
+        val card =
+            wire.metadata
+                ?.let { metadata ->
+                    runCatching {
+                        integrationsActionsPushJson
+                            .decodeFromJsonElement(WireActionCardMetadata.serializer(), metadata)
+                            .toThreadActionCard()
+                    }.getOrNull()
+                }
+        ActionCardResult(messageId = id, metadataPresent = wire.metadata != null, actionCard = card)
     }
 
 private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult<PushCommandResult> =

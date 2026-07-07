@@ -2358,6 +2358,41 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun integrationApproveLoginActionCardExecutesInlineAction() = runBlocking {
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "integration:approve_agent_login",
+                requestId = "request-1",
+                agentId = "agent-1",
+                agentName = "KMP-专家",
+                clientId = "client-1",
+                clientKey = "quiver",
+                clientName = "Quiver",
+                scopes = listOf("identity", "profile")
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val executedCard = (result as DataResult.Content).data
+
+        assertEquals("executed", executedCard.state)
+        assertEquals("agent-integration-login", executedCard.resultKind)
+        assertEquals("grant-1", executedCard.resultId)
+        assertEquals("Quiver", executedCard.resultName)
+        assertEquals("artin", executedCard.executedByUserName)
+        assertEquals(
+            listOf("""POST actions/m-card/execute body={"expectedState":"prepared"}"""),
+            actionCardsApi.calls
+        )
+    }
+
+    @Test
     fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runBlocking {
         val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
         val memberRepository =
@@ -6990,7 +7025,37 @@ class SharedThreadStoreTest {
 
     private class RecordingActionCardsApi(
         private val markResponse: HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"messageId":"m-card","metadata":{"kind":"action-card"}}""")
+            HomeNetworkResponse(code = 200, bodyText = """{"messageId":"m-card","metadata":{"kind":"action-card"}}"""),
+        private val executeResponse: HomeNetworkResponse =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "messageId":"m-card",
+                      "metadata":{
+                        "kind":"action-card",
+                        "state":"executed",
+                        "executedByUserName":"artin",
+                        "action":{
+                          "type":"integration:approve_agent_login",
+                          "requestId":"request-1",
+                          "agentId":"agent-1",
+                          "agentName":"KMP-专家",
+                          "clientId":"client-1",
+                          "clientKey":"quiver",
+                          "clientName":"Quiver",
+                          "scopes":["identity","profile"]
+                        },
+                        "result":{
+                          "kind":"agent-integration-login",
+                          "id":"grant-1",
+                          "name":"Quiver"
+                        }
+                      }
+                    }
+                    """.trimIndent()
+            )
     ) : SlockIntegrationsActionsPushApi {
         val calls: MutableList<String> = mutableListOf()
 
@@ -7001,7 +7066,10 @@ class SharedThreadStoreTest {
         override suspend fun denyIntegrationRequest(requestId: String): HomeNetworkResponse = error("unused")
         override suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse = error("unused")
         override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse = error("unused")
-        override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse {
+            calls += "POST actions/${messageId.value}/execute body=$body"
+            return executeResponse
+        }
         override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
 
         override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {

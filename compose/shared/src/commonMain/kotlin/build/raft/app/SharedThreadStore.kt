@@ -13,6 +13,7 @@ import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.buildCreateAgentBody
+import build.raft.app.data.buildExecuteActionBody
 import build.raft.app.data.buildMarkAgentActionExecutedBody
 import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
@@ -484,8 +485,36 @@ internal class SharedThreadDataSource(
                 commitChannelCreateActionCard(messageId, card)
             card.type.equals("channel:add_member", ignoreCase = true) ->
                 commitChannelAddMembersActionCard(payload, messageId, card)
+            card.type.equals("integration:approve_agent_login", ignoreCase = true) ->
+                executeInlineThreadActionCard(messageId, card)
             else ->
                 DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+    }
+
+    private suspend fun executeInlineThreadActionCard(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        return when (val result = actionsApi.executeAction(MessageId(messageId), buildExecuteActionBody(expectedState = "prepared"))) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    result.data.actionCard
+                        ?: card.copy(
+                            state = "executed",
+                            resultKind = "agent-integration-login",
+                            resultId = card.agentId,
+                            resultName = card.clientName,
+                            executedByUserName = card.executedByUserName
+                        )
+                )
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "action_card_execute_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
         }
     }
 
