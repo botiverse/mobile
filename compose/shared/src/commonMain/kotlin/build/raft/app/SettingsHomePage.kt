@@ -152,6 +152,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsHomeSnapshot
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsNavItem
+import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsRoute
@@ -1301,7 +1302,8 @@ internal data class KuiklySharedSettingsRow(
     val value: String = "",
     val status: String = "",
     val enabled: Boolean = false,
-    val toggleValue: Boolean? = null
+    val toggleValue: Boolean? = null,
+    val supportingDetail: String = ""
 )
 
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
@@ -7881,6 +7883,9 @@ private fun SharedSettingsRow(
                 row.detail.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+                row.supportingDetail.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
             row.status.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
@@ -10016,19 +10021,16 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                             rows =
                                 items.map { item ->
                                     val title = item.displayName.ifBlank { item.name.ifBlank { item.id } }
-                                    val coordinates =
-                                        listOf(item.group, item.name, item.version)
-                                            .filter { it.isNotBlank() }
-                                            .joinToString(":")
-                                            .ifBlank { item.id }
+                                    val link = item.licenseUrl.ifBlank { item.sourceUrl }
                                     KuiklySharedSettingsRow(
                                         key = "openLicenseUrl",
                                         iconName = SlockLucideIconName.Package,
                                         title = title,
-                                        detail = coordinates,
-                                        value = item.licenseUrl.ifBlank { item.sourceUrl },
-                                        status = item.licenseName.ifBlank { "Unknown" },
-                                        enabled = item.licenseUrl.isNotBlank() || item.sourceUrl.isNotBlank()
+                                        detail = item.settingsLicenseCoordinates(),
+                                        value = link,
+                                        status = item.settingsLicenseActionLabel(),
+                                        enabled = link.isNotBlank(),
+                                        supportingDetail = item.settingsLicenseMetaLine()
                                     )
                                 }
                         )
@@ -10043,6 +10045,29 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
         sections = sections
     )
 }
+
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseCoordinates(): String =
+    listOf(group, name, version)
+        .filter { it.isNotBlank() }
+        .joinToString(":")
+        .ifBlank { id }
+
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseMetaLine(): String =
+    listOf(
+        licenseName.ifBlank { "License unknown" },
+        when {
+            licenseUrl.isNotBlank() -> "License link"
+            sourceUrl.isNotBlank() -> "Source link"
+            else -> "No link"
+        }
+    ).joinToString(" / ")
+
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(): String =
+    when {
+        licenseUrl.isNotBlank() -> "License"
+        sourceUrl.isNotBlank() -> "Source"
+        else -> "Unavailable"
+    }
 
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
