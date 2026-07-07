@@ -9,6 +9,7 @@ import build.raft.app.network.SlockHttpExecutorResponse
 import build.raft.app.network.SlockRequestPriority
 import build.raft.app.network.SlockRequestScheduler
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
@@ -224,6 +225,54 @@ class SharedSlockNetworkClientTest {
         assertEquals(null, resolvedFile.fileRef)
         assertEquals(42, resolvedFile.sizeBytes)
         assertEquals(listOf<Byte>(1, 2, 3), resolvedFile.bytes.toList())
+    }
+
+    @Test
+    fun attachmentUploadLogsMultipartShapeAndTransportDiagnosticsForErrors() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                SlockHttpExecutorResponse(
+                    code = 400,
+                    bodyText = null,
+                    errorBodyText = """{"error":"No files provided"}""",
+                    transportDiagnostics =
+                        "engine=networkkmm status=400 kind=http rawCode=400 detail=bad_request"
+                )
+            }
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                warningLogger = logs::add,
+                executor = executor
+            )
+
+        val response =
+            client.uploadAttachments(
+                DataRequestPriority.Foreground,
+                ChannelId("channel-1"),
+                listOf(
+                    MultipartFile(
+                        name = "files",
+                        fileName = "photo.png",
+                        mimeType = "image/png",
+                        bytes = byteArrayOf(1, 2, 3),
+                        sizeBytes = 3
+                    )
+                )
+            )
+
+        assertEquals(400, response.code)
+        assertContains(logs.single(), "category=attachments_upload")
+        assertContains(logs.single(), "fieldKeys=channelId")
+        assertContains(logs.single(), "fileFields=files")
+        assertContains(logs.single(), "fileNameMeta=named=1;ext=png")
+        assertContains(logs.single(), "result=http_error")
+        assertContains(logs.single(), "errorBody=error:No_files_provided")
+        assertContains(logs.single(), "engine=networkkmm")
+        assertContains(logs.single(), "rawCode=400")
+        assertContains(logs.single(), "detail=bad_request")
     }
 
     private class RecordingPlatformFileResolver : SlockPlatformFileResolver {
