@@ -31,13 +31,13 @@ class SharedAuthGateStore(
                     }
             }
             is SharedAuthGateIntent.SignedIn ->
-                setGateState(intent.session.asGateState(), source = "signed_in")
+                setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
-                setGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
+                setExplicitGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
             SharedAuthGateIntent.ShowSignIn ->
-                setGateState(SharedAuthGateState.AuthRequired, source = "show_sign_in")
+                setExplicitGateState(SharedAuthGateState.AuthRequired, source = "show_sign_in")
             SharedAuthGateIntent.SignedOut ->
-                setGateState(SharedAuthGateState.AuthRequired, source = "signed_out")
+                setExplicitGateState(SharedAuthGateState.AuthRequired, source = "signed_out")
         }
     }
 
@@ -51,12 +51,12 @@ class SharedAuthGateStore(
             SharedAuthGateIntent.Restore,
             SharedAuthGateIntent.Retry -> restore()
             is SharedAuthGateIntent.SignedIn ->
-                setGateState(intent.session.asGateState(), source = "signed_in")
+                setExplicitGateState(intent.session.asGateState(), source = "signed_in")
             is SharedAuthGateIntent.ServerReady ->
-                setGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
+                setExplicitGateState(SharedAuthGateState.Ready(intent.session), source = "server_ready")
             SharedAuthGateIntent.ShowSignIn,
             SharedAuthGateIntent.SignedOut ->
-                setGateState(SharedAuthGateState.AuthRequired, source = intent.logSource)
+                setExplicitGateState(SharedAuthGateState.AuthRequired, source = intent.logSource)
         }
     }
 
@@ -89,6 +89,12 @@ class SharedAuthGateStore(
         diagnosticsLogger(
             "auth_gate_state source=$source state=${nextState.diagnosticsName()} selectedServer=${nextState.hasSelectedServer()}"
         )
+    }
+
+    private fun setExplicitGateState(nextState: SharedAuthGateState, source: String) {
+        restoreJob?.cancel()
+        restoreJob = null
+        setGateState(nextState, source)
     }
 
     private fun StoredAuthSession.asGateState(): SharedAuthGateState =
