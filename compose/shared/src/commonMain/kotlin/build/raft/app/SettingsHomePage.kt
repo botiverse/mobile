@@ -2109,10 +2109,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val latestHomeState by rememberUpdatedState(homeState)
     val latestHomeActivityState by rememberUpdatedState(homeActivityState)
     val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
-    val foregroundBannerMemberAvatarResolver =
-        remember(sharedStores.serverMembersStore, readyServerId) {
-            slockMemberAvatarResolver(sharedStores.serverMembersStore, readyServerId)
-        }
     LaunchedEffect(sharedStores.serverMembersStore, readyServerId, foregroundMessageBannersEnabled) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
@@ -3581,7 +3577,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         SlockForegroundBannerHost(
             banner = foregroundMessageBanner,
             topSafeArea = shellScope.topSafeArea,
-            memberAvatarResolver = foregroundBannerMemberAvatarResolver,
+            serverMembersStore = sharedStores.serverMembersStore,
+            currentServerStore = sharedStores.localDataStore,
             onBannerClick = { target ->
                 foregroundMessageBanner = null
                 openHomeMessageRequest(

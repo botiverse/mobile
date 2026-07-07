@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -13,6 +14,7 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class SharedConversationDirectoryStoreTest {
     @Test
@@ -118,5 +120,27 @@ class SharedConversationDirectoryStoreTest {
             "channel-1",
             snapshot.resolveHomeConversationSummary(listOf("channel-1"))?.threadId?.value
         )
+    }
+
+    @Test
+    fun inboxDirectoryDoesNotSynthesizeAgentSenderAvatarFallback() {
+        val projection =
+            InboxItem(
+                key = "thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-stream-1"),
+                channelName = "Thread",
+                threadChannelId = ChannelId("thread-stream-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("parent-1"),
+                latestActivityMessageId = MessageId("message-1"),
+                latestActivitySenderName = "Leila",
+                latestActivitySenderId = "agent-1",
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivitySenderAvatarWireValue = null
+            ).toSharedConversationDirectoryProjection(ServerId("server-1"))
+
+        assertEquals("agent-1", projection?.senderMemberId)
+        assertNull(projection?.senderAvatarWireValue)
     }
 }
