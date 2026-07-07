@@ -186,6 +186,7 @@ import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
+import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -239,6 +240,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.time.TimeMark
@@ -11501,6 +11503,13 @@ private fun ThreadMessageCard(
         label = "thread-message-focus-highlight"
     )
     var pressed by remember(message.id) { mutableStateOf(false) }
+    var pressRippleOrigin by remember(message.id) { mutableStateOf<Offset?>(null) }
+    LaunchedEffect(message.id, pressed) {
+        if (!pressed && pressRippleOrigin != null) {
+            delay(ThreadMessageRippleFadeMs.toLong() + ThreadMessageRippleResetMarginMs)
+            pressRippleOrigin = null
+        }
+    }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
@@ -11534,7 +11543,6 @@ private fun ThreadMessageCard(
                 Modifier
                     .fillMaxWidth()
                     .background(threadMessageFocusHighlightColor(focusAlpha))
-                    .threadMessagePressOutline(pressed)
                     .padding(horizontal = SlockSpacing.Xs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
@@ -11577,11 +11585,17 @@ private fun ThreadMessageCard(
                     } else {
                         Modifier
                             .weight(1f)
+                            .threadMessagePressRipple(pressed = pressed, origin = pressRippleOrigin)
                             .threadMessageLongPressActions(
                                 messageId = message.id,
                                 captureLongPressAnchor = captureLongPressAnchor,
                                 onShowActions = onShowActions,
-                                onPressChanged = { pressed = it }
+                                onPressChanged = { isPressed, position ->
+                                    pressed = isPressed
+                                    if (position != null) {
+                                        pressRippleOrigin = position
+                                    }
+                                }
                             )
                     }
                 Box(
@@ -12397,18 +12411,54 @@ private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifie
         fillMaxWidth()
     }
 
-private fun Modifier.threadMessagePressOutline(pressed: Boolean): Modifier =
-    border(
-        SlockStroke.Default,
-        if (pressed) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0f)
+// Mobile press feedback (task #555): the finger-down point washes gray and a
+// ripple spreads across the row — replacing the web-style press border. The
+// indication is delayed past touch-slop so a scroll that starts on a message
+// never flashes it: a drag steals the pointer and cancels the press scope
+// before the delay elapses.
+private const val ThreadMessagePressIndicationDelayMs = 120L
+private const val ThreadMessageRippleExpandMs = 260
+private const val ThreadMessageRippleFadeMs = 240
+private const val ThreadMessageRippleResetMarginMs = 60L
+private const val ThreadMessageRippleAlpha = 0.10f
+private val ThreadMessageRippleMinRadius = 24.dp
+
+@Composable
+private fun Modifier.threadMessagePressRipple(
+    pressed: Boolean,
+    origin: Offset?
+): Modifier {
+    val expansion by animateFloatAsState(
+        targetValue = if (origin != null) 1f else 0f,
+        animationSpec = tween(durationMillis = if (origin != null) ThreadMessageRippleExpandMs else 0),
+        label = "thread-message-ripple-expansion"
     )
+    val washAlpha by animateFloatAsState(
+        targetValue = if (pressed && origin != null) ThreadMessageRippleAlpha else 0f,
+        animationSpec =
+            tween(durationMillis = if (pressed) ThreadMessageRippleExpandMs else ThreadMessageRippleFadeMs),
+        label = "thread-message-ripple-alpha"
+    )
+    if (origin == null) return this
+    return drawBehind {
+        if (washAlpha <= 0f || expansion <= 0f) return@drawBehind
+        val coverRadius = hypot(size.width, size.height)
+        val minRadius = ThreadMessageRippleMinRadius.toPx()
+        val radius = minRadius + (coverRadius - minRadius) * expansion
+        drawCircle(
+            color = Color.Black.copy(alpha = washAlpha),
+            radius = radius,
+            center = origin
+        )
+    }
+}
 
 @Composable
 private fun Modifier.threadMessageLongPressActions(
     messageId: String,
     captureLongPressAnchor: Boolean = true,
     onShowActions: (Offset) -> Unit,
-    onPressChanged: (Boolean) -> Unit = {}
+    onPressChanged: (Boolean, Offset?) -> Unit = { _, _ -> }
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
@@ -12423,12 +12473,20 @@ private fun Modifier.threadMessageLongPressActions(
         )
         .pointerInput(messageId) {
             detectTapGestures(
-                onPress = {
-                    currentOnPressChanged(true)
+                onPress = { downPosition ->
+                    var indicated = false
                     try {
+                        // Scrolls steal the pointer and cancel this scope
+                        // within the delay — press feedback never shows for
+                        // them (task #555).
+                        delay(ThreadMessagePressIndicationDelayMs)
+                        indicated = true
+                        currentOnPressChanged(true, downPosition)
                         tryAwaitRelease()
                     } finally {
-                        currentOnPressChanged(false)
+                        if (indicated) {
+                            currentOnPressChanged(false, null)
+                        }
                     }
                 },
                 onLongPress = { localOffset ->
