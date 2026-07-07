@@ -1,61 +1,61 @@
 {
-  "generatedAt": "2026-07-06T22:35:13.263Z",
-  "runId": "1dcb122-20260706223444",
-  "commit": "1dcb122-20260706223444",
-  "commitSubject": "fix(settings): harden Quiver feedback submit (#205)",
+  "generatedAt": "2026-07-07T18:05:08.768Z",
+  "runId": "04bbe8e-20260707180439",
+  "commit": "04bbe8e-20260707180439",
+  "commitSubject": "fix(home): resolve foreground banner identity by provenance",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "summary": {
-    "total": 84,
+    "total": 87,
     "same": 0,
     "pass": 0,
-    "basic-pass": 4,
-    "different": 75,
-    "missing": 5
+    "basic-pass": 5,
+    "different": 78,
+    "missing": 4
   },
   "analysisSummary": {
-    "total": 84,
+    "total": 87,
     "ready": 0,
-    "pending": 84
+    "pending": 87
   },
   "componentMatrixSummary": {
-    "total": 104,
-    "active": 85,
+    "total": 107,
+    "active": 88,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 77,
-        "active": 73,
+        "total": 78,
+        "active": 74,
         "pending": 2,
         "skipped": 2
       },
       "real-screen": {
-        "total": 27,
-        "active": 12,
+        "total": 29,
+        "active": 14,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 87,
+        "active": 90,
         "pending": 13,
         "unsupported": 0,
-        "total": 100
+        "total": 103
       },
       "android": {
-        "active": 81,
+        "active": 84,
         "pending": 19,
         "unsupported": 0,
-        "total": 100
+        "total": 103
       },
       "harmony": {
         "active": 0,
-        "pending": 80,
+        "pending": 83,
         "unsupported": 0,
-        "total": 80
+        "total": 83
       }
     }
   },
@@ -138,8 +138,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8858627621305716,
-        "pixelPerfectSimilarity": 0.7953464036402424,
+        "rgbSimilarity": 0.8920736430569705,
+        "pixelPerfectSimilarity": 0.7993485100120171,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
     },
@@ -195,8 +195,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8563567419644592,
-        "pixelPerfectSimilarity": 0.7446803985903512,
+        "rgbSimilarity": 0.8634476592469393,
+        "pixelPerfectSimilarity": 0.7623678454247175,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png"
       }
     },
@@ -254,7 +254,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9316937623314016,
+        "rgbSimilarity": 0.9316933144582343,
         "pixelPerfectSimilarity": 0.9089358771823227,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png"
       }
@@ -313,7 +313,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9274233671360602,
+        "rgbSimilarity": 0.9274225539042895,
         "pixelPerfectSimilarity": 0.8974072048716598,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png"
       }
@@ -374,6 +374,61 @@
       }
     },
     {
+      "id": "components.thread.message-row.long-inline-code",
+      "title": "Thread Message Row Long Inline Code",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "components-thread",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.long-inline-code.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowLongInlineCode",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Inline-code cross-platform net (task #400): real React MessageItem vs Android shared long_inline_code thread fixture. Covers compact short inline-code chips, char-level wrapping of long paths/commands (#58), trailing-edge inline-code border (#228), and markdown flow around code spans. OHOS leg pending self-hosted capture harness.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.8202012471094053,
+        "pixelPerfectSimilarity": 0.6548012543435885,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"
+      }
+    },
+    {
       "id": "components.thread.message-row.rich-content",
       "title": "Thread Message Row Rich Content",
       "captureType": "component-fixture",
@@ -423,8 +478,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8892128794536405,
-        "pixelPerfectSimilarity": 0.7613495809461612,
+        "rgbSimilarity": 0.8943469225073479,
+        "pixelPerfectSimilarity": 0.772497963276305,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -526,7 +581,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9320667210998138,
+        "rgbSimilarity": 0.9320658302072773,
         "pixelPerfectSimilarity": 0.8453166983972671,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png"
       }
@@ -817,12 +872,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8693115673291697,
+        "pixelPerfectSimilarity": 0.8507652389231337,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png"
       }
     },
     {
@@ -1070,11 +1125,11 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "different",
+        "status": "basic-pass",
         "rawStatus": "different",
-        "acceptance": "",
-        "rgbSimilarity": 0.9100635897983124,
-        "pixelPerfectSimilarity": 0.7378737029668482,
+        "acceptance": "basic pass: pixel perfect 96.81% > 96%",
+        "rgbSimilarity": 0.9794045712799105,
+        "pixelPerfectSimilarity": 0.9681477462269649,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.select.states.side-by-side.png"
       }
     },
@@ -1157,7 +1212,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9785802001979046,
+        "rgbSimilarity": 0.9776696012604739,
         "pixelPerfectSimilarity": 0.5502555772146416,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png"
       }
@@ -1198,8 +1253,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9001189718067483,
-        "pixelPerfectSimilarity": 0.7714105390982009,
+        "rgbSimilarity": 0.9137845566331133,
+        "pixelPerfectSimilarity": 0.7841663204763578,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png"
       }
     },
@@ -1280,7 +1335,7 @@
         "status": "basic-pass",
         "rawStatus": "different",
         "acceptance": "basic pass: pixel perfect 97.72% > 96%",
-        "rgbSimilarity": 0.9898225099760125,
+        "rgbSimilarity": 0.9898531521355989,
         "pixelPerfectSimilarity": 0.9771732067689353,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png"
       }
@@ -1406,8 +1461,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8330240038838985,
-        "pixelPerfectSimilarity": 0.7316175179919255,
+        "rgbSimilarity": 0.8387882674524972,
+        "pixelPerfectSimilarity": 0.7461055751340111,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -1616,8 +1671,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8706240364891888,
-        "pixelPerfectSimilarity": 0.8049642625081221,
+        "rgbSimilarity": 0.8802546046792075,
+        "pixelPerfectSimilarity": 0.8109779077322937,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png"
       }
     },
@@ -1781,8 +1836,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8415582425032163,
-        "pixelPerfectSimilarity": 0.7723745126705653,
+        "rgbSimilarity": 0.8415600447727491,
+        "pixelPerfectSimilarity": 0.7723734974009097,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"
       }
     },
@@ -1891,8 +1946,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8540169699327234,
-        "pixelPerfectSimilarity": 0.6713100503950177,
+        "rgbSimilarity": 0.8602841391832339,
+        "pixelPerfectSimilarity": 0.7133178187099756,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -1991,7 +2046,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9140089484615783,
+        "rgbSimilarity": 0.9068945740982038,
         "pixelPerfectSimilarity": 0.8341721688878087,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.auth.register.inputs.side-by-side.png"
       }
@@ -2225,8 +2280,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9199496936561131,
-        "pixelPerfectSimilarity": 0.858834287031797,
+        "rgbSimilarity": 0.9199188352809173,
+        "pixelPerfectSimilarity": 0.8587127166781949,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png"
       }
     },
@@ -2339,8 +2394,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9445165987973411,
-        "pixelPerfectSimilarity": 0.9000054009532682,
+        "rgbSimilarity": 0.948696595537338,
+        "pixelPerfectSimilarity": 0.9054330214282821,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png"
       }
     },
@@ -2400,8 +2455,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.918888545028624,
-        "pixelPerfectSimilarity": 0.8624143243413193,
+        "rgbSimilarity": 0.9188853078103959,
+        "pixelPerfectSimilarity": 0.8623986040369741,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png"
       }
     },
@@ -2458,8 +2513,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8931465905203572,
-        "pixelPerfectSimilarity": 0.7643088130054955,
+        "rgbSimilarity": 0.9016486846697755,
+        "pixelPerfectSimilarity": 0.7705813451074115,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png"
       }
     },
@@ -2519,8 +2574,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9012026202041031,
-        "pixelPerfectSimilarity": 0.7664671689553206,
+        "rgbSimilarity": 0.9012020518684979,
+        "pixelPerfectSimilarity": 0.7664648060382657,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png"
       }
     },
@@ -2638,8 +2693,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8980648322665775,
-        "pixelPerfectSimilarity": 0.8184800367264822,
+        "rgbSimilarity": 0.8982060107139842,
+        "pixelPerfectSimilarity": 0.8183585152779466,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -2699,8 +2754,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.84539977158908,
-        "pixelPerfectSimilarity": 0.7737641943803081,
+        "rgbSimilarity": 0.847958039005384,
+        "pixelPerfectSimilarity": 0.7784103644293218,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -2810,8 +2865,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8862300940232675,
-        "pixelPerfectSimilarity": 0.6903755012759752,
+        "rgbSimilarity": 0.8852723585123559,
+        "pixelPerfectSimilarity": 0.6866633585827898,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.error-state.side-by-side.png"
       }
     },
@@ -2984,8 +3039,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8860526625592601,
-        "pixelPerfectSimilarity": 0.7914519787742537,
+        "rgbSimilarity": 0.890710192260553,
+        "pixelPerfectSimilarity": 0.8065803864382064,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.provider-linked.side-by-side.png"
       }
     },
@@ -3042,8 +3097,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9260610115333979,
-        "pixelPerfectSimilarity": 0.8321245324799827,
+        "rgbSimilarity": 0.919112473351568,
+        "pixelPerfectSimilarity": 0.8086762938658674,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.admins.side-by-side.png"
       }
     },
@@ -3100,8 +3155,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9405152253490587,
-        "pixelPerfectSimilarity": 0.8790196594698965,
+        "rgbSimilarity": 0.942541755237426,
+        "pixelPerfectSimilarity": 0.8771853607161664,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.invites.side-by-side.png"
       }
     },
@@ -3158,8 +3213,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9126209339185478,
-        "pixelPerfectSimilarity": 0.8550775711913152,
+        "rgbSimilarity": 0.9076004301525419,
+        "pixelPerfectSimilarity": 0.8545435519369169,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.join-links.side-by-side.png"
       }
     },
@@ -3216,8 +3271,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9345435634096005,
-        "pixelPerfectSimilarity": 0.867945004793346,
+        "rgbSimilarity": 0.9341823243567899,
+        "pixelPerfectSimilarity": 0.8675713263390988,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.member-permissions.side-by-side.png"
       }
     },
@@ -3274,8 +3329,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9187260152888912,
-        "pixelPerfectSimilarity": 0.8505127530009047,
+        "rgbSimilarity": 0.9175244218840868,
+        "pixelPerfectSimilarity": 0.8525698410769501,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.onboarding.side-by-side.png"
       }
     },
@@ -3332,8 +3387,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9071771502965216,
-        "pixelPerfectSimilarity": 0.7661410864017499,
+        "rgbSimilarity": 0.9000221381722114,
+        "pixelPerfectSimilarity": 0.7443512780005671,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png"
       }
     },
@@ -3390,8 +3445,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9385403076584854,
-        "pixelPerfectSimilarity": 0.8715933487260501,
+        "rgbSimilarity": 0.9308994515473791,
+        "pixelPerfectSimilarity": 0.868254884487112,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.translation.side-by-side.png"
       }
     },
@@ -3449,8 +3504,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9285167782113795,
-        "pixelPerfectSimilarity": 0.8147115215835595,
+        "rgbSimilarity": 0.9247013484645188,
+        "pixelPerfectSimilarity": 0.8147105089048217,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -3562,12 +3617,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.8202798461573169,
+        "pixelPerfectSimilarity": 0.6755201793116485,
+        "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.connected-apps.page.side-by-side.png"
       }
     },
     {
@@ -3623,8 +3678,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8887763478487889,
-        "pixelPerfectSimilarity": 0.8265720149606406,
+        "rgbSimilarity": 0.8794937802109111,
+        "pixelPerfectSimilarity": 0.8217212838065918,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.language-region.page.side-by-side.png"
       }
     },
@@ -3854,8 +3909,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8760197820503213,
-        "pixelPerfectSimilarity": 0.8128049850798666,
+        "rgbSimilarity": 0.8639645415061807,
+        "pixelPerfectSimilarity": 0.8206056493971186,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png"
       }
     },
@@ -3967,8 +4022,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8963156237909278,
-        "pixelPerfectSimilarity": 0.8267212725546059,
+        "rgbSimilarity": 0.8963809429226958,
+        "pixelPerfectSimilarity": 0.8267378917378917,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.files.list.side-by-side.png"
       }
     },
@@ -4025,8 +4080,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8808516563320503,
-        "pixelPerfectSimilarity": 0.8406410256410256,
+        "rgbSimilarity": 0.8819324277352589,
+        "pixelPerfectSimilarity": 0.8420489078822412,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
       }
     },
@@ -4159,8 +4214,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8315319353867096,
-        "pixelPerfectSimilarity": 0.7321535626037996,
+        "rgbSimilarity": 0.8288173933289283,
+        "pixelPerfectSimilarity": 0.7278189600464482,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.auth.login.signing.side-by-side.png"
       }
     },
@@ -4294,8 +4349,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9582622724087272,
-        "pixelPerfectSimilarity": 0.8489724686407151,
+        "rgbSimilarity": 0.963663464836838,
+        "pixelPerfectSimilarity": 0.8375724065297525,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },
@@ -4392,8 +4447,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9471867140432505,
-        "pixelPerfectSimilarity": 0.9042194947408217,
+        "rgbSimilarity": 0.9413817769718547,
+        "pixelPerfectSimilarity": 0.9039281808239155,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png"
       }
     },
@@ -4450,8 +4505,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9087589231558214,
-        "pixelPerfectSimilarity": 0.8797238087522448,
+        "rgbSimilarity": 0.9087923927396723,
+        "pixelPerfectSimilarity": 0.8796681114216659,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png"
       }
     },
@@ -4566,8 +4621,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8982669964779705,
-        "pixelPerfectSimilarity": 0.8178406988833529,
+        "rgbSimilarity": 0.8979752571918326,
+        "pixelPerfectSimilarity": 0.822221884662643,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png"
       }
     },
@@ -4624,8 +4679,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9661907676704931,
-        "pixelPerfectSimilarity": 0.9381276920376447,
+        "rgbSimilarity": 0.9661738005581492,
+        "pixelPerfectSimilarity": 0.9379889550505665,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"
       }
     },
@@ -4682,8 +4737,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9708650081151083,
-        "pixelPerfectSimilarity": 0.9494973737864734,
+        "rgbSimilarity": 0.9648030284698175,
+        "pixelPerfectSimilarity": 0.9494119712129191,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"
       }
     },
@@ -4784,6 +4839,61 @@
       },
       "notes": "Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page.",
       "comparison": null
+    },
+    {
+      "id": "screens.settings.administration.full-height",
+      "title": "Settings Administration Full Height Screen",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/settings",
+      "surface": "settings",
+      "group": "screens-settings",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ADMINISTRATION_VISUAL_SECTIONS"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/screens.settings.administration.full-height.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "SettingsAppShellContent"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
+          "fixture": "",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "SettingsAppShellContent"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Full-height (content-height, not viewport-clipped) Settings Administration route for react↔android parity (task #388). React renders all ADMINISTRATION_VISUAL_SECTIONS stacked, unclamped, captured fullPage (verified 1170x6648). Android eager full-height capture on main (#259, verified 1170x7382; density diff normalizes). First react↔android full-height pairing runs next full/nightly.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
     },
     {
       "id": "screens.settings.appearance",
@@ -4913,12 +5023,12 @@
       "comparison": {
         "baseline": "react",
         "current": "android",
-        "status": "missing",
-        "rawStatus": "missing",
+        "status": "different",
+        "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": null,
-        "pixelPerfectSimilarity": null,
-        "sideBySideImage": null
+        "rgbSimilarity": 0.9273117024275951,
+        "pixelPerfectSimilarity": 0.7545904727184348,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computer-detail.side-by-side.png"
       }
     },
     {
@@ -4975,6 +5085,61 @@
         "rgbSimilarity": 0.9466752759803281,
         "pixelPerfectSimilarity": 0.9307084700449629,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computers.side-by-side.png"
+      }
+    },
+    {
+      "id": "screens.settings.connected-apps.full-height",
+      "title": "Settings Connected Apps Full Height Screen",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/settings",
+      "surface": "settings",
+      "group": "screens-settings",
+      "status": "baseline",
+      "providers": {
+        "react": {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "IntegrationsSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/screens.settings.connected-apps.full-height.json",
+          "reason": ""
+        },
+        "android": {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "SettingsAppShellContent"
+          ],
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
+          "fixture": "",
+          "reason": ""
+        },
+        "harmony": {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "SettingsAppShellContent"
+          ],
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsPage.kt",
+          "reason": "OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.",
+          "fixture": ""
+        }
+      },
+      "notes": "Full-height (content-height, not viewport-clipped) Settings Connected Apps route for react↔android parity (task #388). React renders IntegrationsSection unclamped, captured fullPage (harness stubs the connected-apps endpoints so it mirrors the canonical seed: Marketplace 3 / Installed 2 / My apps 1, no Storage Sync); short routes report true content height. Android capture (#259) + data alignment (#404/#405 via #262: server_local counts as Installed, Storage Sync placeholder removed) both on main. Validated by the first react↔android full-height pairing (run 28880036248) + fidelity/data alignment (#4103/#4110/#262); active as of 2026-07-07.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
       }
     },
     {

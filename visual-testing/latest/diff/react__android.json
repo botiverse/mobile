@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T22:35:13.047Z",
+  "generatedAt": "2026-07-07T18:05:08.584Z",
   "baseline": "react",
   "current": "android",
   "results": [
@@ -46,7 +46,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:17.683Z"
+        "capturedAt": "2026-07-07T17:28:49.608Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -91,7 +91,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376710978"
+        "capturedAt": "1783446633535"
       },
       "status": "different",
       "baselineSha256": "8707b7de56f02f94532afc0bf0d1393aaeef77143cb1fa6d8bc33dbe02408853",
@@ -157,7 +157,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:20.118Z"
+        "capturedAt": "2026-07-07T17:28:52.079Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -202,7 +202,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376702762"
+        "capturedAt": "1783446665465"
       },
       "status": "different",
       "baselineSha256": "226a81817fc4e8cef746a9d21a3f5616f4cf08c03f4a1d766d70fdf75d6c5f8e",
@@ -268,7 +268,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:22.479Z"
+        "capturedAt": "2026-07-07T17:28:54.813Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -313,7 +313,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376713990"
+        "capturedAt": "1783446692053"
       },
       "status": "different",
       "baselineSha256": "01421188580ddceb8fc00cd8145e76beb0e5945ed564e55efd92b0112fa7393f",
@@ -350,7 +350,7 @@
         "ignoreAntialiasing": true
       },
       "baselineImage": "visual-testing-results/react/components.ui.form-field.states.png",
-      "currentImage": null,
+      "currentImage": "visual-testing-results/android/components.ui.form-field.states.png",
       "baselineMetadata": {
         "provider": "react",
         "providerType": "react-playwright",
@@ -379,10 +379,73 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:24.817Z"
+        "capturedAt": "2026-07-07T17:28:57.929Z"
       },
-      "currentMetadata": null,
-      "status": "missing"
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.ui.form-field.states",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.ui.form-field.states.png",
+        "viewport": {
+          "width": 1026,
+          "height": 678,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 226
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-manual-crop-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 499,
+            "dominantRatio": 0.90823543
+          }
+        },
+        "diagnostics": {
+          "displayWidthPx": 1170,
+          "displayHeightPx": 2342,
+          "densityDpi": 480,
+          "rootWidthPx": 1170,
+          "rootHeightPx": 2414,
+          "hardwareAccelerated": true,
+          "totalViews": 46,
+          "laidOutViews": 37,
+          "visibleContentLeafViews": 3
+        },
+        "clampedToShortWindow": false,
+        "capturedAt": "1783446935374"
+      },
+      "status": "different",
+      "baselineSha256": "86203a7f6348557e8a4f3c6b3027d92ba76932637f1524b5e0df9e7a08dfd91d",
+      "currentSha256": "23e9ce517add00eee7c0d1c08165d37f825c44d709bb4524ec2cee31065d0656",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.form-field.states.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 1026,
+        "baselineHeight": 888,
+        "currentWidth": 1026,
+        "currentHeight": 678,
+        "comparisonWidth": 1026,
+        "comparisonHeight": 888,
+        "rgbSimilarity": 0.8693115673291697,
+        "pixelPerfectSimilarity": 0.8507652389231337,
+        "pixelMismatchRatio": 0.14923476107686628,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
       "id": "components.ui.textarea.states",
@@ -427,7 +490,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:27.200Z"
+        "capturedAt": "2026-07-07T17:29:00.971Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -472,7 +535,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376787383"
+        "capturedAt": "1783446731444"
       },
       "status": "different",
       "baselineSha256": "26ee531643e79ea11c0e3faac2bdb3e9b51f91cfe0393043b82523179a467c2d",
@@ -538,7 +601,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:29.567Z"
+        "capturedAt": "2026-07-07T17:29:03.935Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -583,7 +646,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376914870"
+        "capturedAt": "1783446848638"
       },
       "status": "different",
       "baselineSha256": "816930a2a6dd89619b6a3729a86a8f836903187bb612ae34929cb27288ab2e10",
@@ -649,7 +712,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:31.866Z"
+        "capturedAt": "2026-07-07T17:29:06.740Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -684,17 +747,17 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 30,
           "laidOutViews": 28,
           "visibleContentLeafViews": 3
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376868184"
+        "capturedAt": "1783446945437"
       },
       "status": "different",
       "baselineSha256": "5f5b2207ce5cda5b38a63d5ab46cea13c98d6aaecf400acd4660ddee4b6f795a",
@@ -760,7 +823,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:34.278Z"
+        "capturedAt": "2026-07-07T17:29:09.208Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -805,7 +868,7 @@
           "visibleContentLeafViews": 3
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376877799"
+        "capturedAt": "1783446786709"
       },
       "status": "basic-pass",
       "baselineSha256": "37bf390344c1e8e62f9d693530e294fc003c2f39d7e59a3c6065ade3930ca7b0",
@@ -872,7 +935,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:36.511Z"
+        "capturedAt": "2026-07-07T17:29:11.527Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -901,7 +964,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 289,
+            "uniqueColors": 288,
             "dominantRatio": 0.97261775
           }
         },
@@ -917,11 +980,11 @@
           "visibleContentLeafViews": 5
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376688914"
+        "capturedAt": "1783446629544"
       },
       "status": "basic-pass",
       "baselineSha256": "6ebc2b6cb6816d6e885388baccc11d4846bf8a7b480d6087af3968b3a456d9b1",
-      "currentSha256": "0f183d7b7a7676c70872033d0329389cd758bbf2ba813648a93b2415b77e6ea2",
+      "currentSha256": "76312cb3b925b9922f271b076d71a63e103386c433d5920b14189d9aad12aca5",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.status-dot.states.side-by-side.png",
       "metrics": {
@@ -931,7 +994,7 @@
         "currentHeight": 276,
         "comparisonWidth": 1026,
         "comparisonHeight": 276,
-        "rgbSimilarity": 0.9898225099760125,
+        "rgbSimilarity": 0.9898531521355989,
         "pixelPerfectSimilarity": 0.9771732067689353,
         "pixelMismatchRatio": 0.022826793231064735,
         "compositor": "sharp",
@@ -984,7 +1047,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:38.866Z"
+        "capturedAt": "2026-07-07T17:29:13.858Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1029,7 +1092,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376921742"
+        "capturedAt": "1783446851356"
       },
       "status": "different",
       "baselineSha256": "60378d093f588b0fd24c2052373868793e0e6277cc6f4fff54a22e2e5f437552",
@@ -1095,7 +1158,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:41.085Z"
+        "capturedAt": "2026-07-07T17:29:16.060Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1140,10 +1203,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376980242"
+        "capturedAt": "1783446854093"
       },
       "status": "different",
-      "baselineSha256": "d74e9517a525c12c902054a686db5defc650033d1d5f4065e29922bbd6546b8d",
+      "baselineSha256": "56027651288dfff4aaa366e676d36896cdd6f89a65937c24d593162454bf31fe",
       "currentSha256": "e1ae3e8ab4536b297f061f51de0cae7a0df79281515a13ff061a741d83a54b4d",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.skeleton.states.side-by-side.png",
@@ -1154,7 +1217,7 @@
         "currentHeight": 450,
         "comparisonWidth": 1026,
         "comparisonHeight": 450,
-        "rgbSimilarity": 0.9785802001979046,
+        "rgbSimilarity": 0.9776696012604739,
         "pixelPerfectSimilarity": 0.5502555772146416,
         "pixelMismatchRatio": 0.4497444227853584,
         "compositor": "sharp",
@@ -1206,7 +1269,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:43.368Z"
+        "capturedAt": "2026-07-07T17:29:18.388Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1251,7 +1314,7 @@
           "visibleContentLeafViews": 5
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377010877"
+        "capturedAt": "1783446881981"
       },
       "status": "basic-pass",
       "baselineSha256": "b56585c35629cba1c7beaea5fc3e2713f4769bbb531d15660f93a31fc2d07c12",
@@ -1318,7 +1381,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:45.665Z"
+        "capturedAt": "2026-07-07T17:29:20.726Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1348,26 +1411,26 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 408,
-            "dominantRatio": 0.84117585
+            "dominantRatio": 0.8390428
           }
         },
         "diagnostics": {
-          "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayWidthPx": 1440,
+          "displayHeightPx": 2903,
           "densityDpi": 480,
-          "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootWidthPx": 1440,
+          "rootHeightPx": 2975,
           "hardwareAccelerated": true,
           "totalViews": 28,
           "laidOutViews": 26,
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376903331"
+        "capturedAt": "1783446822538"
       },
       "status": "different",
       "baselineSha256": "a7e276580d7f65dccf1794fecbe28898f04c26494dce1676011bce51e7aae639",
-      "currentSha256": "a1debab128de95178754af92cbdf2039245e3bc273875e1494872d5849f25082",
+      "currentSha256": "ed143ac836e4279fce5c9d48d7bc0a9b3b052557ff3e8d52f60b2e9b0ae39975",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.slug-input.states.side-by-side.png",
       "metrics": {
@@ -1377,9 +1440,9 @@
         "currentHeight": 366,
         "comparisonWidth": 1026,
         "comparisonHeight": 366,
-        "rgbSimilarity": 0.9001189718067483,
-        "pixelPerfectSimilarity": 0.7714105390982009,
-        "pixelMismatchRatio": 0.2285894609017991,
+        "rgbSimilarity": 0.9137845566331133,
+        "pixelPerfectSimilarity": 0.7841663204763578,
+        "pixelMismatchRatio": 0.21583367952364219,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -1429,7 +1492,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:48.047Z"
+        "capturedAt": "2026-07-07T17:29:23.023Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1474,7 +1537,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376718441"
+        "capturedAt": "1783446690436"
       },
       "status": "different",
       "baselineSha256": "aa51f1ca1825626e8bb07bdc1d0375479f73c4150e2927db8e8c7d20c727e468",
@@ -1540,7 +1603,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:50.297Z"
+        "capturedAt": "2026-07-07T17:29:25.269Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1585,7 +1648,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377023858"
+        "capturedAt": "1783446958724"
       },
       "status": "different",
       "baselineSha256": "dce5dfcd287246fec365cf45c7fa979f53e685aff4a4cd1ebdc91a4da5bd23c4",
@@ -1651,7 +1714,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:52.593Z"
+        "capturedAt": "2026-07-07T17:29:27.554Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1696,7 +1759,7 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376761552"
+        "capturedAt": "1783446669965"
       },
       "status": "different",
       "baselineSha256": "9004a607cd21e240b09f34c904599ad91b1726bf65f3e7be0bf35fc6364baef2",
@@ -1762,7 +1825,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:54.853Z"
+        "capturedAt": "2026-07-07T17:29:29.879Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1807,7 +1870,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376677853"
+        "capturedAt": "1783446652586"
       },
       "status": "different",
       "baselineSha256": "3b388eab789b2e81e85a514187772f8d8f8570913c0d72ad23699e16da34412f",
@@ -1873,7 +1936,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:57.201Z"
+        "capturedAt": "2026-07-07T17:29:32.129Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -1908,20 +1971,20 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 26,
           "laidOutViews": 24,
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376763298"
+        "capturedAt": "1783446831420"
       },
-      "status": "different",
-      "baselineSha256": "82cf8495952084357d7be02170ce42704141ddfc5c7780d1fd93daf89d4171c2",
+      "status": "basic-pass",
+      "baselineSha256": "a8130a6890124ce4a82ff270ace5f1cdc6b8eb929f0f3d47389f5764e1204cf9",
       "currentSha256": "ef3212e2904f9d52ed6d7af4f7958f2d2c93aea5258c36000141abd7f9f5f943",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.ui.select.states.side-by-side.png",
@@ -1932,13 +1995,14 @@
         "currentHeight": 582,
         "comparisonWidth": 1026,
         "comparisonHeight": 582,
-        "rgbSimilarity": 0.9100635897983124,
-        "pixelPerfectSimilarity": 0.7378737029668482,
-        "pixelMismatchRatio": 0.2621262970331518,
+        "rgbSimilarity": 0.9794045712799105,
+        "pixelPerfectSimilarity": 0.9681477462269649,
+        "pixelMismatchRatio": 0.03185225377303513,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
       },
+      "acceptance": "basic pass: pixel perfect 96.81% > 96%",
       "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
@@ -1984,7 +2048,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:00:59.587Z"
+        "capturedAt": "2026-07-07T17:29:34.361Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2029,7 +2093,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376826600"
+        "capturedAt": "1783446780331"
       },
       "status": "different",
       "baselineSha256": "768889451e56f43fb9b3e08ce1fea3091c10dde428fa1af458cdfbfb14f18acc",
@@ -2095,7 +2159,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:01.820Z"
+        "capturedAt": "2026-07-07T17:29:36.629Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2140,7 +2204,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376645206"
+        "capturedAt": "1783446597427"
       },
       "status": "different",
       "baselineSha256": "be7713f2c6d9212c7bf90c4c9b7140883c73d0abed952968919a56fb6b45862f",
@@ -2206,7 +2270,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:04.224Z"
+        "capturedAt": "2026-07-07T17:29:39.115Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2216,7 +2280,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.auth.register.inputs.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -2236,36 +2300,36 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 395,
-            "dominantRatio": 0.81993866
+            "dominantRatio": 0.81121516
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 74,
           "laidOutViews": 70,
           "visibleContentLeafViews": 5
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377006874"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447162973"
       },
       "status": "different",
       "baselineSha256": "1aae07ec7634236af25bd519d478b7afef80ebcc6ad26cfdcf4a196891c62889",
-      "currentSha256": "56ea3542ff6a777cdb6fb204173004df60203dbe3e0b0b86c79346ae754e18b0",
+      "currentSha256": "b1cb70999844c216c8c8a5ccf2822ec3efcedcabbd212e61c1c49547d1822bf9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.auth.register.inputs.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9140089484615783,
+        "rgbSimilarity": 0.9068945740982038,
         "pixelPerfectSimilarity": 0.8341721688878087,
         "pixelMismatchRatio": 0.16582783111219135,
         "compositor": "sharp",
@@ -2317,7 +2381,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:06.459Z"
+        "capturedAt": "2026-07-07T17:29:41.403Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2362,7 +2426,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376800141"
+        "capturedAt": "1783446743691"
       },
       "status": "different",
       "baselineSha256": "9c9ef7e825dbf221d9242ecf8ccc8a55f281427f422c83d3a10cc31657e73707",
@@ -2428,7 +2492,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:08.782Z"
+        "capturedAt": "2026-07-07T17:29:43.826Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2457,27 +2521,27 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 221,
-            "dominantRatio": 0.84555554
+            "uniqueColors": 206,
+            "dominantRatio": 0.87031513
           }
         },
         "diagnostics": {
-          "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayWidthPx": 1440,
+          "displayHeightPx": 2903,
           "densityDpi": 480,
-          "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootWidthPx": 1440,
+          "rootHeightPx": 2975,
           "hardwareAccelerated": true,
           "totalViews": 47,
           "laidOutViews": 45,
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376968083"
+        "capturedAt": "1783446869107"
       },
       "status": "different",
       "baselineSha256": "e913320c61d588793f59108e76a59a6277118b4b14f5c7fa2fa145b256141554",
-      "currentSha256": "ce0e3ba043b3365049efd03dd0f92f8632bfca6e0ca3149f65febecf2a02387d",
+      "currentSha256": "4b0f24b2756e052da522cd2d8e58b8caa0dc8b5dbd45bd1683f3c7f4fbb85dc9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png",
       "metrics": {
@@ -2487,9 +2551,9 @@
         "currentHeight": 300,
         "comparisonWidth": 1026,
         "comparisonHeight": 300,
-        "rgbSimilarity": 0.8706240364891888,
-        "pixelPerfectSimilarity": 0.8049642625081221,
-        "pixelMismatchRatio": 0.19503573749187786,
+        "rgbSimilarity": 0.8802546046792075,
+        "pixelPerfectSimilarity": 0.8109779077322937,
+        "pixelMismatchRatio": 0.18902209226770628,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -2539,7 +2603,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:11.097Z"
+        "capturedAt": "2026-07-07T17:29:46.409Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2574,17 +2638,17 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 46,
           "laidOutViews": 44,
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376743406"
+        "capturedAt": "1783446812873"
       },
       "status": "different",
       "baselineSha256": "18d06275ab1cf3a96d478c77c7ea18e59a753b145881dd63122c58b6d3f81fdc",
@@ -2650,7 +2714,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:13.531Z"
+        "capturedAt": "2026-07-07T17:29:49.125Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2695,7 +2759,7 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376739959"
+        "capturedAt": "1783446707208"
       },
       "status": "different",
       "baselineSha256": "de285c2b95520ad2789f13101a6e05ffd9d8a01cd37ca288d456d047e414ae84",
@@ -2761,7 +2825,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:16.085Z"
+        "capturedAt": "2026-07-07T17:29:51.876Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2806,10 +2870,10 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376930551"
+        "capturedAt": "1783446860109"
       },
       "status": "different",
-      "baselineSha256": "8b8e856ba87754f8aab44f82023f5fc105c2b2e826607d162410c273a14098aa",
+      "baselineSha256": "b48a2fa36266f3b1c56937ccee3f01aed14de9f6173ed1c9ad94a4a2e2c8b447",
       "currentSha256": "1f2d33910b843837800568429c2d574d343535274663db4c846d8eead0f4e366",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png",
@@ -2820,9 +2884,9 @@
         "currentHeight": 960,
         "comparisonWidth": 1026,
         "comparisonHeight": 960,
-        "rgbSimilarity": 0.8415582425032163,
-        "pixelPerfectSimilarity": 0.7723745126705653,
-        "pixelMismatchRatio": 0.22762548732943466,
+        "rgbSimilarity": 0.8415600447727491,
+        "pixelPerfectSimilarity": 0.7723734974009097,
+        "pixelMismatchRatio": 0.22762650259909034,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -2872,7 +2936,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:18.612Z"
+        "capturedAt": "2026-07-07T17:29:54.590Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -2907,17 +2971,17 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 80,
           "laidOutViews": 78,
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377107342"
+        "capturedAt": "1783447294830"
       },
       "status": "different",
       "baselineSha256": "380f0744e677d1c0bc9d7193f59ddba4e20fe99ffa2d80444007848158a68a08",
@@ -2983,7 +3047,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:26.254Z"
+        "capturedAt": "2026-07-07T17:30:02.364Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3028,7 +3092,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376643925"
+        "capturedAt": "1783446632582"
       },
       "status": "different",
       "baselineSha256": "c297300a4c1f64e822b5850d3dee45060aa9de63ae8363f784bd149e61ff602d",
@@ -3094,7 +3158,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:28.654Z"
+        "capturedAt": "2026-07-07T17:30:04.965Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3123,7 +3187,7 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 346,
+            "uniqueColors": 357,
             "dominantRatio": 0.8785628
           }
         },
@@ -3139,11 +3203,11 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376761023"
+        "capturedAt": "1783446681112"
       },
       "status": "different",
       "baselineSha256": "116ea55a8a83eecbc67e56a887c164f5a3bbc5e7b5195da6d1ca658e434badb8",
-      "currentSha256": "5ea9fdc1b6e4178cb0446f2e6c81bb357e50678cdee995d2db6968db3ca485ba",
+      "currentSha256": "e82202d0cbfad692101195f9a6d906028691570f2cf1d8524f0bb001df0f0b40",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.files.list.side-by-side.png",
       "metrics": {
@@ -3153,9 +3217,9 @@
         "currentHeight": 1080,
         "comparisonWidth": 1170,
         "comparisonHeight": 1080,
-        "rgbSimilarity": 0.8963156237909278,
-        "pixelPerfectSimilarity": 0.8267212725546059,
-        "pixelMismatchRatio": 0.17327872744539408,
+        "rgbSimilarity": 0.8963809429226958,
+        "pixelPerfectSimilarity": 0.8267378917378917,
+        "pixelMismatchRatio": 0.1732621082621083,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3205,7 +3269,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:31.182Z"
+        "capturedAt": "2026-07-07T17:30:07.691Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3250,10 +3314,10 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376972344"
+        "capturedAt": "1783446916235"
       },
       "status": "different",
-      "baselineSha256": "3e39d709d81fdf4b4162a8d8b4c4c93e19a94c09640ef5f7c3a6c5c78754d1b4",
+      "baselineSha256": "b6fd0ccd685914c23f2449216fe37c23c24c2a740d49854671d425f19f67937b",
       "currentSha256": "abd5c0653b74e4d1ed884514127616775e73238f89cfecc71bee571827f8022b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png",
@@ -3264,9 +3328,9 @@
         "currentHeight": 360,
         "comparisonWidth": 1170,
         "comparisonHeight": 360,
-        "rgbSimilarity": 0.8808516563320503,
-        "pixelPerfectSimilarity": 0.8406410256410256,
-        "pixelMismatchRatio": 0.1593589743589744,
+        "rgbSimilarity": 0.8819324277352589,
+        "pixelPerfectSimilarity": 0.8420489078822412,
+        "pixelMismatchRatio": 0.15795109211775882,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3316,7 +3380,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:33.563Z"
+        "capturedAt": "2026-07-07T17:30:10.170Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3361,10 +3425,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376868099"
+        "capturedAt": "1783446774970"
       },
       "status": "different",
-      "baselineSha256": "69b7f20d5fd3b466e8bb056d3de11ee2580740ba9c2103225a3b94494c42bd9e",
+      "baselineSha256": "0e2656608f2f700b2d65f7d2790b94902f6d7778fff2ebaac5e61b4723d3c862",
       "currentSha256": "d3881a5043a7bc068362eb148aba659ba39b67e31728d614fd1025ed6affdd12",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png",
@@ -3375,9 +3439,9 @@
         "currentHeight": 324,
         "comparisonWidth": 1122,
         "comparisonHeight": 324,
-        "rgbSimilarity": 0.8540169699327234,
-        "pixelPerfectSimilarity": 0.6713100503950177,
-        "pixelMismatchRatio": 0.3286899496049823,
+        "rgbSimilarity": 0.8602841391832339,
+        "pixelPerfectSimilarity": 0.7133178187099756,
+        "pixelMismatchRatio": 0.28668218129002443,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -3427,7 +3491,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:35.891Z"
+        "capturedAt": "2026-07-07T17:30:12.601Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3472,7 +3536,7 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376826902"
+        "capturedAt": "1783446777715"
       },
       "status": "different",
       "baselineSha256": "16b90f6e5814dc85b54b055835441efff2d435a6939242e53559e3dfc330d775",
@@ -3538,7 +3602,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:38.445Z"
+        "capturedAt": "2026-07-07T17:30:15.205Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3583,10 +3647,10 @@
           "visibleContentLeafViews": 9
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376755253"
+        "capturedAt": "1783446722130"
       },
       "status": "different",
-      "baselineSha256": "5fb2ee5190a11bbf6ab51251403d899f59485d21ac63eed4cecaef512c57ef18",
+      "baselineSha256": "0de018400587f694f1308d15a2f26104d3444e879d3132a19cc5b2df54fde29e",
       "currentSha256": "38476970903dfa2b2e07fd68e52928de4fc62ac05d580f898279238386ecfa04",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.default.side-by-side.png",
@@ -3597,7 +3661,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9316937623314016,
+        "rgbSimilarity": 0.9316933144582343,
         "pixelPerfectSimilarity": 0.9089358771823227,
         "pixelMismatchRatio": 0.09106412281767728,
         "compositor": "sharp",
@@ -3649,7 +3713,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:41.013Z"
+        "capturedAt": "2026-07-07T17:30:17.722Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3694,10 +3758,10 @@
           "visibleContentLeafViews": 9
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376789465"
+        "capturedAt": "1783446704599"
       },
       "status": "different",
-      "baselineSha256": "569528b5ba5b7a79c026b0b6facf94aa23996f54834eadb7c10c64dc659bfa03",
+      "baselineSha256": "9a5d71e3ed34de771e731003bd567f3bef1210f2cd67a80e754b6949cb4167d1",
       "currentSha256": "7536b9f97ca3576ebc48f32785b0adcec90f49b343183f58f76f6d1147639237",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-menu.task.side-by-side.png",
@@ -3708,7 +3772,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9274233671360602,
+        "rgbSimilarity": 0.9274225539042895,
         "pixelPerfectSimilarity": 0.8974072048716598,
         "pixelMismatchRatio": 0.10259279512834019,
         "compositor": "sharp",
@@ -3760,7 +3824,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:43.478Z"
+        "capturedAt": "2026-07-07T17:30:20.171Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3805,10 +3869,10 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376849048"
+        "capturedAt": "1783446796232"
       },
       "status": "different",
-      "baselineSha256": "b37a829dc69313147e0f436684488e747db2c0ca5cb50fb513b8b656224179d9",
+      "baselineSha256": "4ab061f3de98b30d7474181cd4ed811852e6d586b5189874831aa54da1d24795",
       "currentSha256": "3f176a10aefb5217d668f4bd6f08aa003b17cc717e0a2423833fa219feb4b1a1",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-share.selection.side-by-side.png",
@@ -3819,7 +3883,7 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9320667210998138,
+        "rgbSimilarity": 0.9320658302072773,
         "pixelPerfectSimilarity": 0.8453166983972671,
         "pixelMismatchRatio": 0.15468330160273291,
         "compositor": "sharp",
@@ -3871,7 +3935,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:45.906Z"
+        "capturedAt": "2026-07-07T17:30:22.598Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -3916,7 +3980,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376764416"
+        "capturedAt": "1783446717300"
       },
       "status": "basic-pass",
       "baselineSha256": "a8b05342ca4c3d745fde712e6846b19239099ba481790fb2c5c2eb8526f87b96",
@@ -3983,7 +4047,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:48.198Z"
+        "capturedAt": "2026-07-07T17:30:25.022Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4012,27 +4076,27 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 401,
-            "dominantRatio": 0.9187599
+            "uniqueColors": 398,
+            "dominantRatio": 0.918368
           }
         },
         "diagnostics": {
-          "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayWidthPx": 1440,
+          "displayHeightPx": 2903,
           "densityDpi": 480,
-          "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootWidthPx": 1440,
+          "rootHeightPx": 2975,
           "hardwareAccelerated": true,
           "totalViews": 57,
           "laidOutViews": 55,
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376889058"
+        "capturedAt": "1783446810297"
       },
       "status": "different",
       "baselineSha256": "3e82886a1130d5225cff26961eb5e9dd7ee8914a2ba70ef433e96f4988e8d926",
-      "currentSha256": "c8ec629b9e235d207e3eed26b8a3fc248a80998d31af55ab69b410278143e7fe",
+      "currentSha256": "ae4373f249e90f35dd8a705d5f8cf8a453403779c564c69cccc54af33cf454cc",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.notification-center.states.side-by-side.png",
       "metrics": {
@@ -4042,9 +4106,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9445165987973411,
-        "pixelPerfectSimilarity": 0.9000054009532682,
-        "pixelMismatchRatio": 0.0999945990467318,
+        "rgbSimilarity": 0.948696595537338,
+        "pixelPerfectSimilarity": 0.9054330214282821,
+        "pixelMismatchRatio": 0.09456697857171792,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4094,7 +4158,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:51.474Z"
+        "capturedAt": "2026-07-07T17:30:28.282Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4139,10 +4203,10 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376737306"
+        "capturedAt": "1783446651056"
       },
       "status": "different",
-      "baselineSha256": "f75868ab8d32de1f7a81bff35cb1347f94782e919622c0c654c17918b3cd83e1",
+      "baselineSha256": "fc71427ca964358d116407c33625581b395cc184e1534bad5895eb9d51dca25d",
       "currentSha256": "ac6c1cae688255dea64335fee40a7ce991dd6c0e61d1e88e951ab12b927eb981",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.results.side-by-side.png",
@@ -4153,9 +4217,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9012026202041031,
-        "pixelPerfectSimilarity": 0.7664671689553206,
-        "pixelMismatchRatio": 0.23353283104467937,
+        "rgbSimilarity": 0.9012020518684979,
+        "pixelPerfectSimilarity": 0.7664648060382657,
+        "pixelMismatchRatio": 0.23353519396173428,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4205,7 +4269,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:55.106Z"
+        "capturedAt": "2026-07-07T17:30:31.916Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4234,8 +4298,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 664,
-            "dominantRatio": 0.823803
+            "uniqueColors": 671,
+            "dominantRatio": 0.8316168
           }
         },
         "diagnostics": {
@@ -4250,11 +4314,11 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376673347"
+        "capturedAt": "1783446655435"
       },
       "status": "different",
-      "baselineSha256": "a239e04d7090307e42b22ed77ec997fe8b30991097b217ab43147224109a4162",
-      "currentSha256": "6156740ddd41fd7b5c13beb11dd627e123d2dc3ffe5fdb0cf9d62834b661af67",
+      "baselineSha256": "8adb65c05b1d134d270db51339866dfb740c2f401ff0d9013e6fc7532cc2a783",
+      "currentSha256": "1eddfccd8f6178ec817ae613049609cab348b888b6c0c21507568b311deefad5",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.search.channel-dropdown.side-by-side.png",
       "metrics": {
@@ -4264,9 +4328,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8931465905203572,
-        "pixelPerfectSimilarity": 0.7643088130054955,
-        "pixelMismatchRatio": 0.23569118699450453,
+        "rgbSimilarity": 0.9016486846697755,
+        "pixelPerfectSimilarity": 0.7705813451074115,
+        "pixelMismatchRatio": 0.2294186548925885,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4316,7 +4380,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:01:58.421Z"
+        "capturedAt": "2026-07-07T17:30:35.318Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4361,10 +4425,10 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377036479"
+        "capturedAt": "1783446931691"
       },
       "status": "different",
-      "baselineSha256": "f07668c1d709a28d2cb45a08d456b026c9547bfee6edc0c9a41928223ee217ff",
+      "baselineSha256": "d4e47e196404ee3e891c47843be1f9e85455269236c4f7efe95848ec0174b3db",
       "currentSha256": "96ad271c84f9b82dcd53bdd99d54186581c253865389e121bb2a1314ee584ba2",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.saved.results.side-by-side.png",
@@ -4375,9 +4439,9 @@
         "currentHeight": 1860,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
-        "rgbSimilarity": 0.918888545028624,
-        "pixelPerfectSimilarity": 0.8624143243413193,
-        "pixelMismatchRatio": 0.13758567565868074,
+        "rgbSimilarity": 0.9188853078103959,
+        "pixelPerfectSimilarity": 0.8623986040369741,
+        "pixelMismatchRatio": 0.1376013959630259,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4427,7 +4491,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:01.624Z"
+        "capturedAt": "2026-07-07T17:30:38.699Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4462,20 +4526,20 @@
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 117,
           "laidOutViews": 109,
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376697535"
+        "capturedAt": "1783446718429"
       },
       "status": "different",
-      "baselineSha256": "c8648f17f20ac8db776486c6e78adaaa042c099e19bb5a49d31bdf5ef75ec6bb",
+      "baselineSha256": "3de814c02d9c15389419777f544c18ad687b8a855d4f1d0337d27f5403df9457",
       "currentSha256": "2683378f5025467c57146f30eb41f5f47cb9b14d9aa590d2d377e5e91fd7f4a8",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.home.activity.results.side-by-side.png",
@@ -4486,9 +4550,9 @@
         "currentHeight": 1860,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
-        "rgbSimilarity": 0.9199496936561131,
-        "pixelPerfectSimilarity": 0.858834287031797,
-        "pixelMismatchRatio": 0.14116571296820302,
+        "rgbSimilarity": 0.9199188352809173,
+        "pixelPerfectSimilarity": 0.8587127166781949,
+        "pixelMismatchRatio": 0.14128728332180507,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4538,7 +4602,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:04.239Z"
+        "capturedAt": "2026-07-07T17:30:41.379Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4548,7 +4612,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.tasks.panel.states.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -4567,39 +4631,39 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 659,
-            "dominantRatio": 0.8032082
+            "uniqueColors": 613,
+            "dominantRatio": 0.8028253
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 182,
           "laidOutViews": 172,
           "visibleContentLeafViews": 0
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376783042"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783446866191"
       },
       "status": "different",
       "baselineSha256": "1478228cdf016b9eca5fc9f9986320b3db89f1050d8ff3c2414fc509453cb7fa",
-      "currentSha256": "fa5f65fc37625a1e9ae3568c0d11ef480279080fec1d90feb8ac0520a3232883",
+      "currentSha256": "e3f11b4a6e9a30ac12a00afc741a3ad529c55de63f491060d150da97d39604e4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.tasks.panel.states.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8760197820503213,
-        "pixelPerfectSimilarity": 0.8128049850798666,
-        "pixelMismatchRatio": 0.18719501492013335,
+        "rgbSimilarity": 0.8639645415061807,
+        "pixelPerfectSimilarity": 0.8206056493971186,
+        "pixelMismatchRatio": 0.17939435060288145,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4649,7 +4713,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:06.807Z"
+        "capturedAt": "2026-07-07T17:30:43.781Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4694,7 +4758,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376959829"
+        "capturedAt": "1783446838578"
       },
       "status": "different",
       "baselineSha256": "eaae081a36beb0a311f0b49b7a8787baa6f3e20e89c78790f9527f76694cd9c3",
@@ -4760,7 +4824,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:09.187Z"
+        "capturedAt": "2026-07-07T17:30:46.215Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4805,7 +4869,7 @@
           "visibleContentLeafViews": 5
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376967632"
+        "capturedAt": "1783446892697"
       },
       "status": "different",
       "baselineSha256": "6dd11028ef3c35febfde4752576078ced87c2e095d20c60c0ff9ba8666498aa7",
@@ -4871,7 +4935,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:11.678Z"
+        "capturedAt": "2026-07-07T17:30:48.749Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4916,10 +4980,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376959068"
+        "capturedAt": "1783446888220"
       },
       "status": "different",
-      "baselineSha256": "762dac70b4635a43da81854eb5c4a9eb831b0b1b53d71e789a6cd352f6b8d384",
+      "baselineSha256": "f9cfc511f2c20899bf8d8b2aac94d94ad3efba36a678329006929176c4bafec8",
       "currentSha256": "4eff7369a5aed302c0e16df5441341a62340abd5d6a4851b5bf7aee4ba5591e9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png",
@@ -4930,9 +4994,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.84539977158908,
-        "pixelPerfectSimilarity": 0.7737641943803081,
-        "pixelMismatchRatio": 0.22623580561969192,
+        "rgbSimilarity": 0.847958039005384,
+        "pixelPerfectSimilarity": 0.7784103644293218,
+        "pixelMismatchRatio": 0.22158963557067823,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -4982,7 +5046,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:14.146Z"
+        "capturedAt": "2026-07-07T17:30:51.437Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -4992,7 +5056,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.members.create-agent.claude-dialog.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -5011,39 +5075,39 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 311,
-            "dominantRatio": 0.759901
+            "uniqueColors": 318,
+            "dominantRatio": 0.7579296
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 137,
           "laidOutViews": 133,
           "visibleContentLeafViews": 2
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377028029"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447194047"
       },
       "status": "different",
-      "baselineSha256": "6a5c4cc82566204370996bcc1107e4721def682ff7cd46b6d274031b99cbc6eb",
-      "currentSha256": "8fc9ee4151d2f8233e373708fc0ca627d64f27897690dabbccc2f3b3b1763cb7",
+      "baselineSha256": "40ceab2cc32b7f1a89e0e826e65cf2b3f539b626b8662be23a550e351c16cca6",
+      "currentSha256": "51c7c5f88cdb7b6571b4916d920860fc804ffd18a94e531db165360aec7387b1",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8330240038838985,
-        "pixelPerfectSimilarity": 0.7316175179919255,
-        "pixelMismatchRatio": 0.26838248200807446,
+        "rgbSimilarity": 0.8387882674524972,
+        "pixelPerfectSimilarity": 0.7461055751340111,
+        "pixelMismatchRatio": 0.2538944248659889,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5109,7 +5173,7 @@
           "visibleContentLeafViews": 5
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376866720"
+        "capturedAt": "1783446797067"
       },
       "status": "missing"
     },
@@ -5156,7 +5220,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:47.905Z"
+        "capturedAt": "2026-07-07T17:31:25.171Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5201,11 +5265,11 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377010494"
+        "capturedAt": "1783446914536"
       },
       "status": "different",
-      "baselineSha256": "13c2e0ab81c9f9e8d9ed3a4bf6ef6053e549a74505af52e690cfabd31e35ce94",
-      "currentSha256": "072dce262fdb6b895ee9914a092498b98187ea746b6286da82dd723119550f4d",
+      "baselineSha256": "069ae4d81a1c15593d0a7a1a7e741cc230b2618b091ae5e30937d3ebea94a003",
+      "currentSha256": "3b8a7de0668aef993820ad7b7bb634ae18665a0d55a572749d3049d542240fd0",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-detail.profile.side-by-side.png",
       "metrics": {
@@ -5215,9 +5279,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8980648322665775,
-        "pixelPerfectSimilarity": 0.8184800367264822,
-        "pixelMismatchRatio": 0.18151996327351783,
+        "rgbSimilarity": 0.8982060107139842,
+        "pixelPerfectSimilarity": 0.8183585152779466,
+        "pixelMismatchRatio": 0.18164148472205344,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5267,7 +5331,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:50.693Z"
+        "capturedAt": "2026-07-07T17:31:28.152Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5312,7 +5376,7 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376837565"
+        "capturedAt": "1783446769701"
       },
       "status": "different",
       "baselineSha256": "788dc49e77a35f5a8b128b5faaa2c5625c7c963486fa56cda403ff1bd7882750",
@@ -5378,7 +5442,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:53.136Z"
+        "capturedAt": "2026-07-07T17:31:30.692Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5423,7 +5487,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376745399"
+        "capturedAt": "1783446702998"
       },
       "status": "different",
       "baselineSha256": "5560f7a4a0290cb1d13e14d32837556cbb144e8aec4b329438ab6d1457bced16",
@@ -5489,7 +5553,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:55.998Z"
+        "capturedAt": "2026-07-07T17:31:33.606Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5534,7 +5598,7 @@
           "visibleContentLeafViews": 3
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376989602"
+        "capturedAt": "1783446930829"
       },
       "status": "different",
       "baselineSha256": "3eec9edb4062ce615dac70c6e609a76ae4cd873aa139cf052d703b6e622a87cc",
@@ -5600,7 +5664,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:02:58.424Z"
+        "capturedAt": "2026-07-07T17:31:36.100Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5645,7 +5709,7 @@
           "visibleContentLeafViews": 4
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377008990"
+        "capturedAt": "1783446944622"
       },
       "status": "different",
       "baselineSha256": "dfff5f6aad3a4ec5a3bdf955e06455bda501af35deea201cf2b161131aa4d1e5",
@@ -5711,7 +5775,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:00.907Z"
+        "capturedAt": "2026-07-07T17:31:38.532Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5756,7 +5820,7 @@
           "visibleContentLeafViews": 4
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376894060"
+        "capturedAt": "1783446833566"
       },
       "status": "different",
       "baselineSha256": "dfff5f6aad3a4ec5a3bdf955e06455bda501af35deea201cf2b161131aa4d1e5",
@@ -5822,7 +5886,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:03.328Z"
+        "capturedAt": "2026-07-07T17:31:41.000Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5832,7 +5896,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.account.provider-linked.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -5851,39 +5915,39 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 488,
-            "dominantRatio": 0.8506957
+            "uniqueColors": 468,
+            "dominantRatio": 0.8654658
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 124,
           "laidOutViews": 121,
           "visibleContentLeafViews": 4
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377157892"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447373530"
       },
       "status": "different",
       "baselineSha256": "dfff5f6aad3a4ec5a3bdf955e06455bda501af35deea201cf2b161131aa4d1e5",
-      "currentSha256": "97ca264e4466241d2f8ee9011f5c908aa6bb0dfe4be4d695469423140a73c967",
+      "currentSha256": "e17bc25018a98e3230745d23b6a5a920013681a1252954c120edb707ade87408",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.provider-linked.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8860526625592601,
-        "pixelPerfectSimilarity": 0.7914519787742537,
-        "pixelMismatchRatio": 0.20854802122574634,
+        "rgbSimilarity": 0.890710192260553,
+        "pixelPerfectSimilarity": 0.8065803864382064,
+        "pixelMismatchRatio": 0.1934196135617936,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -5933,7 +5997,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:05.923Z"
+        "capturedAt": "2026-07-07T17:31:43.584Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -5978,7 +6042,7 @@
           "visibleContentLeafViews": 7
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376654018"
+        "capturedAt": "1783446631659"
       },
       "status": "different",
       "baselineSha256": "6ea9a51a246d37d603b894c7176db4948cfa641ff2578be7df865d04ea757032",
@@ -6044,7 +6108,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:08.337Z"
+        "capturedAt": "2026-07-07T17:31:46.133Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6069,12 +6133,12 @@
           }
         },
         "capture": {
-          "method": "app-window-root-draw-viewport-density-resize",
+          "method": "ui-automation-take-screenshot-viewport-crop",
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 546,
-            "dominantRatio": 0.78314495
+            "uniqueColors": 714,
+            "dominantRatio": 0.7782963
           }
         },
         "diagnostics": {
@@ -6089,11 +6153,11 @@
           "visibleContentLeafViews": 7
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376689994"
+        "capturedAt": "1783446618213"
       },
       "status": "different",
       "baselineSha256": "0f91d39ae8a40e5cebebb5e32cff733370231e0ad881408f7a1a6c52da46016d",
-      "currentSha256": "a651ce7b3473240d94391e66a479a0b283ad8a0c5c878af3ed02804dffe2e487",
+      "currentSha256": "647c9620e3dd0889a6a3cb276d0c317090cbd36bb32462c606aab15b7bcf6fe9",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.account.error-state.side-by-side.png",
       "metrics": {
@@ -6103,9 +6167,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8862300940232675,
-        "pixelPerfectSimilarity": 0.6903755012759752,
-        "pixelMismatchRatio": 0.30962449872402475,
+        "rgbSimilarity": 0.8852723585123559,
+        "pixelPerfectSimilarity": 0.6866633585827898,
+        "pixelMismatchRatio": 0.3133366414172102,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6155,7 +6219,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:10.716Z"
+        "capturedAt": "2026-07-07T17:31:48.591Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6200,7 +6264,7 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376715520"
+        "capturedAt": "1783446649350"
       },
       "status": "different",
       "baselineSha256": "739357c753455e794868696c0d15e618c225d77f033b641e19e59001e53b3c6e",
@@ -6266,7 +6330,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:13.225Z"
+        "capturedAt": "2026-07-07T17:31:50.983Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6295,27 +6359,27 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 385,
-            "dominantRatio": 0.8914783
+            "uniqueColors": 395,
+            "dominantRatio": 0.89146006
           }
         },
         "diagnostics": {
-          "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayWidthPx": 1440,
+          "displayHeightPx": 2903,
           "densityDpi": 480,
-          "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootWidthPx": 1440,
+          "rootHeightPx": 2975,
           "hardwareAccelerated": true,
           "totalViews": 85,
           "laidOutViews": 82,
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376862438"
+        "capturedAt": "1783446785102"
       },
       "status": "different",
-      "baselineSha256": "3a6d790f15892c2d67cfebb8b594c59d23375437e43618591b68f44595151e5b",
-      "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
+      "baselineSha256": "a4384868e28487056afc0cfabc2f15a9a054b844b0acd1a6dd8e0e4d2cba0219",
+      "currentSha256": "3cf8263966bca8a779c0d4bddbca848ce47f9f6e2b15f14b0ae1f50b2f0da00a",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.admins.side-by-side.png",
       "metrics": {
@@ -6325,9 +6389,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9260610115333979,
-        "pixelPerfectSimilarity": 0.8321245324799827,
-        "pixelMismatchRatio": 0.16787546752001725,
+        "rgbSimilarity": 0.919112473351568,
+        "pixelPerfectSimilarity": 0.8086762938658674,
+        "pixelMismatchRatio": 0.19132370613413263,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6377,7 +6441,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:15.556Z"
+        "capturedAt": "2026-07-07T17:31:53.330Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6422,10 +6486,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376849993"
+        "capturedAt": "1783446761621"
       },
       "status": "different",
-      "baselineSha256": "01f1b61e43e8293311aec3039997dd2506c18eebfbab090db935ab9793352955",
+      "baselineSha256": "f1bb945b0e1cc3a8e7efbc1bcfaa2a5f5850c6ab71728e6bb28ebc1185cb5668",
       "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.invites.side-by-side.png",
@@ -6436,9 +6500,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9405152253490587,
-        "pixelPerfectSimilarity": 0.8790196594698965,
-        "pixelMismatchRatio": 0.12098034053010354,
+        "rgbSimilarity": 0.942541755237426,
+        "pixelPerfectSimilarity": 0.8771853607161664,
+        "pixelMismatchRatio": 0.12281463928383363,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6488,7 +6552,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:17.984Z"
+        "capturedAt": "2026-07-07T17:31:55.684Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6498,7 +6562,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.administration.join-links.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -6518,38 +6582,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 385,
-            "dominantRatio": 0.8914783
+            "dominantRatio": 0.88622075
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 85,
           "laidOutViews": 82,
           "visibleContentLeafViews": 2
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376723072"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783446791664"
       },
       "status": "different",
-      "baselineSha256": "df3044b6504c2048d8a7810fcbf050a36203dd4892fabbade4d2d24205c49b11",
-      "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
+      "baselineSha256": "3f989f673a51ac7cade7f30a7ebc877ed0cd4050af6a80cf58f66cd296249c8e",
+      "currentSha256": "07a7f17b3558ecdafa35bd5d886e0fbf8b39fda0ce63cac48bc276d98fc979a4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.join-links.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9126209339185478,
-        "pixelPerfectSimilarity": 0.8550775711913152,
-        "pixelMismatchRatio": 0.14492242880868478,
+        "rgbSimilarity": 0.9076004301525419,
+        "pixelPerfectSimilarity": 0.8545435519369169,
+        "pixelMismatchRatio": 0.1454564480630831,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6599,7 +6663,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:21.131Z"
+        "capturedAt": "2026-07-07T17:31:58.132Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6609,7 +6673,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.administration.pre-join-agreement.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -6629,38 +6693,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 385,
-            "dominantRatio": 0.8914783
+            "dominantRatio": 0.88622075
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 85,
           "laidOutViews": 82,
           "visibleContentLeafViews": 2
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377059448"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447239652"
       },
       "status": "different",
-      "baselineSha256": "3acc5f0a20f8728a3e76cf5613f524953d2e0aa5c685a175bda4b1afcb1623e6",
-      "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
+      "baselineSha256": "e17fe7d511eaa06501885635fb435dc4f4e720be8db23fca373d1960c85b6132",
+      "currentSha256": "07a7f17b3558ecdafa35bd5d886e0fbf8b39fda0ce63cac48bc276d98fc979a4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9071771502965216,
-        "pixelPerfectSimilarity": 0.7661410864017499,
-        "pixelMismatchRatio": 0.23385891359825006,
+        "rgbSimilarity": 0.9000221381722114,
+        "pixelPerfectSimilarity": 0.7443512780005671,
+        "pixelMismatchRatio": 0.2556487219994329,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6710,7 +6774,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:24.256Z"
+        "capturedAt": "2026-07-07T17:32:00.521Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6755,10 +6819,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376920603"
+        "capturedAt": "1783446846747"
       },
       "status": "different",
-      "baselineSha256": "e2f214841081d25278376ba076b9bc3f12f399899b9f0a7678eb4677a862da8c",
+      "baselineSha256": "32691d2e313b192e0a0cc1091976ac4150345cf11014975ed1087e5b55335418",
       "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.onboarding.side-by-side.png",
@@ -6769,9 +6833,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9187260152888912,
-        "pixelPerfectSimilarity": 0.8505127530009047,
-        "pixelMismatchRatio": 0.14948724699909532,
+        "rgbSimilarity": 0.9175244218840868,
+        "pixelPerfectSimilarity": 0.8525698410769501,
+        "pixelMismatchRatio": 0.1474301589230499,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6821,7 +6885,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:27.232Z"
+        "capturedAt": "2026-07-07T17:32:02.882Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6866,10 +6930,10 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376694323"
+        "capturedAt": "1783446676915"
       },
       "status": "different",
-      "baselineSha256": "37e65296c1b58b15953c4aca7430b2fca7c5f9b01b59d3fe80494ae9aa417f30",
+      "baselineSha256": "b6d05d4cb041223fc1bc4d20eb738cb55b2dac0563b5c1bb0977f0ec4431b8c8",
       "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.member-permissions.side-by-side.png",
@@ -6880,9 +6944,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9345435634096005,
-        "pixelPerfectSimilarity": 0.867945004793346,
-        "pixelMismatchRatio": 0.13205499520665398,
+        "rgbSimilarity": 0.9341823243567899,
+        "pixelPerfectSimilarity": 0.8675713263390988,
+        "pixelMismatchRatio": 0.13242867366090116,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -6932,7 +6996,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:30.173Z"
+        "capturedAt": "2026-07-07T17:32:05.249Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -6942,7 +7006,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.administration.translation.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -6962,38 +7026,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 385,
-            "dominantRatio": 0.8914783
+            "dominantRatio": 0.88622075
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 85,
           "laidOutViews": 82,
           "visibleContentLeafViews": 2
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376948818"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447054805"
       },
       "status": "different",
-      "baselineSha256": "8a0d1b1cb284acd9b60e26a03dc4a8875d2fade97e2123787261368d140f4ee5",
-      "currentSha256": "7afc3172bc60b9ea17107e8ba24450e2b9f3082d5d800463770fa41465cdc8f5",
+      "baselineSha256": "ec6b42e37a783d65d3770159dc64bc32f4ea1b205da385abd6206f4bdd64b52a",
+      "currentSha256": "07a7f17b3558ecdafa35bd5d886e0fbf8b39fda0ce63cac48bc276d98fc979a4",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.administration.translation.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9385403076584854,
-        "pixelPerfectSimilarity": 0.8715933487260501,
-        "pixelMismatchRatio": 0.1284066512739499,
+        "rgbSimilarity": 0.9308994515473791,
+        "pixelPerfectSimilarity": 0.868254884487112,
+        "pixelMismatchRatio": 0.13174511551288803,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7043,7 +7107,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:32.695Z"
+        "capturedAt": "2026-07-07T17:32:07.806Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7088,7 +7152,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376794653"
+        "capturedAt": "1783446750328"
       },
       "status": "different",
       "baselineSha256": "3ab5013c166a2172b312e0e256d22796357835fada41a500f8642bf069cb195b",
@@ -7154,7 +7218,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:35.351Z"
+        "capturedAt": "2026-07-07T17:32:10.377Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7164,7 +7228,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.language-region.page.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -7184,38 +7248,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 349,
-            "dominantRatio": 0.88865596
+            "dominantRatio": 0.8832617
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 125,
           "laidOutViews": 122,
           "visibleContentLeafViews": 0
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376673145"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783446697569"
       },
       "status": "different",
-      "baselineSha256": "4a71278dd30933555ed088dfd98e94674de93314f1b658d27e97855a85d712c9",
-      "currentSha256": "ad5f3e866b28f0c7e0741707cd920fb8ea113b145a9b5e8501370a39d6747473",
+      "baselineSha256": "dcb2d1b9b770b7e23b9306ebbda4ae280ebb07d998e792afb9e271495d1bd32d",
+      "currentSha256": "3355f75831cd5d448999ab483e48d2a22568d2dbb39ddcea7b31217fce95c126",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.language-region.page.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8887763478487889,
-        "pixelPerfectSimilarity": 0.8265720149606406,
-        "pixelMismatchRatio": 0.1734279850393594,
+        "rgbSimilarity": 0.8794937802109111,
+        "pixelPerfectSimilarity": 0.8217212838065918,
+        "pixelMismatchRatio": 0.17827871619340818,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7265,7 +7329,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:37.782Z"
+        "capturedAt": "2026-07-07T17:32:12.861Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7275,7 +7339,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.settings.appearance.page.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -7295,38 +7359,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 504,
-            "dominantRatio": 0.854712
+            "dominantRatio": 0.8476732
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 70,
           "laidOutViews": 67,
           "visibleContentLeafViews": 0
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377092197"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447282459"
       },
       "status": "different",
-      "baselineSha256": "2102b9ca680da3aaffe0f24866f99a3e02cd1ac4bec379ce71e3ea2625e27326",
-      "currentSha256": "37912c42ccf2e24deeb2694e3645184d2e4c5242604f9db53a4396ef2043b65a",
+      "baselineSha256": "deb2feb4973c35278b5d21293ba7cad46219b7f0293ddee5699dbecbfdc60d4b",
+      "currentSha256": "5bf9d0ad47ca59afe40cdb68dfb9f4a81eafce739f337c915d4870f283012ea8",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9285167782113795,
-        "pixelPerfectSimilarity": 0.8147115215835595,
-        "pixelMismatchRatio": 0.18528847841644047,
+        "rgbSimilarity": 0.9247013484645188,
+        "pixelPerfectSimilarity": 0.8147105089048217,
+        "pixelMismatchRatio": 0.18528949109517834,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7376,7 +7440,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:40.150Z"
+        "capturedAt": "2026-07-07T17:32:15.243Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7421,7 +7485,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376885548"
+        "capturedAt": "1783446823950"
       },
       "status": "different",
       "baselineSha256": "40d6d5193316db6be4bc19181d7514baea29f664dfa9f9a23abd831bf402b325",
@@ -7457,9 +7521,38 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "baselineImage": null,
+      "baselineImage": "visual-testing-results/react/components.settings.connected-apps.page.png",
       "currentImage": "visual-testing-results/android/components.settings.connected-apps.page.png",
-      "baselineMetadata": null,
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.settings.connected-apps.page",
+        "image": "visual-testing-results/react/components.settings.connected-apps.page.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.settings.connected-apps.page']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-07T17:32:17.719Z"
+      },
       "currentMetadata": {
         "provider": "android",
         "providerType": "android-kuikly-shared-page",
@@ -7487,8 +7580,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 558,
-            "dominantRatio": 0.824438
+            "uniqueColors": 563,
+            "dominantRatio": 0.8244228
           }
         },
         "diagnostics": {
@@ -7498,14 +7591,33 @@
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
           "hardwareAccelerated": true,
-          "totalViews": 173,
-          "laidOutViews": 169,
+          "totalViews": 158,
+          "laidOutViews": 154,
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377082106"
+        "capturedAt": "1783446936262"
       },
-      "status": "missing"
+      "status": "different",
+      "baselineSha256": "01d07cb4028a264dbf183f0a3888aadfd32b5142d3c401d45b45280aa686da45",
+      "currentSha256": "06951fc81b0f9cebf6df0759e53dd1aa96fae67beff1657d71b93dd129cb9765",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.connected-apps.page.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 1170,
+        "baselineHeight": 2532,
+        "currentWidth": 1170,
+        "currentHeight": 2532,
+        "comparisonWidth": 1170,
+        "comparisonHeight": 2532,
+        "rgbSimilarity": 0.8202798461573169,
+        "pixelPerfectSimilarity": 0.6755201793116485,
+        "pixelMismatchRatio": 0.32447982068835146,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
       "id": "screens.auth.login.signing",
@@ -7550,7 +7662,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:50.974Z"
+        "capturedAt": "2026-07-07T17:32:20.133Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7579,8 +7691,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 358,
-            "dominantRatio": 0.7818204
+            "uniqueColors": 416,
+            "dominantRatio": 0.78015554
           }
         },
         "diagnostics": {
@@ -7595,11 +7707,11 @@
           "visibleContentLeafViews": 6
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376681401"
+        "capturedAt": "1783446647149"
       },
       "status": "different",
       "baselineSha256": "8cfa9fde04efc3c3031596e9c17ac002626066624cf9ec0d804bfce56a5acfd1",
-      "currentSha256": "ea1d4879be421f5fbaa84430035bd02e984e2fcde226559962963ded0a2c331a",
+      "currentSha256": "da6bc6bdf81b17c034f98d0921715891395604f75cd3cb55efbd88e4c46096ef",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.auth.login.signing.side-by-side.png",
       "metrics": {
@@ -7609,9 +7721,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8315319353867096,
-        "pixelPerfectSimilarity": 0.7321535626037996,
-        "pixelMismatchRatio": 0.2678464373962004,
+        "rgbSimilarity": 0.8288173933289283,
+        "pixelPerfectSimilarity": 0.7278189600464482,
+        "pixelMismatchRatio": 0.2721810399535518,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7661,7 +7773,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:53.781Z"
+        "capturedAt": "2026-07-07T17:32:22.889Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7671,7 +7783,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.members.agent-detail.profile.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -7690,39 +7802,39 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 527,
-            "dominantRatio": 0.8905699
+            "uniqueColors": 523,
+            "dominantRatio": 0.8904571
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 267,
           "laidOutViews": 260,
           "visibleContentLeafViews": 2
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376907882"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447007988"
       },
       "status": "different",
-      "baselineSha256": "e45b210197663e30d0c92cf0fba7dcd79fcae00b237fce90a6cacb49b5fbbb3a",
-      "currentSha256": "6e75fd9d2fa47ec53ca4a67b20318cf9b7050d5778af637e05039e9b93706ad0",
+      "baselineSha256": "1143f8023a0c87cb7b6fa3f02cb92a78e38dc2184da214bdafb6db7fc3ebc2db",
+      "currentSha256": "19431ed95386cc7bcf686b8a9764f76be8b090a26013b26aef506a430788a02a",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8982669964779705,
-        "pixelPerfectSimilarity": 0.8178406988833529,
-        "pixelMismatchRatio": 0.18215930111664713,
+        "rgbSimilarity": 0.8979752571918326,
+        "pixelPerfectSimilarity": 0.822221884662643,
+        "pixelMismatchRatio": 0.177778115337357,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7791,7 +7903,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:03:59.829Z"
+        "capturedAt": "2026-07-07T17:32:28.819Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7836,10 +7948,10 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376899823"
+        "capturedAt": "1783446833406"
       },
       "status": "different",
-      "baselineSha256": "4d335567c5ae94347a7826c7374ce439b92a8494bb4cfd835fef01081caae7be",
+      "baselineSha256": "6bfc58a8ef44148a733e2aa328b003b44f29e6954a2dcc5fd0afff6f7b0d6e41",
       "currentSha256": "0d6ab6b34ad147cef6587171443980f4f1b04220271737f4a8b7ab33d2bcf877",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png",
@@ -7850,9 +7962,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9661907676704931,
-        "pixelPerfectSimilarity": 0.9381276920376447,
-        "pixelMismatchRatio": 0.06187230796235532,
+        "rgbSimilarity": 0.9661738005581492,
+        "pixelPerfectSimilarity": 0.9379889550505665,
+        "pixelMismatchRatio": 0.06201104494943355,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -7902,7 +8014,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:02.560Z"
+        "capturedAt": "2026-07-07T17:32:31.586Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -7912,7 +8024,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.members.agent-detail.workspace.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -7932,38 +8044,38 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 233,
-            "dominantRatio": 0.97177666
+            "dominantRatio": 0.9704093
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 119,
           "laidOutViews": 112,
           "visibleContentLeafViews": 0
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783377124784"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447328508"
       },
       "status": "different",
-      "baselineSha256": "e3699708cba021e4a9a2cf11421abbd79dd2141237b0f820e1e16d910cd91246",
-      "currentSha256": "43f562b1eecda990f92c2c2ad883aa004834a9b2da54ffe1dba74c706feb7f8f",
+      "baselineSha256": "030c8f86325e0caff7bbe63eaf4d83b7b7555b6a0392f3cd4209943e3ca29580",
+      "currentSha256": "99848a16a57f7173c379f0b27c89d11c8cf1d72e47a91919a1e0db70eb0da552",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.workspace.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9708650081151083,
-        "pixelPerfectSimilarity": 0.9494973737864734,
-        "pixelMismatchRatio": 0.050502626213526636,
+        "rgbSimilarity": 0.9648030284698175,
+        "pixelPerfectSimilarity": 0.9494119712129191,
+        "pixelMismatchRatio": 0.05058802878708091,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8013,7 +8125,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:05.261Z"
+        "capturedAt": "2026-07-07T17:32:34.299Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8058,10 +8170,10 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377185773"
+        "capturedAt": "1783447022438"
       },
       "status": "different",
-      "baselineSha256": "05b634fd5d4849ed155d7494cd17f626710f4479cd2bc806e3aa8260005d52d9",
+      "baselineSha256": "c13f92d955267a576d3e8566eccd70ea575ee6d17385c25ab90df4330157a011",
       "currentSha256": "73eb21e9b849a103e32254963fae83508f99c17f27f18a1ce154792cb19c9522",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.apps.side-by-side.png",
@@ -8072,9 +8184,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9087589231558214,
-        "pixelPerfectSimilarity": 0.8797238087522448,
-        "pixelMismatchRatio": 0.12027619124775524,
+        "rgbSimilarity": 0.9087923927396723,
+        "pixelPerfectSimilarity": 0.8796681114216659,
+        "pixelMismatchRatio": 0.1203318885783341,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8124,7 +8236,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:08.046Z"
+        "capturedAt": "2026-07-07T17:32:36.935Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8134,7 +8246,7 @@
         "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.members.agent-detail.activity.png",
         "viewport": {
           "width": 1170,
-          "height": 2532,
+          "height": 2414,
           "density": 1
         },
         "systemBars": "hidden",
@@ -8153,39 +8265,39 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 346,
-            "dominantRatio": 0.9445984
+            "uniqueColors": 347,
+            "dominantRatio": 0.9419143
           }
         },
         "diagnostics": {
           "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayHeightPx": 2342,
           "densityDpi": 480,
           "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootHeightPx": 2414,
           "hardwareAccelerated": true,
           "totalViews": 126,
           "laidOutViews": 124,
           "visibleContentLeafViews": 4
         },
-        "clampedToShortWindow": false,
-        "capturedAt": "1783376984705"
+        "clampedToShortWindow": true,
+        "capturedAt": "1783447119192"
       },
       "status": "different",
-      "baselineSha256": "d0110d4c3ed7a786a3a0a01e9846873038f28ae69206be02344aae8ee4bd9df6",
-      "currentSha256": "dece06535d3578b4a529694ad2e38c49a92f5fe38e848f95bfc67f58568b3732",
+      "baselineSha256": "3959e4f0a02da0add0ea0560c6ff2e26b0bdea3bbc7429d82e26a7ba80ffc9ad",
+      "currentSha256": "89129f5187a16e0d17497ff77b0aba8cfe3db8bf91e82678544f5502e2860bff",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.activity.side-by-side.png",
       "metrics": {
         "baselineWidth": 1170,
         "baselineHeight": 2532,
         "currentWidth": 1170,
-        "currentHeight": 2532,
+        "currentHeight": 2414,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9471867140432505,
-        "pixelPerfectSimilarity": 0.9042194947408217,
-        "pixelMismatchRatio": 0.09578050525917825,
+        "rgbSimilarity": 0.9413817769718547,
+        "pixelPerfectSimilarity": 0.9039281808239155,
+        "pixelMismatchRatio": 0.09607181917608454,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8235,7 +8347,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:10.749Z"
+        "capturedAt": "2026-07-07T17:32:39.773Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8280,7 +8392,7 @@
           "visibleContentLeafViews": 0
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376883264"
+        "capturedAt": "1783446815399"
       },
       "status": "different",
       "baselineSha256": "252cebd88752e19e53ebf9d4f713b8eb3b047a052c0681a95e23d76991792d56",
@@ -8346,7 +8458,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:13.533Z"
+        "capturedAt": "2026-07-07T17:32:42.694Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8375,8 +8487,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 503,
-            "dominantRatio": 0.8896585
+            "uniqueColors": 523,
+            "dominantRatio": 0.8905699
           }
         },
         "diagnostics": {
@@ -8391,11 +8503,11 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377045382"
+        "capturedAt": "1783446906764"
       },
       "status": "different",
-      "baselineSha256": "93533e74a39ba7fdb9e387480ed79f3b51c46322be9cb727aa429e2f3689bee1",
-      "currentSha256": "54cea42e71dac8b1e3fd0ea53fa03e80eb449ee8c9af80079ea9880d8ebbebb4",
+      "baselineSha256": "4744135359255ecac68cd40118c092f2b322721bc3f4e60f47167158d6e7226a",
+      "currentSha256": "b1e704985ac46eb349d6c939c9335813bccc107373cb0d950a4649f218b2450b",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png",
       "metrics": {
@@ -8405,9 +8517,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8858627621305716,
-        "pixelPerfectSimilarity": 0.7953464036402424,
-        "pixelMismatchRatio": 0.20465359635975755,
+        "rgbSimilarity": 0.8920736430569705,
+        "pixelPerfectSimilarity": 0.7993485100120171,
+        "pixelMismatchRatio": 0.20065148998798288,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8457,7 +8569,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:16.496Z"
+        "capturedAt": "2026-07-07T17:32:45.758Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8486,8 +8598,8 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 526,
-            "dominantRatio": 0.83528984
+            "uniqueColors": 525,
+            "dominantRatio": 0.8894823
           }
         },
         "diagnostics": {
@@ -8502,11 +8614,11 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377133504"
+        "capturedAt": "1783446979373"
       },
       "status": "different",
-      "baselineSha256": "988c5a57b7af1816755515c34bf45d5912d60aa9f8997f6578f50d133d3cfc8f",
-      "currentSha256": "31c48771f6a5d6c4dbf135b6b68d47909c2e866ee8f9cda38fdc12a9616e6da3",
+      "baselineSha256": "a8e5189d0393398b5735a9fd76c9b8454e63b38f2fd40c58679787ec6aa73a8a",
+      "currentSha256": "538163cbd8d0d6d9a2b718962932012ed20921c9279e87bf2b7278bc501c26b3",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.members.avatar-management.side-by-side.png",
       "metrics": {
@@ -8516,9 +8628,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.8563567419644592,
-        "pixelPerfectSimilarity": 0.7446803985903512,
-        "pixelMismatchRatio": 0.2553196014096488,
+        "rgbSimilarity": 0.8634476592469393,
+        "pixelPerfectSimilarity": 0.7623678454247175,
+        "pixelMismatchRatio": 0.23763215457528253,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8568,7 +8680,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:19.006Z"
+        "capturedAt": "2026-07-07T17:32:48.301Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8613,7 +8725,7 @@
           "visibleContentLeafViews": 4
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376826062"
+        "capturedAt": "1783446716996"
       },
       "status": "different",
       "baselineSha256": "a182ed37d506dbfa3ef1b72e7885436e1c1799b55443825c5c4a795ac7c0fcfb",
@@ -8649,9 +8761,38 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "baselineImage": null,
+      "baselineImage": "visual-testing-results/react/screens.settings.computer-detail.png",
       "currentImage": "visual-testing-results/android/screens.settings.computer-detail.png",
-      "baselineMetadata": null,
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "screens.settings.computer-detail",
+        "image": "visual-testing-results/react/screens.settings.computer-detail.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='screens.settings.computer-detail']",
+        "crop": {
+          "mode": "element",
+          "contract": "screen-route",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          "targetRect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 844
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-07T17:32:50.840Z"
+      },
       "currentMetadata": {
         "provider": "android",
         "providerType": "android-kuikly-shared-page",
@@ -8680,7 +8821,7 @@
           "systemBars": "hidden",
           "validation": {
             "uniqueColors": 413,
-            "dominantRatio": 0.83190244
+            "dominantRatio": 0.8415664
           }
         },
         "diagnostics": {
@@ -8690,14 +8831,33 @@
           "rootWidthPx": 1170,
           "rootHeightPx": 2532,
           "hardwareAccelerated": true,
-          "totalViews": 124,
-          "laidOutViews": 119,
+          "totalViews": 133,
+          "laidOutViews": 128,
           "visibleContentLeafViews": 3
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783377172067"
+        "capturedAt": "1783447008112"
       },
-      "status": "missing"
+      "status": "different",
+      "baselineSha256": "4949b72d9265aa9bc5603c97ee428e5cd6dc744a1d1879d991f6aad311371119",
+      "currentSha256": "f1900175c22639ee92cd07c8c9b57bae207ffddbf59a1f61ddf563eb107f006b",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/screens.settings.computer-detail.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 1170,
+        "baselineHeight": 2532,
+        "currentWidth": 1170,
+        "currentHeight": 2532,
+        "comparisonWidth": 1170,
+        "comparisonHeight": 2532,
+        "rgbSimilarity": 0.9273117024275951,
+        "pixelPerfectSimilarity": 0.7545904727184348,
+        "pixelMismatchRatio": 0.24540952728156518,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -8742,7 +8902,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:30.134Z"
+        "capturedAt": "2026-07-07T17:32:53.424Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8787,7 +8947,7 @@
           "visibleContentLeafViews": 1
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376700000"
+        "capturedAt": "1783446672184"
       },
       "status": "different",
       "baselineSha256": "eb0c8c5bd20f48105e84b32b8474d5e63bd6ba5fe7c6ee61c89ffcfefcde1705",
@@ -8853,7 +9013,7 @@
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:32.622Z"
+        "capturedAt": "2026-07-07T17:32:55.916Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -8882,27 +9042,27 @@
           "fullscreen": true,
           "systemBars": "hidden",
           "validation": {
-            "uniqueColors": 455,
-            "dominantRatio": 0.8442824
+            "uniqueColors": 395,
+            "dominantRatio": 0.85336006
           }
         },
         "diagnostics": {
-          "displayWidthPx": 1170,
-          "displayHeightPx": 2460,
+          "displayWidthPx": 1440,
+          "displayHeightPx": 2903,
           "densityDpi": 480,
-          "rootWidthPx": 1170,
-          "rootHeightPx": 2532,
+          "rootWidthPx": 1440,
+          "rootHeightPx": 2975,
           "hardwareAccelerated": true,
           "totalViews": 140,
           "laidOutViews": 124,
           "visibleContentLeafViews": 7
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376925632"
+        "capturedAt": "1783446839967"
       },
       "status": "different",
-      "baselineSha256": "0273568aa77ad7a70d76256b786fae869a0db9448626e54272244f4271d3a592",
-      "currentSha256": "92419ca3f1ac5a8c9f98a6bd505f293cfbc89cbfad8379bf7cc02997cf8b8ecd",
+      "baselineSha256": "9548ed94359c55cc5f574f98ae5f02b0cc4bd9576b818a722ab551536c6e9b10",
+      "currentSha256": "1be4108bf5a6ead76e53dec176d587db40b251235cc87c8c9058bee7202b4907",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png",
       "metrics": {
@@ -8912,9 +9072,9 @@
         "currentHeight": 2532,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
-        "rgbSimilarity": 0.9582622724087272,
-        "pixelPerfectSimilarity": 0.8489724686407151,
-        "pixelMismatchRatio": 0.15102753135928493,
+        "rgbSimilarity": 0.963663464836838,
+        "pixelPerfectSimilarity": 0.8375724065297525,
+        "pixelMismatchRatio": 0.1624275934702475,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
@@ -8954,17 +9114,17 @@
             "x": 16,
             "y": 16,
             "width": 342,
-            "height": 392
+            "height": 366
           },
           "targetRect": {
             "x": 16,
             "y": 16,
             "width": 342,
-            "height": 392
+            "height": 366
           },
           "outset": null
         },
-        "capturedAt": "2026-07-06T22:04:35.104Z"
+        "capturedAt": "2026-07-07T17:32:58.361Z"
       },
       "currentMetadata": {
         "provider": "android",
@@ -9009,36 +9169,273 @@
           "visibleContentLeafViews": 2
         },
         "clampedToShortWindow": false,
-        "capturedAt": "1783376725806"
+        "capturedAt": "1783446685283"
       },
       "status": "different",
-      "baselineSha256": "4b64cbb0057cae86d703fa495a9abbb20077a96b41fed657831592ecbb4ee8fb",
+      "baselineSha256": "4239508c4edcd3312e7f2f1d44d5c0ef0348ab7e1a672d6a5b040d0a441a4aae",
       "currentSha256": "bc0bebfd603e3c9329d8cb2f1d2e5214070be27104ea0be11b76abcbc0494bd1",
       "rawStatus": "different",
       "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png",
       "metrics": {
         "baselineWidth": 1026,
-        "baselineHeight": 1176,
+        "baselineHeight": 1098,
         "currentWidth": 1026,
         "currentHeight": 1182,
         "comparisonWidth": 1026,
         "comparisonHeight": 1182,
-        "rgbSimilarity": 0.8892128794536405,
-        "pixelPerfectSimilarity": 0.7613495809461612,
-        "pixelMismatchRatio": 0.23865041905383877,
+        "rgbSimilarity": 0.8943469225073479,
+        "pixelPerfectSimilarity": 0.772497963276305,
+        "pixelMismatchRatio": 0.22750203672369496,
         "compositor": "sharp",
         "displayMode": "preserve-provider-raw-size",
         "metricMode": "rgb-resize-pixel-pad-no-crop"
       },
       "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "components.thread.message-row.long-inline-code",
+      "surface": "thread",
+      "category": "app/thread",
+      "captureType": "component-fixture",
+      "captureGroup": "Components Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": "visual-testing-results/react/components.thread.message-row.long-inline-code.png",
+      "currentImage": "visual-testing-results/android/components.thread.message-row.long-inline-code.png",
+      "baselineMetadata": {
+        "provider": "react",
+        "providerType": "react-playwright",
+        "caseId": "components.thread.message-row.long-inline-code",
+        "image": "visual-testing-results/react/components.thread.message-row.long-inline-code.png",
+        "viewport": {
+          "width": 390,
+          "height": 844,
+          "density": 3
+        },
+        "selector": "[data-visual-case='components.thread.message-row.long-inline-code']",
+        "crop": {
+          "mode": "element",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 16,
+            "y": 16,
+            "width": 342,
+            "height": 828
+          },
+          "targetRect": {
+            "x": 16,
+            "y": 16,
+            "width": 342,
+            "height": 828
+          },
+          "outset": null
+        },
+        "capturedAt": "2026-07-07T17:33:00.837Z"
+      },
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "components.thread.message-row.long-inline-code",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.message-row.long-inline-code.png",
+        "viewport": {
+          "width": 1026,
+          "height": 2280,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "component-bounds",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 342,
+            "height": 760
+          }
+        },
+        "capture": {
+          "method": "ui-automation-take-screenshot-viewport-crop",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 772,
+            "dominantRatio": 0.66545093
+          }
+        },
+        "diagnostics": {
+          "displayWidthPx": 1170,
+          "displayHeightPx": 2460,
+          "densityDpi": 480,
+          "rootWidthPx": 1170,
+          "rootHeightPx": 2532,
+          "hardwareAccelerated": true,
+          "totalViews": 112,
+          "laidOutViews": 48,
+          "visibleContentLeafViews": 0
+        },
+        "clampedToShortWindow": false,
+        "capturedAt": "1783446701516"
+      },
+      "status": "different",
+      "baselineSha256": "ac41767272f07adc4009ea9bde5d48f024b91dedc31f828376213a576d86cd8b",
+      "currentSha256": "9d339afbe4513cc08082c0906e18bbe11dc2d0aa99e5f92b91bd53cd3f897e09",
+      "rawStatus": "different",
+      "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png",
+      "metrics": {
+        "baselineWidth": 1026,
+        "baselineHeight": 2484,
+        "currentWidth": 1026,
+        "currentHeight": 2280,
+        "comparisonWidth": 1026,
+        "comparisonHeight": 2484,
+        "rgbSimilarity": 0.8202012471094053,
+        "pixelPerfectSimilarity": 0.6548012543435885,
+        "pixelMismatchRatio": 0.3451987456564115,
+        "compositor": "sharp",
+        "displayMode": "preserve-provider-raw-size",
+        "metricMode": "rgb-resize-pixel-pad-no-crop"
+      },
+      "note": "Side-by-side and site raw captures preserve provider image sizes. Metrics use an in-memory comparison canvas: rgbSimilarity rescales for coarse color similarity, while pixelPerfectSimilarity pads the original images without cropping."
+    },
+    {
+      "id": "screens.settings.administration.full-height",
+      "surface": "settings",
+      "category": "app/settings",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": null,
+      "currentImage": "visual-testing-results/android/screens.settings.administration.full-height.png",
+      "baselineMetadata": null,
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "screens.settings.administration.full-height",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.settings.administration.full-height.png",
+        "viewport": {
+          "width": 1170,
+          "height": 7382,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "full-height",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 2595
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-full-height-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 491,
+            "dominantRatio": 0.81510967
+          }
+        },
+        "diagnostics": {
+          "displayWidthPx": 1170,
+          "displayHeightPx": 7310,
+          "densityDpi": 480,
+          "rootWidthPx": 1170,
+          "rootHeightPx": 7382,
+          "hardwareAccelerated": true,
+          "totalViews": 349,
+          "laidOutViews": 345,
+          "visibleContentLeafViews": 4
+        },
+        "clampedToShortWindow": true,
+        "capturedAt": "1783446769848"
+      },
+      "status": "missing"
+    },
+    {
+      "id": "screens.settings.connected-apps.full-height",
+      "surface": "settings",
+      "category": "app/settings",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "baseline": "react",
+      "current": "android",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "baselineImage": null,
+      "currentImage": "visual-testing-results/android/screens.settings.connected-apps.full-height.png",
+      "baselineMetadata": null,
+      "currentMetadata": {
+        "provider": "android",
+        "providerType": "android-kuikly-shared-page",
+        "source": "kmp-shared",
+        "caseId": "screens.settings.connected-apps.full-height",
+        "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.settings.connected-apps.full-height.png",
+        "viewport": {
+          "width": 1170,
+          "height": 2604,
+          "density": 1
+        },
+        "systemBars": "hidden",
+        "crop": {
+          "mode": "manual-rect",
+          "contract": "full-height",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 390,
+            "height": 868
+          }
+        },
+        "capture": {
+          "method": "app-window-root-draw-full-height-density-resize",
+          "fullscreen": true,
+          "systemBars": "hidden",
+          "validation": {
+            "uniqueColors": 586,
+            "dominantRatio": 0.80713695
+          }
+        },
+        "diagnostics": {
+          "displayWidthPx": 1170,
+          "displayHeightPx": 7310,
+          "densityDpi": 480,
+          "rootWidthPx": 1170,
+          "rootHeightPx": 7382,
+          "hardwareAccelerated": true,
+          "totalViews": 157,
+          "laidOutViews": 153,
+          "visibleContentLeafViews": 1
+        },
+        "clampedToShortWindow": false,
+        "capturedAt": "1783446958987"
+      },
+      "status": "missing"
     }
   ],
   "summary": {
-    "total": 84,
+    "total": 87,
     "same": 0,
     "pass": 0,
-    "basic-pass": 4,
-    "different": 75,
-    "missing": 5
+    "basic-pass": 5,
+    "different": 78,
+    "missing": 4
   }
 }

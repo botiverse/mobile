@@ -12,12 +12,12 @@
                 "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
               },
               "capture": {
-                "method": "app-window-root-draw-viewport-density-resize",
+                "method": "ui-automation-take-screenshot-viewport-crop",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 546,
-                  "dominantRatio": 0.78314495
+                  "uniqueColors": 714,
+                  "dominantRatio": 0.7782963
                 }
               },
               "diagnostics": {
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 7
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783376689994"
+              "capturedAt": "1783446618213"
             }

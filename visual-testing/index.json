@@ -1,113 +1,177 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-06T22:35:13.263Z",
-  "latestRunId": "1dcb122-20260706223444",
+  "generatedAt": "2026-07-07T18:05:08.768Z",
+  "latestRunId": "04bbe8e-20260707180439",
   "latest": {
-    "runId": "1dcb122-20260706223444",
-    "commit": "1dcb122-20260706223444",
-    "commitSubject": "fix(settings): harden Quiver feedback submit (#205)",
-    "generatedAt": "2026-07-06T22:35:13.263Z",
+    "runId": "04bbe8e-20260707180439",
+    "commit": "04bbe8e-20260707180439",
+    "commitSubject": "fix(home): resolve foreground banner identity by provenance",
+    "generatedAt": "2026-07-07T18:05:08.768Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 84,
+      "total": 87,
       "same": 0,
       "pass": 0,
-      "basic-pass": 4,
-      "different": 75,
-      "missing": 5
+      "basic-pass": 5,
+      "different": 78,
+      "missing": 4
     },
     "analysisSummary": {
-      "total": 84,
+      "total": 87,
       "ready": 0,
-      "pending": 84
+      "pending": 87
     },
     "componentMatrixSummary": {
-      "total": 104,
-      "active": 85,
+      "total": 107,
+      "active": 88,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 77,
-          "active": 73,
+          "total": 78,
+          "active": 74,
           "pending": 2,
           "skipped": 2
         },
         "real-screen": {
-          "total": 27,
-          "active": 12,
+          "total": 29,
+          "active": 14,
           "pending": 14,
           "skipped": 1
         }
       },
       "providers": {
         "react": {
-          "active": 87,
+          "active": 90,
           "pending": 13,
           "unsupported": 0,
-          "total": 100
+          "total": 103
         },
         "android": {
-          "active": 81,
+          "active": 84,
           "pending": 19,
           "unsupported": 0,
-          "total": 100
+          "total": 103
         },
         "harmony": {
           "active": 0,
-          "pending": 80,
+          "pending": 83,
           "unsupported": 0,
-          "total": 80
+          "total": 83
         }
       }
     },
-    "href": "runs/1dcb122-20260706223444/",
-    "componentMatrix": "runs/1dcb122-20260706223444/component-matrix.json",
-    "llms": "runs/1dcb122-20260706223444/metadata.json"
+    "href": "runs/04bbe8e-20260707180439/",
+    "componentMatrix": "runs/04bbe8e-20260707180439/component-matrix.json",
+    "llms": "runs/04bbe8e-20260707180439/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 104,
-    "active": 85,
+    "total": 107,
+    "active": 88,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 77,
-        "active": 73,
+        "total": 78,
+        "active": 74,
         "pending": 2,
         "skipped": 2
       },
       "real-screen": {
-        "total": 27,
-        "active": 12,
+        "total": 29,
+        "active": 14,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 87,
+        "active": 90,
         "pending": 13,
         "unsupported": 0,
-        "total": 100
+        "total": 103
       },
       "android": {
-        "active": 81,
+        "active": 84,
         "pending": 19,
         "unsupported": 0,
-        "total": 100
+        "total": 103
       },
       "harmony": {
         "active": 0,
-        "pending": 80,
+        "pending": 83,
         "unsupported": 0,
-        "total": 80
+        "total": 83
       }
     }
   },
   "runs": [
+    {
+      "runId": "04bbe8e-20260707180439",
+      "commit": "04bbe8e-20260707180439",
+      "commitSubject": "fix(home): resolve foreground banner identity by provenance",
+      "generatedAt": "2026-07-07T18:05:08.768Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 87,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 5,
+        "different": 78,
+        "missing": 4
+      },
+      "analysisSummary": {
+        "total": 87,
+        "ready": 0,
+        "pending": 87
+      },
+      "componentMatrixSummary": {
+        "total": 107,
+        "active": 88,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 78,
+            "active": 74,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 29,
+            "active": 14,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 90,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 103
+          },
+          "android": {
+            "active": 84,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 103
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 83,
+            "unsupported": 0,
+            "total": 83
+          }
+        }
+      },
+      "href": "runs/04bbe8e-20260707180439/",
+      "componentMatrix": "runs/04bbe8e-20260707180439/component-matrix.json",
+      "llms": "runs/04bbe8e-20260707180439/metadata.json"
+    },
     {
       "runId": "1dcb122-20260706223444",
       "commit": "1dcb122-20260706223444",

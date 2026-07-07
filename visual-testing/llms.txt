@@ -1,25 +1,25 @@
 # Raft Visual Testing
 
-Generated: 2026-07-06 22:35:13 UTC
-Latest run: 1dcb122-20260706223444
-Latest commit: 1dcb122-20260706223444
-Commit subject: fix(settings): harden Quiver feedback submit (#205)
+Generated: 2026-07-07 18:05:08 UTC
+Latest run: 04bbe8e-20260707180439
+Latest commit: 04bbe8e-20260707180439
+Commit subject: fix(home): resolve foreground banner identity by provenance
 Providers: react vs android
-Summary: total 84, same 0, pass 0, basic-pass 4, different 75, missing 5
-AI analysis: ready 0 / total 84, pending 84
-Visual coverage matrix: active 85 / total 104, pending 16, skipped 3
+Summary: total 87, same 0, pass 0, basic-pass 5, different 78, missing 4
+AI analysis: ready 0 / total 87, pending 87
+Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 73, pending 2, total 77
-- Screens Parity (real-screen): active 12, pending 14, total 27
+- Components Parity (component-fixture): active 74, pending 2, total 78
+- Screens Parity (real-screen): active 14, pending 14, total 29
 
 ## Provider Coverage
 
-- react: active 87, pending 13, unsupported 0
-- android: active 81, pending 19, unsupported 0
-- harmony: active 0, pending 80, unsupported 0
+- react: active 90, pending 13, unsupported 0
+- android: active 84, pending 19, unsupported 0
+- harmony: active 0, pending 83, unsupported 0
 
 ## Pending Coverage Rows
 
@@ -30,6 +30,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.thread.message-menu.default: Real React MessageItem right-click menu captured through the portal plus Android shared ThreadMessageMenuChrome with default message actions. Protects quick reactions and grouped row separators.
 - components.thread.message-menu.task: Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.
 - components.thread.message-row.deleted-human: Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.
+- components.thread.message-row.long-inline-code: Inline-code cross-platform net (task #400): real React MessageItem vs Android shared long_inline_code thread fixture. Covers compact short inline-code chips, char-level wrapping of long paths/commands (#58), trailing-edge inline-code border (#228), and markdown flow around code spans. OHOS leg pending self-hosted capture harness.
 - components.thread.message-row.rich-content: Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer.
 - components.thread.message-share.preview: React source of truth uses SelectShareLightbox with a real captureSelectedMessages image. Android app flow now calls a native screenshot/export bridge, but the visual fixture remains pending until it can drive that real export path instead of instantiating the modal directly.
 - components.thread.message-share.selection: Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.
@@ -93,10 +94,12 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.members.agent-detail.workspace: Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.
 - screens.members.human.profile: Real Members route capture for human member detail profile. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human. Harmony remains pending real-device/provider capture.
 - screens.members.index: Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page.
+- screens.settings.administration.full-height: Full-height (content-height, not viewport-clipped) Settings Administration route for react↔android parity (task #388). React renders all ADMINISTRATION_VISUAL_SECTIONS stacked, unclamped, captured fullPage (verified 1170x6648). Android eager full-height capture on main (#259, verified 1170x7382; density diff normalizes). First react↔android full-height pairing runs next full/nightly.
 - screens.settings.appearance: Pending as a full Settings screen route. Component coverage lives in components.settings.appearance.page; this screen case needs real Settings route launch on both providers, not a component visual page.
 - screens.settings.billing-portal: Skipped: billing portal is an external browser URL action (https://raft.build/settings/billing), not an in-app screen/WebView route. Validate the Billing page/action state instead.
 - screens.settings.computer-detail: Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state.
 - screens.settings.computers: Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list.
+- screens.settings.connected-apps.full-height: Full-height (content-height, not viewport-clipped) Settings Connected Apps route for react↔android parity (task #388). React renders IntegrationsSection unclamped, captured fullPage (harness stubs the connected-apps endpoints so it mirrors the canonical seed: Marketplace 3 / Installed 2 / My apps 1, no Storage Sync); short routes report true content height. Android capture (#259) + data alignment (#404/#405 via #262: server_local counts as Installed, Storage Sync placeholder removed) both on main. Validated by the first react↔android full-height pairing (run 28880036248) + fidelity/data alignment (#4103/#4110/#262); active as of 2026-07-07.
 - screens.settings.server-danger-modal: Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked.
 - screens.settings.storage: Pending: needs React Settings Storage route/provider plus Android Settings Storage route capture with seeded storage rows; do not activate through the generic settings visual page.
 - screens.tasks.index: Missing true Tasks screen parity: list, filters, task status, and create-task entry need real route captures.
@@ -107,6 +110,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 04bbe8e-20260707180439: react vs android, total 87, pass 0, basic-pass 5, different 78, matrix runs/04bbe8e-20260707180439/component-matrix.json, page runs/04bbe8e-20260707180439/
 - 1dcb122-20260706223444: react vs android, total 84, pass 0, basic-pass 4, different 75, matrix runs/1dcb122-20260706223444/component-matrix.json, page runs/1dcb122-20260706223444/
 - 6abae56-20260706130112: react vs android, total 84, pass 0, basic-pass 5, different 67, matrix runs/6abae56-20260706130112/component-matrix.json, page runs/6abae56-20260706130112/
 - c21f5b1-20260706091849: react vs android, total 84, pass 0, basic-pass 5, different 70, matrix runs/c21f5b1-20260706091849/component-matrix.json, page runs/c21f5b1-20260706091849/
