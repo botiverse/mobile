@@ -82,6 +82,13 @@ Minimum marker set:
 - `thread_payload_ready`
 - `thread_first_render`
 - `thread_first_frame`
+> **Retired (2026-07-07, task #229/#207):** the previously planned
+> `modal_show_*` / `cache_read_*` / icon-batch markers are deliberately NOT
+> being added — per artin, the log surface is already too wide, and standing
+> scatter markers have weak yield. Future performance attribution should open
+> a per-scenario task and add markers with sampling/toggle/aggregation
+> boundaries only.
+
 - `modal_show_start`
 - `modal_show_end`
 - `composer_focus`
