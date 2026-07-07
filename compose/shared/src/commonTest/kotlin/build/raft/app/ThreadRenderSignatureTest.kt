@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.model.ChannelId
+import build.raft.app.data.SharedServerChannelMembersScope
+import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersState
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -211,6 +218,82 @@ class ThreadRenderSignatureTest {
         assertEquals(null, deletedAgent.resolvedThreadAvatarWireValue())
         assertEquals("REMOVED", removedHuman.threadAuthorBadgeLabel())
         assertEquals(false, removedHuman.canOpenThreadAuthorProfile())
+    }
+
+    @Test
+    fun threadMentionHandle_prefersMemberHandleOverDisplayName() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-1",
+                authorName = "Android Developer",
+                authorHandle = "",
+                authorKind = "agent"
+            )
+        val serverMembersState =
+            SharedServerMembersState(
+                channelMemberSlices =
+                    mapOf(
+                        SharedServerChannelMembersScope(serverId = "server-1", channelId = "channel-1") to
+                            SharedServerChannelMembersSlice(
+                                serverId = "server-1",
+                                channelId = "channel-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId("agent-1"),
+                                            displayName = "Android Developer",
+                                            handle = "Android-Developer-2",
+                                            kind = MemberKind.Agent
+                                        )
+                                    )
+                            )
+                    )
+            )
+
+        assertEquals("Android-Developer-2", message.threadMentionHandle(serverMembersState, ServerId("server-1")))
+    }
+
+    @Test
+    fun threadMentionHandle_usesExplicitAuthorHandleWhenMemberMissing() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "user-1",
+                authorName = "Cindy",
+                authorHandle = "@cindy"
+            )
+
+        assertEquals("cindy", message.threadMentionHandle())
+    }
+
+    @Test
+    fun threadMentionHandle_fallsBackToStableAuthorIdNotDisplayName() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-1",
+                authorName = "Android Developer",
+                authorHandle = "Android Developer",
+                authorKind = "agent"
+            )
+
+        assertEquals("agent-1", message.threadMentionHandle())
+    }
+
+    @Test
+    fun threadMentionHandle_ignoresInactiveAuthors() {
+        val deletedAgent =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-1",
+                authorName = "Android Developer",
+                authorHandle = "Android-Developer-2",
+                authorKind = "agent",
+                authorDeletedAt = "2026-07-07T00:00:00.000Z"
+            )
+
+        assertEquals(null, deletedAgent.threadMentionHandle())
     }
 
     @Test

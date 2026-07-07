@@ -4234,6 +4234,9 @@ internal fun SharedThreadRouteContent(
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
+            mentionHandleResolver = { message ->
+                message.threadMentionHandle(serverMembersState, threadMembersServerId)
+            },
             onExportShareImage = { rect ->
                 bridge.exportThreadShareImage(
                     x = rect?.x,
@@ -7420,6 +7423,7 @@ private fun ThreadPageContent(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
+    mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
     onExportShareImage: suspend (ThreadShareCaptureRect?) -> JSONObject?,
     onSaveShareImage: suspend (String) -> JSONObject?,
     onBack: () -> Unit,
@@ -7763,8 +7767,9 @@ private fun ThreadPageContent(
                         activeMarkdownTagKey = activeMarkdownTagKey,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = { memberId -> onOpenMemberProfile(memberId, null, null) },
-                        onMentionAuthor = { handle ->
-                            if (showComposerForSelectedTab) {
+                        onMentionAuthor = { message ->
+                            val handle = mentionHandleResolver(message)
+                            if (showComposerForSelectedTab && handle != null) {
                                 composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
                             }
                         },
@@ -8634,7 +8639,7 @@ private fun ThreadChatTab(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
-    onMentionAuthor: (String) -> Unit,
+    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
@@ -9080,7 +9085,7 @@ private fun ThreadMessagesList(
     activeMarkdownTagKey: String? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
-    onMentionAuthor: (String) -> Unit,
+    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
@@ -11223,7 +11228,7 @@ private fun ThreadMessageCard(
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    onMentionAuthor: (String) -> Unit = {},
+    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
     isMessageListScrolling: Boolean = false,
@@ -11325,7 +11330,7 @@ private fun ThreadMessageCard(
                                 onOpenMember(message.authorId)
                             }
                         },
-                        onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
+                        onLongPress = { onMentionAuthor(message) }
                     )
                 }
                 val contentModifier =
@@ -11561,7 +11566,7 @@ private fun ThreadMessageCard(
                                 onOpenMember(message.authorId)
                             }
                         },
-                        onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
+                        onLongPress = { onMentionAuthor(message) }
                     )
                 }
                 if (shareSelectionActive && alignOwnMessageRight) {
@@ -12206,14 +12211,41 @@ private fun String?.threadProjectionMemberId(): String? =
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
-private fun KuiklyThreadMessageItem.threadMentionHandle(): String? =
-    authorHandle
-        .ifBlank { authorName }
-        .ifBlank { authorId }
-        .trim()
-        .removePrefix("@")
-        .takeIf { it.isNotBlank() }
-        ?.takeIf { threadAuthorBadgeLabel() == null }
+internal fun KuiklyThreadMessageItem.threadMentionHandle(
+    serverMembersState: SharedServerMembersState = SharedServerMembersState(),
+    serverId: ServerId? = null
+): String? {
+    if (threadAuthorBadgeLabel() != null) return null
+    val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
+    serverMembersState
+        .threadMentionAuthorHandle(serverId, cleanAuthorId)
+        ?.let { return it }
+    val explicitAuthorHandle = authorHandle.threadMentionExplicitAuthorHandle(authorName)
+    if (explicitAuthorHandle != null) return explicitAuthorHandle
+    return cleanAuthorId
+}
+
+private fun SharedServerMembersState.threadMentionAuthorHandle(
+    serverId: ServerId?,
+    authorId: String?
+): String? =
+    memberProfile(serverId, authorId)
+        ?.handle
+        .threadMentionHandleValue()
+
+private fun String?.threadMentionHandleValue(): String? =
+    this
+        ?.trim()
+        ?.removePrefix("@")
+        ?.takeIf { it.isNotBlank() }
+
+private fun String.threadMentionExplicitAuthorHandle(authorName: String): String? {
+    val handle = threadMentionHandleValue() ?: return null
+    val presentationName = authorName.threadMentionHandleValue()
+    if (presentationName != null && handle == presentationName) return null
+    if (handle.any { it.isWhitespace() }) return null
+    return handle
+}
 
 private fun KuiklyThreadMessageItem.isDeletedThreadAuthor(): Boolean =
     !authorDeletedAt.isNullOrBlank() || senderMembershipStatus.equals("deleted", ignoreCase = true)
@@ -13219,7 +13251,7 @@ private fun ThreadOriginCard(
     onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
-    onMentionAuthor: (String) -> Unit,
+    onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
