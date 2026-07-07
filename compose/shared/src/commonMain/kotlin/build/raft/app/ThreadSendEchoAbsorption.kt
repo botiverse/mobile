@@ -8,7 +8,8 @@ package build.raft.app
  * content (author + body + task flag + attachment id set). Per
  * `docs/kmp-data-flow-and-sync-contract-binding-2026-07-07.md` §4 (RFC 038
  * §6), the target contract is exact-id absorption via a client-generated
- * `random_id` echoed back by the server. The server does not echo it yet;
+ * `random_id` (wire field `randomId`, artin ruling 2026-07-07 / task #83)
+ * echoed back by the server. The server does not echo it yet;
  * once it does, this function switches to exact matching and the content
  * heuristic becomes a fallback with a removal milestone.
  *
