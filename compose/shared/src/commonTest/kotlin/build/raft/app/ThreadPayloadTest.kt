@@ -3055,6 +3055,7 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
@@ -3103,6 +3104,7 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
@@ -3136,6 +3138,7 @@ class ThreadPayloadTest {
                 channelName = "thread-stream-name",
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1")
@@ -3505,6 +3508,7 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequestForTest()
@@ -3870,6 +3874,7 @@ class ThreadPayloadTest {
                 threadChannelId = ChannelId("thread-channel-1"),
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityMessageId = MessageId("reply-message-1"),
