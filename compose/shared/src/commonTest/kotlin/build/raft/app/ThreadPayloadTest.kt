@@ -374,6 +374,33 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMessagePermalinkParsesDirectParentKindAsDm() {
+        // t432 PR-A: the permalink DM check parses through the #417 contract — a
+        // parent channel kind of "direct" routes as dm (the old private vocab table
+        // rejected it and fell to the channel route).
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "dm-parent",
+                parentMessageId = "parent-1",
+                sourceThreadId = "thread-1",
+                streamChannelId = "thread-1",
+                parentChannelKind = "direct"
+            )
+
+        val permalink =
+            payload.threadMessagePermalink(
+                message = threadMessage("reply-1", "u-artin", "artin"),
+                serverSlug = "workspace"
+            )
+
+        assertEquals(
+            "https://app.raft.build/s/workspace/dm/dm-parent?msg=reply-1&thread=dm-parent%3Aparent-1",
+            permalink
+        )
+    }
+
+    @Test
     fun threadMessageRowPreservesFollowedThreadState() {
         val row =
             Message(
@@ -2015,6 +2042,52 @@ class ThreadPayloadTest {
         assertEquals(null, merged.subtitle)
         assertEquals("content", merged.status)
         assertEquals(listOf("m1"), merged.messages.map { it.id })
+    }
+
+    @Test
+    fun replyThreadParentHeaderProjectionParsesDirectAndRejectsUnresolved() {
+        // t432 PR-A: the header's private parent-surface table (with its live
+        // `else -> Channel` fallback — the last one in the codebase) is gone. "direct"
+        // parses to dm via the contract; an unresolvable parent shape rejects enrichment
+        // instead of guessing Channel (display degradation over displayed misidentity).
+        val dmProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "dm-parent",
+                aliases = setOf("dm-parent"),
+                conversationKind = ConversationKind.DirectMessage,
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                title = "Cindy"
+            )
+        val channelProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "dm-parent",
+                aliases = setOf("dm-parent"),
+                conversationKind = ConversationKind.Channel,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "general"
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                title = "",
+                sourceThreadId = "reply-stream",
+                streamChannelId = "reply-stream",
+                parentChannelId = "dm-parent",
+                parentMessageId = "parent-message",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = "direct"
+            )
+
+        assertTrue(payload.acceptsThreadHeaderDirectoryProjection(dmProjection))
+        assertFalse(payload.acceptsThreadHeaderDirectoryProjection(channelProjection))
+
+        val unresolved = payload.copy(parentSurfaceKind = null)
+        assertFalse(unresolved.acceptsThreadHeaderDirectoryProjection(dmProjection))
+        assertFalse(unresolved.acceptsThreadHeaderDirectoryProjection(channelProjection))
     }
 
     @Test

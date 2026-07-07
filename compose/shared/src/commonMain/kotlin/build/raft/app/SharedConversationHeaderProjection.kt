@@ -354,7 +354,12 @@ internal fun KuiklyThreadScreenPayload.acceptsConversationHeaderProjection(
 private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
     projection: SharedConversationDirectoryProjection
 ): Boolean {
-    val resolvedParentSurfaceKind = parentSurfaceKind.normalizedReplyThreadParentSurfaceKind()
+    // Parent shape parses through the #417 contract (accepts "direct" -> dm). An
+    // unresolvable parent shape REJECTS enrichment instead of guessing Channel — the
+    // header keeps its neutral payload fallback (§5: display degradation over displayed
+    // misidentity; this was the last live identity fallback in the codebase, t432 PR-A).
+    val resolvedParentSurfaceKind =
+        parentSurfaceKind.parsedThreadParentSurfaceKindOrNull() ?: return false
     if (projection.surfaceKind != resolvedParentSurfaceKind) return false
     val lookupIds = conversationHeaderLookupIds().toSet()
     if (lookupIds.isNotEmpty() && projection.headerProjectionIds().none { it in lookupIds }) return false
@@ -367,14 +372,6 @@ private fun KuiklyThreadScreenPayload.acceptsReplyThreadParentHeaderProjection(
 private fun SharedConversationDirectoryProjection.headerProjectionIds(): Set<String> =
     (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet()
 
-private fun String?.normalizedReplyThreadParentSurfaceKind(): String =
-    when (this?.trim()?.lowercase()) {
-        KuiklyThreadSurfaceKind.DirectMessage,
-        "direct_message",
-        "direct-message",
-        "directmessage" -> KuiklyThreadSurfaceKind.DirectMessage
-        else -> KuiklyThreadSurfaceKind.Channel
-    }
 
 private fun SharedConversationDirectoryProjection.replyThreadParentSubtitle(): String? =
     when (surfaceKind) {
