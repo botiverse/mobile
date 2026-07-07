@@ -221,6 +221,55 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun savedDropsUnknownChannelTypeAndKeepsCanonicalDirectKind() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                savedJson = """
+                    {
+                      "saved": [
+                        {"messageId":"message-dm","channelId":"dm-1","channelName":"Artin","channelType":"direct","content":"Saved dm","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"},
+                        {"messageId":"message-weird","channelId":"weird-1","channelName":"Mystery","channelType":"mystery","content":"Dropped","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}
+                      ],
+                      "hasMore": false
+                    }
+                """.trimIndent(),
+                searchJson = """{"results":[],"hasMore":false}"""
+            )
+
+        val saved = RealSavedRepository(sampleStore(), network).loadInitial(ServerId("server-1"))
+
+        assertTrue(saved is DataResult.Content)
+        assertEquals(listOf("saved:message-dm"), saved.data.items.map { it.key })
+        assertEquals(InboxItemKind.DirectMessage, saved.data.items.single().kind)
+        assertEquals(ConversationKind.DirectMessage, saved.data.items.single().channelKind)
+    }
+
+    @Test
+    fun searchDropsUnknownChannelTypeAndKeepsCanonicalDirectKind() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                savedJson = """{"saved":[],"hasMore":false}""",
+                searchJson = """
+                    {
+                      "results": [
+                        {"id":"message-dm-search","seq":1,"channelId":"dm-2","channelName":"Cindy","channelType":"direct_message","parentChannelId":"dm-2","parentChannelName":"Cindy","parentChannelType":"direct","senderId":"user-2","senderType":"user","senderName":"Cindy","content":"Search dm","snippet":"Search dm","createdAt":"2026-05-01T00:00:00Z"},
+                        {"id":"message-weird-search","seq":2,"channelId":"weird-2","channelName":"Mystery","channelType":"mystery","parentChannelId":"weird-2","parentChannelName":"Mystery","parentChannelType":"mystery","senderId":"user-2","senderType":"user","senderName":"Cindy","content":"Dropped","snippet":"Dropped","createdAt":"2026-05-01T00:00:00Z"}
+                      ],
+                      "hasMore": false
+                    }
+                """.trimIndent()
+            )
+
+        val search = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "dm")
+
+        assertTrue(search is DataResult.Content)
+        assertEquals(listOf("dm:dm-2:message-dm-search"), search.data.items.map { it.key })
+        assertEquals(InboxItemKind.DirectMessage, search.data.items.single().kind)
+        assertEquals(ConversationKind.DirectMessage, search.data.items.single().channelKind)
+        assertEquals(ConversationKind.DirectMessage, search.data.items.single().parentChannelKind)
+    }
+
+    @Test
     fun savedRepositoryKeepsMultipleMessagesFromSameChannel() = runBlocking {
         val network =
             FakeInboxNetworkClient(

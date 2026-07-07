@@ -510,13 +510,8 @@ internal fun buildHomeConversationThreadLaunchPayload(
         payload.channels.firstOrNull { it.id == conversationId }
             ?: payload.directMessages.firstOrNull { it.id == conversationId }
             ?: return null
-    val surfaceKind =
-        when (conversation.kind) {
-            "dm", "direct_message", "direct-message" ->
-                KuiklyThreadSurfaceKind.DirectMessage
-            "thread" -> KuiklyThreadSurfaceKind.ReplyThread
-            else -> KuiklyThreadSurfaceKind.Channel
-        }
+    val conversationKind = parseConversationKindOrNull(conversation.kind) ?: return null
+    val surfaceKind = conversationKind.toKuiklySurfaceKind()
     return WireThreadLaunchPayload(
         instanceId = "${payload.instanceId}:$conversationId",
         surfaceKind = surfaceKind,

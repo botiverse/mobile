@@ -143,4 +143,26 @@ class SharedConversationDirectoryStoreTest {
         assertEquals("agent-1", projection?.senderMemberId)
         assertNull(projection?.senderAvatarWireValue)
     }
+
+    @Test
+    fun directoryProjectionCarriesCanonicalConversationKind() {
+        val direct =
+            HomeDirectMessageRow(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Artin"
+            ).toSharedConversationDirectoryProjection(ServerId("server-1"))
+        val thread =
+            InboxItem(
+                key = "thread:thread-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-1"),
+                channelName = "Thread",
+                threadChannelId = ChannelId("thread-1")
+            ).toSharedConversationDirectoryProjection(ServerId("server-1"))
+
+        assertEquals(ConversationKind.DirectMessage, direct?.conversationKind)
+        assertEquals(ConversationKind.Thread, thread?.conversationKind)
+    }
 }

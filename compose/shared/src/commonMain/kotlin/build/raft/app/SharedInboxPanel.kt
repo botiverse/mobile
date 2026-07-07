@@ -1320,13 +1320,7 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
                 null
             },
         kind =
-            when (kind) {
-                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                InboxItemKind.Thread -> ConversationKind.Thread
-                InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
-                InboxItemKind.System -> ConversationKind.System
-                InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
-            },
+            launchConversationKind(),
         name = displayTitle(),
         subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
         unreadCount = unreadCount,
@@ -1413,13 +1407,7 @@ internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConvers
     val parentChannel = parentChannelId
     return buildThreadLaunchConversationIdentity(
         kind =
-            when (kind) {
-                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                InboxItemKind.Thread -> ConversationKind.Thread
-                InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
-                InboxItemKind.System -> ConversationKind.System
-                InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
-            },
+            launchConversationKind(),
         channelId = channelId,
         threadChannelId = streamChannelId,
         parentChannelId = parentChannel,
@@ -1428,6 +1416,15 @@ internal fun InboxItem.toThreadLaunchConversationIdentity(): ThreadLaunchConvers
         parentChannelKind = parentChannelKind.threadChannelKindWireValue()
     )
 }
+
+private fun InboxItem.launchConversationKind(): ConversationKind =
+    when (kind) {
+        InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+        InboxItemKind.Thread -> ConversationKind.Thread
+        InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
+        InboxItemKind.System -> ConversationKind.System
+        InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
+    }
 
 private fun InboxItem.toThreadLaunchOriginFallback(): ThreadLaunchOriginFallback? {
     if (kind != InboxItemKind.Thread) return null

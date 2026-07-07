@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -37,17 +37,12 @@ internal fun ConversationSummary.toSharedConversationDirectoryProjection(
             ?.takeUnless { isGenericDisplayName(it, additionalIdentityIds = setOf(canonicalChannelId)) }
             ?: canonicalChannelId
     val kind = toDirectoryConversationKind()
-    val surfaceKind =
-        when (kind) {
-            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-            else -> KuiklyThreadSurfaceKind.Channel
-        }
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
         canonicalChannelId = canonicalChannelId,
         aliases = aliases(canonicalChannelId).filter { it.isNotBlank() }.toSet() + canonicalChannelId,
-        surfaceKind = surfaceKind,
+        conversationKind = kind,
+        surfaceKind = kind.toKuiklySurfaceKind(),
         channelKind = toDirectoryChannelType(),
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },

@@ -1,7 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.toKuiklySurfaceKind
+import build.raft.app.toWireChannelKindOrNull
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
@@ -27,6 +28,8 @@ internal data class SharedConversationDirectoryProjection(
     val serverId: String,
     val canonicalChannelId: String,
     val aliases: Set<String>,
+    // TODO(#419): make this required once the t5 projection/link cut removes legacy constructors.
+    val conversationKind: ConversationKind = ConversationKind.Channel,
     val surfaceKind: String,
     val channelKind: String,
     val title: String,
@@ -88,7 +91,7 @@ internal fun InboxSnapshot.toSharedConversationDirectoryState(
     logger: (String) -> Unit = {}
 ): SharedConversationDirectoryState =
     sharedConversationDirectoryStateFromProjections(
-        projections = items.flatMap { item -> item.toSharedConversationDirectoryProjections(server.id) },
+        projections = items.flatMap { item -> item.toSharedConversationDirectoryProjections(server.id, logger) },
         logger = logger
     )
 
@@ -176,17 +179,12 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         safeDisplayNameOrNull(additionalIdentityIds = setOf(canonicalChannelId))
             ?: canonicalChannelId
     val kind = toDirectoryConversationKind()
-    val surfaceKind =
-        when (kind) {
-            ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-            else -> KuiklyThreadSurfaceKind.Channel
-        }
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
         canonicalChannelId = canonicalChannelId,
         aliases = aliases(canonicalChannelId).map { it.id }.filter { it.isNotBlank() }.toSet() + canonicalChannelId,
-        surfaceKind = surfaceKind,
+        conversationKind = kind,
+        surfaceKind = kind.toKuiklySurfaceKind(),
         channelKind = toDirectoryChannelType(),
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
@@ -202,11 +200,12 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
 }
 
 private fun InboxItem.toSharedConversationDirectoryProjections(
-    serverId: ServerId
+    serverId: ServerId,
+    logger: (String) -> Unit
 ): List<SharedConversationDirectoryProjection> {
     val parentProjection =
         if (kind == InboxItemKind.Thread) {
-            parentChannelProjection(serverId)
+            parentChannelProjection(serverId, logger)
         } else {
             null
         }
@@ -215,24 +214,31 @@ private fun InboxItem.toSharedConversationDirectoryProjections(
 }
 
 private fun InboxItem.parentChannelProjection(
-    serverId: ServerId
+    serverId: ServerId,
+    logger: (String) -> Unit
 ): SharedConversationDirectoryProjection? {
     val parentId = parentChannelId?.value?.takeIf { it.isNotBlank() } ?: return null
     val title =
         parentChannelName
             .safeInboxDisplayNameOrNull(additionalIdentityIds = setOf(parentId))
             ?: parentId
-    val channelType = parentChannelKind.toDirectoryChannelType()
+    val conversationKind =
+        parentChannelKind
+            ?: run {
+                logger(
+                    "conversation_directory_parent_projection_drop " +
+                        "reason=missing_parent_channel_kind serverId=${serverId.value} " +
+                        "threadChannelId=${threadChannelId?.value.orEmpty()} parentChannelId=$parentId"
+                )
+                return null
+            }
+    val channelType = conversationKind.toDirectoryChannelType()
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
         canonicalChannelId = parentId,
         aliases = setOf(parentId, channelId.value).filter { it.isNotBlank() }.toSet(),
-        surfaceKind =
-            when (parentChannelKind) {
-                ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-                ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-                else -> KuiklyThreadSurfaceKind.Channel
-            },
+        conversationKind = conversationKind,
+        surfaceKind = conversationKind.toKuiklySurfaceKind(),
         channelKind = channelType,
         title = title,
         subtitle = null,
@@ -267,12 +273,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
     val title =
         titleSource.safeInboxDisplayNameOrNull(additionalIdentityIds = identityIds)
             ?: canonicalChannelId
-    val surfaceKind =
-        when (kind) {
-            InboxItemKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            InboxItemKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-            else -> KuiklyThreadSurfaceKind.Channel
-        }
+    val conversationKind = directoryConversationKind()
     val sender = toSharedConversationDirectorySender()
     return SharedConversationDirectoryProjection(
         serverId = serverId.value,
@@ -288,7 +289,8 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
                 lastMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
                 latestActivityMessageId?.value?.takeIf { it.isNotBlank() }?.let(::add)
             },
-        surfaceKind = surfaceKind,
+        conversationKind = conversationKind,
+        surfaceKind = conversationKind.toKuiklySurfaceKind(),
         channelKind =
             when (kind) {
                 InboxItemKind.Thread -> "thread"
@@ -365,12 +367,7 @@ private data class ConversationDirectoryAlias(
 private fun HomeConversationRow.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
     buildSet {
         val routeIdentity = resolveThreadRouteIdentity(
-            surfaceKind =
-                when (toDirectoryConversationKind()) {
-                    ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-                    ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-                    else -> KuiklyThreadSurfaceKind.Channel
-                },
+            surfaceKind = toDirectoryConversationKind().toKuiklySurfaceKind(),
             channelKind = toDirectoryChannelType(),
             instanceId = null,
             sourceThreadId = threadId.value,
@@ -409,6 +406,19 @@ private fun HomeConversationRow.toDirectoryChannelType(): String =
         ConversationKind.DirectMessage -> "dm"
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
+    }
+
+private fun InboxItem.directoryConversationKind(): ConversationKind =
+    when (kind) {
+        InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+        InboxItemKind.Thread -> ConversationKind.Thread
+        InboxItemKind.MentionAction -> channelKind ?: ConversationKind.Channel
+        InboxItemKind.System -> ConversationKind.System
+        InboxItemKind.Channel ->
+            when (channelKind) {
+                ConversationKind.Joint -> ConversationKind.Joint
+                else -> ConversationKind.Channel
+            }
     }
 
 private fun HomeConversationRow.toDirectoryConversationKind(): ConversationKind =
@@ -455,9 +465,9 @@ private fun HomeConversationRow.headerIdentityIds(): Set<String> =
 
 private fun ConversationKind?.toDirectoryChannelType(): String =
     when (this) {
-        ConversationKind.DirectMessage -> "dm"
+        ConversationKind.DirectMessage -> toWireChannelKindOrNull() ?: "dm"
+        ConversationKind.Joint -> toWireChannelKindOrNull() ?: "joint"
         ConversationKind.Thread -> "thread"
-        ConversationKind.Joint -> "joint"
         ConversationKind.Channel,
         ConversationKind.Inbox,
         ConversationKind.System,

@@ -366,7 +366,7 @@ class SlockHomeComponentsTest {
         val seed =
             SharedHomeConversationRowSeed(
                 id = "channel-1",
-                kind = "channel",
+                kind = ConversationKind.Channel,
                 unreadCount = 7,
                 fallbackName = "stale-name",
                 fallbackChannelType = "channel",
@@ -415,7 +415,7 @@ class SlockHomeComponentsTest {
         val seed =
             SharedHomeConversationRowSeed(
                 id = "channel-1",
-                kind = "channel",
+                kind = ConversationKind.Channel,
                 fallbackName = "raft-mobile"
             )
         val directoryProjection =
@@ -927,6 +927,24 @@ class SlockHomeComponentsTest {
         assertEquals(null, launch?.parentChannelId)
         assertEquals(null, launch?.parentMessageId)
         assertEquals(null, launch?.originParentMessageId)
+    }
+
+    @Test
+    fun homeConversationLaunchDropsUnknownKindInsteadOfDefaultingChannel() {
+        val payload =
+            SlockHomePayload(
+                instanceId = "home-page",
+                channels =
+                    listOf(
+                        SlockHomeConversationItem(
+                            id = "mystery-1",
+                            name = "Mystery",
+                            kind = "mystery"
+                        )
+                    )
+            )
+
+        assertEquals(null, buildHomeConversationThreadLaunchPayload(payload, "mystery-1"))
     }
 
     @Test
