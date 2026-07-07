@@ -892,6 +892,7 @@ data class SettingsComputerSnapshot(
     val online: Boolean,
     val hostname: String? = null,
     val platform: String? = null,
+    val description: String? = null,
     val lastSeenLabel: String? = null,
     val runtimes: List<String> = emptyList(),
     val createdAt: String? = null,
@@ -928,7 +929,9 @@ data class SettingsComputerWorkspaceSnapshot(
     val name: String,
     val path: String,
     val statusLabel: String? = null,
-    val lastActiveLabel: String? = null
+    val lastActiveLabel: String? = null,
+    val totalSizeBytes: Long? = null,
+    val fileCount: Int? = null
 )
 
 data class SettingsComputerAgentSnapshot(

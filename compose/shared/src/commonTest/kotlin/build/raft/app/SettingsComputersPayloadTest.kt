@@ -6,6 +6,7 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.ScreenError
 import kotlinx.serialization.encodeToString
@@ -124,6 +125,44 @@ class SettingsComputersPayloadTest {
         assertEquals("Codex CLI", agent.runtimeLabel)
         assertEquals("pixel:robot", agent.avatarWireValue)
         assertEquals("Working", agent.activityLabel)
+    }
+
+    @Test
+    fun computerDetailPayloadMapperSurfacesDescriptionAndReadableWorkspaceRows() {
+        val snapshot =
+            SettingsComputerDetailSnapshot(
+                computer =
+                    SettingsComputerSnapshot(
+                        id = "machine-1",
+                        name = "Builder Mac",
+                        daemonVersion = "0.53.0",
+                        online = true,
+                        description = "Build farm runner"
+                    ),
+                workspaces =
+                    listOf(
+                        SettingsComputerWorkspaceSnapshot(
+                            id = "027ca19e-d020-4054-bed5-0f9173ea5891",
+                            name = "Pi QA Perf Profiler",
+                            path = "~/.slock/agents/027ca19e-d020-4054-bed5-0f9173ea5891/",
+                            statusLabel = "active",
+                            lastActiveLabel = "2026-05-07T01:01:00Z",
+                            totalSizeBytes = 4096L,
+                            fileCount = 12
+                        )
+                    ),
+                agents = emptyList(),
+                sections = emptyList()
+            )
+
+        val payload = ScreenLoadState.Content(snapshot).toComputerDetailPayload("machine-1", null)
+        val workspace = payload.workspaces.single()
+
+        assertEquals("Build farm runner", payload.computer.description)
+        assertEquals("Pi QA Perf Profiler", workspace.name)
+        assertEquals("~/.slock/agents/027ca19e-d020-4054-bed5-0f9173ea5891/", workspace.path)
+        assertEquals("4.0 KB", workspace.totalSizeLabel)
+        assertEquals("12 files", workspace.fileCountLabel)
     }
 
     @Test

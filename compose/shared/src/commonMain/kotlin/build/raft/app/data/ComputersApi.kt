@@ -9,9 +9,11 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 private val computersApiJson = Json {
     ignoreUnknownKeys = true
@@ -132,8 +134,14 @@ internal class SlockComputersApiClient(
         }
 
     suspend fun renameMachine(serverId: ServerId, machineId: String, name: String): DataResult<ComputerSummary> =
-        transport.renameMachine(serverId, machineId, buildRenameComputerBody(name)).mapComputersBody(
+        transport.renameMachine(serverId, machineId, buildComputerUpdateBody(name = name)).mapComputersBody(
             "computer_rename_contract_mismatch",
+            MachineRenameDto.serializer()
+        ) { it.toSummary() }
+
+    suspend fun updateMachineDescription(serverId: ServerId, machineId: String, description: String): DataResult<ComputerSummary> =
+        transport.renameMachine(serverId, machineId, buildComputerUpdateBody(description = description)).mapComputersBody(
+            "computer_update_contract_mismatch",
             MachineRenameDto.serializer()
         ) { it.toSummary() }
 
@@ -204,6 +212,7 @@ internal data class ComputerSummary(
     val isComputer: Boolean,
     val hostname: String?,
     val os: String?,
+    val description: String?,
     val lastHeartbeat: String?,
     val createdAt: String?
 )
@@ -290,6 +299,7 @@ private data class ComputerDto(
     val isComputer: Boolean = false,
     val hostname: String? = null,
     val os: String? = null,
+    val description: String? = null,
     val lastHeartbeat: String? = null,
     val createdAt: String? = null
 )
@@ -314,6 +324,7 @@ private data class MachineRenameDto(
     val isComputer: Boolean = false,
     val hostname: String? = null,
     val os: String? = null,
+    val description: String? = null,
     val lastHeartbeat: String? = null,
     val createdAt: String? = null
 )
@@ -346,6 +357,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         isComputer = isComputer,
         hostname = hostname,
         os = os,
+        description = description,
         lastHeartbeat = lastHeartbeat,
         createdAt = createdAt
     )
@@ -365,6 +377,7 @@ private fun MachineRenameDto.toSummary(): ComputerSummary? {
         isComputer = isComputer,
         hostname = hostname,
         os = os,
+        description = description,
         lastHeartbeat = lastHeartbeat,
         createdAt = createdAt
     )
@@ -430,11 +443,13 @@ private data class ComputerCommandResponseDto(val ok: Boolean)
 @Serializable
 internal data class RegisterComputerBody(val name: String)
 
-@Serializable
-internal data class RenameComputerBody(val name: String)
-
 internal fun buildRegisterComputerBody(name: String): String =
     computersApiJson.encodeToString(RegisterComputerBody(name = name))
 
-internal fun buildRenameComputerBody(name: String): String =
-    computersApiJson.encodeToString(RenameComputerBody(name = name))
+internal fun buildComputerUpdateBody(name: String? = null, description: String? = null): String =
+    computersApiJson.encodeToString(
+        buildJsonObject {
+            name?.let { put("name", it) }
+            description?.let { put("description", it) }
+        }
+    )

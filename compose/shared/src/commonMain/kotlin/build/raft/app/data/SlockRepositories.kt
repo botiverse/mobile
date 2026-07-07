@@ -59,6 +59,7 @@ interface SettingsRepository {
         getComputerDetail(computer.id)
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot>
+    suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot>
     suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult>
     suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult>
     suspend fun getComputerRuntimeModels(
@@ -603,6 +604,11 @@ data class SettingsComputerRegisterRequest(
 data class SettingsComputerRenameRequest(
     val machineId: String,
     val name: String
+)
+
+data class SettingsComputerDescriptionUpdateRequest(
+    val machineId: String,
+    val description: String
 )
 
 data class SettingsComputerWorkspaceDeleteRequest(
