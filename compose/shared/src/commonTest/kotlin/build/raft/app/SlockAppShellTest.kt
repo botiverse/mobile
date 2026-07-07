@@ -1122,6 +1122,177 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerDropsReplyThreadWhenParentKindUnresolved() {
+        // t5/#419 A1: a reply thread whose parent kind can't be resolved (parentChannelKind
+        // absent -> #249 drops the parent projection; the parent id only self-resolves the
+        // thread via alias) must be suppressed, never silently opened on the channel surface.
+        val message =
+            appShellForegroundTestMessage(
+                id = "reply-1",
+                channelId = "reply-stream",
+                threadId = "reply-stream",
+                body = "Reply whose parent kind can't be resolved"
+            )
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            // parentChannelKind intentionally omitted (null).
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        assertNull(result.banner)
+        assertEquals("conversation_missing", result.suppressReason)
+    }
+
+    @Test
+    fun notificationLaunchDropsReplyThreadWhenParentKindUnresolved() {
+        // t5/#419 A2: the notification source carries no typed parent kind, so an unresolvable
+        // reply-thread parent yields a null open request (Pending -> null drop).
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            // parentChannelKind intentionally omitted (null).
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+
+        val openRequest =
+            directory.notificationThreadLaunchRequest(
+                AppShellNotificationThreadLaunchRequest(
+                    threadId = "reply-stream",
+                    messageId = "reply-1"
+                )
+            )
+
+        assertNull(openRequest)
+    }
+
+    @Test
+    fun resolveOpenRequestDoesNotRebuildThreadWithoutTrustedParentKind() {
+        // t5/#419 regression: projection resolves but its reply-thread parent shape is
+        // unresolvable, and the source has no typed parent kind -> must NOT raw-rebuild a
+        // channel-shaped guess; stays Pending(thread_parent_unresolved), distinct from a plain
+        // projection miss (conversation_hydrating).
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            // parentChannelKind intentionally omitted (null).
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "reply-stream",
+                        messageId = "reply-1"
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_parent_unresolved", pending.reason)
+    }
+
+    @Test
+    fun resolveOpenRequestRebuildsThreadFromTrustedDmParentKind() {
+        // t5/#419 anti-over-drop: the directory's parent projection is dropped (unresolvable),
+        // but the Activity source carries a trusted typed DM parent kind -> allow a raw rebuild
+        // to Resolved, preserving the dm parent shape (Activity rows aren't over-dropped).
+        val directory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:dm-reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("dm-reply-stream"),
+                            channelName = "Cindy",
+                            threadChannelId = ChannelId("dm-reply-stream"),
+                            parentChannelId = ChannelId("dm-parent"),
+                            parentChannelName = "Cindy",
+                            // parentChannelKind intentionally omitted (null) so the directory
+                            // drops the parent projection.
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+        val trustedSource =
+            InboxItem(
+                key = "thread:dm-reply-stream",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("dm-reply-stream"),
+                channelName = "Cindy",
+                threadChannelId = ChannelId("dm-reply-stream"),
+                parentChannelId = ChannelId("dm-parent"),
+                parentChannelName = "Cindy",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("parent-message"),
+                latestActivityMessageId = MessageId("reply-1")
+            ).toConversationOpenSourceMessageIdentity()
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity = trustedSource,
+                conversationDirectory = directory
+            )
+
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentChannelKind)
+    }
+
+    @Test
     fun conversationOpenResolverKeepsActivityAndNotificationRoutesEquivalent() {
         val activityItem =
             InboxItem(
