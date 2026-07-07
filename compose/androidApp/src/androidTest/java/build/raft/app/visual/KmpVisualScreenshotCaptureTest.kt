@@ -1518,13 +1518,35 @@ class KmpVisualScreenshotCaptureTest {
         } finally {
             closeScenarioBounded(scenario)
         }
+        logLifecycleStages("after-warmup-close")
+    }
+
+    // Diagnostic (task #393): log the lifecycle-stage distribution of
+    // SlockKuiklyActivity instances so we can see whether the warm-up's
+    // abandoned never-idle close left a lingering instance that blocks the
+    // direct relaunch from reaching RESUMED (the "no RESUMED activity" ->
+    // screenshot-null -> Unable-to-capture failure on screen-profile).
+    private fun logLifecycleStages(phase: String) {
+        runOnMainSyncBounded {
+            val reg = ActivityLifecycleMonitorRegistry.getInstance()
+            val sb = StringBuilder("LIFECYCLE_STAGES phase=$phase")
+            for (stage in Stage.values()) {
+                val slock = reg.getActivitiesInStage(stage).count { it is SlockKuiklyActivity }
+                if (slock > 0) sb.append(" $stage=$slock")
+            }
+            Log.i(VISUAL_LOG_TAG, sb.toString())
+        }
     }
 
     private fun startKmpActivityNoIdle(context: Context, intent: Intent) {
+        logLifecycleStages("direct-launch-start")
         finishCurrentKmpActivityBounded()
+        logLifecycleStages("after-finish-prior")
         val launchIntent = Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(launchIntent)
+        logLifecycleStages("after-startActivity")
         waitForResumedKmpActivityBounded()
+        logLifecycleStages("after-wait-resumed")
     }
 
     private fun waitForResumedKmpActivityBounded(maxMs: Long = DIRECT_LAUNCH_RESUMED_TIMEOUT_MS) {
@@ -1662,6 +1684,9 @@ class KmpVisualScreenshotCaptureTest {
         var bitmap: Bitmap? = null
         onActivityNoIdle { activity ->
             val root = activity.window.decorView.rootView
+            // Diagnostic (task #393): a direct-launch capture that fires before
+            // the window is laid out sees root width/height == 0 -> null bitmap.
+            Log.i(VISUAL_LOG_TAG, "CAPTURE_ROOT $caseId width=${root.width} height=${root.height}")
             if (root.width > 0 && root.height > 0) {
                 bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
                     root.draw(Canvas(output))
