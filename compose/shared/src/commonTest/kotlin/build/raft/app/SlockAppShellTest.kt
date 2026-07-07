@@ -1718,6 +1718,20 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun authCreateServerSlugMirrorsWebToSlugRules() {
+        // Web parity: ServerSelector.tsx toSlug = lowercase + every char
+        // outside [a-z0-9-] replaced with "-", no collapsing or trimming.
+        assertEquals("xxx", authCreateServerSlugFromName("xxx"))
+        assertEquals("my-team", authCreateServerSlugFromName("My Team"))
+        assertEquals("a-b-c", authCreateServerSlugFromName("A B!C"))
+        assertEquals("raft-2", authCreateServerSlugFromName("Raft 2"))
+        assertEquals("already-fine-123", authCreateServerSlugFromName("already-fine-123"))
+        assertEquals("--", authCreateServerSlugFromName("工作"))
+        assertEquals("a--b", authCreateServerSlugFromName("a  b"))
+        assertEquals("", authCreateServerSlugFromName(""))
+    }
+
+    @Test
     fun appShellRouteCanSuppressPostAuthRestoreLanding() {
         assertEquals(false, appShellPageData().optBoolean("slockSuppressRestoreLanding", false))
         assertEquals(
