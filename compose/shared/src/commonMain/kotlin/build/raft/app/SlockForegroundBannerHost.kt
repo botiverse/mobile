@@ -665,9 +665,20 @@ private fun Message.resolveForegroundBannerOpenRequest(
 ): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversationIdentity = conversation,
-        anchorMessageId = id.value.takeIf { it.isNotBlank() },
+        anchorMessageId = foregroundBannerAnchorMessageId(),
         originFallback = projection.toThreadLaunchOriginFallback()
     )
+
+/**
+ * The foreground banner's anchor strategy: the tapped banner IS a specific new message, so
+ * it anchors on that message id — nothing to infer. This is the third named anchor branch
+ * alongside `ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId`'s
+ * ActivityRow/Notification strategies (ConversationOpenResolver.kt); the banner request is
+ * built outside the resolver, so the branch lives here with a cross-link instead of a
+ * source enum case (t2b/#419 — the three anchor strategies are now declared side by side).
+ */
+private fun Message.foregroundBannerAnchorMessageId(): String? =
+    id.value.takeIf { it.isNotBlank() }
 
 private fun SharedConversationDirectoryProjection?.resolveForegroundBannerSenderMemberId(message: Message): String? =
     this?.takeIf { projection -> projection.matchesForegroundBannerSenderMessage(message) }

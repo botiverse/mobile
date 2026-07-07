@@ -93,6 +93,31 @@ class ConversationKindContractTest {
     }
 
     @Test
+    fun parsedThreadParentSurfaceKindMatchesLegacyPerFileVocabTables() {
+        // t5/#419 finale: the per-file private parent-surface vocab tables collapsed into
+        // parse-through-the-contract + the qualified enum projection. Pin exact parity with
+        // the deleted tables, including "direct" -> dm (which those tables accepted) and the
+        // parent-shape rejections ("thread"/"system"/unknown -> null).
+        mapOf(
+            "dm" to KuiklyThreadSurfaceKind.DirectMessage,
+            "direct_message" to KuiklyThreadSurfaceKind.DirectMessage,
+            "direct-message" to KuiklyThreadSurfaceKind.DirectMessage,
+            "directmessage" to KuiklyThreadSurfaceKind.DirectMessage,
+            "direct" to KuiklyThreadSurfaceKind.DirectMessage,
+            "channel" to KuiklyThreadSurfaceKind.Channel,
+            "public" to KuiklyThreadSurfaceKind.Channel,
+            "private" to KuiklyThreadSurfaceKind.Channel,
+            "joint" to KuiklyThreadSurfaceKind.Channel,
+            "group" to KuiklyThreadSurfaceKind.Channel
+        ).forEach { (raw, expected) ->
+            assertEquals(expected, raw.parsedThreadParentSurfaceKindOrNull(), "raw=$raw")
+        }
+        listOf(null, "", "thread", "system", "inbox", "bogus").forEach { raw ->
+            assertNull(raw.parsedThreadParentSurfaceKindOrNull(), "raw=$raw")
+        }
+    }
+
+    @Test
     fun wireChannelKindRoundTripsForTheKindsItCovers() {
         listOf(ConversationKind.Channel, ConversationKind.Joint, ConversationKind.DirectMessage).forEach { kind ->
             assertEquals(kind, parseConversationKindOrNull(kind.toWireChannelKindOrNull()), "kind=$kind")

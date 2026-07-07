@@ -136,6 +136,12 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
     )
 }
 
+/**
+ * Anchor strategies by open source. The third user-visible strategy — the foreground
+ * banner's "anchor on the tapped message itself" — lives with the banner
+ * (`foregroundBannerAnchorMessageId`, SlockForegroundBannerHost.kt) because that request is
+ * built outside the resolver; keep the three in sync when adding a source (t2b/#419).
+ */
 private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
     conversation: ThreadLaunchConversationIdentity
 ): String? =

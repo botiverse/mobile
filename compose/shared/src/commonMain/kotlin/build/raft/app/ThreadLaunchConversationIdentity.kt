@@ -164,11 +164,7 @@ internal fun ThreadLaunchConversationIdentity.resolveThreadRouteIdentity(): Thre
     )
 
 internal fun ThreadLaunchConversationIdentity.threadSurfaceKind(): String =
-    when (kind) {
-        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-        ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
-        else -> KuiklyThreadSurfaceKind.Channel
-    }
+    kind.toKuiklySurfaceKind()
 
 internal fun ThreadLaunchConversationIdentity.usesMemberScopedMentions(): Boolean =
     kind == ConversationKind.DirectMessage ||
@@ -198,9 +194,9 @@ internal fun ThreadLaunchConversationIdentity.threadParentMessageId(): String? =
     thread?.parentMessageId?.value
 
 internal fun ThreadLaunchConversationIdentity.threadParentSurfaceKind(): String? =
-    thread?.parentSurfaceKind.threadParentSurfaceKindOrNull()
+    thread?.parentSurfaceKind.parsedThreadParentSurfaceKindOrNull()
         ?: if (kind == ConversationKind.Thread) {
-            channelType.threadParentSurfaceKindOrNull()
+            channelType.parsedThreadParentSurfaceKindOrNull()
         } else {
             null
         }
@@ -216,28 +212,9 @@ internal fun ThreadLaunchConversationIdentity.threadParentChannelKind(): String?
 internal fun ThreadLaunchConversationIdentity.threadRouteChannelKind(): String? =
     when (kind) {
         ConversationKind.Joint -> "joint"
+        // The kind IS Channel here; the `?: Channel` is that tautology made explicit for a
+        // blank channelType (product default, not a parent-kind parse fallback — C-group).
         ConversationKind.Channel -> channelType.normalizedThreadChannelKind() ?: KuiklyThreadSurfaceKind.Channel
         ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
         else -> channelType.normalizedThreadChannelKind()
-    }
-
-private fun String?.isMemberScopedThreadChannelType(): Boolean =
-    when (this?.trim()?.lowercase()) {
-        "dm", "direct", "direct_message", "direct-message", "private", "joint" -> true
-        else -> false
-    }
-
-private fun String?.threadParentSurfaceKindOrNull(): String? =
-    when (this?.trim()?.lowercase()) {
-        KuiklyThreadSurfaceKind.DirectMessage,
-        "direct_message",
-        "direct-message",
-        "directmessage",
-        "direct" -> KuiklyThreadSurfaceKind.DirectMessage
-        KuiklyThreadSurfaceKind.Channel,
-        "public",
-        "private",
-        "joint",
-        "group" -> KuiklyThreadSurfaceKind.Channel
-        else -> null
     }
