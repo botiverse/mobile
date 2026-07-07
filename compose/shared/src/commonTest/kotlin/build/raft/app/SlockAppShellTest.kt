@@ -500,6 +500,9 @@ class SlockAppShellTest {
 
     @Test
     fun foregroundBannerProjectionShowsOnSettingsEvenWithSelectedHomeConversation() {
+        // t434 migration (criterion (a)): the visibility logic under test needs a PROVEN
+        // banner — the raw guess that used to conjure one is gone, so the fixture supplies
+        // directory evidence; the visibility assertions are unchanged.
         val banner =
             slockForegroundMessageBannerProjection(
                 serverId = "server-1",
@@ -511,7 +514,20 @@ class SlockAppShellTest {
                         selectedTab = "settings",
                         selectedHomeDestination = null,
                         selectedConversationId = "channel-1"
-                    )
+                    ),
+                conversationDirectory =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items =
+                            listOf(
+                                InboxItem(
+                                    key = "channel:channel-1",
+                                    kind = InboxItemKind.Channel,
+                                    channelId = ChannelId("channel-1"),
+                                    channelName = "home-fixes"
+                                )
+                            )
+                    ).toSharedConversationDirectoryState()
             )
 
         val resolved = assertNotNull(banner)
@@ -519,7 +535,7 @@ class SlockAppShellTest {
         assertEquals("message-1", resolved.focusedMessageId)
         assertEquals("channel-1", resolved.conversation.threadId.value)
         assertEquals("Cindy", resolved.title)
-        assertEquals("", resolved.context)
+        assertEquals("#home-fixes", resolved.context)
         assertNull(resolved.threadContext)
         assertEquals(SlockForegroundMessageBannerIconKind.Channel, resolved.iconKind)
         assertEquals(SlockLucideIconName.Hash, resolved.iconName)
@@ -978,7 +994,10 @@ class SlockAppShellTest {
                 visibleConversationKey = null
             )
         assertEquals(null, rawResult.sharedProjection)
-        assertEquals(ConversationKind.Channel, rawResult.resolvedKind)
+        // t434: the raw stage no longer fabricates a Channel identity — unproven means no
+        // banner (and a deferred retry), not a guessed kind.
+        assertEquals(null, rawResult.resolvedKind)
+        assertNull(rawResult.banner)
 
         val enrichedDirectory =
             InboxSnapshot(
@@ -1219,6 +1238,108 @@ class SlockAppShellTest {
             )
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
+    }
+
+    @Test
+    fun suppressedOwnMessageNeverEntersTheWaitLoop() {
+        // t434 required fix (LiBai): suppression is a terminal decision. An own message —
+        // which has a stream id — must not fall into the unproven-wait path (5 retries +
+        // an Activity refresh each) now that the guessed-banner null-check is gone.
+        val message =
+            appShellForegroundTestMessage(
+                id = "own-1",
+                authorId = "user-1",
+                authorKind = MemberKind.Human,
+                channelId = "channel-1",
+                body = "My own message"
+            )
+        val result =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+
+        assertNull(result.banner)
+        assertNotNull(result.suppressReason)
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = result,
+                message = message,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+    }
+
+    @Test
+    fun plainChannelMessageDefersThenPopsWhenProjectionArrives() {
+        // t434 key regression (LiBai): deleting the raw guess fallback must not turn "pop
+        // after the directory catches up" into "never pop". Unproven -> Retry (no banner,
+        // no guessed chrome); projection arrives -> Complete with the real channel banner.
+        val message =
+            appShellForegroundTestMessage(
+                id = "message-9",
+                channelId = "channel-9",
+                threadId = "channel-9",
+                body = "Plain channel message"
+            )
+        val rawResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null
+            )
+        assertNull(rawResult.banner)
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Retry,
+            appShellForegroundBannerPendingDecision(
+                projection = rawResult,
+                message = message,
+                refreshAttempts = 0,
+                maxAttempts = 2
+            )
+        )
+
+        val enrichedResult =
+            slockForegroundMessageBannerProjectionResult(
+                serverId = "server-1",
+                currentServerId = "server-1",
+                message = message,
+                currentMemberId = "user-1",
+                visibleConversationKey = null,
+                conversationDirectory =
+                    InboxSnapshot(
+                        server = ServerSummary(ServerId("server-1"), "Raft"),
+                        items =
+                            listOf(
+                                InboxItem(
+                                    key = "channel:channel-9",
+                                    kind = InboxItemKind.Channel,
+                                    channelId = ChannelId("channel-9"),
+                                    channelName = "home-fixes",
+                                    lastMessageId = MessageId("message-9")
+                                )
+                            )
+                    ).toSharedConversationDirectoryState()
+            )
+        assertEquals(
+            AppShellForegroundBannerPendingDecision.Complete,
+            appShellForegroundBannerPendingDecision(
+                projection = enrichedResult,
+                message = message,
+                refreshAttempts = 1,
+                maxAttempts = 2
+            )
+        )
+        val banner = assertNotNull(enrichedResult.banner)
+        assertEquals(ConversationKind.Channel, banner.conversation.kind)
+        assertEquals("channel-9", banner.conversation.channelId?.value)
     }
 
     @Test
@@ -1656,6 +1777,28 @@ class SlockAppShellTest {
 
     @Test
     fun foregroundBannerProjectionCarriesReplyThreadRouteIdentityOnly() {
+        // t434 migration (criterion (a)): route-identity carriage needs a PROVEN reply
+        // thread — the fixture supplies the thread + parent directory evidence the raw
+        // guess used to fake; the route assertions are unchanged.
+        val replyDirectory =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "thread:reply-stream",
+                            kind = InboxItemKind.Thread,
+                            channelId = ChannelId("reply-stream"),
+                            channelName = "home-fixes",
+                            threadChannelId = ChannelId("reply-stream"),
+                            parentChannelId = ChannelId("parent-channel"),
+                            parentChannelName = "home-fixes",
+                            parentChannelKind = ConversationKind.Channel,
+                            parentMessageId = MessageId("parent-message"),
+                            latestActivityMessageId = MessageId("reply-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
         val banner =
             slockForegroundMessageBannerProjection(
                 serverId = "server-1",
@@ -1668,7 +1811,8 @@ class SlockAppShellTest {
                         parentMessageId = "parent-message"
                     ),
                 currentMemberId = "user-1",
-                visibleConversationKey = null
+                visibleConversationKey = null,
+                conversationDirectory = replyDirectory
             )
 
         val resolved = assertNotNull(banner)
@@ -1693,9 +1837,11 @@ class SlockAppShellTest {
                     ),
                 currentMemberId = "user-1",
                 visibleConversationKey = null,
-                visibleRouteIdentity = resolved.conversation.resolveThreadRouteIdentity()
+                visibleRouteIdentity = resolved.conversation.resolveThreadRouteIdentity(),
+                conversationDirectory = replyDirectory
             )
 
+        // Proven banner, visible route: suppressed for visibility (not conversation_missing).
         assertNull(suppressed)
     }
 

@@ -14965,6 +14965,9 @@ private fun Message.appShellForegroundStreamId(): String? =
 private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
     message: Message
 ): Boolean {
+    // A terminally suppressed message is decided (own/system/visible/server mismatch) and
+    // never waits; conversation_missing is the waitable "unproven yet" state (t434).
+    if (suppressReason.isTerminalForegroundSuppress()) return false
     if (sharedProjection != null) return false
     // task #425 part 2: a usable server-provided conversationContext already
     // yields a correct identity (routing-safe); show immediately with
@@ -14973,8 +14976,10 @@ private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityTh
     // the wait path below.
     if (message.foregroundBannerContextConversationOrNull() != null) return false
     if (message.parentMessageId != null || message.threadChannelId != null) return true
-    val banner = banner ?: return false
-    if (banner.conversation.kind != ConversationKind.Channel) return false
+    // t434 compensation (identity-proof-required): with the raw guess fallback gone there is
+    // no banner to inspect for an unproven message — no projection and no usable typed
+    // context simply means WAIT whenever there is a stream id to wait on, so a plain channel
+    // message whose projection arrives late still pops (deferred, never "never").
     return message.appShellForegroundStreamId() != null
 }
 
@@ -14990,10 +14995,13 @@ internal fun appShellForegroundBannerPendingDecision(
     refreshAttempts: Int,
     maxAttempts: Int = AppShellForegroundBannerActivityProjectionMaxAttempts
 ): AppShellForegroundBannerPendingDecision {
-    projection.banner ?: return AppShellForegroundBannerPendingDecision.Complete
-    val ready = !projection.shouldWaitForActivityThreadProjection(message)
+    // Wait-first (t434): with the raw guess fallback gone, an unproven message has NO banner
+    // — a banner-null early exit would make Retry unreachable. Whether to keep waiting is
+    // shouldWait's decision alone; Complete then shows the banner if one exists (terminal
+    // suppresses and unwaitable messages complete bannerless = decided silently).
     return when {
-        ready -> AppShellForegroundBannerPendingDecision.Complete
+        !projection.shouldWaitForActivityThreadProjection(message) ->
+            AppShellForegroundBannerPendingDecision.Complete
         refreshAttempts >= maxAttempts -> AppShellForegroundBannerPendingDecision.Drop
         else -> AppShellForegroundBannerPendingDecision.Retry
     }
