@@ -1180,6 +1180,19 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // Full-height (long-scroll) variants of the route captures (task #388):
+    // whole route in one frame at content height, paired with React's
+    // fullPage captures under the shared contract "full-height".
+    @Test
+    fun captureSettingsAdministrationFullHeight() {
+        captureKmpFullHeightSettingsCase("screens.settings.administration.full-height", "administration")
+    }
+
+    @Test
+    fun captureSettingsConnectedAppsFullHeight() {
+        captureKmpFullHeightSettingsCase("screens.settings.connected-apps.full-height", "connected-apps")
+    }
+
     @Test
     fun captureSettingsAdministrationAdmins() {
         captureKmpSettingsPageCase("components.settings.administration.admins", "administration-admins")
@@ -1465,7 +1478,10 @@ class KmpVisualScreenshotCaptureTest {
         pageData: JSONObject? = null,
         settleMs: Long = 1_500,
         requireReactionAtlas: Boolean = false,
-        beforeScreenshot: (() -> Unit)? = null
+        beforeScreenshot: (() -> Unit)? = null,
+        // Full-height cases (#388) only know the crop height after the page
+        // reports its content bottom; invoked post-settle to replace [crop].
+        cropOverride: (() -> VisualCrop)? = null
     ) {
         currentCaseId = caseId
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -1483,7 +1499,8 @@ class KmpVisualScreenshotCaptureTest {
             waitForIdleBounded()
             onActivityNoIdle { suppressVisualKeyboard(it) }
             waitForIdleBounded()
-            val normalized = captureStableVisualBitmap(context, caseId, crop, requireReactionAtlas)
+            val effectiveCrop = cropOverride?.invoke() ?: crop
+            val normalized = captureStableVisualBitmap(context, caseId, effectiveCrop, requireReactionAtlas)
             val outputDir = visualOutputDir(context)
             outputDir.mkdirs()
             clearMirroredCaseArtifacts(context, caseId)
@@ -1498,8 +1515,8 @@ class KmpVisualScreenshotCaptureTest {
                     caseId = caseId,
                     imageFile = imageFile,
                     bitmap = normalized,
-                    crop = crop,
-                    captureMethod = crop.captureMethod
+                    crop = effectiveCrop,
+                    captureMethod = effectiveCrop.captureMethod
                 )
             )
             mirrorFileForAdbPull(context, imageFile)
@@ -1873,6 +1890,98 @@ class KmpVisualScreenshotCaptureTest {
             false
         } finally {
             process?.destroy()
+        }
+    }
+
+    /**
+     * Full-height Settings capture (task #388, approach 1). The window is pinned
+     * to the display, so a long route can never lay out taller than the screen —
+     * instead we grow the emulator display itself (wm size) so the existing
+     * LazyColumn's viewport covers the whole route and every item composes, then
+     * crop the single frame to the content bottom the render-side sentinel
+     * reports (#250: `settings_route_visual_fullheight contentBottomPx=N` on the
+     * bridge tag). Crop height = true content bottom (includes the route's own
+     * trailing padding), matching the React fullPage document-height contract —
+     * the grown display's excess white is cropped away, never baselined.
+     * The display is restored in finally; a wm-size failure surfaces as a crop
+     * bounds/validation failure, never a silent short baseline (#135 history).
+     */
+    private fun captureKmpFullHeightSettingsCase(caseId: String, destination: String) {
+        runShellCommand("wm size ${FULL_HEIGHT_DISPLAY_WIDTH_PX}x$FULL_HEIGHT_DISPLAY_HEIGHT_PX")
+        try {
+            captureKmpComponentCase(
+                caseId = caseId,
+                pageName = "compose_settings_route_visual",
+                pageData =
+                    JSONObject()
+                        .put("destination", destination)
+                        .put("fixtureKey", "canonical")
+                        .put("slockVisualFullHeight", true),
+                crop = FULL_VIEWPORT_CROP,
+                settleMs = 2_500,
+                cropOverride = { awaitFullHeightCrop(caseId) }
+            )
+        } finally {
+            runShellCommand("wm size reset")
+        }
+    }
+
+    /**
+     * Block until the render-side full-height sentinel reports the content
+     * bottom, then build the dynamic crop. Fails loud on timeout: a viewport
+     * fallback here would silently publish a short baseline that looks green.
+     */
+    private fun awaitFullHeightCrop(caseId: String): VisualCrop {
+        val deadline = SystemClock.uptimeMillis() + FULL_HEIGHT_TOKEN_TIMEOUT_MS
+        while (SystemClock.uptimeMillis() < deadline) {
+            val line = logcatLastTokenLine(FULL_HEIGHT_TOKEN)
+            val bottomPx = line?.substringAfter("contentBottomPx=", "")?.trim()?.takeWhile { it.isDigit() }?.toIntOrNull()
+            if (bottomPx != null && bottomPx > 0) {
+                val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+                val heightDp = kotlin.math.ceil(bottomPx / density).toInt()
+                Log.i(VISUAL_LOG_TAG, "$caseId full-height content bottom ${bottomPx}px -> ${heightDp}dp crop")
+                return VisualCrop(
+                    leftDp = 0,
+                    topDp = 0,
+                    widthDp = 390,
+                    heightDp = heightDp,
+                    contract = "full-height",
+                    captureMethod = "app-window-root-draw-full-height-density-resize"
+                )
+            }
+            Thread.sleep(FULL_HEIGHT_POLL_MS)
+        }
+        throw AssertionError(
+            "$caseId full-height sentinel token '$FULL_HEIGHT_TOKEN' not seen within " +
+                "${FULL_HEIGHT_TOKEN_TIMEOUT_MS}ms — render hook missing or route never rendered"
+        )
+    }
+
+    /** Last logcat line containing [token] (same tag-filtered snapshot read as [logcatContainsToken]). */
+    private fun logcatLastTokenLine(token: String): String? {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(
+                arrayOf("logcat", "-d", "-s", REACTION_ATLAS_LOG_TAG)
+            )
+            process.inputStream.bufferedReader().useLines { lines ->
+                lines.lastOrNull { it.contains(token) }
+            }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "logcatLastTokenLine failed: ${t.message}")
+            null
+        } finally {
+            process?.destroy()
+        }
+    }
+
+    /** Best-effort shell command via UiAutomation (drains the fd so the command completes). */
+    private fun runShellCommand(command: String) {
+        try {
+            val fd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
+            ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.readBytes() }
+        } catch (t: Throwable) {
+            Log.w(VISUAL_LOG_TAG, "shell command '$command' failed: ${t.message}")
         }
     }
 
@@ -2854,6 +2963,15 @@ class KmpVisualScreenshotCaptureTest {
         // sprite before we snapshot (the token means "atlas ready", the draw
         // switches on the following frame).
         private const val REACTION_ATLAS_SETTLE_AFTER_MS = 600L
+
+        // Full-height Settings captures (task #388): display grown so the whole
+        // route composes in one frame; crop height comes from the render-side
+        // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
+        private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
+        private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
+        private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
+        private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
+        private const val FULL_HEIGHT_POLL_MS = 250L
 
         // Logcat tag for per-case timing (CASE_START/CASE_END) and idle-wait
         // warnings — grep this out of the uploaded logcat artifact (task #362).
