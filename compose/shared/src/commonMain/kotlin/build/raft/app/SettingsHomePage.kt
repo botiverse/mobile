@@ -1684,6 +1684,7 @@ private fun AppShellTabs(
     childTabSwitchEpoch: Int,
     switchController: AppShellChildPagerSwitchController,
     log: (String) -> Unit = {},
+    settingsInDetail: Boolean,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
@@ -1757,7 +1758,11 @@ private fun AppShellTabs(
                     SlockAppShellChildTabHost(
                         shellId = childHostShellId,
                         tab = tab,
-                        active = tab == activeChildTab
+                        active = tab == activeChildTab,
+                        // Only the Settings child host remounts on the detail<->home transition
+                        // (see remountEpoch doc). Other tabs pass Unit so their key is stable —
+                        // the HorizontalPager key and tab-switch logic (#403/#202) are untouched.
+                        remountEpoch = if (tab == "settings") settingsInDetail else Unit
                     )
                 }
             }
@@ -1774,7 +1779,14 @@ private fun AppShellTabs(
 private fun SlockAppShellChildTabHost(
     shellId: String,
     tab: String,
-    active: Boolean
+    active: Boolean,
+    // WORKAROUND (task #408): the native retained child page caches its root-view size at
+    // first attach (tabs visible); when a Settings detail hides the tabs the Compose parent
+    // grows to full height but the attached child does not re-size, leaving a bottom white
+    // strip. Bumping this into the child's remount key forces a re-attach at the current
+    // (full) height. Only the Settings host passes a changing value; other tabs pass Unit.
+    // Proper fix is native SlockKuiklyPageRenderView size propagation (rootViewSizeDidChanged).
+    remountEpoch: Any = Unit
 ) {
     val pageData =
         remember(shellId, tab) {
@@ -1783,7 +1795,7 @@ private fun SlockAppShellChildTabHost(
                 put("tab", tab)
             }
         }
-    key("app-shell-child-page-$tab") {
+    key("app-shell-child-page-$tab-$remountEpoch") {
         SlockKuiklyChildPage(
             pageName = SLOCK_APP_SHELL_CHILD_TAB_PAGE,
             pageData = pageData,
@@ -3675,7 +3687,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         mountedTabs = retainedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         switchController = childTabSwitchController,
-                        log = { bridge.log(it) }
+                        log = { bridge.log(it) },
+                        settingsInDetail = selectedSettingsDestination != SettingsDestinationHome
                     ) { tab, active ->
                         when (tab) {
                             "settings" -> settingsTabContent(active)
