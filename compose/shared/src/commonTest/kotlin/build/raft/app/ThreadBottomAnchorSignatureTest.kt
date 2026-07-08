@@ -241,6 +241,18 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedMessageAnchorWaitsForLoadingOriginOnly() {
+        // task #567: a "loading" origin placeholder above the timeline still
+        // changes size when it resolves — the anchor must hold until then.
+        assertFalse(focusedMessageAnchorOriginSettled("loading"))
+        // Every terminal state anchors immediately.
+        assertTrue(focusedMessageAnchorOriginSettled("none"))
+        assertTrue(focusedMessageAnchorOriginSettled("loaded"))
+        assertTrue(focusedMessageAnchorOriginSettled("missing"))
+        assertTrue(focusedMessageAnchorOriginSettled("error"))
+    }
+
+    @Test
     fun focusedMessageAnchorDoesNotRerunAfterUserScrollInterruption() {
         val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
 
