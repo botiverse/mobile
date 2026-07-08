@@ -2,10 +2,15 @@
 <resources>
     <string name="common_ok">OK</string>
     <string name="common_cancel">Cancel</string>
+    <string name="common_retry">Retry</string>
     <string name="tab_home">HOME</string>
     <string name="tab_tasks">TASKS</string>
     <string name="tab_members">MEMBERS</string>
     <string name="tab_settings">SETTINGS</string>
+    <string name="release_notes_title">Release Notes</string>
+    <string name="release_notes_loading">Loading...</string>
+    <string name="release_notes_error_title">Could not load release notes</string>
+    <string name="release_notes_error_body">Check your connection and try again.</string>
     <string name="thread_composer_insert_newline">Insert newline</string>
     <string name="settings_invite_by_email">INVITE BY EMAIL</string>
     <string name="settings_delete_server">DELETE SERVER</string>
