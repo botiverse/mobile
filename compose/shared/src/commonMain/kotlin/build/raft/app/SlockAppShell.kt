@@ -31,6 +31,13 @@ internal data class SlockAppShellScope(
     fun bottomTabBarHostInset(includeBottomTabBar: Boolean): Dp =
         if (includeBottomTabBar && !bottomTabBarOverlaysContent) bottomTabBarContentInset - SlockSpacing.Lg else 0.dp
 
+    // Global dialogs must keep their action rows clear of native/floating tab
+    // bands. On Android/iOS/OHOS floating renderers the native tab can draw
+    // above Compose siblings, so zIndex alone is not a sufficient clearance
+    // contract for bottom-pinned dialog actions.
+    fun globalDialogBottomInset(includeBottomTabBar: Boolean): Dp =
+        if (includeBottomTabBar) bottomTabBarContentInset else 0.dp
+
     // Trailing space scrollable content must reserve so its last row clears the
     // tab bar. When the bar overlays content (floating docks), the host pads
     // nothing and content needs the renderer's full clearance; otherwise the
@@ -80,11 +87,13 @@ internal fun SlockAppShellSurface(
     modifier: Modifier = Modifier,
     networkStatus: SlockAppShellNetworkStatus = SlockAppShellNetworkStatus.Online,
     showBottomTabs: Boolean = true,
+    modalHostState: SlockUnifiedDialogHostState? = null,
     content: @Composable () -> Unit
 ) {
-    val modalHostState = rememberSlockUnifiedDialogHostState()
+    val ownedModalHostState = rememberSlockUnifiedDialogHostState()
+    val effectiveModalHostState = modalHostState ?: ownedModalHostState
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockUnifiedDialogHostProvider(modalHostState) {
+        SlockUnifiedDialogHostProvider(effectiveModalHostState) {
             Column(
                 modifier =
                     Modifier
@@ -111,8 +120,9 @@ internal fun SlockAppShellSurface(
                 )
             }
             SlockUnifiedDialogHost(
-                state = modalHostState,
-                modifier = Modifier.fillMaxSize()
+                state = effectiveModalHostState,
+                modifier = Modifier.fillMaxSize(),
+                bottomInset = shellScope.globalDialogBottomInset(showBottomTabs)
             )
         }
     }

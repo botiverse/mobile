@@ -52,8 +52,11 @@ private val SlockUnifiedDialogShadowOffset = 4.dp
 
 internal class SlockUnifiedDialogHostKey
 
+internal const val SlockUnifiedDialogGenericHostRoute = "generic"
+
 internal data class SlockUnifiedDialogHostEntry(
     val key: SlockUnifiedDialogHostKey,
+    val route: String,
     val content: @Composable () -> Unit
 )
 
@@ -61,8 +64,8 @@ internal class SlockUnifiedDialogHostState {
     var entries by mutableStateOf<List<SlockUnifiedDialogHostEntry>>(emptyList())
         private set
 
-    fun upsert(key: SlockUnifiedDialogHostKey, content: @Composable () -> Unit) {
-        val nextEntry = SlockUnifiedDialogHostEntry(key, content)
+    fun upsert(key: SlockUnifiedDialogHostKey, route: String, content: @Composable () -> Unit) {
+        val nextEntry = SlockUnifiedDialogHostEntry(key, route, content)
         val currentEntries = entries
         val existingIndex = currentEntries.indexOfFirst { it.key === key }
         entries =
@@ -79,6 +82,7 @@ internal class SlockUnifiedDialogHostState {
 }
 
 private val LocalSlockUnifiedDialogHostState = compositionLocalOf<SlockUnifiedDialogHostState?> { null }
+private val LocalSlockUnifiedDialogHostBottomInset = compositionLocalOf { 0.dp }
 
 @Composable
 internal fun rememberSlockUnifiedDialogHostState(): SlockUnifiedDialogHostState =
@@ -95,7 +99,8 @@ internal fun SlockUnifiedDialogHostProvider(
 @Composable
 internal fun SlockUnifiedDialogHost(
     state: SlockUnifiedDialogHostState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
 ) {
     if (state.entries.isEmpty()) {
         return
@@ -106,9 +111,11 @@ internal fun SlockUnifiedDialogHost(
                 .zIndex(SlockGlobalModalHostZIndex)
                 .fillMaxSize()
     ) {
-        state.entries.forEach { entry ->
-            key(entry.key) {
-                entry.content()
+        CompositionLocalProvider(LocalSlockUnifiedDialogHostBottomInset provides bottomInset) {
+            state.entries.forEach { entry ->
+                key(entry.key) {
+                    entry.content()
+                }
             }
         }
     }
@@ -156,6 +163,7 @@ internal fun SlockUnifiedDialog(
     titleLineHeight: Int = 26,
     titleMaxLines: Int = 1,
     contentSpacing: Dp = 16.dp,
+    hostRoute: String = SlockUnifiedDialogGenericHostRoute,
     content: @Composable () -> Unit
 ) {
     val hostState = LocalSlockUnifiedDialogHostState.current
@@ -176,6 +184,7 @@ internal fun SlockUnifiedDialog(
                 titleLineHeight = titleLineHeight,
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
+                hostBottomInset = 0.dp,
                 handleBack = false,
                 content = content
             )
@@ -199,13 +208,14 @@ internal fun SlockUnifiedDialog(
                 titleLineHeight = titleLineHeight,
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
+                hostBottomInset = LocalSlockUnifiedDialogHostBottomInset.current,
                 handleBack = true,
                 content = content
             )
         }
     val hostKey = remember { SlockUnifiedDialogHostKey() }
-    DisposableEffect(hostState, hostKey) {
-        hostState.upsert(hostKey) {
+    DisposableEffect(hostState, hostKey, hostRoute) {
+        hostState.upsert(hostKey, hostRoute) {
             currentDialogContent.value()
         }
         onDispose {
@@ -230,6 +240,7 @@ private fun SlockUnifiedDialogSurface(
     titleLineHeight: Int,
     titleMaxLines: Int,
     contentSpacing: Dp,
+    hostBottomInset: Dp,
     handleBack: Boolean,
     content: @Composable () -> Unit
 ) {
@@ -248,6 +259,7 @@ private fun SlockUnifiedDialogSurface(
             modifier =
                 modifier
                     .padding(outerPadding)
+                    .padding(bottom = hostBottomInset)
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
                     .clickable(onClick = {})
