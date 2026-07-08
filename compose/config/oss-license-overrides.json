@@ -24,6 +24,22 @@
       "reason": "The module POM inherits its license from the Guava parent POM, which is not resolved by the Android release license generator."
     },
     {
+      "id": "com.google.guava:guava",
+      "displayName": "Guava",
+      "licenseName": "Apache License 2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "sourceUrl": "https://github.com/google/guava",
+      "reason": "Pulled transitively by androidx.media3 (task #556); the module POM inherits its license from the Guava parent POM, which is not resolved by the Android release license generator."
+    },
+    {
+      "id": "com.google.guava:failureaccess",
+      "displayName": "Guava FailureAccess",
+      "licenseName": "Apache License 2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "sourceUrl": "https://github.com/google/guava",
+      "reason": "Pulled transitively by androidx.media3 (task #556); license inherited from the Guava parent POM, same resolution gap as guava/listenablefuture."
+    },
+    {
       "id": "io.quiver:quiver-android-updater",
       "displayName": "Quiver Android Updater",
       "licenseName": "MIT License",
