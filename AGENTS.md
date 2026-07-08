@@ -109,6 +109,25 @@ git submodule update --init --recursive third_party/slock-source
   `SlockAnchoredPopover`, `SlockFloatingOverlayLayout`, or trigger components
   such as `SlockAnchoredToolbarChip`.
 
+## Kuikly Back Handling Rule
+
+- Any cancelable transient UI state in shared Kuikly Compose must register
+  `SlockBackHandler(enabled = stateIsActive, label = "...")` while active.
+  Examples include non-modal selection modes, inline search bars, full-screen
+  previews, custom panels, and popovers that are not already wrapped by the
+  shared overlay/dialog primitives.
+- Rely on Kuikly `BackHandler` stack semantics: the most recently composed
+  enabled handler owns system Back first, and disposal automatically removes it
+  from the stack. Do not hand-roll per-page native back dispatch or platform
+  key-event interception for ordinary cancelable UI states.
+- Prefer existing primitives when possible. `SlockFloatingOverlayHost`,
+  `SlockAnchoredPopover`, `SlockUnifiedDialog`, and `Modal(onWillDismiss = ...)`
+  already participate in Back dismissal; page code should add a local
+  `SlockBackHandler` only for transient states outside those primitives.
+- When multiple transient states can overlap, keep Back priority explicit:
+  modal/popover first, then nested temporary state, then page navigation.
+  Add a focused policy test when that priority is not obvious from structure.
+
 ## Task / Commit / Thread Discipline
 
 Workflow rules for how every agent (human-supervised or autonomous) should move
