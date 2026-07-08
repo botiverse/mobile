@@ -9,7 +9,6 @@ import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
-import build.raft.app.components.SlockSkeletonRow
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
@@ -9167,7 +9166,7 @@ private fun ThreadChatTab(
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
-                ThreadProgressiveLoadingSkeleton()
+                ThreadStateMessage("Loading...", null)
             }
         "error" ->
             ThreadStateActionMessage(
@@ -9547,7 +9546,7 @@ private fun ThreadMessagesList(
             onThreadContentReady()
         }
         if (timelineSlice.status == "loading") {
-            ThreadProgressiveLoadingSkeleton()
+            ThreadStateMessage("Loading...", null)
         } else {
             ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
         }
@@ -10500,7 +10499,7 @@ private fun ThreadMessagesList(
             }
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadProgressiveLoadingSkeleton()
+                    ThreadStateMessage("Loading...", null)
                 }
             }
             items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
@@ -17015,28 +17014,6 @@ private fun ThreadStateMessage(title: String, detail: String?) {
                     color = SlockColor.TextMutedGray
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ThreadProgressiveLoadingSkeleton() {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        repeat(3) { index ->
-            val lineWidths =
-                when (index) {
-                    0 -> listOf(192.dp, 128.dp)
-                    1 -> listOf(156.dp, 96.dp)
-                    else -> listOf(176.dp, 116.dp)
-                }
-            SlockSkeletonRow(
-                avatar = true,
-                avatarSize = 32.dp,
-                lineWidths = lineWidths
-            )
         }
     }
 }
