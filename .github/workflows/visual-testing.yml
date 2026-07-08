@@ -411,6 +411,16 @@ jobs:
           merge-multiple: true
           path: mobile/visual-testing-results/android
 
+      # iOS results are additive (task #418): tolerate an absent/red ios leg so
+      # the react/android site never blocks on it.
+      - name: Download ios results
+        if: ${{ !inputs.site_only }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-testing-results-ios
+          path: mobile/visual-testing-results
+
       # UI-only republish: rebuild visual-testing-results from what is already
       # published on gh-pages (raw react/android captures + metadata), then run
       # the normal diff/report/site chain with the LATEST CLI. No emulators, no
@@ -426,15 +436,24 @@ jobs:
           mkdir -p visual-testing-results
           cp -R "$SRC/react" visual-testing-results/react
           cp -R "$SRC/android" visual-testing-results/android
+          test -d "$SRC/ios" && cp -R "$SRC/ios" visual-testing-results/ios || echo "no ios captures on gh-pages yet"
 
       - name: Diff / report / site
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: |
-          node scripts/slock-visual-testing.mjs diff --baseline react --current android
-          node scripts/slock-visual-testing.mjs report --baseline react --current android
-          node scripts/slock-visual-testing.mjs site --baseline react --current android
+          # ios joins the pair list only when its captures are present, so a
+          # red/absent ios leg degrades to the classic react__android site.
+          CURRENT="android"
+          if [ -d visual-testing-results/ios ] && [ -n "$(ls visual-testing-results/ios/*.png 2>/dev/null)" ]; then
+            CURRENT="android,ios"
+          fi
+          echo "diff pairs: baseline=react current=$CURRENT"
+          node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
+          node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
+          node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
+          echo "CURRENT=$CURRENT" >> "$GITHUB_ENV"
 
       - name: Upload site artifact
         uses: actions/upload-artifact@v4
@@ -452,5 +471,5 @@ jobs:
           git config user.name "raft-visual-bot"
           git config user.email "visual-testing@raft.build"
           git fetch origin gh-pages:refs/remotes/origin/gh-pages || echo "no existing gh-pages branch"
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current android --repo-dir . --dry-run
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current android --repo-dir .
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --dry-run
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir .
