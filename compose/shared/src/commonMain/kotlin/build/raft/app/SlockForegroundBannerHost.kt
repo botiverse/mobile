@@ -348,17 +348,7 @@ internal fun slockConversationDirectoryStateFromProjections(
 ): SharedConversationDirectoryState =
     projections.toSharedConversationDirectoryState()
 
-/**
- * Terminal suppress reasons are decided — the message must never enter the wait/retry loop.
- * `conversation_missing` is intentionally NOT terminal: post-#434 (raw guess fallback gone)
- * it marks the "unproven yet, waitable" state the defer machinery exists for.
- */
-internal fun String?.isTerminalForegroundSuppress(): Boolean =
-    when (this) {
-        "own_message", "system_message", "visible_conversation",
-        "server_missing", "current_server_missing", "server_mismatch" -> true
-        else -> false
-    }
+
 
 internal fun slockForegroundMessageBannerProjection(
     serverId: String,
@@ -416,7 +406,7 @@ internal fun slockForegroundMessageBannerProjectionResult(
     val conversation =
         message.resolveForegroundBannerConversation(conversationDirectory)
             ?: return SlockForegroundMessageBannerProjectionResult(null, projection, "conversation_missing")
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity = null)) {
         return SlockForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
     val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
@@ -570,8 +560,9 @@ private fun Message.resolveForegroundBannerConversation(
     // t434 identity-proof-required: the raw tail that assembled a ReplyThread from
     // parentMessageId + channelId, or a Channel from bare stream ids, is gone. The banner
     // only accepts identities proven by a directory projection or a trusted typed
-    // conversationContext; an unproven message returns null and DEFERS (wait -> retry ->
-    // timeout drop, see shouldWaitForActivityThreadProjection) — it never navigates a guess.
+    // conversationContext; an unproven message returns null — it never navigates a guess.
+    // (The defer/retry compensation this used to feed retired with the message:new
+    // banner path in task #459 — the qualified push stream carries typed identity.)
     return null
 }
 
@@ -778,7 +769,6 @@ internal fun slockNotificationPushBannerOrNull(
     event: build.raft.app.model.NotificationPushReceived,
     currentServerId: String?,
     visibleConversationKey: String?,
-    visibleRouteIdentity: ThreadRouteIdentity? = null,
     conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
     onSuppressed: (String) -> Unit = {}
 ): SlockForegroundMessageBanner? {
