@@ -28,14 +28,14 @@ class SettingsHomePageDiagnosticsTest {
     fun feedbackComposerBottomPaddingLiftsAboveKeyboard() {
         assertEquals(
             24.dp,
-            settingsQuiverFeedbackComposerBottomPadding(
+            threadComposerHostKeyboardLiftBottomPadding(
                 keyboardInsetDp = 0f,
                 bottomContentPadding = 24.dp
             )
         )
         assertEquals(
             292.dp,
-            settingsQuiverFeedbackComposerBottomPadding(
+            threadComposerHostKeyboardLiftBottomPadding(
                 keyboardInsetDp = 280f,
                 bottomContentPadding = 24.dp
             )
