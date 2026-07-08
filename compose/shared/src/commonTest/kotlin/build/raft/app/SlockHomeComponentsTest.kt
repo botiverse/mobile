@@ -559,6 +559,36 @@ class SlockHomeComponentsTest {
         assertEquals("user-cindy", item.presenceMemberId)
     }
 
+    // task #444: the row kind must serialize through the lossless wire kind — the surface
+    // projection folds Joint into "channel", which emptied the Joint Channels section.
+    @Test
+    fun homeConversationItemKeepsJointKindDistinctFromChannelSurface() {
+        val jointItem =
+            SharedHomeConversationRowProjector().project(
+                SharedHomeConversationRowSeed(
+                    id = "joint-1",
+                    kind = ConversationKind.Joint,
+                    fallbackName = "raft-mobile",
+                    fallbackChannelType = "joint"
+                )
+            )
+        val channelItem =
+            SharedHomeConversationRowProjector().project(
+                SharedHomeConversationRowSeed(
+                    id = "channel-1",
+                    kind = ConversationKind.Channel,
+                    fallbackName = "general"
+                )
+            )
+
+        // The Joint section filter is `kind == JointChannelKindWireValue` — a joint row
+        // must carry the distinct wire kind, and a regular channel must not.
+        assertEquals(JointChannelKindWireValue, jointItem.kind)
+        assertEquals(ConversationKind.Joint, parseConversationKindOrNull(jointItem.kind))
+        assertEquals(JointChannelKindWireValue, jointItem.homeChannelKind())
+        assertEquals(KuiklyThreadSurfaceKind.Channel, channelItem.kind)
+    }
+
     @Test
     fun homeConversationItemDoesNotLetGenericDirectoryTitleReplaceFallbackName() {
         val seed =

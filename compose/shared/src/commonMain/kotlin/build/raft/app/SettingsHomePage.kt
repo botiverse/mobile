@@ -14813,7 +14813,13 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         name = title,
         // The row seed is the Home identity source. Directory projection enriches display/state
         // fields, but cannot rewrite the row's conversation kind (§5).
-        kind = kind.toKuiklySurfaceKind(),
+        // task #444: serialize through the LOSSLESS wire kind, not the surface projection —
+        // toKuiklySurfaceKind() folds Joint into the channel surface (contract rule: the
+        // surface projection is lossy), which made the Joint Channels section filter
+        // (kind == "joint") never match and the section vanish. The surface fallback only
+        // covers kinds without a wire channel kind (Inbox/System), which render as channel
+        // surfaces anyway.
+        kind = kind.toWireChannelKindOrNull() ?: kind.toKuiklySurfaceKind(),
         channelType = projectedChannelType ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
