@@ -241,6 +241,165 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun focusedMessageAnchorWaitsForLoadingOriginOnly() {
+        // task #567: a "loading" origin placeholder above the timeline still
+        // changes size when it resolves — the anchor must hold until then.
+        assertFalse(focusedMessageAnchorOriginSettled("loading"))
+        // Every terminal state anchors immediately.
+        assertTrue(focusedMessageAnchorOriginSettled("none"))
+        assertTrue(focusedMessageAnchorOriginSettled("loaded"))
+        assertTrue(focusedMessageAnchorOriginSettled("missing"))
+        assertTrue(focusedMessageAnchorOriginSettled("error"))
+    }
+
+    @Test
+    fun focusedAnchorSessionInterruptBeatsEverything() {
+        // #554 semantics survive inside the session: the user always wins,
+        // even at the cap or mid-drift.
+        assertEquals(
+            FocusedAnchorSessionAction.Interrupt,
+            focusedAnchorSessionAction(
+                userInteracting = true,
+                drifted = true,
+                quietMs = FocusedAnchorSessionQuietMs,
+                elapsedMs = FocusedAnchorSessionHardCapMs
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionHardCapConsumesEvenWhileDrifting() {
+        assertEquals(
+            FocusedAnchorSessionAction.Consume,
+            focusedAnchorSessionAction(
+                userInteracting = false,
+                drifted = true,
+                quietMs = 0L,
+                elapsedMs = FocusedAnchorSessionHardCapMs
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionDriftReanchorsBeforeQuietConsumption() {
+        assertEquals(
+            FocusedAnchorSessionAction.Reanchor,
+            focusedAnchorSessionAction(
+                userInteracting = false,
+                drifted = true,
+                quietMs = FocusedAnchorSessionQuietMs,
+                elapsedMs = FocusedAnchorSessionQuietMs
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionQuietWindowConsumes() {
+        assertEquals(
+            FocusedAnchorSessionAction.Consume,
+            focusedAnchorSessionAction(
+                userInteracting = false,
+                drifted = false,
+                quietMs = FocusedAnchorSessionQuietMs,
+                elapsedMs = FocusedAnchorSessionQuietMs
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorSessionOtherwiseContinuesWatching() {
+        assertEquals(
+            FocusedAnchorSessionAction.Continue,
+            focusedAnchorSessionAction(
+                userInteracting = false,
+                drifted = false,
+                quietMs = FocusedAnchorSessionQuietMs - 1,
+                elapsedMs = FocusedAnchorSessionHardCapMs - 1
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorDriftPredicateHandlesVisibilityAndTolerance() {
+        // Target left the viewport = always drift (injection case: an item
+        // above grows enough to push the target out).
+        assertTrue(focusedAnchorTargetDrifted(anchoredOffset = 120, currentOffset = null))
+        // No baseline (target was never measured at anchor time) = no drift.
+        assertFalse(focusedAnchorTargetDrifted(anchoredOffset = null, currentOffset = 80))
+        // Layout rounding jitter within tolerance is not drift.
+        assertFalse(
+            focusedAnchorTargetDrifted(
+                anchoredOffset = 120,
+                currentOffset = 120 + FocusedAnchorDriftTolerancePx
+            )
+        )
+        // A real shift beyond tolerance re-anchors, in either direction —
+        // this is the injected "item above grew after anchoring" assertion.
+        assertTrue(
+            focusedAnchorTargetDrifted(
+                anchoredOffset = 120,
+                currentOffset = 120 + FocusedAnchorDriftTolerancePx + 1
+            )
+        )
+        assertTrue(
+            focusedAnchorTargetDrifted(
+                anchoredOffset = 120,
+                currentOffset = 120 - FocusedAnchorDriftTolerancePx - 1
+            )
+        )
+    }
+
+    @Test
+    fun bottomAnchorYieldsWhileFocusedAnchorPendingWithinCap() {
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+        // Pending focused anchor holds the bottom anchor off entirely —
+        // "zero scrolls while the focused identity is active".
+        assertTrue(
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = 0L
+            )
+        )
+        // Consumed or interrupted identities release the yield immediately.
+        assertFalse(
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = identity,
+                consumedIdentity = identity,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = 0L
+            )
+        )
+        assertFalse(
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = identity,
+                yieldElapsedMs = 0L
+            )
+        )
+        // No focused request at all = normal bottom anchoring.
+        assertFalse(
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = null,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = 0L
+            )
+        )
+        // Past the cap the fallback wins so a dead target can't blank the entry.
+        assertFalse(
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = FocusedAnchorBottomYieldCapMs
+            )
+        )
+    }
+
+    @Test
     fun focusedMessageAnchorDoesNotRerunAfterUserScrollInterruption() {
         val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
 
