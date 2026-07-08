@@ -14216,9 +14216,13 @@ private fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
     // starting a short-lived async `imageResource` load. The visual fixtures also
     // emit task #379's ready token so the capture harness can wait for the atlas
     // before snapshotting reaction-bearing cases.
-    val threadReactionAtlasImage = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    // task #421: the atlas DrawableResource is null on iOS (asset not bundled),
+    // so only load it where available; otherwise provide a null atlas and let
+    // reaction rendering fall back to emoji glyphs.
+    val atlasDrawable = ThreadReactionSpriteAtlasDrawableResource
+    val threadReactionAtlasImage = if (atlasDrawable != null) imageResource(atlasDrawable) else null
     val readyThreadReactionAtlas =
-        threadReactionAtlasImage.takeIf { it.width > 0 && it.height > 0 }
+        threadReactionAtlasImage?.takeIf { it.width > 0 && it.height > 0 }
     if (readyThreadReactionAtlas != null) {
         SideEffect {
             ThreadReactionGlyphDiagnostics.logAtlasReadyOnce(
@@ -14238,7 +14242,10 @@ private fun ThreadQuickReactionGlyph(
     modifier: Modifier = Modifier,
     reactionAtlasImage: ImageBitmap? = null
 ) {
-    val sprite = ThreadReactionSpriteCatalogV1.resolve(emoji)
+    // task #421: on platforms where the sprite atlas can't load (iOS — asset not
+    // bundled), skip sprite rendering entirely and fall through to the emoji
+    // glyph, rather than drawing a blank atlas rect.
+    val sprite = if (spriteAtlasAvailable) ThreadReactionSpriteCatalogV1.resolve(emoji) else null
     if (sprite != null) {
         ThreadReactionSpriteGlyph(
             sprite = sprite,

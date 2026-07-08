@@ -40,13 +40,16 @@ class ThreadReactionSpriteCatalogTest {
         // image adapter opens exactly the path after "assets://" — a "common/"
         // segment here points at a file that exists in no APK (silent legacy
         // fallback on every device).
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://"))
-        assertTrue(!ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://common/"))
+        // task #421: the atlas resource is nullable now (null on iOS where the
+        // asset can't bundle); on this JVM test target it resolves, so assert it.
+        val atlasResource = assertNotNull(ThreadReactionSpriteAtlasResource)
+        assertTrue(atlasResource.imageUrl.startsWith("assets://"))
+        assertTrue(!atlasResource.imageUrl.startsWith("assets://common/"))
         assertEquals(
-            "assets://${ThreadReactionSpriteAtlasResource.image.originalPath}",
-            ThreadReactionSpriteAtlasResource.imageUrl
+            "assets://${atlasResource.image.originalPath}",
+            atlasResource.imageUrl
         )
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
-        assertTrue(ThreadReactionSpriteAtlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
+        assertTrue(atlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
+        assertTrue(atlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
     }
 }

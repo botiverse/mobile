@@ -51,7 +51,11 @@ internal data class ThreadReactionSprite(
 
 internal data class ThreadReactionSpriteCatalog(
     val schemaVersion: Int,
-    val resource: ThreadReactionAtlasResource,
+    // Nullable: the atlas asset resource can't initialize on iOS (task #421 —
+    // MR assets aren't bundled there), so it resolves to null on that platform.
+    // The sprite `reactions`/`atlas` metadata is pure data and always present;
+    // `resource` is only needed to load the atlas image.
+    val resource: ThreadReactionAtlasResource?,
     val atlas: ThreadReactionAtlas,
     val reactions: List<ThreadReactionSprite>
 ) {
@@ -104,18 +108,37 @@ internal data class ThreadReactionSpriteCatalog(
 // "assets://common/slock_reactions/..." which exists in no APK and made
 // the atlas silently fall back to legacy glyphs on every Android build
 // (task #335 follow-up).
-private val ThreadReactionSpriteAtlasImageUrl: String =
-    "assets://${MR.assets.reactions.reaction_atlas_v1.originalPath}"
+// task #421: the reaction atlas asset lives under MR (resources/MR/assets/
+// reactions/). The kmmresource plugin packs MR assets into the Android APK's
+// assets root, but there is no iOS bundle equivalent, so *touching*
+// MR.assets.reactions throws FileFailedToInitializeException on iOS. Probe it
+// once, lazily and guarded, so class initialization never crashes; everything
+// that needs the atlas image checks this first and otherwise falls back to
+// emoji glyphs (see ThreadQuickReactionGlyph), matching Android's legacy-glyph
+// fallback semantics (task #379).
+internal val spriteAtlasAvailable: Boolean by lazy {
+    runCatching { MR.assets.reactions.reaction_atlas_v1.originalPath }.isSuccess
+}
+
+private val ThreadReactionSpriteAtlasImageUrl: String? by lazy {
+    runCatching { "assets://${MR.assets.reactions.reaction_atlas_v1.originalPath}" }.getOrNull()
+}
 
 @OptIn(InternalResourceApi::class)
-internal val ThreadReactionSpriteAtlasDrawableResource: DrawableResource =
-    DrawableResource(ThreadReactionSpriteAtlasImageUrl)
+internal val ThreadReactionSpriteAtlasDrawableResource: DrawableResource? by lazy {
+    ThreadReactionSpriteAtlasImageUrl?.let { DrawableResource(it) }
+}
 
-internal val ThreadReactionSpriteAtlasResource = ThreadReactionAtlasResource(
-    image = MR.assets.reactions.reaction_atlas_v1,
-    manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
-    imageUrl = ThreadReactionSpriteAtlasImageUrl
-)
+internal val ThreadReactionSpriteAtlasResource: ThreadReactionAtlasResource? by lazy {
+    val url = ThreadReactionSpriteAtlasImageUrl ?: return@lazy null
+    runCatching {
+        ThreadReactionAtlasResource(
+            image = MR.assets.reactions.reaction_atlas_v1,
+            manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
+            imageUrl = url
+        )
+    }.getOrNull()
+}
 
 internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     schemaVersion = 1,
