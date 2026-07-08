@@ -18,6 +18,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.TaskCreated
@@ -429,6 +431,8 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is AgentCreated -> "agent_created"
     is SyncResumeResponse -> "sync_resume_response"
     is Heartbeat -> "heartbeat"
+    is PerReceiverReadStateChanged -> "read_state_updated"
+    is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
 }
 
 private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
@@ -455,4 +459,9 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
     is SyncResumeResponse ->
         "currentSeq=$currentSeq messages=${messages.size} hasMore=$hasMore"
     is Heartbeat -> "seq=$seq"
+    is PerReceiverReadStateChanged ->
+        "serverId=${serverId?.value.orEmpty()} scopes=${scopes.size} " +
+            "firstScopeId=${scopes.firstOrNull()?.scopeId?.value.orEmpty()} firstVersion=${scopes.firstOrNull()?.readStateVersion ?: -1L}"
+    is PerReceiverNotificationPrefsChanged ->
+        "serverId=${serverId?.value.orEmpty()} scopeId=${scopeId.value} version=$prefsVersion muted=${preference.activityMuted}"
 }

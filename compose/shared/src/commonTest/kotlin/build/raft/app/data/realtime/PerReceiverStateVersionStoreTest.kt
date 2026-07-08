@@ -1,6 +1,7 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.data.InMemorySlockKeyValueStore
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlin.test.Test
@@ -50,6 +51,52 @@ class PerReceiverStateVersionStoreTest {
         assertTrue(nextScope.shouldApply)
         assertEquals(5, store.readVersion(server, member, PerReceiverStateScope.ReadState))
         assertEquals(4, store.readVersion(server, member, PerReceiverStateScope.NotificationPrefs))
+    }
+
+    @Test
+    fun gatesReadStateVersionsPerScopeIdIndependently() {
+        // Server PR #4175: read_state versions live on the per-(user, channel)
+        // cursor row, so channel A at version 9 must not swallow channel B's
+        // version 3 — each scopeId carries its own counter.
+        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val server = ServerId("server-1")
+        val member = MemberId("member-1")
+        val channelA = ChannelId("channel-a")
+        val channelB = ChannelId("channel-b")
+
+        val firstA =
+            store.recordApplied(
+                serverId = server,
+                memberId = member,
+                scope = PerReceiverStateScope.ReadState,
+                incomingVersion = 9,
+                scopeId = channelA
+            )
+        val firstB =
+            store.recordApplied(
+                serverId = server,
+                memberId = member,
+                scope = PerReceiverStateScope.ReadState,
+                incomingVersion = 3,
+                scopeId = channelB
+            )
+        val staleA =
+            store.recordApplied(
+                serverId = server,
+                memberId = member,
+                scope = PerReceiverStateScope.ReadState,
+                incomingVersion = 8,
+                scopeId = channelA
+            )
+
+        assertTrue(firstA.shouldApply)
+        assertTrue(firstB.shouldApply)
+        assertFalse(staleA.shouldApply)
+        assertEquals(9, store.readVersion(server, member, PerReceiverStateScope.ReadState, channelA))
+        assertEquals(3, store.readVersion(server, member, PerReceiverStateScope.ReadState, channelB))
+        // Family-level (scopeId = null) remains a distinct key: server_order
+        // keeps gating there without seeing per-channel counters.
+        assertEquals(0, store.readVersion(server, member, PerReceiverStateScope.ReadState))
     }
 
     @Test

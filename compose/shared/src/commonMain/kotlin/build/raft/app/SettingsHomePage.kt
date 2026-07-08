@@ -331,6 +331,8 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.AgentCreated
@@ -15742,6 +15744,8 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is AgentCreated -> "agent_created"
         is SyncResumeResponse -> "sync_resume"
         is Heartbeat -> "heartbeat"
+        is PerReceiverReadStateChanged -> "read_state_updated"
+        is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -15761,6 +15765,8 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is ServerPlanUpdated,
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
+        is PerReceiverReadStateChanged,
+        is PerReceiverNotificationPrefsChanged -> "realtime_content_apply"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =

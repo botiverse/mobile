@@ -9,6 +9,8 @@ import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
@@ -430,7 +432,70 @@ internal class SharedHomeStore(
             )
             return
         }
+        if (event is PerReceiverReadStateChanged) {
+            applyPerReceiverReadStateChanged(serverId, event)
+            return
+        }
+        if (event is PerReceiverNotificationPrefsChanged) {
+            applyPerReceiverNotificationPrefsChanged(serverId, event)
+            return
+        }
         applyRealtimeHomeEventLocally(serverId, event)
+    }
+
+    // RFC 041 wire events carry the scope facts but not the receiving member —
+    // the server emits them to the caller's `user:<id>` room, so the member is
+    // whoever this session is. Enrich with the current snapshot's identity and
+    // hand each scope to the version-gated applier; a mismatched or stale
+    // scope is a per-scope no-op there, never a batch failure.
+    private fun applyPerReceiverReadStateChanged(
+        serverId: ServerId,
+        event: PerReceiverReadStateChanged
+    ) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val memberId = content.snapshot.currentMember.id
+        val eventServerId = event.serverId ?: serverId
+        event.scopes.forEach { scope ->
+            val applied =
+                applyPerReceiverReadState(
+                    PerReceiverReadStateUpdate(
+                        serverId = eventServerId,
+                        memberId = memberId,
+                        channelId = scope.scopeId,
+                        version = scope.readStateVersion,
+                        maxReadSeq = scope.maxReadSeq
+                    )
+                )
+            diagnosticsLogger(
+                "per_receiver_read_state_apply serverId=${eventServerId.value} scopeId=${scope.scopeId.value} " +
+                    "version=${scope.readStateVersion} maxReadSeq=${scope.maxReadSeq ?: -1} " +
+                    "result=${if (applied) "applied" else "skipped"}"
+            )
+        }
+    }
+
+    private fun applyPerReceiverNotificationPrefsChanged(
+        serverId: ServerId,
+        event: PerReceiverNotificationPrefsChanged
+    ) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val memberId = content.snapshot.currentMember.id
+        val eventServerId = event.serverId ?: serverId
+        val applied =
+            applyPerReceiverNotificationPrefs(
+                PerReceiverNotificationPrefsUpdate(
+                    serverId = eventServerId,
+                    memberId = memberId,
+                    channelId = event.scopeId,
+                    version = event.prefsVersion,
+                    preference = event.preference
+                )
+            )
+        diagnosticsLogger(
+            "per_receiver_notification_prefs_apply serverId=${eventServerId.value} scopeId=${event.scopeId.value} " +
+                "version=${event.prefsVersion} muted=${event.preference.activityMuted} " +
+                "result=${if (applied) "applied" else "skipped"}"
+        )
     }
 
     private suspend fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
@@ -1458,11 +1523,16 @@ internal class SharedHomeStore(
     }
 
     private fun applyPerReceiverReadState(update: PerReceiverReadStateUpdate): Boolean {
+        // RFC 041 §2.2: the version is monotonic per (kind, scope) — for
+        // read_state the scope is the channel (server PR #4175 keeps the
+        // counter on the per-(user, channel) cursor row), so the gate MUST
+        // key on channelId or one channel's high version swallows another's.
         if (!canApplyPerReceiverState(
                 serverId = update.serverId,
                 memberId = update.memberId,
                 scope = PerReceiverStateScope.ReadState,
-                version = update.version
+                version = update.version,
+                scopeId = update.channelId
             )
         ) {
             return false
@@ -1471,7 +1541,8 @@ internal class SharedHomeStore(
             serverId = update.serverId,
             memberId = update.memberId,
             scope = PerReceiverStateScope.ReadState,
-            incomingVersion = update.version
+            incomingVersion = update.version,
+            scopeId = update.channelId
         )
         return applyHomeSnapshotLocally { snapshot ->
             snapshot.withPerReceiverReadState(update)
@@ -1483,7 +1554,8 @@ internal class SharedHomeStore(
                 serverId = update.serverId,
                 memberId = update.memberId,
                 scope = PerReceiverStateScope.NotificationPrefs,
-                version = update.version
+                version = update.version,
+                scopeId = update.channelId
             )
         ) {
             return false
@@ -1492,7 +1564,8 @@ internal class SharedHomeStore(
             serverId = update.serverId,
             memberId = update.memberId,
             scope = PerReceiverStateScope.NotificationPrefs,
-            incomingVersion = update.version
+            incomingVersion = update.version,
+            scopeId = update.channelId
         )
         return applyHomeSnapshotLocally { snapshot ->
             snapshot.withChannelActivityMute(
@@ -1530,7 +1603,8 @@ internal class SharedHomeStore(
         serverId: ServerId,
         memberId: MemberId,
         scope: PerReceiverStateScope,
-        version: Long
+        version: Long,
+        scopeId: ChannelId? = null
     ): Boolean {
         if (version <= 0L) return false
         val content = _state.value.content as? SharedHomeContentState.Content ?: return false
@@ -1541,7 +1615,8 @@ internal class SharedHomeStore(
                 serverId = serverId,
                 memberId = memberId,
                 scope = scope,
-                incomingVersion = version
+                incomingVersion = version,
+                scopeId = scopeId
             )
             .shouldApply
     }
@@ -2439,6 +2514,8 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ThreadUpdated -> "thread_updated"
         is build.raft.app.model.TaskCreated -> "task_created"
         is build.raft.app.model.TaskUpdated -> "task_updated"
+        is PerReceiverReadStateChanged -> "read_state_updated"
+        is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
         else -> "realtime"
     }
 

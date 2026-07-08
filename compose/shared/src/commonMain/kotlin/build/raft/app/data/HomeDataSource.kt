@@ -10,6 +10,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -220,7 +222,9 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is SyncResumeResponse,
         is ThreadUpdated,
         is TaskCreated,
-        is TaskUpdated -> true
+        is TaskUpdated,
+        is PerReceiverReadStateChanged,
+        is PerReceiverNotificationPrefsChanged -> true
         is MemberPresenceUpdated -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||

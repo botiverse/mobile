@@ -17,6 +17,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -3617,6 +3620,152 @@ class SharedHomeStoreTest {
         val stale = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
         assertEquals(true, stale.activityMuted)
         assertEquals(99, stale.muteFromSeq)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePerReceiverReadStateEventGatesEachScopeIndependently() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-1", "general").copy(
+                                        unreadCount = 3,
+                                        unreadCountKnown = true,
+                                        lastMessageSeq = 31,
+                                        firstUnreadMessageId = MessageId("message-31")
+                                    ),
+                                    channel("channel-2", "dev").copy(
+                                        unreadCount = 2,
+                                        unreadCountKnown = true,
+                                        lastMessageSeq = 50,
+                                        firstUnreadMessageId = MessageId("message-50")
+                                    )
+                                ),
+                            unreadTotal = 5,
+                            server = ServerSummary(ServerId("server-1"), "Slock Community", unreadCount = 5),
+                            serverUnreadCounts = mapOf("server-1" to 5)
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        // Wire-shaped event straight off the socket: the receiving member is
+        // implied by the user room (enriched from the session), not carried
+        // in the payload.
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-1"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-1"),
+                                    maxReadSeq = 31,
+                                    readStateVersion = 9
+                                )
+                            )
+                    )
+            )
+        )
+
+        val cleared = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, cleared.channels.first { it.channelId.value == "channel-1" }.unreadCount)
+        assertEquals(2, cleared.channels.first { it.channelId.value == "channel-2" }.unreadCount)
+        assertEquals(2, cleared.unreadTotal)
+
+        // Bulk frame: channel-1 arrives stale (8 < 9) and must be skipped,
+        // but channel-2 has its own counter (041 §2.2 per-scope) so its
+        // version 1 still applies — channel-1's high water must not swallow it.
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-1"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-1"),
+                                    maxReadSeq = 12,
+                                    readStateVersion = 8
+                                ),
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-2"),
+                                    maxReadSeq = 50,
+                                    readStateVersion = 1
+                                )
+                            )
+                    )
+            )
+        )
+
+        val next = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, next.channels.first { it.channelId.value == "channel-1" }.unreadCount)
+        assertEquals(0, next.channels.first { it.channelId.value == "channel-2" }.unreadCount)
+        assertEquals(0, next.unreadTotal)
+        assertEquals(0, store.state.value.appBadgeCount.count)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeNotificationPrefsEventAppliesMuteThroughVersionGate() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-1", "general").copy(
+                                        unreadCount = 4,
+                                        unreadCountKnown = true,
+                                        activityNotificationPreference = supportedActivityPreference()
+                                    )
+                                ),
+                            unreadTotal = 4,
+                            server = ServerSummary(ServerId("server-1"), "Slock Community", unreadCount = 4)
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverNotificationPrefsChanged(
+                        serverId = ServerId("server-1"),
+                        scopeId = ChannelId("channel-1"),
+                        preference =
+                            ChannelActivityNotificationPreference(
+                                activityMuted = true,
+                                muteFromSeq = 99,
+                                activityMuteSupported = true
+                            ),
+                        prefsVersion = 8
+                    )
+            )
+        )
+
+        val muted = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(true, muted.activityMuted)
+        assertEquals(99, muted.muteFromSeq)
         scope.cancel()
     }
 
