@@ -3286,7 +3286,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             foregroundMessageBanner = null
                         }
                     }
-                    }
                 }
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
