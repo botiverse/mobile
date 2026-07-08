@@ -148,6 +148,7 @@ private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
+internal val HomeServerSwitcherDragHandleIconName = SlockLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
@@ -2507,12 +2508,17 @@ private fun ServerSwitcherPanel(
                 } else {
                     Modifier.fillMaxWidth().height(serverListMaxHeight)
                 }
+            val serverLazyListModifier =
+                if (serverListMaxHeight == null) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier.fillMaxSize()
+                }
             Box(modifier = serverListModifier) {
                 LazyColumn(
                     state = listState,
                     modifier =
-                        Modifier
-                            .fillMaxSize()
+                        serverLazyListModifier
                             .pointerInput(order) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { pos ->
@@ -2683,18 +2689,10 @@ private fun ServerSwitcherRow(
         if (badgeLabel != null) HomeUnreadBadge(badgeLabel)
         if (dragHandleVisible) {
             Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "\u22EE\u22EE",
-                    style =
-                        SlockType.Caption.copy(
-                            fontFamily = SlockMonoFamily,
-                            fontSize = 18.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    textAlign = TextAlign.Center
+                SlockLucideIcon(
+                    HomeServerSwitcherDragHandleIconName,
+                    Modifier.size(14.dp),
+                    color = SlockColor.TextMutedGrayArgb
                 )
             }
         }

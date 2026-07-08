@@ -159,6 +159,7 @@ LUCIDE_ICONS = [
     "funnel",
     "git-branch",
     "globe",
+    "grip-vertical",
     "hash",
     "heart",
     "house",
