@@ -735,6 +735,7 @@ private data class WireSettingsSidebarOrder(
     val pinnedChannelIds: List<String> = emptyList(),
     val pinnedAgentIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
+    val pinned: List<SettingsServerSidebarPinnedItem> = emptyList(),
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
     val agentPanelTabOrder: List<String> = emptyList(),
@@ -752,6 +753,14 @@ fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrde
         pinnedChannelIds = order.pinnedChannelIds,
         pinnedAgentIds = order.pinnedAgentIds,
         pinnedOrder = order.pinnedOrder,
+        pinned =
+            order.pinned
+                .mapNotNull { item ->
+                    val kind = item.kind.trim().lowercase().takeIf { it == "channel" || it == "agent" || it == "human" }
+                    val id = item.id.trim().takeIf { it.isNotBlank() }
+                    if (kind != null && id != null) SettingsServerSidebarPinnedItem(kind = kind, id = id) else null
+                }
+                .distinctBy { "${it.kind}:${it.id}" },
         hiddenDmIds = order.hiddenDmIds,
         channelPanelTabOrder = order.channelPanelTabOrder,
         agentPanelTabOrder = order.agentPanelTabOrder,

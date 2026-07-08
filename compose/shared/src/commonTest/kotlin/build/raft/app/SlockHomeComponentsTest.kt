@@ -6,6 +6,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
@@ -794,6 +795,110 @@ class SlockHomeComponentsTest {
             )
 
         assertEquals(listOf("dm-human-1", "dm-agent-1"), pinned.map { it.id })
+    }
+
+    @Test
+    fun pinnedRowsRenderTypedAgentWithoutExistingDirectMessageFromMemberProfile() {
+        val pinned =
+            pinnedRowsForSidebar(
+                channels = emptyList(),
+                directMessages = emptyList(),
+                pinnedIds = emptyList(),
+                pinnedOrder = emptyList(),
+                typedPinnedItems = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")),
+                pinnedMemberProfileResolver = { memberId ->
+                    if (memberId == "agent-1") {
+                        SlockHomePinnedMemberItem(
+                            memberId = "agent-1",
+                            name = "Cindy",
+                            description = "@cindy",
+                            avatarLabel = "C",
+                            peerType = "agent"
+                        )
+                    } else {
+                        null
+                    }
+                },
+                mode = SlockSidebarSortMode.Manual
+            )
+
+        assertEquals(listOf("agent:agent-1"), pinned.map { it.key })
+        assertEquals(listOf("Cindy"), pinned.map { it.member?.name })
+        assertEquals(listOf(null), pinned.map { it.conversation?.id })
+    }
+
+    @Test
+    fun pinnedRowsResolveTypedAgentThroughExistingDirectMessage() {
+        val agentDm =
+            SlockHomeConversationItem(
+                id = "dm-agent-1",
+                name = "Cindy",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-1"
+            )
+
+        val pinned =
+            pinnedRowsForSidebar(
+                channels = emptyList(),
+                directMessages = listOf(agentDm),
+                pinnedIds = emptyList(),
+                pinnedOrder = emptyList(),
+                typedPinnedItems = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")),
+                pinnedMemberProfileResolver = {
+                    SlockHomePinnedMemberItem(
+                        memberId = "agent-1",
+                        name = "Stale Cindy",
+                        avatarLabel = "S",
+                        peerType = "agent"
+                    )
+                },
+                mode = SlockSidebarSortMode.Manual
+            )
+
+        assertEquals(listOf("dm-agent-1"), pinned.map { it.conversation?.id })
+        assertEquals(listOf(null), pinned.map { it.member?.memberId })
+    }
+
+    @Test
+    fun pinnedRowsDeduplicateTypedMemberAndDirectMessageInAzMode() {
+        val agentDm =
+            SlockHomeConversationItem(
+                id = "dm-agent-1",
+                name = "Cindy",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "agent",
+                presenceMemberId = "agent-1"
+            )
+        val humanDm =
+            SlockHomeConversationItem(
+                id = "dm-human-1",
+                name = "Alice",
+                kind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelType = "dm",
+                peerType = "human",
+                presenceMemberId = "user-1"
+            )
+
+        val pinned =
+            pinnedRowsForSidebar(
+                channels = emptyList(),
+                directMessages = listOf(agentDm, humanDm),
+                pinnedIds = listOf("dm-agent-1", "dm-human-1"),
+                pinnedAgentIds = listOf("agent-1"),
+                pinnedOrder = listOf("dm-agent-1", "agent-1", "dm-human-1"),
+                typedPinnedItems =
+                    listOf(
+                        SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                        SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                        SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")
+                    ),
+                mode = SlockSidebarSortMode.Az
+            )
+
+        assertEquals(listOf("dm-human-1", "dm-agent-1"), pinned.map { it.conversation?.id })
     }
 
     @Test
