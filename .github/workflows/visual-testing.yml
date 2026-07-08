@@ -498,6 +498,18 @@ jobs:
               continue
             fi
             sleep 1
+            # READY alone is not enough: a renderer exception (e.g. resource
+            # init crash, task #421) can pop a "kuikly error" dialog AFTER the
+            # first frame, turning the screenshot into a crash dialog while the
+            # case still counts OK. Check the console log before accepting.
+            if grep -qiE "\[Kuikly Exception\]|kuikly error" /tmp/launch.log; then
+              echo "::warning::[$i/$total] $case_id: renderer exception after READY (kuikly error dialog); not capturing"
+              mkdir -p visual-testing-results/ios-diagnostics
+              xcrun simctl io "$UDID" screenshot "visual-testing-results/ios-diagnostics/$case_id.error.png" || true
+              cp /tmp/launch.log "visual-testing-results/ios-diagnostics/$case_id.launch.log" || true
+              failed=$((failed+1))
+              continue
+            fi
             xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
             echo "[$i/$total] $case_id OK"
           done < /tmp/ios-cases.tsv
