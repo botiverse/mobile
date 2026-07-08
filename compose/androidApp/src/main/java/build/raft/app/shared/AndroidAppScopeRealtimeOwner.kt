@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.network.AndroidNetworkPrewarmController
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthTokenProvider
@@ -98,6 +99,10 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
+        AndroidNetworkPrewarmController.prewarmForegroundConnection(
+            context = context.applicationContext,
+            source = source
+        )
         if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
             val runtime = realtimeRuntime
             val ownedSession = runtime?.ownedSession()
@@ -131,6 +136,7 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
+        AndroidNetworkPrewarmController.cancel(reason = source)
     }
 
     fun enableBackgroundKeepAlive(
@@ -300,6 +306,12 @@ internal object AndroidAppScopeRealtimeOwner {
             allowBackground = backgroundKeepAliveEnabled,
             reason = "network_available"
         )
+        if (appVisibility == AppVisibility.Foreground) {
+            AndroidNetworkPrewarmController.prewarmForegroundConnection(
+                context = appContext,
+                source = "network_available"
+            )
+        }
     }
 
     fun onNetworkCapabilitiesChanged(context: Context) {
