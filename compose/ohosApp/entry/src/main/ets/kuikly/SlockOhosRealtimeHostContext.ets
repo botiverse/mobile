@@ -204,6 +204,7 @@ export class SlockOhosRealtimeHostContext {
         auth: {
           token: params.accessToken,
           serverId: params.serverId,
+          clientKind: 'mobile',
         },
         headers: {
           'Authorization': `Bearer ${params.accessToken}`,
@@ -400,6 +401,7 @@ export class SlockOhosRealtimeHostContext {
       auth: {
         token: params.accessToken,
         serverId: params.serverId,
+        clientKind: 'mobile',
       },
       headers: {
         'Authorization': `Bearer ${params.accessToken}`,
