@@ -8545,7 +8545,7 @@ private fun SharedQuiverFeedbackContent(
                         instanceId = "settings-quiver-feedback-composer",
                         seedText = message,
                         syncNonce = composerSyncNonce,
-                        placeholder = "请反馈问题",
+                        placeholder = "Share feedback",
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
