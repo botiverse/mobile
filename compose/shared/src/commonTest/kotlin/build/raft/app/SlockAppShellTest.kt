@@ -23,6 +23,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageType
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -1675,6 +1676,78 @@ class SlockAppShellTest {
         assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentChannelKind)
+    }
+
+    // task #459: banner from the server-qualified notification stream.
+    @Test
+    fun notificationPushBannerBuildsThreadIdentityWithDirectoryParentEnrichment() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-1"),
+                        kind = ConversationKind.Thread,
+                        threadId = ChannelId("reply-stream"),
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentMessageId = MessageId("parent-message"),
+                        messageId = MessageId("reply-1"),
+                        title = "Thread in #home-fixes · Raft",
+                        body = "Cindy: hello",
+                        tag = "message:reply-1"
+                    ),
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                conversationDirectory = directory
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals(ConversationKind.Thread, resolved.conversation.kind)
+        assertEquals("parent-channel", resolved.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-message", resolved.conversation.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", resolved.conversation.thread?.streamChannelId?.value)
+        // Parent kind enriched from the directory row (data-only, §5).
+        assertEquals(KuiklyThreadSurfaceKind.Channel, resolved.conversation.thread?.parentSurfaceKind)
+        assertEquals("reply-1", resolved.openRequest.anchorMessageId)
+        assertEquals("Thread in #home-fixes · Raft", resolved.title)
+        assertEquals("Cindy: hello", resolved.body)
+    }
+
+    @Test
+    fun notificationPushBannerSuppressedForOtherServerAndVisibleConversation() {
+        val suppressed = mutableListOf<String>()
+        val crossServer =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-2"),
+                        kind = ConversationKind.Channel,
+                        channelId = ChannelId("channel-1"),
+                        messageId = MessageId("m-1"),
+                        title = "#general · Other",
+                        body = "x",
+                        tag = "message:m-1"
+                    ),
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(crossServer)
+        assertEquals(listOf("server_mismatch"), suppressed)
     }
 
     // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory

@@ -11,6 +11,7 @@ import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberId
@@ -24,6 +25,7 @@ import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
@@ -215,6 +217,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ReadStateUpdatedBulkDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPrefsUpdated ->
                 decodeOrNull(NotificationPrefsUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.NotificationPush ->
+                decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull()
             else -> null
         }
     } catch (_: SerializationException) {
@@ -516,6 +520,26 @@ private data class ReadStateUpdatedBulkDto(
 private data class NotificationPrefsWireDto(
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
+)
+
+// task #459: server-qualified notification payload (server PR #4233,
+// `buildNotificationPushSocketTargets` — DTO fields checked verbatim against
+// staging 31042ed06). Identity fields are the contract: an event whose
+// identity cannot yield a safe open target is dropped (fail closed) — the
+// banner never guesses, same doctrine as #434.
+@Serializable
+private data class NotificationPushDto(
+    val serverId: String,
+    val kind: String,
+    val channelId: String? = null,
+    val threadId: String? = null,
+    val parentChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val messageId: String,
+    val title: String = "",
+    val body: String = "",
+    val tag: String = "",
+    val url: String? = null,
 )
 
 @Serializable
@@ -1078,6 +1102,40 @@ private fun NotificationPrefsUpdatedDto.toDomain(): PerReceiverNotificationPrefs
             activityMuteSupported = true
         ),
         prefsVersion = prefsVersion
+    )
+}
+
+// Fail-closed per kind: a thread notification without its parent pair (or a
+// channel/dm one without a channel id) cannot yield a provable open target —
+// drop it rather than let a guessed surface reach the banner (#434/#441).
+private fun NotificationPushDto.toDomainOrNull(): NotificationPushReceived? {
+    val cleanServerId = serverId.takeIf { it.isNotBlank() } ?: return null
+    val cleanMessageId = messageId.takeIf { it.isNotBlank() } ?: return null
+    val parsedKind = parseConversationKindOrNull(kind) ?: return null
+    val cleanChannelId = channelId?.takeIf { it.isNotBlank() }
+    val cleanThreadId = threadId?.takeIf { it.isNotBlank() }
+    val cleanParentChannelId = parentChannelId?.takeIf { it.isNotBlank() }
+    val cleanParentMessageId = parentMessageId?.takeIf { it.isNotBlank() }
+    when (parsedKind) {
+        ConversationKind.Thread ->
+            if (cleanParentChannelId == null || cleanParentMessageId == null || cleanThreadId == null) return null
+        ConversationKind.Channel,
+        ConversationKind.Joint,
+        ConversationKind.DirectMessage ->
+            if (cleanChannelId == null) return null
+        else -> return null
+    }
+    return NotificationPushReceived(
+        serverId = ServerId(cleanServerId),
+        kind = parsedKind,
+        channelId = cleanChannelId?.let(::ChannelId),
+        threadId = cleanThreadId?.let(::ChannelId),
+        parentChannelId = cleanParentChannelId?.let(::ChannelId),
+        parentMessageId = cleanParentMessageId?.let(::MessageId),
+        messageId = MessageId(cleanMessageId),
+        title = title,
+        body = body,
+        tag = tag
     )
 }
 

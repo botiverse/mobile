@@ -403,7 +403,11 @@ class SocketIoRealtimeClient(
 private fun RealtimeAuth.toWireMap(): Map<String, String> =
     mapOf(
         "token" to token,
-        "serverId" to serverId.value
+        "serverId" to serverId.value,
+        // task #459/#103: platform-scoped event delivery — the server filters
+        // platform-scoped events (e.g. notification:push) by this declaration.
+        // Closed set web|mobile|desktop|cli; undeclared sockets default to web.
+        "clientKind" to "mobile"
     )
 
 private fun Any?.isAuthFailurePayload(): Boolean =

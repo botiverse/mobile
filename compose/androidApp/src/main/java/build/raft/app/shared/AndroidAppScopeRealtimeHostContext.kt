@@ -17,7 +17,7 @@ import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockLocalPreferenceStore
-import build.raft.app.data.buildSystemUnreadNotificationRequest
+import build.raft.app.data.buildSystemUnreadNotificationRequestFromPush
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.RealtimeAuth
 import build.raft.app.data.realtime.RealtimeConnectionState
@@ -28,7 +28,7 @@ import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
-import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
@@ -98,7 +98,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
     override suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
-        event: MessageNew,
+        event: NotificationPushReceived,
         isAppInForeground: Boolean
     ) {
         maybePostBackgroundUnreadNotification(
@@ -194,50 +194,43 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             appContext: Context,
             sessionStore: SlockAuthSessionStore,
             serverId: ServerId,
-            event: MessageNew,
+            event: NotificationPushReceived,
             isAppInForeground: Boolean
         ) {
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
             SlockDiagnosticsLogger.w(
                 LOG_TAG,
-                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
+                "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
             )
             if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
                 SlockDiagnosticsLogger.w(
                     LOG_TAG,
-                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.message.id.value}"
+                    "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
-            val session = sessionStore.readSession()
             val request =
-                buildSystemUnreadNotificationRequest(
-                    serverId = serverId.value,
-                    message = event.message,
-                    currentMemberId = session?.user?.id,
+                buildSystemUnreadNotificationRequestFromPush(
+                    push = event,
                     isVisibleThread = false,
-                    conversationName = null,
-                    conversationKind = event.message.backgroundNotificationConversationKind(),
-                    currentMemberHandle = session?.user?.email,
                     isAppInForeground = isAppInForeground
                 )
             if (request == null) {
                 SlockDiagnosticsLogger.w(
                     LOG_TAG,
-                    "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.message.id.value}"
+                    "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
             val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
             SlockDiagnosticsLogger.w(
                 LOG_TAG,
-                "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.message.id.value}"
+                "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.messageId.value}"
             )
         }
 
-        private fun Message.backgroundNotificationConversationKind(): ConversationKind? =
-            backgroundUnreadNotificationConversationKind(this)
+
 
         private fun backgroundUnreadNotificationSkipReason(
             hasAttachedConsumers: Boolean,

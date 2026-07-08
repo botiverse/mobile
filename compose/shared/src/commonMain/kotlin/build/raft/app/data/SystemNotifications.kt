@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
 
 data class NotificationPreferenceSnapshot(
@@ -239,3 +240,39 @@ private fun String.toNotificationPreview(maxLength: Int = 140): String =
                 value.take(maxLength - 1).trimEnd() + "…"
             }
         }
+
+/**
+ * task #459: tray request from the server-qualified notification stream
+ * (`notification:push`, server PR #4233). Sender exclusion, mention/scope
+ * qualification and mute are already decided server-side; the local policy
+ * left is foreground/visible-thread suppression (the caller's decision) and
+ * the current-server gate inside the poster (#435, unchanged).
+ */
+fun buildSystemUnreadNotificationRequestFromPush(
+    push: NotificationPushReceived,
+    isVisibleThread: Boolean,
+    isAppInForeground: Boolean
+): SystemUnreadNotificationRequest? {
+    if (isAppInForeground || isVisibleThread) return null
+    val category =
+        when (push.kind) {
+            ConversationKind.DirectMessage -> SystemUnreadNotificationCategory.DirectMessage
+            ConversationKind.Channel,
+            ConversationKind.Joint,
+            ConversationKind.Thread -> SystemUnreadNotificationCategory.ChannelUnread
+            else -> SystemUnreadNotificationCategory.GeneralUnread
+        }
+    val streamChannelId = (push.threadId ?: push.channelId)?.value
+    return SystemUnreadNotificationRequest(
+        serverId = push.serverId.value,
+        messageId = push.messageId.value,
+        threadId = streamChannelId ?: push.messageId.value,
+        channelId = streamChannelId,
+        parentChannelId = push.parentChannelId?.value,
+        parentMessageId = push.parentMessageId?.value,
+        category = category,
+        title = push.title.ifBlank { "Raft" },
+        body = push.body.ifBlank { "Sent a new message." },
+        notificationKey = "unread:${push.serverId.value}:${streamChannelId ?: push.messageId.value}:${push.messageId.value}"
+    )
+}

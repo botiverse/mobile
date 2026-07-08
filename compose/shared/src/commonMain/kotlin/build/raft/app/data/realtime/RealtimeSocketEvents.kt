@@ -60,10 +60,16 @@ object RealtimeSocketEvents {
     const val ReadStateUpdatedBulk = "read_state:updated_bulk"
     const val NotificationPrefsUpdated = "notification_prefs:updated"
 
+    // task #459: server-qualified notification stream, emitted to the caller's
+    // `user:<id>` room at the sendPushNotifications call point (server PR
+    // #4233, staging 31042ed06). Literal until the next contract regeneration.
+    const val NotificationPush = "notification:push"
+
     val ServerWireEvents: List<String> =
         GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
             ReadStateUpdated,
             ReadStateUpdatedBulk,
             NotificationPrefsUpdated,
+            NotificationPush,
         )
 }

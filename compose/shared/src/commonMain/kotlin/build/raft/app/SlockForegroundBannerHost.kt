@@ -764,3 +764,85 @@ private fun String.toForegroundBannerPreview(maxLength: Int = ForegroundBannerPr
                 value.take(maxLength - 1).trimEnd() + "…"
             }
         }
+
+/**
+ * task #459: foreground banner from the server-qualified notification stream
+ * (`notification:push`, server PR #4233). The server has already decided this
+ * event deserves attention (scope/mention/follow/mute) and excluded the
+ * sender, so the only suppressions left are the LOCAL facts it cannot know:
+ * the current server and the currently visible conversation. Identity is
+ * typed on the payload — there is nothing to defer or guess, so the pending /
+ * retry machinery of the message-driven path does not apply here.
+ */
+internal fun slockNotificationPushBannerOrNull(
+    event: build.raft.app.model.NotificationPushReceived,
+    currentServerId: String?,
+    visibleConversationKey: String?,
+    visibleRouteIdentity: ThreadRouteIdentity? = null,
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+    onSuppressed: (String) -> Unit = {}
+): SlockForegroundMessageBanner? {
+    val normalizedCurrentServerId = currentServerId?.takeIf { it.isNotBlank() }
+        ?: return null.also { onSuppressed("current_server_missing") }
+    if (normalizedCurrentServerId != event.serverId.value) {
+        onSuppressed("server_mismatch")
+        return null
+    }
+    val conversation =
+        if (event.kind == ConversationKind.Thread) {
+            buildThreadLaunchConversationIdentity(
+                kind = ConversationKind.Thread,
+                channelId = event.threadId ?: return null.also { onSuppressed("identity_incomplete") },
+                threadChannelId = event.threadId,
+                parentChannelId = event.parentChannelId,
+                parentMessageId = event.parentMessageId,
+                // The payload carries no parent kind; enrich from the parent's
+                // directory row when home has it (data-only, §5), else null —
+                // the post-#344 launch chain handles the stream-only shape.
+                parentSurfaceKind =
+                    event.parentChannelId
+                        ?.let { conversationDirectory.resolve(it.value) }
+                        ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+                        ?.conversationKind
+                        ?.threadParentSurfaceKindOrNull(),
+                parentChannelKind =
+                    event.parentChannelId
+                        ?.let { conversationDirectory.resolve(it.value) }
+                        ?.takeUnless { it.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread }
+                        ?.conversationKind
+                        ?.threadChannelKindWireValue()
+            )
+        } else {
+            val channelId = event.channelId ?: return null.also { onSuppressed("identity_incomplete") }
+            buildThreadLaunchConversationIdentity(
+                kind = event.kind,
+                channelId = channelId,
+                channelType = event.kind.toWireChannelKindOrNull()
+            )
+        }
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+        onSuppressed("visible_conversation")
+        return null
+    }
+    return SlockForegroundMessageBanner(
+        id = "push:${event.serverId.value}:${event.messageId.value}",
+        serverId = event.serverId.value,
+        focusedMessageId = event.messageId.value,
+        conversation = conversation,
+        openRequest =
+            HomeMessageOpenRequest(
+                conversationIdentity = conversation,
+                anchorMessageId = event.messageId.value,
+                originFallback = null
+            ),
+        title = event.title.ifBlank { "New message" },
+        context = conversation.resolveForegroundBannerContext(null, conversationDirectory),
+        threadContext = null,
+        body = event.body.ifBlank { "Sent a new message." },
+        iconKind = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconKind(conversation),
+        iconName = (null as SharedConversationDirectoryProjection?).resolveForegroundBannerIconName(conversation),
+        senderMemberId = null,
+        avatarWireValue = null,
+        avatarLabel = event.title.trim().take(2).uppercase().ifBlank { "??" }
+    )
+}
