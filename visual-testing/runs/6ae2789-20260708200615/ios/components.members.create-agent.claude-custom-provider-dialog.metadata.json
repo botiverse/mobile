@@ -1,0 +1,19 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.members.create-agent.claude-custom-provider-dialog",
+  "image": "components.members.create-agent.claude-custom-provider-dialog.png",
+  "pageName": "compose_create_agent_dialog_visual",
+  "pageData": {
+    "pageName": "compose_create_agent_dialog_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

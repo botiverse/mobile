@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-08T18:24:09.857Z",
+  "generatedAt": "2026-07-08T20:06:48.404Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -13,584 +13,584 @@
     {
       "id": "components.ui.segmented-control.states",
       "status": "pending",
-      "imageHash": "450bef66b38c38aaa31285d5ca4e96e3b8fedbe0169259f15164925944a4a877",
-      "generatedAt": "2026-07-08T18:24:09.675Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.button.states",
       "status": "pending",
-      "imageHash": "10b4fe1af62ccbe0aa5325cebaa0e91cf0563424886aad4496147cc7c79923b2",
-      "generatedAt": "2026-07-08T18:24:09.677Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.badge.states",
       "status": "pending",
-      "imageHash": "37f1a7bbe9289a96b791853af9863e09b1460ce60a743677dc08240faf145727",
-      "generatedAt": "2026-07-08T18:24:09.679Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.form-field.states",
       "status": "pending",
-      "imageHash": "3b8a748379ca65b8203ad07448ee445851d064ecf7cd1f056af2e9371bdabb25",
-      "generatedAt": "2026-07-08T18:24:09.681Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.textarea.states",
       "status": "pending",
-      "imageHash": "610fd143b8c332848a295046a801ff281f34e923f30c98a23b1f835653196b20",
-      "generatedAt": "2026-07-08T18:24:09.683Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.checkbox.states",
       "status": "pending",
-      "imageHash": "4561b530ef57c33fafd767d8990a7ba22e5c1e2241334b992798836f9efedcee",
-      "generatedAt": "2026-07-08T18:24:09.685Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.check-marker.states",
       "status": "pending",
-      "imageHash": "dc13388dd7134d97351ec4816682b29389183da19aced6c2700bbb381c8a491e",
-      "generatedAt": "2026-07-08T18:24:09.687Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.attention-dot.states",
       "status": "pending",
-      "imageHash": "28fba7793b0d4945d75e3acdec9e30dfc08aeca10fe81aa26fa6ae24439c0135",
-      "generatedAt": "2026-07-08T18:24:09.689Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.status-dot.states",
       "status": "pending",
-      "imageHash": "be92d753147501a0ee88dcf00e48daf85e82bb67314f0833988aee4f1edbb340",
-      "generatedAt": "2026-07-08T18:24:09.691Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.progress-bar.states",
       "status": "pending",
-      "imageHash": "56f214805897b56ab95b68b1a5b345960791c6f9f0b99b4158f0b9ca924c4e28",
-      "generatedAt": "2026-07-08T18:24:09.693Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.skeleton.states",
       "status": "pending",
-      "imageHash": "b738374dc6fd547a6cfb6275c666c72ef594375b9d2fa7364343c00e36535ce1",
-      "generatedAt": "2026-07-08T18:24:09.695Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.spinner.states",
       "status": "pending",
-      "imageHash": "bb9c6ce770c6cb5e3782b87e74f83ad1bf98bb91fc38d38012a17d391c01d4a8",
-      "generatedAt": "2026-07-08T18:24:09.697Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.slug-input.states",
       "status": "pending",
-      "imageHash": "d3b2be3a657d5f1e75f43d9b273b2f1b974f7bd2fa531e60114e9e67173be3c4",
-      "generatedAt": "2026-07-08T18:24:09.698Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.section-eyebrow.states",
       "status": "pending",
-      "imageHash": "7ac64d30fabce8fa3188ec1774156c8f44b794aa718b95a18a681f2f6443b043",
-      "generatedAt": "2026-07-08T18:24:09.700Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.section-header.states",
       "status": "pending",
-      "imageHash": "3fec4857b2890824bcad7c433a1dd8d97fb8c916bbf24770aaec09fd07f343b1",
-      "generatedAt": "2026-07-08T18:24:09.702Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.selection-popover.states",
       "status": "pending",
-      "imageHash": "d00351069fe14e3ca61e78b866d1e2de936974bb97d11dd1c10d12ff70562f0d",
-      "generatedAt": "2026-07-08T18:24:09.704Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.menu-item.states",
       "status": "pending",
-      "imageHash": "b984d1c084805b9b246ce9ac3669c8ce7aa8da01b63a18a87dbf8d563dfce5e7",
-      "generatedAt": "2026-07-08T18:24:09.706Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.select.states",
       "status": "pending",
-      "imageHash": "4a86158923fab370eb3c0200007feeabbade4bd3ce1ad51c88d6901e5b7d34f3",
-      "generatedAt": "2026-07-08T18:24:09.707Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.surface-list-item.states",
       "status": "pending",
-      "imageHash": "9d784f9185bdb0b9b652c9157162db9f8ec5c39ab72c0cff8858df4e93b161c7",
-      "generatedAt": "2026-07-08T18:24:09.709Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.ui.avatar-list-row.states",
       "status": "pending",
-      "imageHash": "ab30df1d4f6b687eb3db3466faba3b87f0706f97b57eae9a56862e332709f8f5",
-      "generatedAt": "2026-07-08T18:24:09.711Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.auth.register.inputs",
       "status": "pending",
-      "imageHash": "afe3aaefa31548b4101e643064fe5aaf6cb10d352616d85d2d21cd1959f601de",
-      "generatedAt": "2026-07-08T18:24:09.713Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.navigation.tabbar.states",
       "status": "pending",
-      "imageHash": "ded5f4d2f17c112c6992b50234658c7c242e9085966e707b680bd35e9998682d",
-      "generatedAt": "2026-07-08T18:24:09.715Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.403Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.empty",
       "status": "pending",
-      "imageHash": "6784df03f4f9b9feb6f5c6ca2f5e61c964811f787a6da696f98ff013fa64a8dc",
-      "generatedAt": "2026-07-08T18:24:09.716Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.states",
       "status": "pending",
-      "imageHash": "a91a4928329d9f8805e387979e822b60454e6ccd5a6791071e68f6cdef979e56",
-      "generatedAt": "2026-07-08T18:24:09.718Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
-      "imageHash": "13ca97ef2bebb24a74b02dd601c340d1c7844730486a31d563c668917e6216ae",
-      "generatedAt": "2026-07-08T18:24:09.720Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.member-suggestions",
       "status": "pending",
-      "imageHash": "18a52a8b36cfcc0ab14a3d5f0a4dc3c8a758f5748880476c2b8f1cd5a452b4a7",
-      "generatedAt": "2026-07-08T18:24:09.722Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.channel-suggestions",
       "status": "pending",
-      "imageHash": "7baf4466bcbf7d8c880d821eb578845e72fb2afd5c4858d490256e890d0fdab2",
-      "generatedAt": "2026-07-08T18:24:09.724Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.composer.image-preview",
       "status": "pending",
-      "imageHash": "a2b9cd14cd1ef5f8a4ee9a86ce076552f9fee67066eb8b7f02edb16b26de2fa3",
-      "generatedAt": "2026-07-08T18:24:09.726Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.files.list",
       "status": "pending",
-      "imageHash": "0d15f6b617afa3dcbd47a23ee13dc9a5784bc3686354543a2549da6fd0584e39",
-      "generatedAt": "2026-07-08T18:24:09.727Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.header.states",
       "status": "pending",
-      "imageHash": "4811aa527ae4da9517fccd430a40b0d99e60f39decf7980c1ed178853c186e95",
-      "generatedAt": "2026-07-08T18:24:09.729Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message.row",
       "status": "pending",
-      "imageHash": "4562b0c9ae2c29011bae797295154828d681d73dda3f7d44812244e60121e3ad",
-      "generatedAt": "2026-07-08T18:24:09.731Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-row.deleted-human",
       "status": "pending",
-      "imageHash": "e3eeac60dedf9ec57a531ae892825ab0cc63034ca6260897c9f061e1578b58d2",
-      "generatedAt": "2026-07-08T18:24:09.733Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-menu.default",
       "status": "pending",
-      "imageHash": "34a6ac42c5832bd92c74672c15e5f1532b442864ee53af61507f27bae6acafbb",
-      "generatedAt": "2026-07-08T18:24:09.735Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "pending",
-      "imageHash": "ed38b846e3caa3d088ba74f1485df1d01a2066f4c58a2f892f3be98d194db9c7",
-      "generatedAt": "2026-07-08T18:24:09.737Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-share.selection",
       "status": "pending",
-      "imageHash": "284fadd5994d30c81859b5dc2b9a56f9ef2b8087bbe2749399848d8deb82791d",
-      "generatedAt": "2026-07-08T18:24:09.739Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.forward-modal",
       "status": "pending",
-      "imageHash": "40932993862412edd30dd8cf5f6f44e0e002c40562ae28e0b07524ceb8542cca",
-      "generatedAt": "2026-07-08T18:24:09.741Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.comment-anchor",
       "status": "pending",
-      "imageHash": "48fb7e9994cc9637096c67b3c09a3cb39b5d558e19aab13852530eb2f2418bb9",
-      "generatedAt": "2026-07-08T18:24:09.743Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.titlebar.states",
       "status": "pending",
-      "imageHash": "c881743ced5bafc42ef3084c04e91ec0c0524f89f49e7472c0cadbf4e8a92c2d",
-      "generatedAt": "2026-07-08T18:24:09.745Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.notification-center.states",
       "status": "pending",
-      "imageHash": "9bb93947176ad57913d6c035499696f45590df616bec4f140bebdda40bc54af3",
-      "generatedAt": "2026-07-08T18:24:09.747Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.search.results",
       "status": "pending",
-      "imageHash": "b3543db5712255b44c784a6bef3978ea1017da419c2bb10410cb11d17602c7fe",
-      "generatedAt": "2026-07-08T18:24:09.749Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "pending",
-      "imageHash": "1afdf97cc934f9b26e0accaf09b0e53a60575e5450217cb9ffca5cf02558c70c",
-      "generatedAt": "2026-07-08T18:24:09.751Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.saved.results",
       "status": "pending",
-      "imageHash": "494bf0670496878dc1be43a8ca7923a0cc8ab957b5d62b4e7520230ae0256b5f",
-      "generatedAt": "2026-07-08T18:24:09.753Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.activity.results",
       "status": "pending",
-      "imageHash": "3d7b2d0aaea82eff326890fe01fd5f4a7d57ae9159c2e838a7ec106877831746",
-      "generatedAt": "2026-07-08T18:24:09.755Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.tasks.panel.states",
       "status": "pending",
-      "imageHash": "7155536e578746bbf1bc670e30670af1b1805fa58e8d14fdfed5421ed09058a9",
-      "generatedAt": "2026-07-08T18:24:09.757Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.tasks.status-menu",
       "status": "pending",
-      "imageHash": "1b47a6041767146dfbd1a0aba2532ef43eba61dc59190a8f5c11796972491409",
-      "generatedAt": "2026-07-08T18:24:09.759Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.home.create-channel.dialog",
       "status": "pending",
-      "imageHash": "b3e7bda73ed72565f3d6f4148da1681af45895a5d3163a8b372070cd627f1d91",
-      "generatedAt": "2026-07-08T18:24:09.761Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.members.create-agent.dialog",
       "status": "pending",
-      "imageHash": "c58fbc80834e4b39881d762ad8ff90758eb64afda54da3892267c0cea1d11aaf",
-      "generatedAt": "2026-07-08T18:24:09.763Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.members.create-agent.claude-dialog",
       "status": "pending",
-      "imageHash": "89858920fcb6e1ea4ca4e0e09d792f68780ddfb4be60e253ba0758de674cc5e5",
-      "generatedAt": "2026-07-08T18:24:09.765Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-08T18:24:09.767Z",
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -601,296 +601,296 @@
     {
       "id": "components.members.agent-detail.profile",
       "status": "pending",
-      "imageHash": "c5b74e29e295d8d314c6a58ec9f12cd2cd720ebdf80a117dc608512e74780425",
-      "generatedAt": "2026-07-08T18:24:09.768Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.channel.members.panel",
       "status": "pending",
-      "imageHash": "9a1530e2b6c47fa1fc12ad7f07ddbb587613eac4d25e9bc35dc3058a961c3e75",
-      "generatedAt": "2026-07-08T18:24:09.770Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.channel.settings.panel",
       "status": "pending",
-      "imageHash": "4ca127ca3db8efe9c2efa17dc4b87ddaf7249d213e64e8aadba9bef9328ee9d5",
-      "generatedAt": "2026-07-08T18:24:09.772Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.channel.members.add-panel",
       "status": "pending",
-      "imageHash": "059ab20930e61743b36f20ebabfdaeab8685950add8eeebf2218fa2448280d71",
-      "generatedAt": "2026-07-08T18:24:09.774Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.page.states",
       "status": "pending",
-      "imageHash": "a4db8963506a2775746914345832d6121ff84afba10bbebc83af5319ac320b5f",
-      "generatedAt": "2026-07-08T18:24:09.776Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.account.page",
       "status": "pending",
-      "imageHash": "aa07cc19e5cffac948c262fee18739413b7ca975cd0c501569574047a0a85587",
-      "generatedAt": "2026-07-08T18:24:09.778Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.account.provider-linked",
       "status": "pending",
-      "imageHash": "2d82612bb9f641da4c1be6da4300ed8c3063f92129290f8b0af17c5de55eb9e3",
-      "generatedAt": "2026-07-08T18:24:09.780Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.account.password-expanded",
       "status": "pending",
-      "imageHash": "c7ebbb2dc21b7f75f9f262d6e12eadc56558afbe42fa0bceb1c709de0bdf6bef",
-      "generatedAt": "2026-07-08T18:24:09.782Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.account.error-state",
       "status": "pending",
-      "imageHash": "a1213dce9c1d9bd10ea20b81af371bb4f1eedf94a200587e29e1c1214b5191d0",
-      "generatedAt": "2026-07-08T18:24:09.784Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.server.profile",
       "status": "pending",
-      "imageHash": "a89d5d043e471b33a0a6b61c3c1f4c7b3277eba017b3791c2dc027f6c3d76837",
-      "generatedAt": "2026-07-08T18:24:09.786Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.admins",
       "status": "pending",
-      "imageHash": "33e62878a7970672430fde638d0eb7766e69ce4bebc5eaa1ad052c7e650ccca3",
-      "generatedAt": "2026-07-08T18:24:09.788Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.invites",
       "status": "pending",
-      "imageHash": "edba47fa291c564d1169c7b96295ddf2be47d4fe954e5726a224f031f000c0ee",
-      "generatedAt": "2026-07-08T18:24:09.790Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.join-links",
       "status": "pending",
-      "imageHash": "e2a9c720c384949dc71f7b72e27a3cc0dd0b42c5a24f2882b2007416ba686526",
-      "generatedAt": "2026-07-08T18:24:09.792Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
       "status": "pending",
-      "imageHash": "9e443cdb72773dd7d362eb394215d448bfda1999fdd8d188a6a33e309c68ad6f",
-      "generatedAt": "2026-07-08T18:24:09.794Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.onboarding",
       "status": "pending",
-      "imageHash": "daa4443ad08c47ada7c0082a9bb51a39bea53932e320c0b59c49c9c4977d8298",
-      "generatedAt": "2026-07-08T18:24:09.796Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.member-permissions",
       "status": "pending",
-      "imageHash": "990eafec8a90944d527afa65dd3bb0c7902b26de44a471a35a7ab0d3f37cbcc2",
-      "generatedAt": "2026-07-08T18:24:09.798Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.administration.translation",
       "status": "pending",
-      "imageHash": "bf64a98caadaa85ed6e57ee6c08ac155dc7614c710e2e18ba93f9e42032773c6",
-      "generatedAt": "2026-07-08T18:24:09.800Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.billing.page",
       "status": "pending",
-      "imageHash": "66f196b4ea671e6bcd7b269d636dfc86e36778c9d4018128d9ccf2ba36efa2e1",
-      "generatedAt": "2026-07-08T18:24:09.802Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.language-region.page",
       "status": "pending",
-      "imageHash": "30fb4a81cfe075a6215651a3926f44935233c84a5ba28de3db421bb33dc53c35",
-      "generatedAt": "2026-07-08T18:24:09.807Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.appearance.page",
       "status": "pending",
-      "imageHash": "24df69a1c57cd303c90d57cf737c8eee3b48dda4314130fa2e6bccec95906684",
-      "generatedAt": "2026-07-08T18:24:09.809Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.notifications.page",
       "status": "pending",
-      "imageHash": "eec0d7213f3320c62db7200d987ac9e046e8721853f5d9e9a730a576141edbff",
-      "generatedAt": "2026-07-08T18:24:09.812Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.settings.connected-apps.page",
       "status": "pending",
-      "imageHash": "27d0fde25a76e76b7235af710c47cd8f7beec9b51d542dd6306764c7a4658237",
-      "generatedAt": "2026-07-08T18:24:09.815Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.auth.login.signing",
       "status": "pending",
-      "imageHash": "e323842e7d9c221605b095a16ce0176a9ea5fef4a3e4e0579bd57a25dbf1c29e",
-      "generatedAt": "2026-07-08T18:24:09.818Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
-      "imageHash": "5cadeb0b04c3277ee11b75b363501dfbb7f66186501986a39a90cf41f58d5424",
-      "generatedAt": "2026-07-08T18:24:09.822Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-08T18:24:09.824Z",
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -901,182 +901,182 @@
     {
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
-      "imageHash": "29edddb7fd1815c43f25e2c7d39ea00917af535fef92765a7177b92878e6a4f4",
-      "generatedAt": "2026-07-08T18:24:09.825Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
-      "imageHash": "bb5cd1be89b4fd79f477e0e040593f70e53a89e81092223980e0bef245c98ba2",
-      "generatedAt": "2026-07-08T18:24:09.827Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
-      "imageHash": "ff13a56b0a736d2abc1d7487dc81aa116487bbc1f66038e700c776a7e7b88eba",
-      "generatedAt": "2026-07-08T18:24:09.829Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
-      "imageHash": "319d3015c5ddb086e74e6291e3724bb2a356fd63547de24f47422f81e1ab77c3",
-      "generatedAt": "2026-07-08T18:24:09.831Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.members.human.profile",
       "status": "pending",
-      "imageHash": "f27aebe8206b48e9fa550e5b471c49b431b83e53923d935548a2d616ae8c3db9",
-      "generatedAt": "2026-07-08T18:24:09.833Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.members.agent-lifecycle-actions",
       "status": "pending",
-      "imageHash": "5d15ab8901e53597dc998b93dacdb7de286dc5e3b9b58a5a25aaefe968688e5b",
-      "generatedAt": "2026-07-08T18:24:09.835Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.members.avatar-management",
       "status": "pending",
-      "imageHash": "2da980de54d742f23a1b7fe8316e142afab03634c4a04b380cb55f5d2bf9e1eb",
-      "generatedAt": "2026-07-08T18:24:09.837Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.settings.computers",
       "status": "pending",
-      "imageHash": "09be1a35d3e841c221f0880b7c5dbd8e2b629ebac233ad25a2c9ad071eacddce",
-      "generatedAt": "2026-07-08T18:24:09.839Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.settings.computer-detail",
       "status": "pending",
-      "imageHash": "24212beaf1a56a7b495f59daf88b8036e3babc78088eb7276a8f399e48facd6e",
-      "generatedAt": "2026-07-08T18:24:09.841Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.settings.server-danger-modal",
       "status": "pending",
-      "imageHash": "d60d092fed59251153b9ef9cca2302a370ef6bcca2f836f1b8fe2df47dad05a9",
-      "generatedAt": "2026-07-08T18:24:09.844Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.home.loading",
       "status": "pending",
-      "imageHash": "56983c4f7523a5209aa0d46658d43871a63ab74930a7b7127e78959c9210a196",
-      "generatedAt": "2026-07-08T18:24:09.845Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-row.rich-content",
       "status": "pending",
-      "imageHash": "e0229f412896f0bc94534bd8ffe8710ffcc2ae179dc487fc4b8088f483c75326",
-      "generatedAt": "2026-07-08T18:24:09.847Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "pending",
-      "imageHash": "660de11bf738933dab045546b9df8e325af7782cc50a7275531c895a6e373025",
-      "generatedAt": "2026-07-08T18:24:09.850Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
-      "imageHash": "67f39e510459a3e013f348f7e4b0bf2c6ded28d868e627b074bbdaec73e76a32",
-      "generatedAt": "2026-07-08T18:24:09.853Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     },
     {
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
-      "imageHash": "f500cd9681cfc1b8d187a0277a1c7d93d21f13496806e0f18e3053da7d570209",
-      "generatedAt": "2026-07-08T18:24:09.856Z",
+      "imageHash": null,
+      "generatedAt": "2026-07-08T20:06:48.404Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
       "suggestedOwner": "",
       "suggestedFixes": [],
-      "error": "codex CLI not found"
+      "error": "missing side-by-side image"
     }
   ]
 }

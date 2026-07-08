@@ -1,19 +1,19 @@
 # Raft Visual Testing
 
-Generated: 2026-07-08 18:24:10 UTC
-Latest run: 7d77b5b-20260708182309
-Latest commit: 7d77b5b-20260708182309
-Commit subject: ci(visual-testing): report must wait for ios-capture (ordering race) (#385)
+Generated: 2026-07-08 20:06:48 UTC
+Latest run: 6ae2789-20260708200615
+Latest commit: 6ae2789-20260708200615
+Commit subject: ci(visual-testing): manifest generator v2 — helper templates + completeness invariant (#397)
 Providers: react vs android, react vs ios
-Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
+Summary: total 89, same 0, pass 0, basic-pass 0, different 0, missing 89
 AI analysis: ready 0 / total 89, pending 89
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
-- react__ios: total 89, same 0, pass 9, basic-pass 12, different 33, missing 35
+- react__android: total 89, same 0, pass 0, basic-pass 0, different 0, missing 89
+- react__ios: total 89, same 0, pass 9, basic-pass 13, different 44, missing 23
 
 ## Capture Type Coverage
 
@@ -115,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 6ae2789-20260708200615: react vs android, total 89, pass 0, basic-pass 0, different 0, matrix runs/6ae2789-20260708200615/component-matrix.json, page runs/6ae2789-20260708200615/
 - 7d77b5b-20260708182309: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/7d77b5b-20260708182309/component-matrix.json, page runs/7d77b5b-20260708182309/
 - b0f6a2f-20260707222554: react vs android, total 87, pass 0, basic-pass 5, different 80, matrix runs/b0f6a2f-20260707222554/component-matrix.json, page runs/b0f6a2f-20260707222554/
 - 04bbe8e-20260707180439: react vs android, total 87, pass 0, basic-pass 5, different 78, matrix runs/04bbe8e-20260707180439/component-matrix.json, page runs/04bbe8e-20260707180439/
