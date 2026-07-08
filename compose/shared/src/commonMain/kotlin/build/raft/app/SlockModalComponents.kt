@@ -125,7 +125,15 @@ internal fun SlockUnifiedDialog(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = (headerPadding - contentPadding).coerceAtLeast(0.dp)),
+                                .padding(
+                                    // When a dialog sets contentPadding = 0 for an
+                                    // edge-bleed body, the header would otherwise sit
+                                    // flush against the top and left borders; restore
+                                    // its inset to headerPadding on both axes.
+                                    start = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                    end = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                    top = (headerPadding - contentPadding).coerceAtLeast(0.dp)
+                                ),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

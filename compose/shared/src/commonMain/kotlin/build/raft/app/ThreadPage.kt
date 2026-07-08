@@ -15332,48 +15332,19 @@ private fun ThreadForwardTargetModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = onDismiss,
-                    pressFeedback = false,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                ) {
-                    Text(
-                        text = "Cancel",
-                        style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-                Button(
+                // Design-system brutal-shadow action buttons (task #560): the raw
+                // Button+border above had no drop shadow, unlike the rest of the app.
+                SlockModalActionButton(
+                    label = "Cancel",
+                    onClick = onDismiss
+                )
+                SlockModalActionButton(
+                    label = if (sendingTargetId == null) "Send" else "Sending",
+                    icon = if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
                     onClick = onSend,
-                    enabled = selectedTargetId != null && sendingTargetId == null,
-                    pressFeedback = false,
-                    modifier =
-                        Modifier
-                            .background(
-                                if (selectedTargetId != null && sendingTargetId == null) {
-                                    SlockColor.AccentPink
-                                } else {
-                                    SlockColor.SurfaceCream
-                                }
-                            )
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SlockLucideIcon(
-                            if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
-                            modifier = Modifier.size(14.dp),
-                            color = "#FF111111"
-                        )
-                        Text(
-                            text = if (sendingTargetId == null) "Send" else "Sending",
-                            style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1
-                        )
-                    }
-                }
+                    color = SlockColor.AccentPink,
+                    enabled = selectedTargetId != null && sendingTargetId == null
+                )
             }
         }
     }
