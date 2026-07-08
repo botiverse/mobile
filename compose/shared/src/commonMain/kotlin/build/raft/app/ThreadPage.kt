@@ -15520,6 +15520,67 @@ internal fun ThreadForwardModalVisualScreen() {
     )
 }
 
+@Page("compose_thread_comment_anchor_visual", supportInLocal = true)
+internal class ComposeThreadCommentAnchorVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadCommentAnchorVisualScreen() }
+    }
+}
+
+@Composable
+internal fun ThreadCommentAnchorVisualScreen() {
+    val state =
+        remember {
+            ThreadAttachmentCommentsDialogState(
+                attachment =
+                    KuiklyThreadAttachmentItem(
+                        id = "att-anchor-1",
+                        name = "agent-tabs-full-page-review.mp4",
+                        mimeType = "video/mp4",
+                        sizeLabel = "675.8 KB"
+                    ),
+                parentMessage =
+                    KuiklyThreadMessageItem(
+                        id = "msg-anchor-1",
+                        authorId = "user-anchor-1",
+                        authorName = "artin"
+                    ),
+                status = "loaded",
+                page =
+                    ThreadAttachmentCommentsPage(
+                        comments =
+                            listOf(
+                                ThreadAttachmentCommentItem(
+                                    id = "comment-anchor-1",
+                                    channelId = "channel-anchor-1",
+                                    senderType = "user",
+                                    senderId = "user-anchor-2",
+                                    senderName = "Artea",
+                                    content = "Please keep the tag inset consistent with the field below.",
+                                    createdAt = "18:32",
+                                    reactions = emptyList(),
+                                    anchorLabel = "agent-tabs-full-page-review.mp4"
+                                )
+                            ),
+                        threadChannelId = null,
+                        viewer = null
+                    ),
+                pendingAnchorLabel = "agent-tabs-full-page-review.mp4"
+            )
+        }
+    ThreadAttachmentCommentsDialog(
+        state = state,
+        onDismiss = {},
+        onFilterChange = {},
+        onDraftChange = {},
+        onRetry = {},
+        onSend = {},
+        onResolve = {},
+        onQuote = {}
+    )
+}
+
 @Composable
 private fun ThreadForwardTargetModal(
     selectedCount: Int,

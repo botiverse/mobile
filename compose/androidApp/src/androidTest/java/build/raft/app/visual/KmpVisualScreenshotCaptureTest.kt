@@ -695,6 +695,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadCommentAnchor() {
+        captureKmpComponentCase(
+            caseId = "components.thread.comment-anchor",
+            pageName = "compose_thread_comment_anchor_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-comment-anchor"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureThreadMessageShareSelection() {
         captureKmpComponentCase(
             caseId = "components.thread.message-share.selection",
