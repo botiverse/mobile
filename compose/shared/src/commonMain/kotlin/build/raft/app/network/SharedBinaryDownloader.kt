@@ -28,6 +28,7 @@ object SharedBinaryDownloader {
     private const val DOWNLOAD_TIMEOUT_MILLIS = 60_000L
 
     private val client: NetworkClient by lazy {
+        ensureNetworkKmmInitialized {}
         NetworkClient(
             NetworkClientConfig(
                 defaultPolicy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
@@ -36,15 +37,41 @@ object SharedBinaryDownloader {
     }
 
     suspend fun fetchBytes(url: String): SharedDownloadedBytes {
-        val response = fetch(url)
+        val chunks = mutableListOf<ByteArray>()
+        var totalBytes = 0
+        val contentType =
+            streamDownload(
+                url = url,
+                failurePrefix = "Download failed",
+                onStart = {},
+                onChunk = { bytes, _, _ ->
+                    totalBytes += bytes.size
+                    chunks += bytes.copyOf()
+                }
+            )
         return SharedDownloadedBytes(
-            bytes = response.bytes,
-            contentType = response.contentType
+            bytes = combineDownloadedChunks(chunks, totalBytes),
+            contentType = contentType
         )
     }
 
     suspend fun download(
         url: String,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): String? =
+        streamDownload(
+            url = url,
+            failurePrefix = "Attachment download failed",
+            onStart = onStart,
+            beforeRead = beforeRead,
+            onChunk = onChunk
+        )
+
+    private suspend fun streamDownload(
+        url: String,
+        failurePrefix: String,
         onStart: (totalBytes: Long?) -> Unit,
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
@@ -63,7 +90,9 @@ object SharedBinaryDownloader {
                             url = url,
                             body = NetworkBody.Empty,
                             policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
-                        ),
+                        ).apply {
+                            setHeader("Accept", "*/*")
+                        },
                     onResponseStart = { _, contentLength, _ ->
                         totalBytes = contentLength?.takeIf { it > 0L }
                         onStart(totalBytes)
@@ -79,7 +108,7 @@ object SharedBinaryDownloader {
                         if (status == null || status !in 200..299) {
                             continuation.resumeWithException(
                                 IllegalStateException(
-                                    "Attachment download failed: HTTP ${status ?: 0}" +
+                                    "$failurePrefix: HTTP ${status ?: 0}" +
                                         (response.error?.message?.let { " ($it)" } ?: "")
                                 )
                             )
@@ -92,30 +121,6 @@ object SharedBinaryDownloader {
         }
     }
 
-    private class FetchedBytes(val bytes: ByteArray, val contentType: String?)
-
-    private suspend fun fetch(url: String, failurePrefix: String = "Download failed"): FetchedBytes {
-        val response =
-            client.execute(
-                NetworkRequest(
-                    method = VBTransportMethod.GET,
-                    url = url,
-                    body = NetworkBody.Empty,
-                    policy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
-                )
-            )
-        val status = response.statusCode
-        if (status == null || status !in 200..299) {
-            throw IllegalStateException(
-                "$failurePrefix: HTTP ${status ?: 0}${response.error?.message?.let { " ($it)" } ?: ""}"
-            )
-        }
-        return FetchedBytes(
-            bytes = response.body.bytes ?: ByteArray(0),
-            contentType = response.contentTypeHeader()
-        )
-    }
-
     private fun com.tencent.kmm.network.export.NetworkResponse.contentTypeHeader(): String? =
         headers.entries
             .firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
@@ -124,4 +129,14 @@ object SharedBinaryDownloader {
             ?.substringBefore(';')
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+}
+
+internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
+    val output = ByteArray(totalBytes)
+    var offset = 0
+    chunks.forEach { chunk ->
+        chunk.copyInto(output, destinationOffset = offset)
+        offset += chunk.size
+    }
+    return output
 }
