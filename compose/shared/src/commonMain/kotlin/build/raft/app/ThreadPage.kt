@@ -14965,6 +14965,7 @@ private fun ThreadForwardBundleModal(
         minWidth = 320.dp,
         maxWidth = 420.dp,
         contentPadding = 0.dp,
+        headerPadding = 16.dp,
         titleFontSize = 16,
         titleLineHeight = 20,
         contentSpacing = 0.dp
@@ -15184,6 +15185,7 @@ private fun ThreadForwardTargetModal(
         minWidth = 320.dp,
         maxWidth = 430.dp,
         contentPadding = 0.dp,
+        headerPadding = 16.dp,
         titleFontSize = 18,
         titleLineHeight = 22,
         contentSpacing = 0.dp
