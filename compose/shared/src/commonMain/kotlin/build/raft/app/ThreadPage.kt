@@ -15163,6 +15163,65 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
             }
     }
 
+// Visual-testing fixture (task #560): renders the Forward target modal with a
+// seeded destination list so the header/content alignment (title + close vs the
+// 16dp-inset rows below) is captured and can't regress unseen.
+@Page("compose_thread_forward_modal_visual", supportInLocal = true)
+internal class ComposeThreadForwardModalVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadForwardModalVisualScreen() }
+    }
+}
+
+@Composable
+internal fun ThreadForwardModalVisualScreen() {
+    val targets =
+        remember {
+            listOf(
+                ThreadForwardTargetItem(
+                    id = "channel-design",
+                    title = "design",
+                    subtitle = "Product and UI decisions",
+                    kind = ThreadForwardTargetKind.Channel
+                ),
+                ThreadForwardTargetItem(
+                    id = "dm-artin",
+                    title = "artin",
+                    subtitle = "Direct message",
+                    kind = ThreadForwardTargetKind.DirectMessage
+                ),
+                ThreadForwardTargetItem(
+                    id = "channel-android",
+                    title = "android-artifacts",
+                    subtitle = "Public channel",
+                    kind = ThreadForwardTargetKind.PublicChannelUnjoined
+                ),
+                ThreadForwardTargetItem(
+                    id = "member-cindy",
+                    title = "Cindy",
+                    subtitle = "Keeps visual testing release notes aligned",
+                    kind = ThreadForwardTargetKind.Member
+                )
+            )
+        }
+    ThreadForwardTargetModal(
+        selectedCount = 2,
+        query = "",
+        loading = false,
+        targets = targets,
+        selectedTargetId = "channel-design",
+        errorCode = null,
+        sendingTargetId = null,
+        note = "",
+        onQueryChange = {},
+        onNoteChange = {},
+        onDismiss = {},
+        onSelectTarget = {},
+        onSend = {}
+    )
+}
+
 @Composable
 private fun ThreadForwardTargetModal(
     selectedCount: Int,
