@@ -4,6 +4,12 @@ internal expect fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean
 
 internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 
+// task #556 phase 2: Android's video host renders Media3 PlayerView's
+// built-in controller (tap-to-show play/pause, drag seek, ±10s, fullscreen),
+// so the shared minimal controls must stay out of its way there. iOS/OHOS
+// keep the shared controls until their native players grow an equivalent.
+internal expect fun slockPlatformUsesNativeVideoController(): Boolean
+
 // task #90: each platform is a separate Quiver app with its own release
 // stream, so the release-notes slug must be injected per platform (like the
 // build version), not hardcoded in commonMain. These MUST stay in sync with

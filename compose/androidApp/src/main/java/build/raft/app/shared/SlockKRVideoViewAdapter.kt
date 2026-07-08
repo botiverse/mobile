@@ -1,9 +1,16 @@
 package build.raft.app.shared
 
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.Looper
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -19,11 +26,17 @@ import com.tencent.kuikly.core.render.android.expand.component.KRVideoViewConten
 /**
  * Media3 (ExoPlayer) backed Kuikly video view (task #556).
  *
- * Replaces the legacy android.widget.VideoView/MediaPlayer host: one player
- * covers video (mp4/HLS/…) and audio-only sources (mp3/m4a/…) — an audio
- * source simply renders no frames while playback state/progress/seek behave
- * identically, which is what the shared file-preview audio entry relies on.
- * Kuikly draws its own controls, so the PlayerView chrome stays disabled.
+ * Phase 1 replaced the legacy android.widget.VideoView/MediaPlayer host: one
+ * player covers video (mp4/HLS/…) and audio-only sources (mp3/m4a/…) — an
+ * audio source simply renders no frames while playback state/progress/seek
+ * behave identically.
+ *
+ * Phase 2 enables PlayerView's built-in controller (tap-to-show play/pause,
+ * drag-seek bar, ±10s jumps, fullscreen); the shared preview hides its
+ * minimal controls on Android via slockPlatformUsesNativeVideoController().
+ * Fullscreen reparents the PlayerView onto the activity's content view,
+ * rotates to landscape, and hides the system bars; the system back gesture
+ * exits fullscreen before it can leave the preview page.
  */
 internal object SlockKRVideoViewAdapter : IKRVideoViewAdapter {
     override fun createVideoView(context: Context, src: String, listener: IKRVideoViewListener): IKRVideoView =
@@ -40,16 +53,31 @@ private class SlockKRVideoView(
     private var stopped = false
     private var lastReportedState: KRVideoPlayState? = null
 
+    private val hostActivity: ComponentActivity? = context.unwrapComponentActivity()
+    private var fullscreenContainer: FrameLayout? = null
+    private var savedOrientation: Int? = null
+    private var fullscreenBackCallback: OnBackPressedCallback? = null
+
     private val player: ExoPlayer =
-        ExoPlayer.Builder(context).build().also { player ->
-            player.setMediaItem(MediaItem.fromUri(src))
-            player.playWhenReady = false
-        }
+        ExoPlayer.Builder(context)
+            .setSeekBackIncrementMs(SEEK_JUMP_MS)
+            .setSeekForwardIncrementMs(SEEK_JUMP_MS)
+            .build()
+            .also { player ->
+                player.setMediaItem(MediaItem.fromUri(src))
+                player.playWhenReady = false
+            }
 
     private val playerView: PlayerView =
         PlayerView(context).also { view ->
-            view.useController = false
+            view.useController = true
             view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Single media item: prev/next would only ever be disabled chrome.
+            view.setShowNextButton(false)
+            view.setShowPreviousButton(false)
+            view.setFullscreenButtonClickListener { isFullScreen ->
+                if (isFullScreen) enterFullscreen() else exitFullscreen()
+            }
             view.player = player
             addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         }
@@ -137,6 +165,7 @@ private class SlockKRVideoView(
 
     override fun stop() {
         if (stopped) return
+        exitFullscreen()
         stopped = true
         mainHandler.removeCallbacks(timeTicker)
         playerView.player = null
@@ -179,6 +208,57 @@ private class SlockKRVideoView(
 
     override fun call(method: String, params: String?) = Unit
 
+    private fun enterFullscreen() {
+        if (stopped || fullscreenContainer != null) return
+        val activity = hostActivity ?: return
+        val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
+        removeView(playerView)
+        val container =
+            FrameLayout(context).apply {
+                setBackgroundColor(FULLSCREEN_BACKGROUND)
+                addView(
+                    playerView,
+                    LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+                )
+            }
+        content.addView(
+            container,
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        fullscreenContainer = container
+        savedOrientation = activity.requestedOrientation
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        WindowInsetsControllerCompat(activity.window, activity.window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
+        }
+        fullscreenBackCallback =
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    exitFullscreen()
+                }
+            }.also { activity.onBackPressedDispatcher.addCallback(it) }
+        playerView.setFullscreenButtonState(true)
+    }
+
+    private fun exitFullscreen() {
+        val container = fullscreenContainer ?: return
+        fullscreenContainer = null
+        fullscreenBackCallback?.remove()
+        fullscreenBackCallback = null
+        container.removeView(playerView)
+        (container.parent as? ViewGroup)?.removeView(container)
+        addView(playerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        hostActivity?.let { activity ->
+            activity.requestedOrientation =
+                savedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            WindowInsetsControllerCompat(activity.window, activity.window.decorView)
+                .show(WindowInsetsCompat.Type.systemBars())
+        }
+        savedOrientation = null
+        playerView.setFullscreenButtonState(false)
+    }
+
     private fun reportState(state: KRVideoPlayState, extInfo: Map<String, String> = emptyMap()) {
         if (stopped) return
         if (state == lastReportedState && extInfo.isEmpty()) return
@@ -188,6 +268,8 @@ private class SlockKRVideoView(
 
     companion object {
         private const val PROGRESS_TICK_MS = 500L
+        private const val SEEK_JUMP_MS = 10_000L
+        private const val FULLSCREEN_BACKGROUND = 0xFF000000.toInt()
     }
 }
 
@@ -199,3 +281,12 @@ private fun Any.toSlockSeekTimeMsOrNull(): Long? =
         is String -> substringAfterLast(':').toLongOrNull()
         else -> null
     }
+
+private fun Context.unwrapComponentActivity(): ComponentActivity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is ComponentActivity) return current
+        current = current.baseContext
+    }
+    return null
+}
