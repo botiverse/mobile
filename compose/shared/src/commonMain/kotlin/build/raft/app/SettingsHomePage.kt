@@ -2008,6 +2008,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
+                loadServerOrder = { homeSidebarOrderRepository.getServerOrder() },
+                updateServerOrder = { request -> homeSidebarOrderRepository.updateServerOrder(request) },
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
@@ -11879,6 +11881,9 @@ private fun SharedHomeScreen(
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
                     },
+                    onServerOrderChange = { order ->
+                        onIntent(SharedHomeIntent.ReorderServers(order))
+                    },
                     onCreateServerClick = onOpenServerSelection,
                     onCreateChannelClick = onCreateChannel
                 )
@@ -11899,6 +11904,9 @@ private fun SharedHomeScreen(
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
                 },
+                onServerOrderChange = { order ->
+                    onIntent(SharedHomeIntent.ReorderServers(order))
+                },
                 onCreateServerClick = onOpenServerSelection,
                 onCreateChannelClick = onCreateChannel
             )
@@ -11917,6 +11925,9 @@ private fun SharedHomeScreen(
                     onServerSelected = { serverId ->
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
+                    },
+                    onServerOrderChange = { order ->
+                        onIntent(SharedHomeIntent.ReorderServers(order))
                     },
                     onCreateServerClick = onOpenServerSelection,
                     onCreateChannelClick = onCreateChannel
@@ -11986,7 +11997,9 @@ private fun SharedHomeScreen(
                     current.session.servers.map { server ->
                         server.toServerSummary().let { summary ->
                             if (summary.id == snapshot.server.id) {
-                                snapshot.server
+                                snapshot.server.copy(
+                                    avatarUrl = snapshot.server.avatarUrl ?: summary.avatarUrl
+                                )
                             } else {
                                 summary
                             }
@@ -12072,6 +12085,9 @@ private fun SharedHomeScreen(
                 onServerSelected = { serverId ->
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
+                },
+                onServerOrderChange = { order ->
+                    onIntent(SharedHomeIntent.ReorderServers(order))
                 },
                 onCreateServerClick = onOpenServerSelection,
                 onCreateChannelClick = onCreateChannel,
@@ -14844,6 +14860,7 @@ private fun SharedHomeSessionShell(
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
+    onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit,
     onCreateChannelClick: () -> Unit
 ) {
@@ -14865,6 +14882,7 @@ private fun SharedHomeSessionShell(
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,
+        onServerOrderChange = onServerOrderChange,
         onCreateServerClick = onCreateServerClick,
         onCreateChannelClick = onCreateChannelClick
     )
@@ -14881,6 +14899,7 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
         id = id.value,
         name = name,
         slug = slug ?: description?.removePrefix("/") ?: id.value,
+        avatarUrl = avatarUrl,
         unreadCount = serverUnreadCounts[id.value] ?: unreadCount
     )
 

@@ -19,6 +19,7 @@ data class ServerSummary(
     val plan: String? = null,
     val onboardingAgentId: String? = null,
     val description: String? = null,
+    val avatarUrl: String? = null,
     val unreadCount: Int = 0,
     val permissions: ServerPermissions = ServerPermissions()
 )

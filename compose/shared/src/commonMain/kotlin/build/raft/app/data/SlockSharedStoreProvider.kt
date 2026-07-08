@@ -123,6 +123,12 @@ internal class SlockSharedStoreProvider private constructor(
         updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
         },
+        loadServerOrder: suspend () -> DataResult<SettingsServerOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        updateServerOrder: suspend (SettingsServerOrderUpdateRequest) -> DataResult<SettingsServerOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
         markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
@@ -144,6 +150,8 @@ internal class SlockSharedStoreProvider private constructor(
                 diagnosticsLogger = diagnosticsLogger,
                 loadSidebarOrder = loadSidebarOrder,
                 updateSidebarOrder = updateSidebarOrder,
+                loadServerOrder = loadServerOrder,
+                updateServerOrder = updateServerOrder,
                 markChannelReadAll = markChannelReadAll,
                 markChannelUnread = markChannelUnread,
                 archiveChannel = archiveChannel,
@@ -159,6 +167,8 @@ internal class SlockSharedStoreProvider private constructor(
             diagnosticsLogger = diagnosticsLogger,
             loadSidebarOrder = loadSidebarOrder,
             updateSidebarOrder = updateSidebarOrder,
+            loadServerOrder = loadServerOrder,
+            updateServerOrder = updateServerOrder,
             markChannelReadAll = markChannelReadAll,
             markChannelUnread = markChannelUnread,
             archiveChannel = archiveChannel,

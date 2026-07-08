@@ -759,6 +759,16 @@ fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrde
 }.getOrNull()
 
 @Serializable
+private data class WireSettingsServerOrder(
+    val serverOrder: List<String> = emptyList()
+)
+
+fun parseSharedSettingsServerOrder(bodyText: String): SettingsServerOrderSnapshot? = runCatching {
+    val order = settingsJson.decodeFromString(WireSettingsServerOrder.serializer(), bodyText)
+    SettingsServerOrderSnapshot(serverOrder = order.serverOrder)
+}.getOrNull()
+
+@Serializable
 private data class WireSettingsServerProfileUpdate(
     val id: String,
     val name: String,

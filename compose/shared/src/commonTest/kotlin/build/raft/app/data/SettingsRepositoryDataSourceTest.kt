@@ -611,9 +611,11 @@ class SettingsRepositoryDataSourceTest {
                 onboardingJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":null,"agentAllChannelGreetingEnabled":true}""",
                 translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
                 sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
+                serverOrderJson = """{"serverOrder":["server-2","server-1"]}""",
                 onboardingUpdateJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
                 translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
                 sidebarOrderUpdateJson = """{"channelOrder":["channel-2"],"agentOrder":[],"dmOrder":[],"channelSortMode":"az","dmSortMode":"manual","pinnedSortMode":"manual","pinnedChannelIds":[],"pinnedAgentIds":[],"pinnedOrder":[],"hiddenDmIds":[],"channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""",
+                serverOrderUpdateJson = """{"serverOrder":["server-1","server-2"]}""",
                 memberRoleUpdateJson = """{"ok":true}""",
                 removeMemberJson = """{"ok":true}""",
                 leaveServerJson = """{"ok":true}"""
@@ -631,6 +633,7 @@ class SettingsRepositoryDataSourceTest {
         val translation = repository.getServerTranslationSettings()
         val updatedTranslation = repository.updateServerTranslationSettings(SettingsServerTranslationUpdateRequest(translationEnabled = false))
         val sidebar = repository.getServerSidebarOrder()
+        val serverOrder = repository.getServerOrder()
         val updatedSidebar =
             repository.updateServerSidebarOrder(
                 SettingsServerSidebarOrderUpdateRequest(
@@ -638,6 +641,12 @@ class SettingsRepositoryDataSourceTest {
                     channelSortMode = "az",
                     channelPanelTabOrder = listOf("threads", "channels"),
                     agentPanelTabOrder = listOf("dms", "agents")
+                )
+            )
+        val updatedServerOrder =
+            repository.updateServerOrder(
+                SettingsServerOrderUpdateRequest(
+                    serverOrder = listOf("server-1", "server-2")
                 )
             )
         val memberRole = repository.updateServerMemberRole(SettingsServerMemberRoleUpdateRequest(memberId = "member-2", role = "admin"))
@@ -664,9 +673,14 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(sidebar is DataResult.Content)
         assertEquals(listOf("channel-1"), sidebar.data.channelOrder)
         assertEquals("recent", sidebar.data.dmSortMode)
+        assertTrue(serverOrder is DataResult.Content)
+        assertEquals(listOf("server-2", "server-1"), serverOrder.data.serverOrder)
         assertTrue(updatedSidebar is DataResult.Content)
         assertEquals(listOf("channel-2"), updatedSidebar.data.channelOrder)
         assertEquals("""{"channelOrder":["channel-2"],"channelSortMode":"az","channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""", network.sidebarBodies.single())
+        assertTrue(updatedServerOrder is DataResult.Content)
+        assertEquals(listOf("server-1", "server-2"), updatedServerOrder.data.serverOrder)
+        assertEquals("""{"serverOrder":["server-1","server-2"]}""", network.serverOrderBodies.single())
         assertTrue(memberRole is DataResult.Content)
         assertEquals("member-2", network.updatedMemberRoleMemberId)
         assertEquals("""{"role":"admin"}""", network.memberRoleBodies.single())
@@ -947,6 +961,8 @@ class SettingsRepositoryDataSourceTest {
         private val translationUpdateJson: String = translationJson,
         private val sidebarOrderJson: String = """{"channelOrder":[],"agentOrder":[],"dmOrder":[],"channelSortMode":"manual","dmSortMode":"manual","pinnedSortMode":"manual","pinnedChannelIds":[],"pinnedAgentIds":[],"pinnedOrder":[],"hiddenDmIds":[],"channelPanelTabOrder":[],"agentPanelTabOrder":[]}""",
         private val sidebarOrderUpdateJson: String = sidebarOrderJson,
+        private val serverOrderJson: String = """{"serverOrder":[]}""",
+        private val serverOrderUpdateJson: String = serverOrderJson,
         private val inviteJson: String = """{"id":"invite-1","email":"new@slock.ai"}""",
         private val invitesJson: String = """[]""",
         private val notificationSettingsJson: String = """{"serverPushMuted":false}""",
@@ -1025,6 +1041,7 @@ class SettingsRepositoryDataSourceTest {
         val profileBodies = mutableListOf<String>()
         val translationBodies = mutableListOf<String>()
         val sidebarBodies = mutableListOf<String>()
+        val serverOrderBodies = mutableListOf<String>()
         val memberRoleBodies = mutableListOf<String>()
         val registerBodies = mutableListOf<String>()
         val renameBodies = mutableListOf<String>()
@@ -1158,6 +1175,12 @@ class SettingsRepositoryDataSourceTest {
                 normalized.matches(Regex("""servers/[^/]+/sidebar-order""")) && method == "PATCH" -> {
                     sidebarBodies += bodyText.orEmpty()
                     response(sidebarOrderUpdateJson)
+                }
+                normalized == "servers/order" && method == "GET" ->
+                    response(serverOrderJson)
+                normalized == "servers/order" && method == "PATCH" -> {
+                    serverOrderBodies += bodyText.orEmpty()
+                    response(serverOrderUpdateJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+/notification-settings""")) && method == "GET" ->
                     response("""{"serverPushMuted":$currentServerPushMuted}""")
