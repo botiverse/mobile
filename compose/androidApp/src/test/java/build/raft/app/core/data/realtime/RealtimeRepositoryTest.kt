@@ -10,6 +10,7 @@ import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
+import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -1054,6 +1055,9 @@ class RealtimeRepositoryTest {
             AuthApiResult.Success(Unit)
 
         override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
+            AuthApiResult.Failure(404)
+
+        override suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference> =
             AuthApiResult.Failure(404)
 
         override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =

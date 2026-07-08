@@ -104,16 +104,20 @@ class SharedAuthDataSource(
                     emptyList()
                 }
             }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${login.accessToken}", source = "password_login")
+            )
         val session =
             StoredAuthSession(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
-                servers = servers
-            ).withValidatedServerSelection(servers, serverSelectionMemory)
+                servers = orderedServers
+            ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
-        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -124,7 +128,7 @@ class SharedAuthDataSource(
         diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
         diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=$selectedServerPresent")
         diagnosticsLogger(
-            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=$selectedServerPresent"
+            "auth_login_result provider=password result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent"
         )
         return SharedAuthResult.Success(session)
     }
@@ -253,15 +257,19 @@ class SharedAuthDataSource(
                     emptyList()
                 }
             }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${login.accessToken}", source = "mobile_oauth_login")
+            )
         val session =
             StoredAuthSession(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
-                servers = servers
-            ).withValidatedServerSelection(servers, serverSelectionMemory)
+                servers = orderedServers
+            ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
-        diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -270,7 +278,7 @@ class SharedAuthDataSource(
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
         diagnosticsLogger("auth_session_persist_result provider=mobile_oauth result=success stage=session_persist")
-        diagnosticsLogger("auth_login_result provider=mobile_oauth result=success serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        diagnosticsLogger("auth_login_result provider=mobile_oauth result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
     }
 
@@ -378,15 +386,19 @@ class SharedAuthDataSource(
                     emptyList()
                 }
             }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${tokens.accessToken}", source = "${provider}_login")
+            )
         val session =
             StoredAuthSession(
                 user = user,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
-                servers = servers
-            ).withValidatedServerSelection(servers, serverSelectionMemory)
+                servers = orderedServers
+            ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
-        diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -395,7 +407,7 @@ class SharedAuthDataSource(
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
         diagnosticsLogger("auth_session_persist_result provider=$provider result=success stage=session_persist")
-        diagnosticsLogger("auth_login_result provider=$provider result=success serversCount=${servers.size} selectedServer=$selectedServerPresent")
+        diagnosticsLogger("auth_login_result provider=$provider result=success serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         return SharedAuthResult.Success(session)
     }
 
@@ -427,13 +439,17 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> emptyList()
             }
+        val orderedServers =
+            servers.orderedByServerOrder(
+                loadServerOrderOrNull("Bearer ${register.accessToken}", source = "register")
+            )
         val session =
             StoredAuthSession(
                 user = register.user,
                 accessToken = register.accessToken,
                 refreshToken = register.refreshToken,
-                servers = servers
-            ).withValidatedServerSelection(servers, serverSelectionMemory)
+                servers = orderedServers
+            ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         sessionStore.saveSession(session)
         return SharedAuthResult.Success(session)
     }
@@ -697,13 +713,14 @@ class SharedAuthDataSource(
             )
             return SharedAuthResult.Unauthenticated
         }
-        val updated = session.withValidatedServerSelection(servers, serverSelectionMemory)
+        val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = source))
+        val updated = session.withValidatedServerSelection(orderedServers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         diagnosticsLogger(
-            "auth_servers_load_result result=success source=$source serversCount=${servers.size} " +
+            "auth_servers_load_result result=success source=$source serversCount=${orderedServers.size} " +
                 "selectedServer=${!updated.selectedServerId.isNullOrBlank()} " +
-                "avatarCount=${servers.count { !it.avatarUrl.isNullOrBlank() }} " +
-                "order=${servers.map { it.id }.authServerOrderDiagnosticsValue()}"
+                "avatarCount=${orderedServers.count { !it.avatarUrl.isNullOrBlank() }} " +
+                "order=${orderedServers.map { it.id }.authServerOrderDiagnosticsValue()}"
         )
         return SharedAuthResult.Success(updated)
     }
@@ -754,6 +771,7 @@ class SharedAuthDataSource(
             }
                 .upsert(created)
                 .ifEmpty { listOf(created) }
+                .orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "create_server"))
         val selected = latestServers.firstOrNull { it.id == created.id } ?: created
         val updated =
             session.copy(
@@ -798,10 +816,25 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> session.servers
             }
-        val updated = session.copy(user = user).withValidatedServerSelection(servers, serverSelectionMemory)
+        val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
+        val updated = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
+
+    private suspend fun loadServerOrderOrNull(authorization: String, source: String): List<String>? =
+        when (val response = api.serverOrder(authorization)) {
+            is AuthApiResult.Success -> {
+                diagnosticsLogger("auth_server_order_result result=success source=$source orderCount=${response.data.serverOrder.size}")
+                response.data.serverOrder
+            }
+            is AuthApiResult.Failure -> {
+                diagnosticsLogger(
+                    "auth_server_order_result result=failure source=$source http=${response.code} contract=${response.contractCode ?: "none"} fallback=servers_order"
+                )
+                null
+            }
+        }
 }
 
 private val MobileOAuthProviders = setOf("google", "github")
@@ -933,6 +966,7 @@ interface SlockAuthApi {
     suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse>
     suspend fun logout(refreshToken: String): AuthApiResult<Unit>
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
+    suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
     suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
 }
 
@@ -1108,6 +1142,12 @@ class SlockAuthApiClient(
         transport.servers(authorization)
             .mapAuthBody("servers_list_contract_mismatch", ListSerializer(StoredAuthServer.serializer()), diagnosticsLogger) { it }
 
+    override suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference> =
+        transport.serverOrder(authorization)
+            .mapAuthBody("servers_order_contract_mismatch", AuthServerOrderResponseDto.serializer(), diagnosticsLogger) {
+                it.toDomain()
+            }
+
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
         transport.createServer(authorization, bodyText)
             .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer(), diagnosticsLogger) { it }
@@ -1155,6 +1195,10 @@ data class AuthMobileOAuthLinkCompleteResponse(
 data class AuthRefreshResponse(
     val accessToken: String,
     val refreshToken: String
+)
+
+data class ServerSwitcherOrderPreference(
+    val serverOrder: List<String>
 )
 
 data class AuthNetworkResponse(
@@ -1424,6 +1468,14 @@ private fun AuthMobileOAuthLinkCompleteResponseDto.toDomain(): AuthMobileOAuthLi
     )
 
 @Serializable
+private data class AuthServerOrderResponseDto(
+    val serverOrder: List<String> = emptyList()
+)
+
+private fun AuthServerOrderResponseDto.toDomain(): ServerSwitcherOrderPreference =
+    ServerSwitcherOrderPreference(serverOrder = serverOrder)
+
+@Serializable
 private data class AuthRefreshResponseDto(
     val accessToken: String,
     val refreshToken: String,
@@ -1448,3 +1500,15 @@ private fun StoredAuthSession.bearer(): String = "Bearer $accessToken"
 
 private fun List<StoredAuthServer>.upsert(server: StoredAuthServer): List<StoredAuthServer> =
     filterNot { it.id == server.id } + server
+
+private fun List<StoredAuthServer>.orderedByServerOrder(serverOrder: List<String>?): List<StoredAuthServer> {
+    if (serverOrder.isNullOrEmpty() || size < 2) return this
+    val byId = associateBy { it.id }
+    val seen = mutableSetOf<String>()
+    val ordered =
+        serverOrder.mapNotNull { id ->
+            byId[id]?.takeIf { seen.add(it.id) }
+        }
+    if (ordered.isEmpty()) return this
+    return ordered + filterNot { it.id in seen }
+}

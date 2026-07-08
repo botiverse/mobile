@@ -162,6 +162,7 @@ import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
@@ -10728,6 +10729,9 @@ private class AuthChooseServerVisualApi(
 
     override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
         AuthApiResult.Success(servers)
+
+    override suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference> =
+        AuthApiResult.Success(ServerSwitcherOrderPreference(servers.map { it.id }))
 
     override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
         AuthApiResult.Failure(code = 400)

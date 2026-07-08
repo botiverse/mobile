@@ -14,5 +14,6 @@ interface SlockAuthTransport {
     suspend fun refresh(bodyText: String): AuthNetworkResponse
     suspend fun logout(bodyText: String): AuthNetworkResponse
     suspend fun servers(authorization: String): AuthNetworkResponse
+    suspend fun serverOrder(authorization: String): AuthNetworkResponse
     suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse
 }

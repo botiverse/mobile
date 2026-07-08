@@ -197,6 +197,9 @@ class SlockNetworkAuthMiddlewareTest {
         override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
             error("not used")
 
+        override suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference> =
+            error("not used")
+
         override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
             error("not used")
     }
