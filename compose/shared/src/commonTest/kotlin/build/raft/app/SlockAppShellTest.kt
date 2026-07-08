@@ -32,6 +32,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SlockAppShellTest {
     @Test
@@ -1664,6 +1665,145 @@ class SlockAppShellTest {
         assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentChannelKind)
+    }
+
+    // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory
+    // and the parent CHANNEL row is. With the parent/anchor lookup tail deleted, the parent
+    // row can no longer be hit at all — the Activity source rebuilds a correct Thread
+    // identity from its trusted typed parent kind.
+    @Test
+    fun resolveOpenRequestNeverLooksUpParentChannelForThreadSource() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val logs = mutableListOf<String>()
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    InboxItem(
+                        key = "thread:reply-stream",
+                        kind = InboxItemKind.Thread,
+                        channelId = ChannelId("reply-stream"),
+                        channelName = "home-fixes",
+                        threadChannelId = ChannelId("reply-stream"),
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentChannelName = "home-fixes",
+                        parentChannelKind = ConversationKind.Channel,
+                        parentMessageId = MessageId("parent-message"),
+                        latestActivityMessageId = MessageId("reply-1")
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory,
+                diagnosticsLogger = logs::add
+            )
+
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals("parent-channel", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", request.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals("reply-1", request.anchorMessageId)
+        val log = assertNotNull(logs.firstOrNull())
+        // The parent row is in the directory but must never even be HIT.
+        assertTrue(log.contains("hitVia=_"), log)
+        assertTrue(log.contains("result=resolved:Thread"), log)
+    }
+
+    // task #441 companion: no typed parent kind and no own row — an honest hydrating
+    // Pending, never the parent channel's identity.
+    @Test
+    fun resolveOpenRequestThreadSourceWithoutTypedKindStaysPending() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    InboxItem(
+                        key = "thread:reply-stream",
+                        kind = InboxItemKind.Thread,
+                        channelId = ChannelId("reply-stream"),
+                        channelName = "home-fixes",
+                        threadChannelId = ChannelId("reply-stream"),
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentChannelName = "home-fixes",
+                        // parentChannelKind intentionally omitted (null).
+                        parentMessageId = MessageId("parent-message"),
+                        latestActivityMessageId = MessageId("reply-1")
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("conversation_hydrating", pending.reason)
+    }
+
+    // task #441 notification source (三源合一): a thread notification's channelId can name
+    // the PARENT channel. The self-lookup hit on that channel row must be refused for a
+    // thread-shaped source (parentMessageId present), and with no typed parent kind the
+    // resolution is an honest ineligible Pending — the notification must not open the
+    // parent channel stream.
+    @Test
+    fun resolveOpenRequestNotificationThreadShapeRefusesParentChannelIdentity() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val logs = mutableListOf<String>()
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "reply-stream",
+                        messageId = "reply-1",
+                        channelId = "parent-channel",
+                        parentChannelId = "parent-channel",
+                        parentMessageId = "parent-message"
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory,
+                diagnosticsLogger = logs::add
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_identity_projection_ineligible", pending.reason)
+        val log = assertNotNull(logs.firstOrNull())
+        assertTrue(log.contains("hitVia=parent-channel"), log)
+        assertTrue(log.contains("hitEligible=false"), log)
     }
 
     @Test
