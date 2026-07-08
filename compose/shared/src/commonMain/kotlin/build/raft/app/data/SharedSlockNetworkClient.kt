@@ -376,6 +376,9 @@ class SharedSlockAuthTransport internal constructor(
     override suspend fun servers(authorization: String): AuthNetworkResponse =
         request(path = "servers", method = "GET", authorization = authorization)
 
+    override suspend fun serverOrder(authorization: String): AuthNetworkResponse =
+        request(path = "servers/order", method = "GET", authorization = authorization)
+
     override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse =
         request(path = "servers", method = "POST", authorization = authorization, bodyText = bodyText)
 

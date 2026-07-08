@@ -860,6 +860,38 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersAppliesServerSwitcherOrderPreference() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    selectedServerId = "server-1",
+                    selectedServerSlug = "slock",
+                    servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+                )
+            )
+        val api =
+            FakeAuthApi(
+                serversResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """[{"id":"server-1","name":"Slock","slug":"slock"},{"id":"server-2","name":"Ops","slug":"ops"},{"id":"server-3","name":"Lab","slug":"lab"}]"""
+                    ),
+                serverOrderResponse = AuthNetworkResponse(200, """{"serverOrder":["server-3","server-1"]}""")
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(listOf("server-3", "server-1", "server-2"), store.readSession()?.servers?.map { it.id })
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+        assertEquals(listOf("Bearer access-token"), api.serverOrderAuthorizations)
+    }
+
+    @Test
     fun loadServersRefreshesUnauthorizedAccessTokenBeforeSigningOut() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
@@ -1010,6 +1042,8 @@ class AuthDataSourceTest {
                 200,
                 """[{"id":"server-1","name":"Slock","slug":"slock","role":"owner"}]"""
             ),
+        private val serverOrderResponse: AuthNetworkResponse =
+            AuthNetworkResponse(200, """{"serverOrder":[]}"""),
         private val currentUserResponses: ArrayDeque<AuthNetworkResponse> =
             ArrayDeque(
                 listOf(
@@ -1064,6 +1098,7 @@ class AuthDataSourceTest {
         var serversAuthorization: String? = null
             private set
         val serversAuthorizations = mutableListOf<String>()
+        val serverOrderAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
             private set
 
@@ -1148,6 +1183,11 @@ class AuthDataSourceTest {
                     responses.first()
                 }
             } ?: serversResponse
+        }
+
+        override suspend fun serverOrder(authorization: String): AuthNetworkResponse {
+            serverOrderAuthorizations += authorization
+            return serverOrderResponse
         }
 
         override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse {
