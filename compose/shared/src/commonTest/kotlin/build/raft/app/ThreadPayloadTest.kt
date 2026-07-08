@@ -4860,6 +4860,7 @@ class ThreadPayloadTest {
         assertEquals(listOf("u3"), addMembersCard?.humans)
         assertEquals(listOf("agent-3"), addMembersCard?.agents)
         assertEquals("Bring the review owners in.", addMembersCard?.draftHint)
+        assertEquals("Bring the review owners in.", addMembersCard?.actionCardDraftHint())
     }
 
     @Test
@@ -4930,6 +4931,7 @@ class ThreadPayloadTest {
         assertEquals("Quiver", card?.clientName)
         assertEquals(listOf("identity", "profile"), card?.scopes)
         assertEquals("KMP-专家 is requesting human approval.", card?.draftHint)
+        assertEquals(null, card?.actionCardDraftHint())
     }
 
     @Test

@@ -747,6 +747,45 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadActionCardCatalog() {
+        captureKmpComponentCase(
+            caseId = "components.thread.action-card.catalog",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-action-card-catalog")
+                    .put("visualFixture", "action_card_catalog"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadApproveLoginActionCardPending() {
+        captureKmpComponentCase(
+            caseId = "components.thread.action-card.approve-login.pending",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-action-card-approve-login")
+                    .put("visualFixture", "approve_login_action_card"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadApproveLoginActionCardApproved() {
+        captureKmpComponentCase(
+            caseId = "components.thread.action-card.approve-login.approved",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-action-card-approve-login-approved")
+                    .put("visualFixture", "approve_login_action_card_executed"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",
