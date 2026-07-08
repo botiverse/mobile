@@ -1507,6 +1507,10 @@ private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settin
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
+internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentTab: String, targetTab: String): Boolean =
+    retainedAppShellSelectedTab(currentTab) == "home" &&
+        retainedAppShellSelectedTab(targetTab) != "home"
+
 internal data class AppShellLaunchSelection(
     val selectedTab: String = "home",
     val selectedSettingsDestination: String = SettingsDestinationHome
@@ -1818,6 +1822,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
+    var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
@@ -3389,6 +3394,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             "visitedBefore" to visitedBefore.toString()
                         )
                 )
+                if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, nextTab)) {
+                    homeFocusLossDismissEpoch += 1
+                }
                 selectAppShellTab(nextTab, directChildSwitch = true)
                 if (isRetainedAppShellTab(nextTab)) {
                     retainedAppShellTabs = retainedAppShellTabs + nextTab
@@ -3480,6 +3488,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                         }
                                     }
                                 },
+                                externalFocusLossDismissEpoch = homeFocusLossDismissEpoch,
                                 selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
                                 onSelectedConversationCleared = {
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
@@ -11848,6 +11857,7 @@ private fun SharedHomeScreen(
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateInstall: (() -> Unit)? = null,
+    externalFocusLossDismissEpoch: Int = 0,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
     onOpenSearch: () -> Unit,
@@ -12109,6 +12119,7 @@ private fun SharedHomeScreen(
                 hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
+                externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },

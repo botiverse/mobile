@@ -699,6 +699,7 @@ internal fun SlockStructuralHomeShell(
     showLoadingSkeletons: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
+    externalFocusLossDismissEpoch: Int = 0,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
     outerPadding: Dp = SlockSpacing.Md,
     labels: SlockHomeShellLabels = SlockHomeShellLabels.defaults(),
@@ -907,6 +908,11 @@ internal fun SlockStructuralHomeShell(
     var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
     LaunchedEffect(visibleNotifications.size) {
         if (visibleNotifications.isEmpty()) {
+            notificationCenterExpanded = false
+        }
+    }
+    LaunchedEffect(externalFocusLossDismissEpoch) {
+        if (externalFocusLossDismissEpoch > 0) {
             notificationCenterExpanded = false
         }
     }
