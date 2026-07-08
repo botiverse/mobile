@@ -15,30 +15,23 @@ target 'iosApp' do
 
   # task #423: the moko/TMM kmmresource plugin packs the `MR` resource bundle
   # (strings + the reaction sprite atlas) into the shared klib/framework. Because
-  # `shared` is a *static* framework, that `.bundle` is NOT auto-copied into the
-  # .app — the plugin exposes a `copyFrameworkResourcesToApp` gradle task for
-  # exactly this, but it needs an Xcode build phase to invoke it. Without this,
-  # any `MR.*` access throws FileFailedToInitializeException on iOS.
-  #
-  # The task reads the Xcode destination from local.properties (tmm.resources.*)
-  # and the target selectors as gradle properties. local.properties is
-  # git-ignored / machine-local, so rewriting our keys there is safe.
+  # `shared` is a *static* framework, that `.bundle` is not auto-copied into the
+  # .app, so the plugin's `copyFrameworkResourcesToApp` task copies it out of the
+  # built framework (resource-core >= 0.1.0-raft.2 lands the bundle at the
+  # framework root and reads the Xcode destination from these gradle -P props).
+  # Without this build phase, any `MR.*` access throws
+  # FileFailedToInitializeException on iOS.
   script_phase :name => 'Copy kmmresource MR bundle to app',
     :execution_position => :after_compile,
     :shell_path => '/bin/sh',
     :script => <<-CMD
 set -e
 # The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),
-# which is one level up from this target's $SRCROOT (compose/iosApp).
+# one level up from this target's $SRCROOT (compose/iosApp).
 GRADLE_ROOT="$SRCROOT/.."
-LOCAL_PROPS="$GRADLE_ROOT/local.properties"
-touch "$LOCAL_PROPS"
-/usr/bin/sed -i '' '/^tmm\\.resources\\./d' "$LOCAL_PROPS" || true
-{
-  echo "tmm.resources.BUILT_PRODUCTS_DIR=$BUILT_PRODUCTS_DIR"
-  echo "tmm.resources.CONTENTS_FOLDER_PATH=$CONTENTS_FOLDER_PATH"
-} >> "$LOCAL_PROPS"
 "$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
+  -Ptmm.resources.BUILT_PRODUCTS_DIR="$BUILT_PRODUCTS_DIR" \\
+  -Ptmm.resources.CONTENTS_FOLDER_PATH="$CONTENTS_FOLDER_PATH" \\
   -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\
   -Ptmm.resources.PLATFORM_NAME="$PLATFORM_NAME" \\
   -Ptmm.resources.ARCHS="$ARCHS"
