@@ -630,6 +630,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun readThreadPlatformPickedFiles(uris: List<Uri>): Map<String, Any> {
+        cleanupPickedThreadAttachmentCache()
         val files = uris.map { uri -> pickedThreadAttachmentRef(uri) }
         if (files.isEmpty()) {
             return mapOf(
@@ -666,8 +667,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun pickedThreadAttachmentRef(uri: Uri): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val fileRef = uri.toString()
-        val sizeBytes = queryPickedFileSize(uri)
+        val cachedFile = cachePickedThreadAttachment(uri, fileName, mimeType)
+        val fileRef = Uri.fromFile(cachedFile).toString()
+        val sizeBytes = cachedFile.length().takeIf { it > 0L } ?: queryPickedFileSize(uri)
         return PickedThreadAttachment(
                 fileRef = fileRef,
                 fileName = fileName,
@@ -675,6 +677,47 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 previewUri = fileRef,
                 sizeBytes = sizeBytes
         )
+    }
+
+    private fun cachePickedThreadAttachment(uri: Uri, fileName: String, mimeType: String): File {
+        val cacheDir = pickedThreadAttachmentCacheDir()
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            throw IOException("Attachment cache unavailable")
+        }
+        val targetFile =
+                File(
+                        cacheDir,
+                        safePickedThreadAttachmentFileName(fileName, mimeType)
+                )
+        val bytesCopied =
+                contentResolver.openInputStream(uri)?.use { input ->
+                    targetFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IOException("Unable to read attachment")
+        if (bytesCopied <= 0L || !targetFile.isFile || targetFile.length() <= 0L) {
+            runCatching { targetFile.delete() }
+            throw IOException("Unable to read attachment")
+        }
+        SlockDiagnosticsLogger.record(
+                "SlockKuiklyAttachment",
+                "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
+        )
+        return targetFile
+    }
+
+    private fun pickedThreadAttachmentCacheDir(): File =
+            File(applicationContext.cacheDir, PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME)
+
+    private fun cleanupPickedThreadAttachmentCache(cacheDir: File = pickedThreadAttachmentCacheDir()) {
+        val now = System.currentTimeMillis()
+        val files = cacheDir.listFiles()?.filter { it.isFile }.orEmpty()
+        files
+                .filter { now - it.lastModified() > PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS }
+                .forEach { runCatching { it.delete() } }
+        files
+                .filter { it.exists() && now - it.lastModified() <= PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS }
+                .sortedByDescending { it.lastModified() }
+                .drop(PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES)
+                .forEach { runCatching { it.delete() } }
     }
 
     private fun queryPickedFileName(uri: Uri): String? =
@@ -965,6 +1008,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_DIAGNOSTICS_DEEP_LINK_RESET_SCENE = "slockDiagnosticsDeepLinkResetScene"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_EXPORT_REPORT = "slockDiagnosticsDeepLinkExportReport"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS = "slockDiagnosticsDeepLinkAutoCloseMs"
+        private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_FILES = 40
+        private const val PICKED_THREAD_ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+        private const val PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME = "slock-picked-thread-attachments"
 
         fun start(
             context: Context,
@@ -1214,6 +1260,41 @@ private data class PickedThreadAttachment(
         val previewUri: String,
         val sizeBytes: Long?
 )
+
+internal fun safePickedThreadAttachmentFileName(
+        fileName: String,
+        mimeType: String,
+        nowMillis: Long = System.currentTimeMillis(),
+        nanoTime: Long = System.nanoTime(),
+        extensionForMimeType: (String) -> String? = { type ->
+            MimeTypeMap.getSingleton().getExtensionFromMimeType(type)
+        }
+): String {
+    val baseName =
+            fileName
+                    .substringAfterLast('/')
+                    .substringAfterLast('\\')
+                    .ifBlank { "attachment" }
+                    .map { character ->
+                        if (character.isLetterOrDigit() || character == '.' || character == '-' || character == '_' || character == ' ') {
+                            character
+                        } else {
+                            '_'
+                        }
+                    }
+                    .joinToString("")
+                    .trim()
+                    .take(120)
+                    .ifBlank { "attachment" }
+    val withExtension =
+            if (baseName.contains('.')) {
+                baseName
+            } else {
+                val extension = extensionForMimeType(mimeType)
+                if (extension.isNullOrBlank()) baseName else "$baseName.$extension"
+            }
+    return "picked-$nowMillis-$nanoTime-$withExtension"
+}
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
