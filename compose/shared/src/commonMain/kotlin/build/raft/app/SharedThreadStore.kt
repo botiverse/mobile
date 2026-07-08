@@ -31,6 +31,7 @@ import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.PendingMentionActionExecuteResult
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
@@ -308,10 +309,12 @@ internal class SharedThreadDataSource(
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? = payloadCache[threadId]
 
-    // task #231 (SSOT): realtime raw merges no longer write the route
-    // first-frame cache — they only invalidate it. Narrow by design: removes
-    // exactly one thread's candidate; never touches durable stores, the
-    // message resolver, or the active screen's in-memory state.
+    // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
+    // permission/visibility loss, epoch/server switches, identity proof
+    // failures. Ordinary realtime traffic warms the cache with the live
+    // store's merged snapshot instead (see applyRealtimeEvent). Narrow by
+    // design: removes exactly one thread's candidate; never touches durable
+    // stores, the message resolver, or the active screen's in-memory state.
     fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         payloadCache.remove(threadId)
@@ -2311,13 +2314,30 @@ internal class SharedThreadDataSource(
     }
 }
 
-private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult.Error =
-    DataResult.Error(
-        ScreenError(
-            code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
-            retryable = contractCode == null
-        )
-    )
+private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult<Nothing> =
+    when (code) {
+        // Permission loss must surface as NoPermission, not a transient error:
+        // downstream treats NoPermission as unrecoverable (e.g. task #562 drops
+        // the first-frame cache candidate) while plain errors keep warm state.
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session")
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = contractCode ?: "thread_forbidden",
+                    requiredCapability = "thread_access"
+                )
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
+                    retryable = contractCode == null
+                )
+            )
+    }
 
 private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataResult<Unit> =
     when (this) {
@@ -2772,8 +2792,14 @@ internal class SharedThreadStore(
                     }
                 is DataResult.Error ->
                     latest.asRefreshFailed(result.error.code)
-                is DataResult.NoPermission ->
+                is DataResult.NoPermission -> {
+                    // Canonical fetch says we can no longer read this thread:
+                    // the cached first-frame candidate is unrecoverable-stale
+                    // (permission/visibility change) — drop it. Transient
+                    // network errors deliberately keep the warm cache.
+                    dataSource.invalidateCachedPayload(basePayload)
                     latest.asRefreshFailed(result.blocker.code)
+                }
             }.copy(backgroundRefreshing = false)
         val emitted =
             reducePayloadPatch(cachePayload = visiblePayload != null) { currentPayload ->
@@ -3084,23 +3110,23 @@ internal class SharedThreadStore(
                 previous = existing,
                 preserveSelectedReactions = false
             )
-        // task #231 (android-realtime-code-path Cleanup Boundary): the raw
-        // realtime merge is a temporary visible projection only. The durable
-        // write belongs to the app-scope domain owner, so Thread stops being a
-        // second writer: no cachePayload here — instead the (now stale) route
-        // first-frame candidate for this thread is dropped, forcing the next
-        // entry to refresh rather than render a candidate missing the merge.
+        // task #562 (agreed with KMP-专家/HanXin, adjusting #231's A'): the
+        // first-frame candidate is a read-only SNAPSHOT of the live store's
+        // merged state — a single merge algorithm, written through after the
+        // reduce. Every open still forces a refresh, so any snapshot drift
+        // lives only in the first-frame window and is corrected by the
+        // canonical fetch through this same reducer. Raw events are never
+        // written; durable local-store never rides this path.
         val emitted =
-            reducePayloadPatch(cachePayload = false) { currentPayload ->
+            reducePayloadPatch(cachePayload = true) { currentPayload ->
                 if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
                     return@reducePayloadPatch currentPayload
                 }
                 currentPayload.withThreadContentProjectionFrom(stableSelected)
             }
-        dataSource.invalidateCachedPayload(existing)
         diagnosticsLogger?.invoke(
             "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
-                "source=direct emitted=$emitted messages=${stableSelected.messages.size} cacheInvalidated=true"
+                "source=direct emitted=$emitted messages=${stableSelected.messages.size} cacheWarmed=true"
         )
         val replyCountGap =
             stableSelected.realtimeReplyCountGap(
