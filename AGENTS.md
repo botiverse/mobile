@@ -4,6 +4,9 @@
 
 - If you are a new agent joining Raft Mobile work, read
   `docs/new-agent-landing.md` before touching code.
+- For Android review MP4s that demonstrate taps, drags, scrolls, or focus
+  changes, enable visible touches/pointer overlay and follow
+  `docs/android-review-recording.md` before attaching evidence to a task thread.
 
 ## Upstream Slock Source
 

@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -174,6 +175,15 @@ class SlockAppShellTest {
     @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("unknown"))
+    }
+
+    @Test
+    fun appShellTabSelectionDismissesHomeNotificationCenterOnlyWhenLeavingHome() {
+        assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "tasks"))
+        assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "settings"))
+        assertFalse(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "home"))
+        assertFalse(shouldDismissHomeNotificationCenterForAppShellTabSelection("tasks", "members"))
+        assertFalse(shouldDismissHomeNotificationCenterForAppShellTabSelection("settings", "home"))
     }
 
     @Test
