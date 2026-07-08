@@ -162,6 +162,7 @@ internal data class SlockFilePreviewPayload(
     val error: String? = null,
     val externalUrl: String? = null,
     val videoUrl: String? = null,
+    val audioOnly: Boolean = false,
     val externalFileName: String = "",
     val externalMimeType: String = "",
     val source: String = "",
@@ -1075,7 +1076,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
-        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = "Audio preview")
+        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = "Audio preview", audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
@@ -1134,7 +1135,8 @@ private suspend fun SlockFilePreviewPayload.loadThreadHtmlAttachmentPreview(
 
 private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    title: String = "Video preview"
+    title: String = "Video preview",
+    audioOnly: Boolean = false
 ): SlockFilePreviewPayload {
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
@@ -1150,6 +1152,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
         kind = "video",
         title = title,
         videoUrl = target,
+        audioOnly = audioOnly,
         message = "",
         error = null
     )
@@ -1693,6 +1696,7 @@ internal fun SlockFilePreviewPayloadContent(
                     name = payload.name.ifBlank { payload.path },
                     meta = payload.meta,
                     fallbackMessage = payload.message,
+                    audioOnly = payload.audioOnly,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -1822,6 +1826,7 @@ private fun SlockFilePreviewVideoPanel(
     name: String,
     meta: String,
     fallbackMessage: String,
+    audioOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var playControl by remember(source) { mutableStateOf(VideoPlayControl.PREPLAY) }
@@ -1871,6 +1876,14 @@ private fun SlockFilePreviewVideoPanel(
                     iconName = SlockLucideIconName.TriangleAlert,
                     title = fallbackMessage.ifBlank { "Video preview is unavailable." },
                     detail = name.ifBlank { meta }
+                )
+            } else if (audioOnly) {
+                // Audio sources render no frames — keep a persistent music
+                // visual over the surface instead of a black box (task #556).
+                SlockFilePreviewVideoOverlayText(
+                    iconName = SlockLucideIconName.FileMusic,
+                    title = name.ifBlank { "Audio preview" },
+                    detail = meta
                 )
             } else if (!firstFrameVisible && !isPlaying) {
                 SlockFilePreviewVideoOverlayText(
