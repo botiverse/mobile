@@ -3,7 +3,7 @@ PODS:
     - MMKVCore (~> 2.4.0)
   - MMKVCore (2.4.0)
   - OpenKuiklyIOSRender (2.21.0)
-  - Quiver (0.1.2)
+  - Quiver (0.1.4)
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
@@ -15,7 +15,7 @@ PODS:
 DEPENDENCIES:
   - MMKV (~> 2.4.0)
   - OpenKuiklyIOSRender (from `../../third_party/kuikly-ui`)
-  - Quiver (from `https://github.com/oranix-io/quiver.git`, tag `ios-v0.1.2`)
+  - Quiver (from `https://github.com/oranix-io/quiver.git`, commit `f0c16c6e1191c9147af25a37d36bab049d65540e`)
   - SDWebImage
   - shared (from `../shared`)
   - Socket.IO-Client-Swift (~> 16.1)
@@ -32,26 +32,26 @@ EXTERNAL SOURCES:
   OpenKuiklyIOSRender:
     :path: "../../third_party/kuikly-ui"
   Quiver:
+    :commit: f0c16c6e1191c9147af25a37d36bab049d65540e
     :git: https://github.com/oranix-io/quiver.git
-    :tag: ios-v0.1.2
   shared:
     :path: "../shared"
 
 CHECKOUT OPTIONS:
   Quiver:
+    :commit: f0c16c6e1191c9147af25a37d36bab049d65540e
     :git: https://github.com/oranix-io/quiver.git
-    :tag: ios-v0.1.2
 
 SPEC CHECKSUMS:
   MMKV: 86859fdfa2b0b21db1fd6e48788474a6416a2c77
   MMKVCore: 3d16ce9f7d411e135020915fde98a056859a1efa
   OpenKuiklyIOSRender: 3a1d74e85639e26e82e575134dc5bdf5dd43095b
-  Quiver: 014f2c4adb1d7c42d499e9efef47d01e47fbbf94
+  Quiver: 9de048bb0a2201972e90021ba94623baf17bbd36
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   shared: 89bf448aba0dcca6a2949c82383f81bcea790c74
   Socket.IO-Client-Swift: 3614bea82ba005df1c2ff01154f4004993e05ad7
   Starscream: 19b5533ddb925208db698f0ac508a100b884a1b9
 
-PODFILE CHECKSUM: 4aeb451c9f8b9d47c05508fa86e332be16659e74
+PODFILE CHECKSUM: 3152a31d959cdf4e0d1b598a9a3e4c13e96724ec
 
 COCOAPODS: 1.16.2
