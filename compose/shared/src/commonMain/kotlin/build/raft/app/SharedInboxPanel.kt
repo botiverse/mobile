@@ -191,7 +191,8 @@ internal fun SharedHomeActivityScreen(
                 val resolution =
                     item.toHomeMessageOpenRequest(
                         serverId = state.snapshot?.server?.id?.value.orEmpty(),
-                        conversationDirectory = conversationDirectory
+                        conversationDirectory = conversationDirectory,
+                        diagnosticsLogger = bridge::log
                     )
             ) {
                 is ConversationOpenResolution.Resolved -> onOpenMessage(resolution.request)
@@ -1393,12 +1394,14 @@ internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
  */
 internal fun InboxItem.toHomeMessageOpenRequest(
     serverId: String,
-    conversationDirectory: SharedConversationDirectoryState
+    conversationDirectory: SharedConversationDirectoryState,
+    diagnosticsLogger: (String) -> Unit = {}
 ): ConversationOpenResolution =
     resolveOpenRequest(
         serverId = serverId,
         sourceMessageIdentity = toConversationOpenSourceMessageIdentity(),
-        conversationDirectory = conversationDirectory
+        conversationDirectory = conversationDirectory,
+        diagnosticsLogger = diagnosticsLogger
     )
 
 private fun InboxItem.launchConversationKind(): ConversationKind =

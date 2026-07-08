@@ -1666,6 +1666,101 @@ class SlockAppShellTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversationIdentity.thread?.parentChannelKind)
     }
 
+    // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory,
+    // so the lookup list falls through to parentChannelId and hits the PARENT CHANNEL row.
+    // That hit must not become the thread's identity — with the trusted typed parent kind
+    // Activity rows carry, the source rebuilds a correct Thread identity instead.
+    @Test
+    fun resolveOpenRequestRejectsParentChannelHitForThreadSource() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val logs = mutableListOf<String>()
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    InboxItem(
+                        key = "thread:reply-stream",
+                        kind = InboxItemKind.Thread,
+                        channelId = ChannelId("reply-stream"),
+                        channelName = "home-fixes",
+                        threadChannelId = ChannelId("reply-stream"),
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentChannelName = "home-fixes",
+                        parentChannelKind = ConversationKind.Channel,
+                        parentMessageId = MessageId("parent-message"),
+                        latestActivityMessageId = MessageId("reply-1")
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory,
+                diagnosticsLogger = logs::add
+            )
+
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals("parent-channel", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", request.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals("reply-1", request.anchorMessageId)
+        val log = assertNotNull(logs.firstOrNull())
+        assertTrue(log.contains("hitVia=parent-channel"), log)
+        assertTrue(log.contains("hitEligible=false"), log)
+        assertTrue(log.contains("result=resolved:Thread"), log)
+    }
+
+    // task #441 companion: same parent-channel hit but NO typed parent kind — the source
+    // must stay Pending with the ineligible-hit reason, never adopt the channel identity.
+    @Test
+    fun resolveOpenRequestParentChannelHitWithoutTypedKindStaysPending() {
+        val directory =
+            slockConversationDirectoryStateFromProjections(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "parent-channel",
+                        aliases = setOf("parent-channel"),
+                        conversationKind = ConversationKind.Channel,
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "home-fixes"
+                    )
+                )
+            )
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    InboxItem(
+                        key = "thread:reply-stream",
+                        kind = InboxItemKind.Thread,
+                        channelId = ChannelId("reply-stream"),
+                        channelName = "home-fixes",
+                        threadChannelId = ChannelId("reply-stream"),
+                        parentChannelId = ChannelId("parent-channel"),
+                        parentChannelName = "home-fixes",
+                        // parentChannelKind intentionally omitted (null).
+                        parentMessageId = MessageId("parent-message"),
+                        latestActivityMessageId = MessageId("reply-1")
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = directory
+            )
+
+        val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
+        assertEquals("thread_identity_projection_ineligible", pending.reason)
+    }
+
     @Test
     fun conversationOpenResolverKeepsActivityAndNotificationRoutesEquivalent() {
         val activityItem =

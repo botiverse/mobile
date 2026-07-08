@@ -54,13 +54,27 @@ internal sealed interface ConversationOpenResolution {
 internal fun resolveOpenRequest(
     serverId: String,
     sourceMessageIdentity: ConversationOpenSourceMessageIdentity,
-    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState()
+    conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+    diagnosticsLogger: (String) -> Unit = {}
 ): ConversationOpenResolution {
-    val projection =
+    var hitLookupId: String? = null
+    val projectionHit =
         sourceMessageIdentity
             .lookupIds()
-            .firstNotNullOfOrNull(conversationDirectory::resolve)
+            .firstNotNullOfOrNull { id -> conversationDirectory.resolve(id)?.also { hitLookupId = id } }
             ?.takeIf { projection -> serverId.isBlank() || projection.serverId == serverId || projection.serverId.isBlank() }
+    // task #441: a Thread-attested source may only take identity from its OWN reply-thread
+    // row. The lookup list falls through to parent/anchor ids when the thread's row is not
+    // registered yet, and a parent CHANNEL row hit there must not become this thread's
+    // identity — that is the #415 parent-claims-child misroute returning through the lookup
+    // fallback instead of aliases (Quiver feedback 20d596f9: Activity reply row opened the
+    // outer channel stream). Rejecting the hit routes the source to the trusted typed
+    // rebuild below (Activity rows carry parentChannelKind), or Pending without one.
+    val projection =
+        projectionHit?.takeIf { hit ->
+            sourceMessageIdentity.conversationKind != ConversationKind.Thread ||
+                hit.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        }
     // Two-tier drop (t5/#419): a projection that resolved but whose reply-thread parent shape
     // is untrustworthy (builder returned null) may only be reconstructed from a trusted typed
     // parentConversationKind on the source; otherwise it stays unresolved and must NOT fall
@@ -69,21 +83,42 @@ internal fun resolveOpenRequest(
     val conversation =
         projection?.toThreadLaunchConversationIdentity(conversationDirectory)
             ?: sourceMessageIdentity.toThreadLaunchConversationIdentity()
-            ?: return ConversationOpenResolution.Pending(
+    val resolution =
+        if (conversation == null) {
+            ConversationOpenResolution.Pending(
                 sourceMessageIdentity,
-                reason = if (projection != null) "thread_parent_unresolved" else "conversation_hydrating"
+                reason =
+                    when {
+                        projection != null -> "thread_parent_unresolved"
+                        projectionHit != null -> "thread_identity_projection_ineligible"
+                        else -> "conversation_hydrating"
+                    }
             )
-    val anchorMessageId = sourceMessageIdentity.resolveOpenAnchorMessageId(conversation)
-    val originFallback =
-        sourceMessageIdentity.originFallback
-            ?: projection.toThreadLaunchOriginFallback()
-    return ConversationOpenResolution.Resolved(
-        HomeMessageOpenRequest(
-            conversationIdentity = conversation,
-            anchorMessageId = anchorMessageId,
-            originFallback = originFallback
-        )
+        } else {
+            ConversationOpenResolution.Resolved(
+                HomeMessageOpenRequest(
+                    conversationIdentity = conversation,
+                    anchorMessageId = sourceMessageIdentity.resolveOpenAnchorMessageId(conversation),
+                    originFallback =
+                        sourceMessageIdentity.originFallback
+                            ?: projection.toThreadLaunchOriginFallback()
+                )
+            )
+        }
+    diagnosticsLogger(
+        "conversation_open_resolution source=${sourceMessageIdentity.source} " +
+            "kind=${sourceMessageIdentity.conversationKind?.name ?: "_"} " +
+            "hitVia=${hitLookupId ?: "_"} " +
+            "hitSurface=${projectionHit?.surfaceKind ?: "_"} " +
+            "hitEligible=${projectionHit != null && projection != null} " +
+            "result=" +
+            when (resolution) {
+                is ConversationOpenResolution.Resolved ->
+                    "resolved:${resolution.request.conversationIdentity.kind.name}"
+                is ConversationOpenResolution.Pending -> "pending:${resolution.reason}"
+            }
     )
+    return resolution
 }
 
 internal fun InboxItem.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity =
