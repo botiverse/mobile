@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 
 class SharedAuthGateStore(
     private val restoreSession: suspend () -> SharedAuthResult<StoredAuthSession>,
+    private val cachedSession: suspend () -> StoredAuthSession? = { null },
     private val scope: CoroutineScope,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
@@ -70,6 +71,23 @@ class SharedAuthGateStore(
 
     private suspend fun restore() {
         setGateState(SharedAuthGateState.Restoring, source = "restore_start")
+        val cachedReady =
+            runCatchingPreservingCancellation { cachedSession()?.takeIf { it.isColdStartCachedReadyEligible() } }
+                .getOrElse { throwable ->
+                    diagnosticsLogger(
+                        "auth_gate_cached_ready_exception errorType=${throwable.safeAuthGateDiagnosticsType()} fallback=restore"
+                    )
+                    null
+                }
+        if (cachedReady != null) {
+            setGateState(SharedAuthGateState.Ready(cachedReady), source = "restore_cached_ready")
+            restoreAfterCachedReady(cachedReady)
+            return
+        }
+        restoreCold()
+    }
+
+    private suspend fun restoreCold() {
         try {
             setGateState(
                 when (val result = restoreSession()) {
@@ -89,6 +107,30 @@ class SharedAuthGateStore(
                 SharedAuthGateState.Error("Could not restore session. Retry or sign in again."),
                 source = "restore_exception"
             )
+        }
+    }
+
+    private suspend fun restoreAfterCachedReady(previousReady: StoredAuthSession) {
+        try {
+            when (val result = restoreSession()) {
+                is SharedAuthResult.Success ->
+                    setGateState(result.data.asGateState(), source = "restore_background_result")
+                SharedAuthResult.Unauthenticated ->
+                    setGateState(SharedAuthGateState.AuthRequired, source = "restore_background_result")
+                is SharedAuthResult.Failure -> {
+                    diagnosticsLogger(
+                        "auth_gate_restore_background_failure code=${result.code} message=${result.message.authGateDiagnosticsToken()} keeping_ready=true"
+                    )
+                    setGateState(SharedAuthGateState.Ready(previousReady), source = "restore_background_keep_ready")
+                }
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (throwable: Throwable) {
+            diagnosticsLogger(
+                "auth_gate_restore_background_exception errorType=${throwable.safeAuthGateDiagnosticsType()} keeping_ready=true"
+            )
+            setGateState(SharedAuthGateState.Ready(previousReady), source = "restore_background_exception_keep_ready")
         }
     }
 
@@ -134,14 +176,6 @@ class SharedAuthGateStore(
         setGateState(nextState, source)
     }
 
-    private fun StoredAuthSession.asGateState(): SharedAuthGateState =
-        if (user.emailVerified == false) {
-            SharedAuthGateState.EmailVerificationRequired(this)
-        } else if (selectedServerId.isNullOrBlank()) {
-            SharedAuthGateState.ServerRequired(this)
-        } else {
-            SharedAuthGateState.Ready(this)
-        }
 }
 
 class SharedAuthGateViewModel(
@@ -151,6 +185,9 @@ class SharedAuthGateViewModel(
         lazy {
             SharedAuthGateStore(
                 restoreSession = { authDataSource.restoreSession() },
+                cachedSession = {
+                    (authDataSource.currentSession() as? SharedAuthResult.Success)?.data
+                },
                 scope = viewModelScope,
                 diagnosticsLogger = { message -> authDataSource.logDiagnostics(message) }
             )
@@ -193,6 +230,21 @@ sealed interface SharedAuthGateState {
     data class Ready(val session: StoredAuthSession) : SharedAuthGateState
     data class Error(val message: String) : SharedAuthGateState
 }
+
+private fun StoredAuthSession.asGateState(): SharedAuthGateState =
+    if (user.emailVerified == false) {
+        SharedAuthGateState.EmailVerificationRequired(this)
+    } else if (selectedServerId.isNullOrBlank()) {
+        SharedAuthGateState.ServerRequired(this)
+    } else {
+        SharedAuthGateState.Ready(this)
+    }
+
+private fun StoredAuthSession.isColdStartCachedReadyEligible(): Boolean =
+    user.id.isNotBlank() &&
+        accessToken.isNotBlank() &&
+        !selectedServerId.isNullOrBlank() &&
+        asGateState() is SharedAuthGateState.Ready
 
 private val SharedAuthGateIntent.logSource: String
     get() =
