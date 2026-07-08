@@ -148,6 +148,8 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -2573,6 +2575,15 @@ internal fun MembersListContent(
             )
         }
     }
+    var pullRefreshActive by remember(payload.instanceId) { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (!refreshing) {
+            pullRefreshActive = false
+        }
+    }
+    val pullRefreshing = refreshing && pullRefreshActive
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2585,6 +2596,22 @@ internal fun MembersListContent(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
+            if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
+                pullToRefreshItem(
+                    state = pullToRefreshState,
+                    scrollState = listState,
+                    onRefresh = {
+                        pullRefreshActive = true
+                        onRefresh()
+                    },
+                    content = { pullProgress, isRefreshing, _ ->
+                        SlockRaftPullRefreshIndicator(
+                            pullProgress = pullProgress,
+                            isRefreshing = isRefreshing
+                        )
+                    }
+                )
+            }
             item { Spacer(Modifier.height(SlockSpacing.Md)) }
             item {
                 SlockCollapsibleSectionHeader(
