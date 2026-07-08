@@ -90,8 +90,8 @@ class SlockAppShellTest {
             slockSharedBottomTabBarHostHeight(18.dp) + SlockSpacing.Lg,
             slockSharedBottomTabBarContentInset(18.dp)
         )
-        assertEquals(1000f, SlockAppBottomTabBarHostZIndex)
-        assertEquals(SlockFloatingOverlayHostZIndex, SlockAppBottomTabBarHostZIndex)
+        assertEquals(999f, SlockAppBottomTabBarHostZIndex)
+        assertTrue(SlockFloatingOverlayHostZIndex > SlockAppBottomTabBarHostZIndex)
     }
 
     @Test

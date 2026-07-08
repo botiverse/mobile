@@ -82,7 +82,7 @@ private val SlockOhosHdsBottomTabBarHostHeight = 92.dp
 private val SlockOhosHdsDockBarHeight = 56.dp
 private val SlockOhosHdsDockBottomMargin = 26.dp
 private val SlockOhosHdsDockSideMargin = 18.dp
-internal const val SlockAppBottomTabBarHostZIndex = SlockFloatingOverlayHostZIndex
+internal const val SlockAppBottomTabBarHostZIndex = SlockFloatingOverlayHostZIndex - 1f
 
 // The native OHOS dock lives in the 92dp dock band of the host; the pill sits
 // [band top+10 .. band top+66]. Custom native (ForwardArkTS) views are hit-test
