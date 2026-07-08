@@ -4,7 +4,10 @@ import build.raft.app.SlockSidebarSortMode
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
+import build.raft.app.data.realtime.PerReceiverStateScope
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
@@ -68,6 +71,8 @@ internal class SharedHomeStore(
     private var setChannelActivityMuted: suspend (ChannelId, Boolean) -> DataResult<ChannelActivityMuteSettings> = { _, _ ->
         DataResult.Empty(EmptyReason.NoChannels)
     },
+    private val perReceiverStateVersionStore: PerReceiverStateVersionStore =
+        PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
     /**
      * #211: callback invoked when a pin/unpin or pinned-sort-mode PATCH
      * fails. The host (SettingsHomePage) typically wires this to
@@ -331,6 +336,12 @@ internal class SharedHomeStore(
                 archiveConversationChannel(intent.conversationId)
             is SharedHomeIntent.SetChannelActivityMuted ->
                 setConversationActivityMuted(intent.conversationId, intent.muted)
+            is SharedHomeIntent.ApplyPerReceiverReadState ->
+                applyPerReceiverReadState(intent.update)
+            is SharedHomeIntent.ApplyPerReceiverNotificationPrefs ->
+                applyPerReceiverNotificationPrefs(intent.update)
+            is SharedHomeIntent.ApplyPerReceiverServerOrder ->
+                applyPerReceiverServerOrder(intent.update)
             }
         }
     }
@@ -1279,10 +1290,102 @@ internal class SharedHomeStore(
         }
     }
 
-    private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot) {
-        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+    private fun applyPerReceiverReadState(update: PerReceiverReadStateUpdate): Boolean {
+        if (!canApplyPerReceiverState(
+                serverId = update.serverId,
+                memberId = update.memberId,
+                scope = PerReceiverStateScope.ReadState,
+                version = update.version
+            )
+        ) {
+            return false
+        }
+        perReceiverStateVersionStore.recordApplied(
+            serverId = update.serverId,
+            memberId = update.memberId,
+            scope = PerReceiverStateScope.ReadState,
+            incomingVersion = update.version
+        )
+        return applyHomeSnapshotLocally { snapshot ->
+            snapshot.withPerReceiverReadState(update)
+        }
+    }
+
+    private fun applyPerReceiverNotificationPrefs(update: PerReceiverNotificationPrefsUpdate): Boolean {
+        if (!canApplyPerReceiverState(
+                serverId = update.serverId,
+                memberId = update.memberId,
+                scope = PerReceiverStateScope.NotificationPrefs,
+                version = update.version
+            )
+        ) {
+            return false
+        }
+        perReceiverStateVersionStore.recordApplied(
+            serverId = update.serverId,
+            memberId = update.memberId,
+            scope = PerReceiverStateScope.NotificationPrefs,
+            incomingVersion = update.version
+        )
+        return applyHomeSnapshotLocally { snapshot ->
+            snapshot.withChannelActivityMute(
+                ChannelActivityMuteSettings(
+                    channelId = update.channelId,
+                    activityNotificationPreference = update.preference
+                )
+            )
+        }
+    }
+
+    private fun applyPerReceiverServerOrder(update: PerReceiverServerOrderUpdate): Boolean {
+        if (!canApplyPerReceiverState(
+                serverId = update.serverId,
+                memberId = update.memberId,
+                scope = PerReceiverStateScope.ServerOrder,
+                version = update.version
+            )
+        ) {
+            return false
+        }
+        perReceiverStateVersionStore.recordApplied(
+            serverId = update.serverId,
+            memberId = update.memberId,
+            scope = PerReceiverStateScope.ServerOrder,
+            incomingVersion = update.version
+        )
+        return applySidebarOrderLocally(
+            serverId = update.serverId,
+            next = update.sidebarOrder
+        )
+    }
+
+    private fun canApplyPerReceiverState(
+        serverId: ServerId,
+        memberId: MemberId,
+        scope: PerReceiverStateScope,
+        version: Long
+    ): Boolean {
+        if (version <= 0L) return false
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return false
+        if (content.snapshot.server.id != serverId) return false
+        if (content.snapshot.currentMember.id != memberId) return false
+        return perReceiverStateVersionStore
+            .decide(
+                serverId = serverId,
+                memberId = memberId,
+                scope = scope,
+                incomingVersion = version
+            )
+            .shouldApply
+    }
+
+    private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot): Boolean {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return false
         val nextSnapshot = transform(current.snapshot)
         val nextBaseSnapshot = transform(current.baseSnapshot)
+        if (nextSnapshot == current.snapshot && nextBaseSnapshot == current.baseSnapshot) {
+            return false
+        }
         updateConversationIdentity(nextBaseSnapshot)
         val nextContent =
             current.copy(
@@ -1293,9 +1396,17 @@ internal class SharedHomeStore(
         reduceState(
             _state.value.copy(
                 content = nextContent,
-                serverUnreadCounts = nextSnapshot.serverUnreadCounts
+                serverUnreadCounts = nextSnapshot.serverUnreadCounts,
+                appBadgeCount =
+                    snapshotToBadgeCount(
+                        snapshot = nextBaseSnapshot,
+                        selectedServerId = nextBaseSnapshot.server.id,
+                        isStale = false,
+                        nowMillis = nowMillis
+                    )
             )
         )
+        return true
     }
 
     private fun rollbackHomeContent(previous: SharedHomeContentState.Content) {
@@ -1453,12 +1564,23 @@ internal fun snapshotToBadgeCount(
     nowMillis: () -> Long = { defaultNowMillis() }
 ): AppBadgeCount =
     AppBadgeCount(
-        count = snapshot.unreadTotal,
+        count =
+            when (snapshot.unreadSource) {
+                AppBadgeSource.SERVER_UNREAD_SUMMARY -> snapshot.unreadTotal
+                AppBadgeSource.DISABLED -> 0
+                AppBadgeSource.CHANNEL_DM_FALLBACK,
+                AppBadgeSource.UNKNOWN -> snapshot.unmutedUnreadTotal()
+            },
         source = snapshot.unreadSource,
         selectedServerId = selectedServerId,
         lastUpdated = nowMillis(),
         isStale = isStale
     )
+
+private fun HomeSnapshot.unmutedUnreadTotal(): Int =
+    (channels.asSequence() + directMessages.asSequence())
+        .filterNot { it.activityMuted }
+        .sumOf { it.unreadCount.coerceAtLeast(0) }
 
 /**
  * #83: KMP-friendly wall-clock source.
@@ -1529,6 +1651,9 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "${SharedHomeChannelFoldEvent.Mute.wireName}:$conversationId:$muted"
+        is SharedHomeIntent.ApplyPerReceiverReadState -> "read_state:${update.serverId.value}:${update.channelId.value}:${update.version}"
+        is SharedHomeIntent.ApplyPerReceiverNotificationPrefs -> "notification_prefs:${update.serverId.value}:${update.channelId.value}:${update.version}"
+        is SharedHomeIntent.ApplyPerReceiverServerOrder -> "server_order:${update.serverId.value}:${update.version}"
     }
 
 private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
@@ -1732,6 +1857,7 @@ private fun ConversationSummary.withRealtimePreview(
     val next =
         copy(
             lastMessageId = latest.id,
+            lastMessageSeq = latest.seq ?: lastMessageSeq,
             lastMessagePreview = latest.body,
             lastMessageAt = latest.timestampLabel,
             lastMessageSenderName = latest.author.displayName,
@@ -1801,6 +1927,63 @@ private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
     val updated = toMutableList()
     updated[index] = value
     return updated
+}
+
+private fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUpdate): HomeSnapshot {
+    var delta = 0
+    fun HomeChannelRow.updated(): HomeChannelRow {
+        if (!matchesHomeConversation(update.channelId.value)) return this
+        val nextUnread = perReceiverReadStateUnreadCount(update.maxReadSeq) ?: return this
+        delta += nextUnread - unreadCount
+        return copy(
+            unreadCount = nextUnread,
+            unreadCountKnown = true,
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
+            readStateMaxReadSeq = update.maxReadSeq
+        )
+    }
+    fun HomeDirectMessageRow.updated(): HomeDirectMessageRow {
+        if (!matchesHomeConversation(update.channelId.value)) return this
+        val nextUnread = perReceiverReadStateUnreadCount(update.maxReadSeq) ?: return this
+        delta += nextUnread - unreadCount
+        return copy(
+            unreadCount = nextUnread,
+            unreadCountKnown = true,
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
+            readStateMaxReadSeq = update.maxReadSeq
+        )
+    }
+    val nextChannels = channels.map { it.updated() }
+    val nextDirectMessages = directMessages.map { it.updated() }
+    val nextUnreadTotal = (unreadTotal + delta).coerceAtLeast(0)
+    val nextServerUnreadCount = (server.unreadCount + delta).coerceAtLeast(0)
+    return copy(
+        channels = nextChannels,
+        directMessages = nextDirectMessages,
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        unreadTotal = nextUnreadTotal,
+        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
+    )
+}
+
+private fun HomeConversationRow.perReceiverReadStateUnreadCount(maxReadSeq: Long?): Int? {
+    val nextReadSeq = maxReadSeq ?: return null
+    val latestSeq = lastMessageSeq
+    if (latestSeq != null) {
+        return if (nextReadSeq >= latestSeq) {
+            0
+        } else {
+            unreadCount.takeIf { it > 0 } ?: 1
+        }
+    }
+    val previousReadSeq = readStateMaxReadSeq
+    if (previousReadSeq != null && nextReadSeq < previousReadSeq) {
+        return unreadCount.takeIf { it > 0 } ?: 1
+    }
+    if (unreadCount > 0) {
+        return 0
+    }
+    return unreadCount
 }
 
 private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {
@@ -1924,6 +2107,9 @@ sealed interface SharedHomeIntent {
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
     data class SetChannelActivityMuted(val conversationId: String, val muted: Boolean) : SharedHomeIntent
+    data class ApplyPerReceiverReadState(val update: PerReceiverReadStateUpdate) : SharedHomeIntent
+    data class ApplyPerReceiverNotificationPrefs(val update: PerReceiverNotificationPrefsUpdate) : SharedHomeIntent
+    data class ApplyPerReceiverServerOrder(val update: PerReceiverServerOrderUpdate) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -1951,7 +2137,10 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
-            is SharedHomeIntent.SetChannelActivityMuted -> false
+            is SharedHomeIntent.SetChannelActivityMuted,
+            is SharedHomeIntent.ApplyPerReceiverReadState,
+            is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
+            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -1979,7 +2168,10 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
-            is SharedHomeIntent.SetChannelActivityMuted -> false
+            is SharedHomeIntent.SetChannelActivityMuted,
+            is SharedHomeIntent.ApplyPerReceiverReadState,
+            is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
+            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
         }
 
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
@@ -2007,7 +2199,10 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
-            is SharedHomeIntent.SetChannelActivityMuted -> false
+            is SharedHomeIntent.SetChannelActivityMuted,
+            is SharedHomeIntent.ApplyPerReceiverReadState,
+            is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
+            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
         }
 
 sealed interface SharedHomeContentState {

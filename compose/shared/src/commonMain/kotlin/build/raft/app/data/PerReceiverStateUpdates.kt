@@ -1,0 +1,29 @@
+package build.raft.app.data
+
+import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.ServerId
+
+data class PerReceiverReadStateUpdate(
+    val serverId: ServerId,
+    val memberId: MemberId,
+    val channelId: ChannelId,
+    val version: Long,
+    val maxReadSeq: Long?
+)
+
+data class PerReceiverNotificationPrefsUpdate(
+    val serverId: ServerId,
+    val memberId: MemberId,
+    val channelId: ChannelId,
+    val version: Long,
+    val preference: ChannelActivityNotificationPreference
+)
+
+data class PerReceiverServerOrderUpdate(
+    val serverId: ServerId,
+    val memberId: MemberId,
+    val version: Long,
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot
+)
