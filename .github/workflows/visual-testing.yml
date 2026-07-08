@@ -344,6 +344,181 @@ jobs:
           path: visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
+  # iOS simulator capture (task #418). Additive: the report job does not (yet)
+  # depend on this leg — results upload as their own artifact and the diff
+  # engine's providers.ios ingestion consumes them (CC-Wow2, slock side).
+  # Case source of truth = the android harness file; the generator emits only
+  # cases whose fixture setup is fully expressible as launch env (#359) and
+  # lists everything else as pending — no silent coverage gaps.
+  ios-capture:
+    name: iOS capture (simulator)
+    if: ${{ !inputs.site_only }}
+    runs-on: macos-14-xlarge
+    timeout-minutes: 75
+    env:
+      GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+      # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
+      # baseline geometry — no crop step needed before diffing.
+      SIM_DEVICE: iPhone 14
+      # compile visual fixture @Page routes into commonMain; the cocoapods
+      # phase runs gradle with this env inherited
+      SLOCK_VISUAL_FIXTURES: "true"
+      CASE_FILTER: ${{ inputs.case_filter }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${GITHUB_PACKAGES_USERNAME}"
+            echo "githubPackagesToken=${GITHUB_PACKAGES_TOKEN}"
+          } > compose/github-packages.properties
+
+      - name: Resolve kuikly fork submodule sha
+        id: kuikly-fork
+        shell: bash
+        run: |
+          sha="$(git rev-parse HEAD:third_party/kuikly-ui)"
+          test -n "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      # Same key prefix as the test.yml ios job so the two share the cache.
+      - name: Cache kuikly fork mavenLocal artifacts
+        id: kuikly-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/com/tencent/kuikly-open
+          key: kuikly-fork-mavenlocal-android-${{ runner.os }}-${{ steps.kuikly-fork.outputs.sha }}
+
+      - name: Publish Kuikly fork artifacts
+        if: steps.kuikly-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+          scripts/build_kuikly_fork.sh --android-only
+
+      - name: Ensure kuikly fork submodule for local pod
+        shell: bash
+        run: |
+          git submodule sync third_party/kuikly-ui
+          git submodule update --init third_party/kuikly-ui
+
+      - name: Generate shared framework placeholder
+        working-directory: compose
+        run: ./gradlew :shared:generateDummyFramework --no-daemon --console=plain -PslockVisualFixtures=true
+
+      - name: Pod install
+        working-directory: compose/iosApp
+        run: pod install
+
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys,os; d=json.load(sys.stdin)['devices']; print(next((dev['udid'] for devs in d.values() for dev in devs if dev['name']==os.environ['SIM_DEVICE']), ''))")
+          if [ -z "$udid" ]; then
+            # device type not pre-created on this runner image; create it on the newest runtime
+            runtime=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; rs=[r for r in json.load(sys.stdin)['runtimes'] if r['isAvailable'] and r['platform']=='iOS']; print(sorted(rs, key=lambda r: r['version'])[-1]['identifier'])")
+            devtype=$(xcrun simctl list devicetypes -j | python3 -c "import json,sys,os; print(next(d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name']==os.environ['SIM_DEVICE']))")
+            udid=$(xcrun simctl create "visualcap-${SIM_DEVICE// /-}" "$devtype" "$runtime")
+          fi
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+
+      # Built AFTER simulator boot, pinned to its udid: an unmatched named
+      # destination makes xcodebuild silently fall back to a device build.
+      - name: Build iOS app for simulator
+        working-directory: compose/iosApp
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace iosApp.xcworkspace \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${UDID}" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -200
+
+      - name: Generate case manifest
+        run: |
+          python3 scripts/generate_ios_case_manifest.py \
+            --filter "$CASE_FILTER" --out /tmp/ios-manifest.json
+
+      - name: Install app and capture cases
+        run: |
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          test -n "$app"
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          echo "app=$app bundle_id=$bundle_id"
+          xcrun simctl install "$UDID" "$app"
+          mkdir -p visual-testing-results/ios
+          python3 -c "
+          import json
+          m = json.load(open('/tmp/ios-manifest.json'))
+          with open('/tmp/ios-cases.tsv', 'w') as out:
+              for c in m['cases']:
+                  print(c['caseId'], c['pageName'], json.dumps(c['pageData'], ensure_ascii=False), sep='\t', file=out)
+          "
+          failed=0
+          total=$(wc -l < /tmp/ios-cases.tsv | tr -d ' ')
+          echo "capturing $total cases"
+          i=0
+          while IFS=$'\t' read -r case_id page_name page_data; do
+            i=$((i+1))
+            xcrun simctl terminate "$UDID" "$bundle_id" 2>/dev/null || true
+            : > /tmp/launch.log
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE="$page_name" \
+            SIMCTL_CHILD_SLOCK_VISUAL_FIXTURE_PAGE_DATA="$page_data" \
+              xcrun simctl launch --console-pty "$UDID" "$bundle_id" > /tmp/launch.log 2>&1 &
+            ready=0
+            for _ in $(seq 1 60); do
+              if grep -q "SLOCK_VISUAL_FIXTURE_READY page=$page_name" /tmp/launch.log; then
+                ready=1; break
+              fi
+              sleep 1
+            done
+            if [ "$ready" != "1" ]; then
+              echo "::warning::[$i/$total] $case_id: READY marker not seen in 60s (page=$page_name)"
+              failed=$((failed+1))
+              continue
+            fi
+            sleep 1
+            xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
+            echo "[$i/$total] $case_id OK"
+          done < /tmp/ios-cases.tsv
+          captured=$(ls visual-testing-results/ios/ | wc -l | tr -d ' ')
+          echo "captured=$captured failed=$failed total=$total"
+          cp /tmp/ios-manifest.json visual-testing-results/ios-manifest.json
+          if [ "$captured" -eq 0 ]; then
+            echo "::error::no cases captured"; exit 1
+          fi
+          if [ "$failed" -gt 0 ]; then
+            echo "::error::$failed of $total cases failed to reach READY"; exit 1
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-testing-results-ios
+          path: visual-testing-results/
+          if-no-files-found: warn
+
   report:
     name: Diff, report, site, publish
     needs: [react-capture, android-capture]
