@@ -4232,6 +4232,19 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun screenPayloadWireLaunchOrNullRejectsInvalidRouteKinds() {
+        assertEquals(
+            null,
+            KuiklyThreadScreenPayload(
+                instanceId = "invalid-route",
+                surfaceKind = "mystery",
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1"
+            ).toWireThreadLaunchPayloadOrNull()
+        )
+    }
+
+    @Test
     fun standaloneReplyThreadLaunchPreservesComposerRoutingIntent() {
         val launch =
             WireThreadLaunchPayload(

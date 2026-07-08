@@ -1195,6 +1195,8 @@ class SlockHomeComponentsTest {
         assertEquals("thread-1", launch?.streamChannelId)
         assertEquals(null, launch?.parentChannelId)
         assertEquals(null, launch?.parentMessageId)
+        assertEquals(null, launch?.parentSurfaceKind)
+        assertEquals(null, launch?.parentChannelKind)
         assertEquals(null, launch?.originParentMessageId)
     }
 
