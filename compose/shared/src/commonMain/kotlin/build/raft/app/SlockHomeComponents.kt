@@ -16,9 +16,11 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.parseSlockHome
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.ThreadId
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
@@ -553,27 +555,35 @@ internal fun buildHomeConversationThreadLaunchPayload(
         payload.channels.firstOrNull { it.id == conversationId }
             ?: payload.directMessages.firstOrNull { it.id == conversationId }
             ?: return null
-    val conversationKind = parseConversationKindOrNull(conversation.kind) ?: return null
-    val surfaceKind = conversationKind.toKuiklySurfaceKind()
-    return WireThreadLaunchPayload(
-        instanceId = "${payload.instanceId}:$conversationId",
-        surfaceKind = surfaceKind,
-        channelKind =
-            if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
-                conversation.homeChannelKind()
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation = conversation.toThreadLaunchConversationIdentity() ?: return null,
+        timeContext = null,
+        instanceIdOverride = "${payload.instanceId}:$conversationId",
+        defaultMissingReplyParentKind = false
+    )
+}
+
+private fun SlockHomeConversationItem.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
+    val cleanId = id.takeIf { it.isNotBlank() } ?: return null
+    val conversationKind = parseConversationKindOrNull(kind) ?: return null
+    val threadId = ThreadId(cleanId)
+    val channelId = ChannelId(cleanId)
+    return ThreadLaunchConversationIdentity(
+        threadId = threadId,
+        channelId = channelId,
+        channelType =
+            when (conversationKind) {
+                ConversationKind.Channel -> channelType?.takeIf { it.isNotBlank() } ?: kind
+                ConversationKind.Joint -> conversationKind.toWireChannelKindOrNull()
+                else -> null
+            },
+        threadStreamChannelIdHint =
+            if (conversationKind == ConversationKind.Thread) {
+                channelId
             } else {
                 null
             },
-        threadId =
-            when (surfaceKind) {
-                KuiklyThreadSurfaceKind.ReplyThread,
-                KuiklyThreadSurfaceKind.DirectMessage -> conversationId
-                else -> null
-            },
-        sourceThreadId = conversationId,
-        streamChannelId = conversationId,
-        parentChannelId = null,
-        parentMessageId = null
+        kind = conversationKind
     )
 }
 

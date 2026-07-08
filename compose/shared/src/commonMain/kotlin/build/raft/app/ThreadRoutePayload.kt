@@ -324,6 +324,12 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         focusedMessageRequestNonce = focusedMessageRequestNonce
     )
 
+internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayloadOrNull(): WireThreadLaunchPayload? {
+    val launchPayload = toWireThreadLaunchPayload()
+    if (!launchPayload.hasRouteIdentity()) return null
+    return launchPayload.takeIf { it.toInitialPayloadOrNull(instanceId) != null }
+}
+
 internal fun WireThreadLaunchPayload.threadComposerDraftKey(
     fallbackInstanceId: String = instanceId
 ): String? {

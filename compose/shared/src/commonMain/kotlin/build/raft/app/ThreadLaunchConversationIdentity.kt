@@ -18,6 +18,7 @@ internal data class ThreadLaunchConversationIdentity(
     val channelId: ChannelId? = null,
     val channelType: String? = null,
     val thread: ThreadConversation? = null,
+    val threadStreamChannelIdHint: ChannelId? = null,
     val kind: ConversationKind
 )
 
@@ -242,7 +243,8 @@ internal fun ThreadLaunchConversationIdentity.usesMemberScopedMentions(): Boolea
         channelType.isMemberScopedThreadChannelType()
 
 internal fun ThreadLaunchConversationIdentity.threadStreamChannelId(): String? =
-    thread?.streamChannelId?.value
+    threadStreamChannelIdHint?.value
+        ?: thread?.streamChannelId?.value
         ?: if (kind == ConversationKind.Thread) {
             null
         } else {
@@ -250,7 +252,8 @@ internal fun ThreadLaunchConversationIdentity.threadStreamChannelId(): String? =
         }
 
 private fun ThreadLaunchConversationIdentity.threadRouteStreamChannelId(): String? =
-    thread?.streamChannelId?.value
+    threadStreamChannelIdHint?.value
+        ?: thread?.streamChannelId?.value
         ?: if (kind == ConversationKind.Thread) {
             threadId.value
         } else {

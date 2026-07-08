@@ -15566,6 +15566,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null,
     instanceIdOverride: String? = null,
+    defaultMissingReplyParentKind: Boolean = true,
     onWarn: (String) -> Unit = {}
 ): WireThreadLaunchPayload {
     val routeIdentity = conversation.resolveThreadRouteIdentity()
@@ -15604,8 +15605,12 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
                 // Defensive (see buildAppShellThreadPayload): null parent kind here means a
                 // resolver bypass — log loudly, never silently.
                 conversation.threadParentSurfaceKind()
-                    ?: KuiklyThreadSurfaceKind.Channel.also {
-                        onWarn("thread_launch_parent_kind_defaulted source=standalone threadId=${conversation.threadId.value}")
+                    ?: if (defaultMissingReplyParentKind) {
+                        KuiklyThreadSurfaceKind.Channel.also {
+                            onWarn("thread_launch_parent_kind_defaulted source=standalone threadId=${conversation.threadId.value}")
+                        }
+                    } else {
+                        null
                     }
             } else {
                 null

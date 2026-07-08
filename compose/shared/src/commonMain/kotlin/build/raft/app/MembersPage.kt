@@ -78,6 +78,8 @@ import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_DEFAULT
 import build.raft.app.model.RUNTIMES
@@ -102,6 +104,7 @@ import build.raft.app.model.SlockWorkspaceNode
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.model.SlockTimeFormat24Hour
+import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.formatSlockTimestampClockWithSeconds
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
@@ -2248,17 +2251,16 @@ internal fun buildMembersDirectMessageThreadLaunchPayload(
         conversation.threadId.value.trim().takeIf { it.isNotBlank() }
             ?: conversation.channelId.value.trim().takeIf { it.isNotBlank() }
             ?: return null
-    return WireThreadLaunchPayload(
-        instanceId = "members-message-${memberId.value}-$threadId",
-        surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-        channelKind = KuiklyThreadSurfaceKind.DirectMessage,
-        threadId = threadId,
-        sourceThreadId = threadId,
-        streamChannelId = threadId,
-        localOffsetMinutes = timeContext.localOffsetMinutes,
-        todayEpochDay = timeContext.todayEpochDay,
-        nowEpochMillis = timeContext.nowEpochMillis,
-        timeFormat = timeContext.timeFormat
+    return buildStandaloneConversationThreadLaunchPayload(
+        conversation =
+            ThreadLaunchConversationIdentity(
+                threadId = ThreadId(threadId),
+                channelId = ChannelId(threadId),
+                channelType = KuiklyThreadSurfaceKind.DirectMessage,
+                kind = ConversationKind.DirectMessage
+            ),
+        timeContext = timeContext,
+        instanceIdOverride = "members-message-${memberId.value}-$threadId"
     )
 }
 

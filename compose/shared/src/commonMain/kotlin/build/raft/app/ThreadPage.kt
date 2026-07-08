@@ -1813,8 +1813,8 @@ private fun ThreadPageScreen() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
     fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
-        val launchPayload = nextPayload.toWireThreadLaunchPayload()
-        if (!launchPayload.hasRouteIdentity()) {
+        val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
+        if (launchPayload == null) {
             bridge.toast("Unable to open thread")
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
