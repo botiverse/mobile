@@ -25,6 +25,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private var destroyed: Boolean = false
     private var src: String = ""
     private var loadedSrc: String = ""
+    private var lastSuccessfulUrl: String = ""
     private var allowedUri: Uri? = null
     private var allowScripts: Boolean = true
     private var allowNavigation: Boolean = false
@@ -188,6 +189,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         destroyed = false
         src = ""
         loadedSrc = ""
+        lastSuccessfulUrl = ""
         allowedUri = null
         webView = WebView(context)
         removeAllViews()
@@ -256,7 +258,17 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     url?.let { notifyUrlChange(it) }
                     if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
                         evaluateInjectedJavaScript()
-                        loadSuccessCallback?.invoke(emptyMap<String, Any>())
+                        notifyLoadSuccess(url, "finished")
+                    }
+                }
+
+                override fun onPageCommitVisible(view: WebView?, url: String?) {
+                    if (destroyed) return
+                    super.onPageCommitVisible(view, url)
+                    Log.i(LOG_TAG, "page_commit_visible url=${url.orEmpty().take(LOG_URL_LIMIT)}")
+                    url?.let { notifyUrlChange(it) }
+                    if (url != null && (allowNavigation || isAllowedMainDocumentUrl(url))) {
+                        notifyLoadSuccess(url, "commit_visible")
                     }
                 }
 
@@ -355,6 +367,7 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
         if (src == normalized) return
         src = normalized
         loadedSrc = ""
+        lastSuccessfulUrl = ""
         allowedUri = normalized.takeIf { it.isNotBlank() }?.let { runCatching { Uri.parse(it) }.getOrNull() }
         if (normalized.isBlank()) {
             webView.loadUrl("about:blank")
@@ -398,6 +411,14 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
     private fun notifyLoadFailure(reason: String) {
         if (destroyed) return
         loadFailureCallback?.invoke(mapOf("reason" to reason))
+    }
+
+    private fun notifyLoadSuccess(url: String, phase: String) {
+        if (destroyed) return
+        if (lastSuccessfulUrl == url) return
+        lastSuccessfulUrl = url
+        Log.i(LOG_TAG, "page_success phase=$phase url=${url.take(LOG_URL_LIMIT)}")
+        loadSuccessCallback?.invoke(emptyMap<String, Any>())
     }
 
     private fun notifyNavigationBlocked(url: String) {

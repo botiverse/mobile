@@ -48,16 +48,20 @@ internal class ComposeReleaseNotesPage : build.raft.app.base.BasePager() {
     }
 }
 
-// Opened from the Settings "About" section (task #227). No launch payload: the
-// page loads its own About snapshot to resolve version_code, so it never depends
-// on the shell having About loaded at tap time.
-internal fun Pager.openReleaseNotesPage() {
+// Opened from the Settings "About" section (task #227). The optional version
+// code is local app build identity, not product content. Passing it lets the
+// WebView start without rebuilding the standalone Settings store; direct/deep
+// opens still fall back to loading About locally when the value is absent.
+internal fun Pager.openReleaseNotesPage(versionCode: String = "") {
     acquireModule<com.tencent.kuikly.core.module.RouterModule>(
         com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
     ).openPage(
         RELEASE_NOTES_PAGE,
         com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
             put("pageName", RELEASE_NOTES_PAGE)
+            releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
+                put("versionCode", it)
+            }
         }
     )
 }
@@ -73,6 +77,10 @@ private fun ReleaseNotesScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val loadingMessage = stringResource(MR.strings.release_notes_loading)
+    val launchVersionCode =
+        remember(pager.pageData.params) {
+            releaseNotesVersionCodeFromPageData(pager.pageData.params)
+        }
     // Render the header on the first frame. The body's first composition is heavy
     // (rememberStandaloneSettingsEnvironment builds the settings stores + the
     // WebView native view attaches), which otherwise delays the header a frame and
@@ -100,7 +108,15 @@ private fun ReleaseNotesScreen() {
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (bodyReady) {
-                ReleaseNotesScreenBody(pager)
+                if (launchVersionCode.isNotBlank()) {
+                    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+                    LaunchedEffect(launchVersionCode) {
+                        bridge.log("release_notes_open versionSource=launch")
+                    }
+                    ReleaseNotesWebViewBody(launchVersionCode)
+                } else {
+                    ReleaseNotesScreenBody(pager)
+                }
             } else {
                 ReleaseNotesCenteredNotice(loadingMessage)
             }
@@ -118,7 +134,7 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     LaunchedEffect(Unit) {
-        bridge.log("release_notes_open")
+        bridge.log("release_notes_open versionSource=about")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.About))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
@@ -127,6 +143,14 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
         (settingsState.about as? ScreenLoadState.Content)?.data?.buildLabel.orEmpty()
     ReleaseNotesWebViewBody(versionCode)
 }
+
+internal fun releaseNotesVersionCodeFromPageData(
+    params: com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+): String =
+    releaseNotesSanitizeVersionCode(params.optString("versionCode"))
+
+internal fun releaseNotesSanitizeVersionCode(value: String): String =
+    value.trim().takeIf { versionCode -> versionCode.all(Char::isDigit) }.orEmpty()
 
 @Composable
 private fun ReleaseNotesWebViewBody(versionCode: String) {
