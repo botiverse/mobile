@@ -5,9 +5,16 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalPanel
 import build.raft.app.components.SlockSkeleton
 import build.raft.app.components.SlockSkeletonVariant
+import build.raft.app.data.ChannelRepository
+import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.NetworkSlockAnnouncementsRemindersApi
 import build.raft.app.data.NetworkSlockHomeApi
+import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.data.RealChannelRepository
+import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.SharedHomeIntent
@@ -18,6 +25,9 @@ import build.raft.app.data.parseSlockHome
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -336,6 +346,7 @@ internal data class SlockHomePayload(
     val pinnedChannelIds: List<String> = emptyList(),
     val pinnedAgentIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
+    val pinned: List<SettingsServerSidebarPinnedItem> = emptyList(),
     val pinnedSortMode: String = "manual",
     val hiddenDmIds: List<String> = emptyList(),
     val canArchiveChannels: Boolean = false,
@@ -430,6 +441,24 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         remember(sharedStores.serverMembersStore, payload.currentServerId) {
             slockMemberAvatarResolver(sharedStores.serverMembersStore, payload.currentServerId)
         }
+    val serverMembersState by sharedStores.serverMembersStore.state.collectAsState()
+    val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
+        remember(serverMembersState, payload.currentServerId) {
+            { memberId ->
+                serverMembersState
+                    .memberProfile(ServerId(payload.currentServerId), memberId)
+                    ?.toSlockHomePinnedMemberItem()
+            }
+        }
+    val standaloneChannelRepository =
+        remember(sharedStores) {
+            RealChannelRepository(
+                sessionStore = sharedStores.authStore,
+                networkClient = sharedStores.networkClient,
+                warningLogger = { message -> bridge.log("standalone_home_channel_repository $message") }
+            )
+        }
+    val standaloneScope = rememberCoroutineScope()
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -459,6 +488,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         pinnedChannelIds = payload.pinnedChannelIds,
         pinnedAgentIds = payload.pinnedAgentIds,
         pinnedOrder = payload.pinnedOrder,
+        pinnedItems = payload.pinned,
         pinnedSortMode = payload.pinnedSortMode,
         hiddenDmIds = payload.hiddenDmIds,
         canArchiveChannels = payload.canArchiveChannels,
@@ -484,6 +514,19 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         onDmSortModeChange = { unsupportedStandaloneHomeAction("setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { unsupportedStandaloneHomeAction("setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
+        onPinnedMemberClick = { kind, memberId ->
+            standaloneScope.launch {
+                when (val result = standaloneChannelRepository.openPinnedMemberDirectMessage(kind, memberId)) {
+                    is DataResult.Content -> {
+                        standaloneHomeStore.dispatch(SharedHomeIntent.Refresh)
+                        pager.openThreadPageFromConversation(result.data.conversation, "${payload.instanceId}:$kind:$memberId")
+                    }
+                    is DataResult.Empty -> bridge.toast("Unable to open direct message")
+                    is DataResult.Error -> bridge.toast("Failed to open direct message: ${result.error.code}")
+                    is DataResult.NoPermission -> bridge.toast("You do not have permission to open this direct message.")
+                }
+            }
+        },
         onChannelLongPress = { _, _ -> },
         onPinToggle = { conversationId ->
             unsupportedStandaloneHomeAction("togglePinned", conversationId)
@@ -499,6 +542,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         },
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
+        pinnedMemberProfileResolver = pinnedMemberProfileResolver,
         diagnosticsLogger = bridge::log
     )
 }
@@ -523,6 +567,30 @@ private fun openThreadPageFromConversationId(
     val pageData = threadLaunchPageData(launchPayload)
     pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
 }
+
+private fun Pager.openThreadPageFromConversation(
+    conversation: HomeDirectMessageRow,
+    instanceIdOverride: String
+) {
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = conversation.toThreadLaunchConversationIdentity(),
+            timeContext = null,
+            instanceIdOverride = instanceIdOverride,
+            defaultMissingReplyParentKind = false
+        )
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", threadLaunchPageData(launchPayload))
+}
+
+internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(
+    kind: String,
+    memberId: String
+): DataResult<OpenDirectMessageResult> =
+    when (kind.trim().lowercase()) {
+        "agent" -> openAgentDirectMessage(MemberId(memberId))
+        "human" -> openUserDirectMessage(MemberId(memberId))
+        else -> DataResult.Empty(EmptyReason.NoChannels)
+    }
 
 internal class HomeConversationOpenBarrier(
     private val windowMillis: Long = 800L,
@@ -694,6 +762,7 @@ internal fun SlockStructuralHomeShell(
     pinnedChannelIds: List<String> = emptyList(),
     pinnedAgentIds: List<String> = emptyList(),
     pinnedOrder: List<String> = emptyList(),
+    pinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
     pinnedSortMode: String = "manual",
     hiddenDmIds: List<String> = emptyList(),
     canArchiveChannels: Boolean = false,
@@ -727,6 +796,7 @@ internal fun SlockStructuralHomeShell(
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
+    onPinnedMemberClick: (kind: String, memberId: String) -> Unit = { _, _ -> },
     onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
@@ -734,6 +804,7 @@ internal fun SlockStructuralHomeShell(
     onArchiveChannel: (String) -> Unit = {},
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
+    pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
@@ -795,10 +866,21 @@ internal fun SlockStructuralHomeShell(
     // section itself (handled by `pinnedItemsForSidebar`).
     @Suppress("UNUSED_VARIABLE")
     val pinnedIdSet =
-        remember(directMessages, pinnedChannelIds, pinnedAgentIds) {
+        remember(directMessages, pinnedChannelIds, pinnedAgentIds, pinnedItems) {
             buildSet {
                 addAll(pinnedChannelIds)
                 addAll(pinnedAgentIds)
+                pinnedItems.forEach { item ->
+                    when (item.kind.trim().lowercase()) {
+                        "channel" -> add(item.id)
+                        "agent", "human" -> {
+                            add(item.id)
+                            directMessages
+                                .firstOrNull { dm -> dm.presenceMemberId == item.id }
+                                ?.let { add(it.id) }
+                        }
+                    }
+                }
                 val pinnedAgentIdSet = pinnedAgentIds.toSet()
                 directMessages.forEach { dm ->
                     if (dm.peerType.equals("agent", ignoreCase = true) && dm.presenceMemberId in pinnedAgentIdSet) {
@@ -833,18 +915,20 @@ internal fun SlockStructuralHomeShell(
             .filter { dm -> dm.id !in hiddenDmIdSet || dm.homeConversationBadgeProjection().hasUnread }
             .sortedForSidebar(directMessageSortMode) { it.name }
     }
-    val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedAgentIds, pinnedOrder, pinnedSortModeState) {
-        pinnedItemsForSidebar(
+    val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedAgentIds, pinnedOrder, pinnedItems, pinnedSortModeState, pinnedMemberProfileResolver) {
+        pinnedRowsForSidebar(
             channels = channels,
             directMessages = directMessages,
             pinnedIds = pinnedChannelIds,
             pinnedAgentIds = pinnedAgentIds,
             pinnedOrder = pinnedOrder,
+            typedPinnedItems = pinnedItems,
+            pinnedMemberProfileResolver = pinnedMemberProfileResolver,
             mode = pinnedSortModeState
         )
     }
-    val pinnedItemsForSort = displayedPinned
-    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.homeConversationBadgeProjection().hasUnread } }
+    val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.conversation } }
+    val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val directMessageSectionHasUnread = remember(displayedDirectMessages) { displayedDirectMessages.any { it.homeConversationBadgeProjection().hasUnread } }
@@ -1056,93 +1140,108 @@ internal fun SlockStructuralHomeShell(
                                 }
                             }
                             if (displayedPinned.isNotEmpty()) {
-                            item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                            item {
-                                SlockCollapsibleSectionHeader(
-                                    label = labels.pinned,
-                                    count = displayedPinned.size,
-                                    expanded = pinnedExpanded,
-                                    onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
-                                    showCollapsedUnreadDot = pinnedSectionHasUnread,
-                                    sortContentDescription = "Sort ${labels.pinned}",
-                                    onSortClick = { anchor ->
-                                        if (sidebarInteractionsEnabled) {
-                                            activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
-                                            sortMenuAnchor = anchor
-                                        }
-                                    },
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                )
-                            }
-                            if (pinnedExpanded) {
-                                items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].id}" }) { index ->
-                                    val pinned = displayedPinned[index]
-                                    val isJoint = pinned.homeChannelKind() == JointChannelKindWireValue
-                                    val isDirectMessage = pinned.isDirectMessageConversation()
-                                    // #211 React parity (revised by @artin 23:38): pinned copy and
-                                    // original-section copy of the same conversation both
-                                    // render Selected when their conversationId matches.
-                                    // Selected wins over pressed so the user never confuses
-                                    // "I'm pressing" with "this is the current conversation".
-                                    val rowInteractionState = when {
-                                        sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
-                                        pressedRowKey == "pinned:${pinned.id}" -> ChannelRowInteractionState.Pressed
-                                        else -> ChannelRowInteractionState.Default
-                                    }
-                                    val handleLongPress: (Offset) -> Unit = { anchor ->
-                                        onChannelLongPressWithDismiss(pinned.id, anchor)
-                                        activePinMenuConversationId = pinned.id
-                                        activeMenuSection = SlockHomeSortSection.Pinned
-                                        pinMenuAnchor = anchor
-                                        // Menu opens: clear press so the
-                                        // visual doesn't stick while the
-                                        // user reads the menu.
-                                        pressedRowKey = null
-                                    }
-                                if (isDirectMessage) {
-                                    val badgeProjection = pinned.homeConversationBadgeProjection()
-                                    DirectMessageRow(
-                                        name = pinned.name,
-                                        description = pinned.description,
-                                        avatarLabel = pinned.avatarLabel,
-                                        peerType = pinned.peerType,
-                                        memberId = pinned.presenceMemberId,
-                                        agentStatusResolver = agentStatusResolver,
-                                        memberAvatarResolver = memberAvatarResolver,
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        hasDraft = pinned.hasDraft,
-                                        muted = pinned.activityMuted,
-                                        badge = badgeProjection.label,
-                                        badgeTone = badgeProjection.tone,
-                                        interactionState = rowInteractionState,
-                                        captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
-                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
-                                        onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
-                                    )
-                                } else {
-                                    val badgeProjection = pinned.homeConversationBadgeProjection()
-                                    ChannelRow(
-                                        name = pinned.name,
-                                        symbol = pinned.homeChannelSymbol(),
-                                        joined = pinned.joined,
-                                        hasDraft = pinned.hasDraft,
-                                        muted = pinned.activityMuted,
-                                        badge = badgeProjection.label,
-                                        badgeTone = badgeProjection.tone,
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        interactionState = rowInteractionState,
-                                        captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
-                                        onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
-                                        onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
+                                item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                                item {
+                                    SlockCollapsibleSectionHeader(
+                                        label = labels.pinned,
+                                        count = displayedPinned.size,
+                                        expanded = pinnedExpanded,
+                                        onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                        showCollapsedUnreadDot = pinnedSectionHasUnread,
+                                        sortContentDescription = "Sort ${labels.pinned}",
+                                        onSortClick = { anchor ->
+                                            if (sidebarInteractionsEnabled) {
+                                                activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
+                                                sortMenuAnchor = anchor
+                                            }
+                                        },
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                     )
                                 }
+                                if (pinnedExpanded) {
+                                    items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].key}" }) { index ->
+                                        val pinnedRow = displayedPinned[index]
+                                        val pinned = pinnedRow.conversation
+                                        val pinnedMember = pinnedRow.member
+                                        val isDirectMessage = pinned?.isDirectMessageConversation() == true || pinnedMember != null
+                                        // #211 React parity (revised by @artin 23:38): pinned copy and
+                                        // original-section copy of the same conversation both
+                                        // render Selected when their conversationId matches.
+                                        // Selected wins over pressed so the user never confuses
+                                        // "I'm pressing" with "this is the current conversation".
+                                        val rowInteractionState = when {
+                                            pinned != null && sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
+                                            pressedRowKey == "pinned:${pinnedRow.key}" -> ChannelRowInteractionState.Pressed
+                                            else -> ChannelRowInteractionState.Default
+                                        }
+                                        val handleLongPress: (Offset) -> Unit = { anchor ->
+                                            pinned?.id?.let { conversationId ->
+                                                onChannelLongPressWithDismiss(conversationId, anchor)
+                                                activePinMenuConversationId = conversationId
+                                                activeMenuSection = SlockHomeSortSection.Pinned
+                                                pinMenuAnchor = anchor
+                                                // Menu opens: clear press so the
+                                                // visual doesn't stick while the
+                                                // user reads the menu.
+                                                pressedRowKey = null
+                                            }
+                                        }
+                                        if (isDirectMessage) {
+                                            val badgeProjection = pinned?.homeConversationBadgeProjection()
+                                            DirectMessageRow(
+                                                name = pinned?.name ?: pinnedMember?.name.orEmpty(),
+                                                description = pinned?.description ?: pinnedMember?.description,
+                                                avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
+                                                peerType = pinned?.peerType ?: pinnedMember?.peerType,
+                                                memberId = pinned?.presenceMemberId ?: pinnedMember?.memberId,
+                                                agentStatusResolver = agentStatusResolver,
+                                                memberAvatarResolver = memberAvatarResolver,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                hasDraft = pinned?.hasDraft == true,
+                                                muted = pinned?.activityMuted == true,
+                                                badge = badgeProjection?.label,
+                                                badgeTone = badgeProjection?.tone ?: HomeSidebarBadgeTone.Loud,
+                                                interactionState = rowInteractionState,
+                                                captureLongPressAnchor = captureRowAnchors,
+                                                onClick =
+                                                    if (sidebarInteractionsEnabled) {
+                                                        {
+                                                            if (pinned != null) {
+                                                                onChannelClickWithDismiss(pinned.id)
+                                                            } else if (pinnedMember != null) {
+                                                                dismissNotificationCenterForFocusLoss()
+                                                                onPinnedMemberClick(pinnedMember.peerType, pinnedMember.memberId)
+                                                            }
+                                                        }
+                                                    } else {
+                                                        null
+                                                    },
+                                                onLongPress = if (sidebarInteractionsEnabled && pinned != null) handleLongPress else null,
+                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                            )
+                                        } else if (pinned != null) {
+                                            val badgeProjection = pinned.homeConversationBadgeProjection()
+                                            ChannelRow(
+                                                name = pinned.name,
+                                                symbol = pinned.homeChannelSymbol(),
+                                                joined = pinned.joined,
+                                                hasDraft = pinned.hasDraft,
+                                                muted = pinned.activityMuted,
+                                                badge = badgeProjection.label,
+                                                badgeTone = badgeProjection.tone,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                interactionState = rowInteractionState,
+                                                captureLongPressAnchor = captureRowAnchors,
+                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
+                                                onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
+                                                onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SlockCollapsibleSectionHeader(
@@ -1489,7 +1588,7 @@ internal fun SlockStructuralHomeShell(
             sortOverlaySection?.let { section ->
                 val sortItems =
                     when (section) {
-                        SlockHomeSortSection.Pinned -> displayedPinned
+                        SlockHomeSortSection.Pinned -> pinnedItemsForSort
                         SlockHomeSortSection.JointChannels -> displayedJointChannels
                         SlockHomeSortSection.DirectMessages -> displayedDirectMessages
                         SlockHomeSortSection.Channels -> sortableDisplayedChannels
@@ -2009,6 +2108,39 @@ private suspend fun runSlockSortAutoScrollLoop(
  * are resolved to their corresponding agent DM row through the row's
  * `presenceMemberId`, matching React's `pinnedAgentIds -> agentDmById` path.
  */
+internal data class SlockHomePinnedMemberItem(
+    val memberId: String,
+    val name: String,
+    val description: String? = null,
+    val avatarLabel: String,
+    val peerType: String
+)
+
+internal fun MemberProfile.toSlockHomePinnedMemberItem(): SlockHomePinnedMemberItem? {
+    val peerType =
+        when (kind) {
+            MemberKind.Agent -> "agent"
+            MemberKind.Human -> "human"
+            MemberKind.System -> return null
+        }
+    return SlockHomePinnedMemberItem(
+        memberId = id.value,
+        name = displayName.ifBlank { handle.ifBlank { id.value } },
+        description = handle.takeIf { it.isNotBlank() }?.let { "@$it" },
+        avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "?" } },
+        peerType = peerType
+    )
+}
+
+internal data class SlockHomePinnedRow(
+    val key: String,
+    val conversation: SlockHomeConversationItem? = null,
+    val member: SlockHomePinnedMemberItem? = null
+) {
+    val sortLabel: String = conversation?.name ?: member?.name.orEmpty()
+    val sortTimestamp: String? = conversation?.lastMessageAt ?: conversation?.createdAt
+}
+
 internal fun pinnedItemsForSidebar(
     channels: List<SlockHomeConversationItem>,
     directMessages: List<SlockHomeConversationItem>,
@@ -2016,29 +2148,74 @@ internal fun pinnedItemsForSidebar(
     pinnedAgentIds: List<String> = emptyList(),
     pinnedOrder: List<String>,
     mode: SlockSidebarSortMode
-): List<SlockHomeConversationItem> {
-    if (pinnedIds.isEmpty() && pinnedAgentIds.isEmpty()) return emptyList()
+): List<SlockHomeConversationItem> =
+    pinnedRowsForSidebar(
+        channels = channels,
+        directMessages = directMessages,
+        pinnedIds = pinnedIds,
+        pinnedAgentIds = pinnedAgentIds,
+        pinnedOrder = pinnedOrder,
+        mode = mode
+    ).mapNotNull { it.conversation }
+
+internal fun pinnedRowsForSidebar(
+    channels: List<SlockHomeConversationItem>,
+    directMessages: List<SlockHomeConversationItem>,
+    pinnedIds: List<String>,
+    pinnedAgentIds: List<String> = emptyList(),
+    pinnedOrder: List<String>,
+    typedPinnedItems: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
+    mode: SlockSidebarSortMode
+): List<SlockHomePinnedRow> {
     val byId: Map<String, SlockHomeConversationItem> = buildMap {
         channels.forEach { put(it.id, it) }
         directMessages.forEach { put(it.id, it) }
         directMessages.forEach { dm ->
-            if (dm.peerType.equals("agent", ignoreCase = true)) {
+            if (dm.peerType.equals("agent", ignoreCase = true) || dm.peerType.equals("human", ignoreCase = true)) {
                 dm.presenceMemberId?.takeIf { it.isNotBlank() }?.let { put(it, dm) }
             }
         }
     }
+    val typedRows =
+        typedPinnedItems.mapNotNull { item ->
+            val kind = item.kind.trim().lowercase()
+            val id = item.id.trim()
+            when (kind) {
+                "channel" ->
+                    byId[id]?.let { SlockHomePinnedRow(key = "channel:$id", conversation = it) }
+                "agent", "human" -> {
+                    val conversation =
+                        directMessages.firstOrNull { dm ->
+                            dm.presenceMemberId == id && dm.peerType.equals(kind, ignoreCase = true)
+                        } ?: byId[id]?.takeIf { it.isDirectMessageConversation() }
+                    if (conversation != null) {
+                        SlockHomePinnedRow(key = "$kind:$id", conversation = conversation)
+                    } else {
+                        pinnedMemberProfileResolver(id)
+                            ?.takeIf { it.peerType == kind }
+                            ?.let { member -> SlockHomePinnedRow(key = "$kind:$id", member = member) }
+                    }
+                }
+                else -> null
+            }
+        }.distinctBy { it.conversation?.id ?: it.key }
+    if (typedRows.isNotEmpty()) {
+        return typedRows.sortedPinnedRows(mode)
+    }
+    if (pinnedIds.isEmpty() && pinnedAgentIds.isEmpty()) return emptyList()
     val allPinnedIds = (pinnedIds + pinnedAgentIds).distinct()
     val pinnedSet = allPinnedIds.toSet()
     val existingPinned = allPinnedIds.mapNotNull { byId[it] }.distinctBy { it.id }
     return when (mode) {
         SlockSidebarSortMode.Manual -> {
-            val ordered = LinkedHashMap<String, SlockHomeConversationItem>()
+            val ordered = LinkedHashMap<String, SlockHomePinnedRow>()
             pinnedOrder.forEach { id ->
-                byId[id]?.takeIf { id in pinnedSet }?.let { ordered.put(it.id, it) }
+                byId[id]?.takeIf { id in pinnedSet }?.let { ordered.put(it.id, SlockHomePinnedRow(key = id, conversation = it)) }
             }
             existingPinned.forEach { item ->
                 if (!ordered.containsKey(item.id)) {
-                    ordered.put(item.id, item)
+                    ordered.put(item.id, SlockHomePinnedRow(key = item.id, conversation = item))
                 }
             }
             ordered.values.toList()
@@ -2048,13 +2225,26 @@ internal fun pinnedItemsForSidebar(
                 compareByDescending<SlockHomeConversationItem> {
                     parseSlockTimestampEpochMillisOrNull(it.lastMessageAt ?: it.createdAt) ?: Long.MIN_VALUE
                 }.thenBy { it.name.trim().lowercase() }.thenBy { it.id }
-            )
+            ).map { SlockHomePinnedRow(key = it.id, conversation = it) }
         SlockSidebarSortMode.Az ->
             existingPinned.sortedWith(
                 compareBy<SlockHomeConversationItem> { it.name.trim().lowercase() }.thenBy { it.id }
-            )
+            ).map { SlockHomePinnedRow(key = it.id, conversation = it) }
     }
 }
+
+private fun List<SlockHomePinnedRow>.sortedPinnedRows(mode: SlockSidebarSortMode): List<SlockHomePinnedRow> =
+    when (mode) {
+        SlockSidebarSortMode.Manual -> this
+        SlockSidebarSortMode.Recent ->
+            sortedWith(
+                compareByDescending<SlockHomePinnedRow> {
+                    parseSlockTimestampEpochMillisOrNull(it.sortTimestamp) ?: Long.MIN_VALUE
+                }.thenBy { it.sortLabel.trim().lowercase() }.thenBy { it.key }
+            )
+        SlockSidebarSortMode.Az ->
+            sortedWith(compareBy<SlockHomePinnedRow> { it.sortLabel.trim().lowercase() }.thenBy { it.key })
+    }
 @Composable
 private fun HomeTitlebar(
     serverName: String,

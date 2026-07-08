@@ -104,6 +104,7 @@ import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
+import build.raft.app.data.ChannelRepository
 import build.raft.app.data.InMemorySlockAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthErrorCode
@@ -312,6 +313,7 @@ import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.data.SettingsServerTranslationSnapshot
 import build.raft.app.data.SettingsServerSystemChannelSnapshot
 import build.raft.app.data.SettingsServerTranslationUpdateRequest
+import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.markdown.SlockMarkdownBody
@@ -3515,6 +3517,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                     openHomeConversation(conversationIdentity, "home")
                                 },
                                 serverMembersStore = sharedStores.serverMembersStore,
+                                channelRepository = channelRepository,
                                 bottomContentPadding = appShellBottomContentInset,
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
@@ -11877,10 +11880,12 @@ private fun SharedHomeScreen(
     onCreateChannel: () -> Unit,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
+    channelRepository: ChannelRepository? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
 ) {
+    val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
     LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
@@ -12003,6 +12008,16 @@ private fun SharedHomeScreen(
                 remember(serverMembersStore, snapshot.server.id.value) {
                     slockMemberAvatarResolver(serverMembersStore, snapshot.server.id.value)
                 }
+            val serverMembersState by (serverMembersStore?.state ?: flowOf(SharedServerMembersState()))
+                .collectAsState(SharedServerMembersState())
+            val pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? =
+                remember(serverMembersState, snapshot.server.id) {
+                    { memberId ->
+                        serverMembersState
+                            .memberProfile(snapshot.server.id, memberId)
+                            ?.toSlockHomePinnedMemberItem()
+                    }
+                }
             LaunchedEffect(serverMembersStore, snapshot.server.id) {
                 bridge.log(
                     "shared_home_avatar_chain serverId=${snapshot.server.id.value} " +
@@ -12124,6 +12139,7 @@ private fun SharedHomeScreen(
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
                 pinnedAgentIds = snapshot.sidebarOrder?.pinnedAgentIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
+                pinnedItems = snapshot.sidebarOrder?.pinned.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
                 hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
@@ -12182,6 +12198,26 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 },
+                onPinnedMemberClick = { kind, memberId ->
+                    val repository = channelRepository
+                    if (repository == null) {
+                        bridge.toast("Direct message is unavailable")
+                    } else {
+                        pinnedMemberOpenScope.launch {
+                            when (val result = repository.openPinnedMemberDirectMessage(kind, memberId)) {
+                                is DataResult.Content -> {
+                                    val conversation = result.data.conversation
+                                    onOpenConversation(conversation.toThreadLaunchConversationIdentity())
+                                    onIntent(SharedHomeIntent.SelectConversation(conversation.threadId.value))
+                                    onIntent(SharedHomeIntent.Refresh)
+                                }
+                                is DataResult.Empty -> bridge.toast("Unable to open direct message")
+                                is DataResult.Error -> bridge.toast("Failed to open direct message: ${result.error.code}")
+                                is DataResult.NoPermission -> bridge.toast("You do not have permission to open this direct message.")
+                            }
+                        }
+                    }
+                },
                 onChannelLongPress = { _, _ -> },
                 onPinnedSortModeChange = { mode ->
                     onIntent(SharedHomeIntent.SetPinnedSortMode(mode))
@@ -12212,6 +12248,7 @@ private fun SharedHomeScreen(
                 },
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
+                pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot

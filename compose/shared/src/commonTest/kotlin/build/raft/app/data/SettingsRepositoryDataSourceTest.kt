@@ -610,7 +610,7 @@ class SettingsRepositoryDataSourceTest {
                 agreementUpdateJson = """{"enabled":true,"agreement":{"title":"Rules","bodyMarkdown":"Be excellent."}}""",
                 onboardingJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":null,"agentAllChannelGreetingEnabled":true}""",
                 translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
-                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
+                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"pinned":[{"kind":"channel","id":"channel-1"},{"kind":"agent","id":"agent-1"},{"kind":"human","id":"user-1"},{"kind":"invalid","id":"ignored"},{"kind":"agent","id":"agent-1"}],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
                 serverOrderJson = """{"serverOrder":["server-2","server-1"]}""",
                 onboardingUpdateJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
                 translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
@@ -673,6 +673,14 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(sidebar is DataResult.Content)
         assertEquals(listOf("channel-1"), sidebar.data.channelOrder)
         assertEquals("recent", sidebar.data.dmSortMode)
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1"),
+                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")
+            ),
+            sidebar.data.pinned
+        )
         assertTrue(serverOrder is DataResult.Content)
         assertEquals(listOf("server-2", "server-1"), serverOrder.data.serverOrder)
         assertTrue(updatedSidebar is DataResult.Content)

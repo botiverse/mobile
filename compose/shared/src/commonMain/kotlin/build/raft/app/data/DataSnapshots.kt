@@ -1058,9 +1058,16 @@ data class SettingsServerSidebarOrderSnapshot(
     val pinnedChannelIds: List<String> = emptyList(),
     val pinnedAgentIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
+    val pinned: List<SettingsServerSidebarPinnedItem> = emptyList(),
     val hiddenDmIds: List<String> = emptyList(),
     val channelPanelTabOrder: List<String> = emptyList(),
     val agentPanelTabOrder: List<String> = emptyList()
+)
+
+@Serializable
+data class SettingsServerSidebarPinnedItem(
+    val kind: String,
+    val id: String
 )
 
 data class SettingsMobileSnapshot(
