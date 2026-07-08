@@ -9,6 +9,7 @@ import build.raft.app.components.SlockBrutalSearchField
 import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockRaftUiControlledMenu
 import build.raft.app.components.SlockRaftUiMenuItem
+import build.raft.app.components.SlockSkeletonRow
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
@@ -16525,34 +16526,20 @@ private fun ThreadStateMessage(title: String, detail: String?) {
 private fun ThreadProgressiveLoadingSkeleton() {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         repeat(3) { index ->
-            val widthFraction =
+            val lineWidths =
                 when (index) {
-                    0 -> 0.82f
-                    1 -> 0.66f
-                    else -> 0.74f
+                    0 -> listOf(192.dp, 128.dp)
+                    1 -> listOf(156.dp, 96.dp)
+                    else -> listOf(176.dp, 116.dp)
                 }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(96.dp)
-                        .height(10.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(widthFraction)
-                        .height(38.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
-                )
-            }
+            SlockSkeletonRow(
+                avatar = true,
+                avatarSize = 32.dp,
+                lineWidths = lineWidths
+            )
         }
     }
 }
