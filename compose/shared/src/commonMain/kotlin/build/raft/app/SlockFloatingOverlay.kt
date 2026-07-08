@@ -124,6 +124,8 @@ internal fun SlockFloatingOverlayHost(
     // bubble up; the host only needs to dismiss on clicks outside the
     // menu.
     var dismissClickableActive by remember { mutableStateOf(dismissActivationDelayMillis <= 0) }
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    SlockBackHandler(enabled = true, label = "floating_overlay", onBack = currentOnDismiss)
     // #223: defer the dismiss clickable so the long-press release does not
     // immediately propagate to onDismiss. 150ms covers the standard Android
     // long-press threshold (~500ms) minus the time to compose + render the menu.
