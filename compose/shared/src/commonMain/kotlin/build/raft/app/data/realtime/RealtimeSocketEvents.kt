@@ -51,5 +51,19 @@ object RealtimeSocketEvents {
     const val ReminderScheduled = GeneratedRealtimeContract.SocketEvent.ReminderScheduled
     const val ReminderCanceled = GeneratedRealtimeContract.SocketEvent.ReminderCanceled
 
-    val ServerWireEvents: List<String> = GeneratedRealtimeContract.SocketEvent.ServerWireEvents
+    // RFC 041 per-receiver state push, emitted to the caller's `user:<id>`
+    // room from `routes/channels.ts` (server PR #4175). Literals live here
+    // instead of GeneratedRealtimeContract because the generator last ran
+    // against a pre-#4175 server tree — swap to the generated constants on
+    // the next `generate_realtime_contract.py` regeneration.
+    const val ReadStateUpdated = "read_state:updated"
+    const val ReadStateUpdatedBulk = "read_state:updated_bulk"
+    const val NotificationPrefsUpdated = "notification_prefs:updated"
+
+    val ServerWireEvents: List<String> =
+        GeneratedRealtimeContract.SocketEvent.ServerWireEvents + listOf(
+            ReadStateUpdated,
+            ReadStateUpdatedBulk,
+            NotificationPrefsUpdated,
+        )
 }

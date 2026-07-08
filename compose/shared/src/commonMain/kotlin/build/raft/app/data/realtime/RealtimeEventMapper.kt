@@ -9,6 +9,7 @@ import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
@@ -25,6 +26,9 @@ import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
@@ -205,6 +209,12 @@ class RealtimeEventMapper(
                 decodeOrNull(SyncResumeResponseDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.Heartbeat ->
                 decodeOrNull(HeartbeatDto.serializer(), element)?.let { Heartbeat(it.seq) }
+            RealtimeSocketEvents.ReadStateUpdated ->
+                decodeOrNull(ReadStateUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.ReadStateUpdatedBulk ->
+                decodeOrNull(ReadStateUpdatedBulkDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.NotificationPrefsUpdated ->
+                decodeOrNull(NotificationPrefsUpdatedDto.serializer(), element)?.toDomain()
             else -> null
         }
     } catch (_: SerializationException) {
@@ -475,6 +485,45 @@ private data class SyncResumeResponseDto(
 private data class HeartbeatDto(
     val seq: Long,
     val ts: Long? = null,
+)
+
+// RFC 041 per-receiver state push (server PR #4175, `routes/channels.ts`
+// emit sites). `readStateVersion`/`prefsVersion` are required: an event we
+// cannot version-gate is unusable, so decode failure drops it (fail closed)
+// and hydrate reconciles.
+@Serializable
+private data class ReadStateUpdatedDto(
+    val serverId: String? = null,
+    val scopeId: String,
+    val maxReadSeq: Long? = null,
+    val readStateVersion: Long,
+)
+
+@Serializable
+private data class ReadStateScopeWireDto(
+    val scopeId: String,
+    val maxReadSeq: Long? = null,
+    val readStateVersion: Long,
+)
+
+@Serializable
+private data class ReadStateUpdatedBulkDto(
+    val serverId: String? = null,
+    val scopes: List<ReadStateScopeWireDto> = emptyList(),
+)
+
+@Serializable
+private data class NotificationPrefsWireDto(
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+)
+
+@Serializable
+private data class NotificationPrefsUpdatedDto(
+    val serverId: String? = null,
+    val scopeId: String,
+    val prefs: NotificationPrefsWireDto = NotificationPrefsWireDto(),
+    val prefsVersion: Long,
 )
 
 // ── DTO → domain mappers ─────────────────────────────────────────────────────
@@ -987,6 +1036,50 @@ private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeRes
     currentSeq = currentSeq,
     hasMore = hasMore,
 )
+
+private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
+    val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    return PerReceiverReadStateChanged(
+        serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        scopes = listOf(
+            PerReceiverReadStateScope(
+                scopeId = ChannelId(cleanScopeId),
+                maxReadSeq = maxReadSeq,
+                readStateVersion = readStateVersion
+            )
+        )
+    )
+}
+
+private fun ReadStateUpdatedBulkDto.toDomain(): PerReceiverReadStateChanged? {
+    val cleanScopes = scopes.mapNotNull { scope ->
+        val cleanScopeId = scope.scopeId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        PerReceiverReadStateScope(
+            scopeId = ChannelId(cleanScopeId),
+            maxReadSeq = scope.maxReadSeq,
+            readStateVersion = scope.readStateVersion
+        )
+    }
+    if (cleanScopes.isEmpty()) return null
+    return PerReceiverReadStateChanged(
+        serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        scopes = cleanScopes
+    )
+}
+
+private fun NotificationPrefsUpdatedDto.toDomain(): PerReceiverNotificationPrefsChanged? {
+    val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    return PerReceiverNotificationPrefsChanged(
+        serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        scopeId = ChannelId(cleanScopeId),
+        preference = ChannelActivityNotificationPreference(
+            activityMuted = prefs.activityMuted,
+            muteFromSeq = prefs.muteFromSeq,
+            activityMuteSupported = true
+        ),
+        prefsVersion = prefsVersion
+    )
+}
 
 private fun memberFrom(type: String?, id: String?, name: String?): MemberProfile? {
     if (id.isNullOrBlank()) return null

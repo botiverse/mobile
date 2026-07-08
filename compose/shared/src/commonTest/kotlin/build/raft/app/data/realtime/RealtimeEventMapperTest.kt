@@ -8,6 +8,8 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -683,5 +685,101 @@ class RealtimeEventMapperTest {
             )
 
         assertNull(assertIs<MessageNew>(event).message.conversationContext)
+    }
+
+    // ── RFC 041 per-receiver state push (server PR #4175) ────────────────────
+    // Payload shapes mirror `routes/channels.ts::emitReadStateUpdated`,
+    // `emitReadStateUpdatedBulk`, and `emitNotificationPrefsUpdated` verbatim.
+
+    @Test
+    fun readStateUpdatedMapsSingleScope() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "channel-1",
+                  "maxReadSeq": 4211,
+                  "readStateVersion": 7
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<PerReceiverReadStateChanged>(event)
+        assertEquals("server-1", changed.serverId?.value)
+        val scope = changed.scopes.single()
+        assertEquals("channel-1", scope.scopeId.value)
+        assertEquals(4211L, scope.maxReadSeq)
+        assertEquals(7L, scope.readStateVersion)
+    }
+
+    @Test
+    fun readStateUpdatedBulkMapsAllScopesAndDropsBlankScopeIds() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ReadStateUpdatedBulk,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopes": [
+                    { "scopeId": "channel-1", "maxReadSeq": 10, "readStateVersion": 3 },
+                    { "scopeId": "", "maxReadSeq": 11, "readStateVersion": 4 },
+                    { "scopeId": "channel-2", "maxReadSeq": 0, "readStateVersion": 1 }
+                  ]
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<PerReceiverReadStateChanged>(event)
+        assertEquals(listOf("channel-1", "channel-2"), changed.scopes.map { it.scopeId.value })
+        assertEquals(listOf(3L, 1L), changed.scopes.map { it.readStateVersion })
+    }
+
+    @Test
+    fun readStateUpdatedBulkWithNoUsableScopesIsIgnored() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ReadStateUpdatedBulk,
+                """{ "serverId": "server-1", "scopes": [] }"""
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun readStateUpdatedWithoutVersionIsIgnored() {
+        // An event we cannot version-gate is unusable: drop it (fail closed)
+        // and let hydrate reconcile, per RFC 041 client obligations.
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": 12 }"""
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun notificationPrefsUpdatedMapsPreferenceAndVersion() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPrefsUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "scopeId": "channel-9",
+                  "prefs": { "activityMuted": true, "muteFromSeq": 900 },
+                  "prefsVersion": 2
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<PerReceiverNotificationPrefsChanged>(event)
+        assertEquals("channel-9", changed.scopeId.value)
+        assertTrue(changed.preference.activityMuted)
+        assertEquals(900L, changed.preference.muteFromSeq)
+        assertTrue(changed.preference.activityMuteSupported)
+        assertEquals(2L, changed.prefsVersion)
     }
 }
