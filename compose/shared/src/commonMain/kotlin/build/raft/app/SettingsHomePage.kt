@@ -2397,7 +2397,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
     var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
     var foregroundMessageBanner by remember { mutableStateOf<SlockForegroundMessageBanner?>(null) }
-    var pendingForegroundMessage by remember { mutableStateOf<AppShellPendingForeground?>(null) }
 
     fun refreshVisibleAppShellRoute(reason: String) {
         if (latestReadySession == null) return
@@ -3286,79 +3285,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         } else {
                             foregroundMessageBanner = null
                         }
-                    } else if (event is ThreadUpdated) {
-                        val pending = pendingForegroundMessage
-                        if (pending != null && pending.matchesThreadUpdate(event)) {
-                            pendingForegroundMessage = pending.withThreadUpdate(event)
-                            bridge.log(
-                                "foreground_banner_projection_thread_update " +
-                                    "messageId=${pending.ticket.messageId} streamId=${event.threadChannelId.value} " +
-                                    "parentMessageId=${event.parentMessageId.value}"
-                            )
-                            homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
-                        }
                     }
                 }
             }
         onDispose { realtimeEvents.removeListener(callbackRef) }
-    }
-
-    LaunchedEffect(
-        pendingForegroundMessage,
-        appShellConversationDirectory,
-        foregroundMessageBannersEnabled
-    ) {
-        val pending = pendingForegroundMessage ?: return@LaunchedEffect
-        if (!foregroundMessageBannersEnabled) {
-            pendingForegroundMessage = null
-            return@LaunchedEffect
-        }
-        val ticket = pending.ticket
-        val pendingMessage = pending.projectionInput
-        val session = readySession
-        val projection =
-            slockForegroundMessageBannerProjectionResult(
-                serverId = ticket.serverId,
-                currentServerId = session?.currentServerId,
-                message = pendingMessage,
-                currentMemberId = session?.user?.id,
-                visibleConversationKey =
-                    appShellVisibleForegroundConversationKey(
-                        selectedTab = selectedTab,
-                        selectedHomeDestination = selectedHomeDestination,
-                        selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId
-                    ),
-                conversationDirectory = appShellConversationDirectory
-        )
-        bridge.log(projection.appShellForegroundBannerProjectionLog(pendingMessage, source = "pending_retry"))
-        when (
-            appShellForegroundBannerPendingDecision(
-                projection = projection,
-                message = pendingMessage,
-                refreshAttempts = ticket.refreshAttempts
-            )
-        ) {
-            AppShellForegroundBannerPendingDecision.Complete -> {
-                projection.banner?.let { banner -> foregroundMessageBanner = banner }
-                pendingForegroundMessage = null
-                return@LaunchedEffect
-            }
-            AppShellForegroundBannerPendingDecision.Drop -> {
-                bridge.logWarn(
-                    "foreground_banner_projection_drop reason=activity_thread_projection_missing " +
-                        "messageId=${ticket.messageId} streamId=${ticket.streamId.orEmpty()} " +
-                        "parentMessageId=${ticket.threadUpdateParentMessageId.orEmpty()} attempts=${ticket.refreshAttempts}"
-                )
-                pendingForegroundMessage = null
-                return@LaunchedEffect
-            }
-            AppShellForegroundBannerPendingDecision.Retry -> Unit
-        }
-        homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
-        delay(AppShellForegroundBannerActivityProjectionRetryDelayMs)
-        if (pendingForegroundMessage?.key == pending.key) {
-            pendingForegroundMessage = pending.incrementRefreshAttempts()
-        }
     }
 
     val showAppShellBottomTabs =
@@ -15191,130 +15121,6 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
-
-private const val AppShellForegroundBannerActivityProjectionRetryDelayMs = 360L
-private const val AppShellForegroundBannerActivityProjectionMaxAttempts = 5
-
-private data class AppShellPendingForeground(
-    val ticket: AppShellPendingForegroundMessage,
-    val projectionInput: Message
-) {
-    val key: String
-        get() = ticket.key
-
-    fun matchesThreadUpdate(event: ThreadUpdated): Boolean =
-        ticket.matchesThreadUpdate(event)
-
-    fun withThreadUpdate(event: ThreadUpdated): AppShellPendingForeground =
-        copy(ticket = ticket.withThreadUpdate(event))
-
-    fun incrementRefreshAttempts(): AppShellPendingForeground =
-        copy(ticket = ticket.copy(refreshAttempts = ticket.refreshAttempts + 1))
-}
-
-private data class AppShellPendingForegroundMessage(
-    val serverId: String,
-    val messageId: String,
-    val streamId: String?,
-    val threadUpdateParentMessageId: String? = null,
-    val refreshAttempts: Int = 0
-) {
-    val key: String
-        get() = listOf(
-            serverId,
-            messageId,
-            streamId.orEmpty(),
-            threadUpdateParentMessageId.orEmpty(),
-            refreshAttempts.toString()
-        )
-            .joinToString(":")
-
-    fun matchesThreadUpdate(event: ThreadUpdated): Boolean =
-        streamId?.let { it == event.threadChannelId.value } == true &&
-            (threadUpdateParentMessageId?.let { it == event.parentMessageId.value } ?: true)
-
-    fun withThreadUpdate(event: ThreadUpdated): AppShellPendingForegroundMessage =
-        copy(
-            threadUpdateParentMessageId = event.parentMessageId.value,
-            refreshAttempts = 0
-        )
-}
-
-private fun Message.toAppShellPendingForeground(serverId: String): AppShellPendingForeground =
-    AppShellPendingForeground(
-        ticket =
-            AppShellPendingForegroundMessage(
-                serverId = serverId,
-                messageId = id.value,
-                streamId = appShellForegroundStreamId(),
-                threadUpdateParentMessageId = parentMessageId?.value?.takeIf { it.isNotBlank() }
-            ),
-        projectionInput = this
-    )
-
-private fun Message.appShellForegroundStreamId(): String? =
-    listOfNotNull(
-        threadChannelId?.value,
-        channelId?.value,
-        threadId.value
-    ).firstOrNull { it.isNotBlank() }
-
-private fun SlockForegroundMessageBannerProjectionResult.shouldWaitForActivityThreadProjection(
-    message: Message
-): Boolean {
-    // A terminally suppressed message is decided (own/system/visible/server mismatch) and
-    // never waits; conversation_missing is the waitable "unproven yet" state (t434).
-    if (suppressReason.isTerminalForegroundSuppress()) return false
-    if (sharedProjection != null) return false
-    // task #425 part 2: a usable server-provided conversationContext already
-    // yields a correct identity (routing-safe); show immediately with
-    // best-effort labels instead of waiting for the directory projection.
-    // An unusable context (e.g. thread missing its parent) falls through to
-    // the wait path below.
-    if (message.foregroundBannerContextConversationOrNull() != null) return false
-    if (message.parentMessageId != null || message.threadChannelId != null) return true
-    // t434 compensation (identity-proof-required): with the raw guess fallback gone there is
-    // no banner to inspect for an unproven message — no projection and no usable typed
-    // context simply means WAIT whenever there is a stream id to wait on, so a plain channel
-    // message whose projection arrives late still pops (deferred, never "never").
-    return message.appShellForegroundStreamId() != null
-}
-
-internal enum class AppShellForegroundBannerPendingDecision {
-    Complete,
-    Retry,
-    Drop
-}
-
-internal fun appShellForegroundBannerPendingDecision(
-    projection: SlockForegroundMessageBannerProjectionResult,
-    message: Message,
-    refreshAttempts: Int,
-    maxAttempts: Int = AppShellForegroundBannerActivityProjectionMaxAttempts
-): AppShellForegroundBannerPendingDecision {
-    // Wait-first (t434): with the raw guess fallback gone, an unproven message has NO banner
-    // — a banner-null early exit would make Retry unreachable. Whether to keep waiting is
-    // shouldWait's decision alone; Complete then shows the banner if one exists (terminal
-    // suppresses and unwaitable messages complete bannerless = decided silently).
-    return when {
-        !projection.shouldWaitForActivityThreadProjection(message) ->
-            AppShellForegroundBannerPendingDecision.Complete
-        refreshAttempts >= maxAttempts -> AppShellForegroundBannerPendingDecision.Drop
-        else -> AppShellForegroundBannerPendingDecision.Retry
-    }
-}
-
-private fun SlockForegroundMessageBannerProjectionResult.appShellForegroundBannerProjectionLog(
-    message: Message,
-    source: String
-): String =
-    "foreground_banner_projection source=$source messageId=${message.id.value} " +
-        "streamId=${message.appShellForegroundStreamId().orEmpty()} " +
-        "parentMessageId=${message.parentMessageId?.value.orEmpty()} " +
-        "sharedProjection=${sharedProjection?.surfaceKind ?: "_"} " +
-        "resolvedKind=${resolvedKind?.name ?: "_"} " +
-        "threadContext=${!banner?.threadContext.isNullOrBlank()} " +
-        "suppressReason=${suppressReason.orEmpty()}"
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest,
