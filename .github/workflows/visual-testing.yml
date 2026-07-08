@@ -659,11 +659,14 @@ jobs:
           cp -R "$SRC/react" visual-testing-results/react
           cp -R "$SRC/android" visual-testing-results/android
           test -d "$SRC/ios" && cp -R "$SRC/ios" visual-testing-results/ios || echo "no ios captures on gh-pages yet"
+          # prior analysis JSONs seed the imageHash cache so unchanged cases skip re-analysis
+          test -d "$SRC/analysis" && cp -R "$SRC/analysis" visual-testing-results/analysis || true
 
       - name: Diff / report / site
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # ios joins the pair list only when its captures are present, so a
           # red/absent ios leg degrades to the classic react__android site.
@@ -673,6 +676,17 @@ jobs:
           fi
           echo "diff pairs: baseline=react current=$CURRENT"
           node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
+          # AI diff analysis (task: site "AI diff notes"/summary badges). Runs
+          # only when the codex credential is configured; imageHash caching in
+          # the CLI keeps re-runs incremental (only changed cases re-analyze).
+          # Failure degrades to a site without fresh notes — never blocks.
+          if [ -n "$OPENAI_API_KEY" ]; then
+            npm install -g @openai/codex >/dev/null 2>&1 || echo "::warning::codex CLI install failed"
+            node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" \
+              || echo "::warning::AI diff analysis failed; publishing without fresh notes"
+          else
+            echo "OPENAI_API_KEY not configured; skipping AI diff analysis"
+          fi
           node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
           node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
           echo "CURRENT=$CURRENT" >> "$GITHUB_ENV"
