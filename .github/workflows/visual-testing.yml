@@ -562,11 +562,14 @@ jobs:
 
   report:
     name: Diff, report, site, publish
-    needs: [react-capture, android-capture]
-    # site_only skips both capture jobs; run the report job anyway and let its
-    # steps branch. Real failures/cancellations of live capture jobs still
-    # block it.
-    if: ${{ !cancelled() && !failure() }}
+    # ios-capture is in needs only for ORDERING (its artifact must exist before
+    # the download step runs — it finishes minutes after the android shards);
+    # the if-condition deliberately tolerates a red ios leg (e.g. task #421
+    # renderer crashes) so the site degrades to react__android instead of
+    # blocking. react/android failures still block, and site_only (all capture
+    # jobs skipped) still passes.
+    needs: [react-capture, android-capture, ios-capture]
+    if: ${{ !cancelled() && needs.react-capture.result != 'failure' && needs.android-capture.result != 'failure' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
