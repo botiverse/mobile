@@ -589,27 +589,16 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         if (persistable) {
             persistThreadAttachmentUriPermissions(uris)
         }
-        SlockKuiklyThreadAdapter.execute("thread-attachment-upload") {
-                    val result =
-                            runCatching {
-                                        readThreadPlatformPickedFiles(uris)
-                                    }
-                                    .getOrElse { throwable ->
-                                        mapOf(
-                                                "code" to 0,
-                                                "bodyText" to "",
-                                                "errorCode" to "attachment_read_failed",
-                                                "errorBodyText" to (throwable.message ?: "Attachment read failed")
-                                        )
-                                    }
-                    runOnUiThread {
-                        SlockDiagnosticsLogger.record(
-                                "SlockKuiklyAttachment",
-                                "picker_callback_deliver code=${result["code"]} thread=${Thread.currentThread().name}"
-                        )
-                        pending.callback?.invoke(result)
-                    }
-                }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = readThreadPlatformPickedFiles(uris)
+            withContext(Dispatchers.Main) {
+                SlockDiagnosticsLogger.record(
+                        "SlockKuiklyAttachment",
+                        "picker_callback_deliver code=${result["code"]} thread=${Thread.currentThread().name}"
+                )
+                pending.callback?.invoke(result)
+            }
+        }
     }
 
     private fun persistThreadAttachmentUriPermissions(uris: List<Uri>) {
@@ -631,7 +620,28 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun readThreadPlatformPickedFiles(uris: List<Uri>): Map<String, Any> {
         cleanupPickedThreadAttachmentCache()
-        val files = uris.map { uri -> pickedThreadAttachmentRef(uri) }
+        val files = mutableListOf<PickedThreadAttachment>()
+        val errorsJson = JSONArray()
+        uris.forEachIndexed { index, uri ->
+            runCatching {
+                        pickedThreadAttachmentRef(uri)
+                    }
+                    .onSuccess { file ->
+                        files += file
+                    }
+                    .onFailure { throwable ->
+                        errorsJson.put(
+                                JSONObject()
+                                        .put("index", index)
+                                        .put("errorCode", "attachment_read_failed")
+                                        .put("message", throwable.message ?: "Attachment read failed")
+                        )
+                        SlockDiagnosticsLogger.record(
+                                "SlockKuiklyAttachment",
+                                "picker_file_read_failed index=$index uriScheme=${uri.scheme.orEmpty()} error=${throwable.javaClass.simpleName}"
+                        )
+                    }
+        }
         if (files.isEmpty()) {
             return mapOf(
                     "code" to 400,
@@ -657,11 +667,25 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 "SlockKuiklyAttachment",
                 "picker_files_ready fileCount=${files.size} bytes=${files.sumOf { it.sizeBytes ?: 0L }}"
         )
-        return mapOf(
-                "code" to 200,
-                "bodyText" to JSONObject().put("files", filesJson).toString(),
-                "files" to filesJson
-        )
+        val skippedCount = errorsJson.length()
+        val body =
+                JSONObject().put("files", filesJson).apply {
+                    if (skippedCount > 0) {
+                        put("errors", errorsJson)
+                        put("skippedCount", skippedCount)
+                    }
+                }
+        return buildMap {
+            put("code", if (skippedCount > 0) 206 else 200)
+            put("bodyText", body.toString())
+            put("files", filesJson)
+            if (skippedCount > 0) {
+                put("errors", errorsJson)
+                put("skippedCount", skippedCount)
+                put("errorCode", "attachment_read_partial")
+                put("errorBodyText", "$skippedCount attachment(s) could not be read")
+            }
+        }
     }
 
     private fun pickedThreadAttachmentRef(uri: Uri): PickedThreadAttachment {
