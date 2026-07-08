@@ -311,6 +311,23 @@ private data class ThreadSharePreviewImage(
     val height: Int
 )
 
+internal enum class ThreadTransientBackTarget(val label: String) {
+    ShareSelection("thread_share_selection"),
+    InlineSearch("thread_inline_search")
+}
+
+internal fun threadTransientBackTarget(
+    activeModal: String?,
+    shareSelectionActive: Boolean,
+    inlineSearchVisible: Boolean
+): ThreadTransientBackTarget? =
+    when {
+        activeModal != null -> null
+        shareSelectionActive -> ThreadTransientBackTarget.ShareSelection
+        inlineSearchVisible -> ThreadTransientBackTarget.InlineSearch
+        else -> null
+    }
+
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
@@ -6454,6 +6471,11 @@ private fun ThreadImagePreviewOverlay(
         }
     var menuOpen by remember { mutableStateOf(false) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    SlockBackHandler(
+        enabled = !menuOpen,
+        label = "thread_image_preview",
+        onBack = onDismiss
+    )
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
@@ -7977,6 +7999,22 @@ private fun ThreadPageContent(
         shareCaptureTargetMessageId = null
         if (activeModal == "sharePreview") {
             activeModal = null
+        }
+    }
+    val transientBackTarget =
+        threadTransientBackTarget(
+            activeModal = activeModal,
+            shareSelectionActive = shareSelectionActive,
+            inlineSearchVisible = inlineSearchVisible
+        )
+    SlockBackHandler(
+        enabled = transientBackTarget != null,
+        label = transientBackTarget?.label
+    ) {
+        when (transientBackTarget) {
+            ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
+            ThreadTransientBackTarget.InlineSearch -> inlineSearchVisible = false
+            null -> Unit
         }
     }
     fun selectedShareCaptureRect(): ThreadShareCaptureRect? {
