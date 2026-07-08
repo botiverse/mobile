@@ -1748,6 +1748,27 @@ class SlockAppShellTest {
 
         assertNull(crossServer)
         assertEquals(listOf("server_mismatch"), suppressed)
+
+        suppressed.clear()
+        val visible =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-1"),
+                        kind = ConversationKind.Channel,
+                        channelId = ChannelId("channel-1"),
+                        messageId = MessageId("m-2"),
+                        title = "#general · Raft",
+                        body = "y",
+                        tag = "message:m-2"
+                    ),
+                currentServerId = "server-1",
+                visibleConversationKey = "channel-1",
+                onSuppressed = suppressed::add
+            )
+
+        assertNull(visible)
+        assertEquals(listOf("visible_conversation"), suppressed)
     }
 
     // task #441 (Quiver feedback 20d596f9): the thread's own row is not in the directory

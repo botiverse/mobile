@@ -15805,6 +15805,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is Heartbeat -> "heartbeat"
         is PerReceiverReadStateChanged -> "read_state_updated"
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+        is NotificationPushReceived -> "notification_push"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -15826,6 +15827,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged -> "realtime_content_apply"
+        is NotificationPushReceived -> "realtime_notification_apply"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =
