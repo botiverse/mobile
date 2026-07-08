@@ -14480,19 +14480,25 @@ private fun KuiklyThreadMessageCommentRef.hasThreadCommentHostSource(): Boolean 
 
 @Composable
 private fun ThreadInlineMetaTag(label: String) {
-    Text(
-        text = label,
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+    Box(
         modifier =
             Modifier
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .background(SlockColor.SurfaceCream)
-                .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp)
-    )
+                .padding(horizontal = ThreadInlineMetaTagHorizontalPadding, vertical = 2.dp)
+    ) {
+        Text(
+            text = label,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
+
+// Keep Anchor/Quote tag text aligned with SlockBrutalTextField's default horizontalPadding.
+private val ThreadInlineMetaTagHorizontalPadding: Dp = 10.dp
 
 @Composable
 private fun ThreadMessageCommentRefChip(
@@ -14997,7 +15003,7 @@ private fun ThreadAttachmentCommentComposer(
     val enabled = canComment && state.status == "loaded" && !state.sending
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
