@@ -10,6 +10,7 @@ import build.raft.app.data.realtime.MessageSeqEnvelope
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
 import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.slockLogInfo
@@ -162,6 +163,7 @@ internal class SlockSharedStoreProvider private constructor(
             markChannelUnread = markChannelUnread,
             archiveChannel = archiveChannel,
             setChannelActivityMuted = setChannelActivityMuted,
+            perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
             pinUpdateFailureCallback = pinUpdateFailureCallback,
             persistSlices = listOf(homeIdentityPersistSlice)
         ).also { homeStore = it }

@@ -60,7 +60,9 @@ sealed interface HomeConversationRow {
     val mentionCount: Int
     val mentionCountKnown: Boolean
     val lastMessageId: MessageId?
+    val lastMessageSeq: Long?
     val firstUnreadMessageId: MessageId?
+    val readStateMaxReadSeq: Long?
     val lastMessagePreview: String?
     val lastMessageAt: String?
     val lastMessageSenderName: String?
@@ -102,7 +104,9 @@ data class HomeChannelRow(
     override val mentionCount: Int = 0,
     override val mentionCountKnown: Boolean = false,
     override val lastMessageId: MessageId? = null,
+    override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
+    override val readStateMaxReadSeq: Long? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,
@@ -138,7 +142,9 @@ data class HomeDirectMessageRow(
     override val mentionCount: Int = 0,
     override val mentionCountKnown: Boolean = false,
     override val lastMessageId: MessageId? = null,
+    override val lastMessageSeq: Long? = null,
     override val firstUnreadMessageId: MessageId? = null,
+    override val readStateMaxReadSeq: Long? = null,
     override val lastMessagePreview: String? = null,
     override val lastMessageAt: String? = null,
     override val lastMessageSenderName: String? = null,
@@ -174,7 +180,9 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         mentionCount = mentionCount,
         mentionCountKnown = mentionCountKnown,
         lastMessageId = lastMessageId,
+        lastMessageSeq = lastMessageSeq,
         firstUnreadMessageId = firstUnreadMessageId,
+        readStateMaxReadSeq = readStateMaxReadSeq,
         lastMessagePreview = lastMessagePreview,
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
@@ -209,7 +217,9 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         mentionCount = mentionCount,
         mentionCountKnown = mentionCountKnown,
         lastMessageId = lastMessageId,
+        lastMessageSeq = lastMessageSeq,
         firstUnreadMessageId = firstUnreadMessageId,
+        readStateMaxReadSeq = readStateMaxReadSeq,
         lastMessagePreview = lastMessagePreview,
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
@@ -244,7 +254,9 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         mentionCount = mentionCount,
         mentionCountKnown = mentionCountKnown,
         lastMessageId = lastMessageId,
+        lastMessageSeq = lastMessageSeq,
         firstUnreadMessageId = firstUnreadMessageId,
+        readStateMaxReadSeq = readStateMaxReadSeq,
         lastMessagePreview = lastMessagePreview,
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
