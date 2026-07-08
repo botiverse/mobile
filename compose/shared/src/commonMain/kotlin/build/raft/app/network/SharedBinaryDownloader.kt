@@ -9,11 +9,16 @@ import com.tencent.kmm.network.service.NetworkClientConfig
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.time.TimeSource
 
 data class SharedDownloadedBytes(
     val bytes: ByteArray,
     val contentType: String?
 )
+
+fun interface BinaryDownloadDiagnosticsLogger {
+    fun record(tag: String, message: String)
+}
 
 /**
  * Binary downloads over NetworkKMM (task #12; formerly Ktor).
@@ -26,9 +31,18 @@ data class SharedDownloadedBytes(
  */
 object SharedBinaryDownloader {
     private const val DOWNLOAD_TIMEOUT_MILLIS = 60_000L
+    private const val DIAGNOSTICS_TAG = "SlockBinaryDownload"
+
+    private var diagnosticsLogger: BinaryDownloadDiagnosticsLogger? = null
+
+    fun setDiagnosticsLogger(logger: BinaryDownloadDiagnosticsLogger?) {
+        diagnosticsLogger = logger
+    }
 
     private val client: NetworkClient by lazy {
-        ensureNetworkKmmInitialized {}
+        ensureNetworkKmmInitialized { warning ->
+            recordDiagnostics("operation=networkkmm_init status=warning message=${warning.toSafeDiagnosticsToken()}")
+        }
         NetworkClient(
             NetworkClientConfig(
                 defaultPolicy = NetworkRequestPolicy(timeoutMillis = DOWNLOAD_TIMEOUT_MILLIS)
@@ -42,6 +56,7 @@ object SharedBinaryDownloader {
         val contentType =
             streamDownload(
                 url = url,
+                operation = "fetch_bytes",
                 failurePrefix = "Download failed",
                 onStart = {},
                 onChunk = { bytes, _, _ ->
@@ -63,6 +78,7 @@ object SharedBinaryDownloader {
     ): String? =
         streamDownload(
             url = url,
+            operation = "download_stream",
             failurePrefix = "Attachment download failed",
             onStart = onStart,
             beforeRead = beforeRead,
@@ -71,6 +87,7 @@ object SharedBinaryDownloader {
 
     private suspend fun streamDownload(
         url: String,
+        operation: String,
         failurePrefix: String,
         onStart: (totalBytes: Long?) -> Unit,
         beforeRead: () -> Unit = {},
@@ -81,6 +98,9 @@ object SharedBinaryDownloader {
         // start (raft.6) so progress is determinate when the server sends it.
         var downloadedBytes = 0L
         var totalBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
         return suspendCancellableCoroutine { continuation ->
             val call =
                 client.downloadStream(
@@ -95,6 +115,9 @@ object SharedBinaryDownloader {
                         },
                     onResponseStart = { _, contentLength, _ ->
                         totalBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start expectedBytes=${totalBytes ?: "unknown"} $urlSummary"
+                        )
                         onStart(totalBytes)
                     },
                     onChunk = { chunk ->
@@ -106,19 +129,46 @@ object SharedBinaryDownloader {
                         if (!continuation.isActive) return@downloadStream
                         val status = response.statusCode
                         if (status == null || status !in 200..299) {
+                            val safeErrorMessage = response.downloadErrorMessage()
+                            recordDiagnostics(
+                                "operation=$operation status=failed http=${status ?: 0} " +
+                                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                                    "errorKind=${response.error?.kind ?: "none"} " +
+                                    "errorRawCode=${response.error?.rawCode ?: response.rawResponse?.errorCode ?: "none"} " +
+                                    "message=$safeErrorMessage $urlSummary"
+                            )
                             continuation.resumeWithException(
                                 IllegalStateException(
                                     "$failurePrefix: HTTP ${status ?: 0}" +
-                                        (response.error?.message?.let { " ($it)" } ?: "")
+                                        safeErrorMessage.takeUnless { it == "none" }?.let { " ($it)" }.orEmpty()
                                 )
                             )
                         } else {
-                            continuation.resume(response.contentTypeHeader())
+                            val contentType = response.contentTypeHeader()
+                            recordDiagnostics(
+                                "operation=$operation status=complete http=$status " +
+                                    "downloadedBytes=$downloadedBytes expectedBytes=${totalBytes ?: "unknown"} " +
+                                    "contentType=${contentType ?: "unknown"} " +
+                                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                            )
+                            continuation.resume(contentType)
                         }
                     }
                 )
-            continuation.invokeOnCancellation { call.cancel() }
+            continuation.invokeOnCancellation {
+                recordDiagnostics(
+                    "operation=$operation status=canceled downloadedBytes=$downloadedBytes " +
+                        "expectedBytes=${totalBytes ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                call.cancel()
+            }
         }
+    }
+
+    private fun recordDiagnostics(message: String) {
+        diagnosticsLogger?.record(DIAGNOSTICS_TAG, message)
     }
 
     private fun com.tencent.kmm.network.export.NetworkResponse.contentTypeHeader(): String? =
@@ -129,6 +179,12 @@ object SharedBinaryDownloader {
             ?.substringBefore(';')
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+
+    private fun com.tencent.kmm.network.export.NetworkResponse.downloadErrorMessage(): String =
+        listOfNotNull(error?.message, rawResponse?.errorMessage)
+            .firstOrNull { it.isNotBlank() }
+            ?.toSafeDiagnosticsToken()
+            ?: "none"
 }
 
 internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
@@ -139,4 +195,19 @@ internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): 
         offset += chunk.size
     }
     return output
+}
+
+fun binaryDownloadUrlDiagnostics(rawUrl: String): String {
+    val trimmed = rawUrl.trim()
+    val scheme = trimmed.substringBefore("://", missingDelimiterValue = "").lowercase()
+    val afterScheme = trimmed.substringAfter("://", missingDelimiterValue = trimmed)
+    val hostPort = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+    val host = hostPort.substringBefore(':').takeIf { it.isNotBlank() } ?: "none"
+    val pathWithPrefix =
+        afterScheme.substringAfter('/', missingDelimiterValue = "")
+            .substringBefore('?')
+            .substringBefore('#')
+    val normalizedPath = pathWithPrefix.takeIf { it.isNotBlank() }?.let { "/$it" } ?: "/"
+    return "scheme=${scheme.ifBlank { "unknown" }} host=${host.toSafeDiagnosticsToken()} " +
+        "pathHash=${normalizedPath.hashCode().toString(16)} urlHash=${trimmed.hashCode().toString(16)}"
 }

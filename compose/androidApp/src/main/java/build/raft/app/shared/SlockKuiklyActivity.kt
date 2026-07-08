@@ -96,6 +96,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.data.SlockAndroidSqlDatabaseContext
 import build.raft.app.network.SharedBinaryDownloader
+import build.raft.app.network.binaryDownloadUrlDiagnostics
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -1255,6 +1256,9 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopePlatformFileResolver(context)
         installAndroidAppScopeEventBus(context)
         SlockAndroidSqlDatabaseContext.init(context)
+        SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
+            SlockDiagnosticsLogger.record(tag, message)
+        }
         if (initialized) {
             return
         }
@@ -1646,6 +1650,7 @@ private class SlockKuiklyImageAdapter(
                                 runBlocking {
                                     SharedBinaryDownloader.fetchBytes(imageLoadOption.src)
                                 }
+                        recordNetworkImageBytes(imageLoadOption, response.bytes.size, response.contentType)
                         drawableFromNetworkBytes(response.bytes, imageLoadOption, response.contentType)
                                 ?: throw IllegalStateException("Image decode failed")
                     }
@@ -1682,8 +1687,19 @@ private class SlockKuiklyImageAdapter(
         if (bytes.looksLikeSvg(contentType)) {
             return svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
         }
-        val bitmap = bitmapFromBytes(bytes, imageLoadOption) ?: return null
+        val bitmap = bitmapFromBytes(bytes, imageLoadOption)
+                ?: run {
+                    recordNetworkImageDecodeFailure(imageLoadOption, bytes.size, contentType)
+                    return null
+                }
         cacheNetworkBitmap(imageLoadOption.src, bitmap)
+        SlockDiagnosticsLogger.record(
+                "SlockImageLoad",
+                "source=network status=decoded bytes=${bytes.size} contentType=${contentType ?: "unknown"} " +
+                        "bitmapWidth=${bitmap.width} bitmapHeight=${bitmap.height} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
+        )
         return bitmap.toBitmapDrawable()
     }
 
@@ -1766,14 +1782,66 @@ private class SlockKuiklyImageAdapter(
     private fun Bitmap.toBitmapDrawable(): BitmapDrawable =
             BitmapDrawable(context.resources, this)
 
+    private fun recordNetworkImageBytes(
+            imageLoadOption: HRImageLoadOption,
+            byteCount: Int,
+            contentType: String?
+    ) {
+        SlockDiagnosticsLogger.record(
+                "SlockImageLoad",
+                "source=network status=bytes bytes=$byteCount contentType=${contentType ?: "unknown"} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
+        )
+    }
+
+    private fun recordNetworkImageDecodeFailure(
+            imageLoadOption: HRImageLoadOption,
+            byteCount: Int,
+            contentType: String?
+    ) {
+        SlockDiagnosticsLogger.record(
+                "SlockImageLoad",
+                "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
+        )
+    }
+
     private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
         SlockDiagnosticsLogger.record(
                 "SlockImageLoad",
                 "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
-                        "srcHash=${imageLoadOption.src.hashCode().toString(16)} " +
-                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight}"
+                        "message=${throwable.safeImageLoadMessage()} " +
+                        "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
+                        binaryDownloadUrlDiagnostics(imageLoadOption.src)
         )
     }
+
+    private fun Throwable.safeImageLoadMessage(): String =
+            (message ?: "none")
+                    .replace(Regex("""https?://[^\s)]+""", RegexOption.IGNORE_CASE), "[url]")
+                    .replace(
+                            Regex(
+                                    """(?i)\b(access[_-]?token|refresh[_-]?token|signature|password|authorization|bearer)\s*[:=]\s*[^\s,;)&]+"""
+                            )
+                    ) { matchResult ->
+                        "${matchResult.groupValues[1]}=[redacted]"
+                    }
+                    .replace(Regex("\\s+"), "_")
+                    .filter { char ->
+                        char.isLetterOrDigit() ||
+                                char == '_' ||
+                                char == '-' ||
+                                char == '.' ||
+                                char == ':' ||
+                                char == '/' ||
+                                char == '=' ||
+                                char == '[' ||
+                                char == ']'
+                    }
+                    .take(160)
+                    .ifBlank { "blank" }
 
     private fun svgBitmapDrawable(svgText: String, imageLoadOption: HRImageLoadOption): Drawable {
         val preparedSvg = imageLoadOption.svgColorOverride()
