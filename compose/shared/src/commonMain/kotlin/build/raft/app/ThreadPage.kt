@@ -137,6 +137,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -224,6 +225,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

@@ -363,6 +363,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.slockEpochMillisUtcIso
 import build.raft.app.model.slockStartOfDayUtcIso
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -437,6 +438,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -4922,7 +4924,7 @@ private fun SettingsConnectedAppsContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.LoaderCircle, title = "Loading") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.LoaderCircle, title = stringResource(MR.strings.common_loading)) {
                         SettingsFormDetailText("Loading integrations, marketplace apps, and OAuth clients.")
                     }
                 }
@@ -4931,7 +4933,7 @@ private fun SettingsConnectedAppsContent(
                     SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = "No Connected Apps") {
                         SettingsFormEmptyText("Connected Apps are unavailable for this workspace.")
                         SlockBrutalActionButton(
-                            label = "Retry",
+                            label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
                             leadingIcon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.SurfaceWhite
@@ -4943,7 +4945,7 @@ private fun SettingsConnectedAppsContent(
                     SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Connected Apps Error") {
                         SettingsFormErrorText(state.error.settingsUserFacingMessage())
                         SlockBrutalActionButton(
-                            label = "Retry",
+                            label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
                             leadingIcon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.SurfaceWhite
@@ -6237,7 +6239,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 SlockBrutalActionButton(
-                    label = "Open",
+                    label = stringResource(MR.strings.common_open),
                     onClick = { onOpenUrl(url) },
                     leadingIcon = SlockLucideIconName.ExternalLink,
                     backgroundColor = SlockColor.SurfaceWhite
@@ -6294,7 +6296,7 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
         SettingsConnectedAppDetailField("Agent Manifest", app.agentManifestUrl)
         app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
             SlockBrutalActionButton(
-                label = "Open",
+                label = stringResource(MR.strings.common_open),
                 onClick = { onOpenUrl(url) },
                 leadingIcon = SlockLucideIconName.ExternalLink,
                 backgroundColor = SlockColor.SurfaceWhite
@@ -6339,7 +6341,7 @@ private fun SettingsConnectedAppsConfirmDialog(
         actionState.connectedAppsErrorFor(action, target.id)?.let { SettingsFormErrorText(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 onClick = onDismiss,
                 enabled = !busy,
                 leadingIcon = SlockLucideIconName.X,
@@ -6797,7 +6799,7 @@ private fun SettingsConnectedAppEditorCard(
             )
             if (editing) {
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     onClick = onCancelEdit,
                     enabled = !busy,
                     leadingIcon = SlockLucideIconName.X,
@@ -7201,7 +7203,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         SlockBrutalActionButton(
-                            label = "Cancel",
+                            label = stringResource(MR.strings.common_cancel),
                             onClick = onCancel,
                             enabled = !deleteBusy,
                             modifier = Modifier.width(72.dp),
@@ -12584,7 +12586,7 @@ private fun SharedCreateChannelDialog(
         ) {
             Spacer(Modifier.weight(1f))
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 enabled = !submitting,
                 backgroundColor = SlockColor.SurfaceWhite,
                 onClick = onDismiss

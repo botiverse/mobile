@@ -34,6 +34,7 @@ import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.Presence
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -1039,7 +1041,7 @@ private fun VisualComputerNameSection(
                     enabled = !busy && draft.trim().isNotBlank()
                 )
                 VisualSmallActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     icon = SlockLucideIconName.X,
                     onClick = onCancel,
                     backgroundColor = SlockColor.SurfaceWhite,
@@ -1117,7 +1119,7 @@ private fun VisualComputerDescriptionSection(
                     enabled = !busy
                 )
                 VisualSmallActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     icon = SlockLucideIconName.X,
                     onClick = onCancel,
                     backgroundColor = SlockColor.SurfaceWhite,

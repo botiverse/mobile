@@ -109,6 +109,7 @@ import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.formatSlockTimestampClockWithSeconds
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
@@ -172,6 +173,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -3829,7 +3831,7 @@ private fun MembersLifecycleConfirmation(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
         ) {
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 enabled = !busy,
                 onClick = onCancel
             )
@@ -3902,7 +3904,7 @@ private fun MembersRestartResetDialog(
             verticalAlignment = Alignment.CenterVertically
         ) {
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 backgroundColor = SlockColor.SurfaceWhite,
@@ -5440,7 +5442,7 @@ private fun MembersAgentProfileTab(
                             backgroundColor = SlockColor.BrandYellow
                         )
                         SlockBrutalActionButton(
-                            label = "Cancel",
+                            label = stringResource(MR.strings.common_cancel),
                             onClick = {
                                 if (storeBackedProfileEdit) {
                                     profileStore.dispatch(
@@ -5531,7 +5533,7 @@ private fun MembersAgentProfileTab(
                             backgroundColor = SlockColor.BrandYellow
                         )
                         SlockBrutalActionButton(
-                            label = "Cancel",
+                            label = stringResource(MR.strings.common_cancel),
                             onClick = {
                                 if (storeBackedProfileEdit) {
                                     profileStore.dispatch(
@@ -5648,7 +5650,7 @@ private fun MembersAgentProfileTab(
                                 backgroundColor = SlockColor.BrandYellow
                             )
                             SlockBrutalActionButton(
-                                label = "Cancel",
+                                label = stringResource(MR.strings.common_cancel),
                                 onClick = {
                                     draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                                     serverRoleError = null
@@ -6263,7 +6265,7 @@ private fun MembersAgentRuntimeConfigDialog(
             ) {
                 Spacer(Modifier.weight(1f))
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     enabled = !saving,
                     backgroundColor = SlockColor.SurfaceWhite,
                     onClick = onDismiss
@@ -6417,7 +6419,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     backgroundColor = SlockColor.SurfaceWhite,
                     onClick = onCancel
                 )
@@ -7196,7 +7198,7 @@ private fun MembersWorkspaceNodeRow(
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("Files", message)
     SlockBrutalActionButton(
-        label = "Retry",
+        label = stringResource(MR.strings.common_retry),
         leadingIcon = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
@@ -7208,7 +7210,7 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("State", message)
     SlockBrutalActionButton(
-        label = "Retry",
+        label = stringResource(MR.strings.common_retry),
         leadingIcon = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),

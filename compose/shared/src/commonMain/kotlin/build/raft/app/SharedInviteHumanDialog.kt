@@ -5,6 +5,7 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalReadOnlyValueField
 import build.raft.app.components.SlockBrutalSectionLabel
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 
 /**
@@ -159,7 +161,7 @@ internal fun SharedInviteHumanDialog(
             ) {
                 Spacer(Modifier.weight(1f))
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,
                     backgroundColor = SlockColor.SurfaceWhite,
                     textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
