@@ -2523,7 +2523,20 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun directMessageReplyThreadComposerUsesServerWideMemberSuggestions() {
+    fun replyThreadComposerUsesServerWideMemberSuggestionsWithMembershipHeaders() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
+                memberScopedMentions = true
+            )
+
+        assertEquals(false, payload.threadComposerMemberScopedMentions())
+        assertEquals(true, payload.threadComposerMemberSuggestionHeadersVisible())
+    }
+
+    @Test
+    fun directMessageReplyThreadComposerUsesServerWideMemberSuggestionsWithoutMembershipHeaders() {
         val payload =
             KuiklyThreadScreenPayload(
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4285,7 +4298,7 @@ class ThreadPayloadTest {
         assertEquals("parent-message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
         assertEquals(false, composer.showAsTaskToggle)
-        assertEquals(true, initialPayload.threadComposerMemberScopedMentions())
+        assertEquals(false, initialPayload.threadComposerMemberScopedMentions())
         assertEquals(true, initialPayload.threadComposerMemberSuggestionHeadersVisible())
     }
 
