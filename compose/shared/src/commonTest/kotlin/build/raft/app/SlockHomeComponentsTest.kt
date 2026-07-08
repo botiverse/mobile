@@ -1033,6 +1033,20 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun resolveSortAutoScrollDeltaScrollsNearViewportEdges() {
+        assertEquals(-10f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(10f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+    }
+
+    @Test
+    fun resolveSortAutoScrollDeltaIgnoresInvalidViewportOrStep() {
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 100f, viewportEnd = 100f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 0f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 0f))
+    }
+
+    @Test
     fun moveItemKeepsOrderWhenTargetIsUnchangedOrMissing() {
         val order = listOf("a", "b", "c")
 

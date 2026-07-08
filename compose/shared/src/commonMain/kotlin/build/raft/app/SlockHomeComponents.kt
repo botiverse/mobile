@@ -67,6 +67,7 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -148,6 +149,8 @@ private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 private const val HomeServerSwitcherMaxVisibleRows = 6
+private val SlockSortEdgeScrollZone = 56.dp
+private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
@@ -1943,6 +1946,47 @@ internal fun resolveSortTargetIndex(
     return raw.coerceIn(0, lastIndex)
 }
 
+internal fun resolveSortAutoScrollDelta(
+    pointerY: Float,
+    viewportStart: Float,
+    viewportEnd: Float,
+    edgeScrollZone: Float,
+    edgeScrollStep: Float
+): Float {
+    if (viewportEnd <= viewportStart || edgeScrollZone <= 0f || edgeScrollStep <= 0f) return 0f
+    return when {
+        pointerY < viewportStart + edgeScrollZone -> -edgeScrollStep
+        pointerY > viewportEnd - edgeScrollZone -> edgeScrollStep
+        else -> 0f
+    }
+}
+
+private suspend fun runSlockSortAutoScrollLoop(
+    listState: LazyListState,
+    isDragging: () -> Boolean,
+    pointerViewportY: () -> Float,
+    edgeScrollZonePx: Float,
+    edgeScrollStepPx: Float,
+    onScrolled: (delta: Float, consumed: Float) -> Unit
+) {
+    while (isDragging()) {
+        val info = listState.layoutInfo
+        val delta =
+            resolveSortAutoScrollDelta(
+                pointerY = pointerViewportY(),
+                viewportStart = info.viewportStartOffset.toFloat(),
+                viewportEnd = info.viewportEndOffset.toFloat(),
+                edgeScrollZone = edgeScrollZonePx,
+                edgeScrollStep = edgeScrollStepPx
+            )
+        if (delta != 0f) {
+            val consumed = listState.dispatchRawDelta(delta)
+            onScrolled(delta, consumed)
+        }
+        withFrameNanos { }
+    }
+}
+
 /**
  * Reconstruct the Pinned section from raw `pinnedChannelIds`, `pinnedAgentIds`,
  * and `pinnedOrder`
@@ -2391,6 +2435,8 @@ private fun ServerSwitcherPanel(
     val density = LocalDensity.current
     val handleWidthPx = with(density) { HomeServerSwitcherDragHandleWidth.toPx() }
     val rowStepPx = with(density) { HomeServerSwitcherRowMinHeight.toPx().coerceAtLeast(1f) }
+    val edgeScrollZonePx = with(density) { SlockSortEdgeScrollZone.toPx() }
+    val edgeScrollStepPx = with(density) { SlockSortEdgeScrollStep.toPx() }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var draggedStartIndex by remember { mutableStateOf(0) }
     var pointerViewportY by remember { mutableStateOf(0f) }
@@ -2420,6 +2466,29 @@ private fun ServerSwitcherPanel(
             val index = order.indexOf(id).takeIf { it >= 0 } ?: return@mapNotNull null
             SlockSortRowBounds(index = index, top = info.offset.toFloat(), size = info.size.toFloat())
         }
+
+    fun recomputeDrag() {
+        if (draggedId == null) return
+        targetIndex = resolveSortTargetIndex(pointerViewportY, visibleServerRowBounds(), order.lastIndex)
+    }
+
+    LaunchedEffect(draggedId) {
+        if (draggedId == null) return@LaunchedEffect
+        runSlockSortAutoScrollLoop(
+            listState = listState,
+            isDragging = { draggedId != null },
+            pointerViewportY = { pointerViewportY },
+            edgeScrollZonePx = edgeScrollZonePx,
+            edgeScrollStepPx = edgeScrollStepPx
+        ) { delta, consumed ->
+            recomputeDrag()
+            slockLogInfo(
+                "SlockServerSwitcher",
+                "autoscroll delta=$delta consumed=$consumed pointerY=$pointerViewportY " +
+                    "target=$targetIndex firstVisible=${listState.firstVisibleItemIndex}"
+            )
+        }
+    }
 
     HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
@@ -2474,7 +2543,7 @@ private fun ServerSwitcherPanel(
                                     if (draggedId != null) {
                                         change.consume()
                                         pointerViewportY += dragAmount.y
-                                        targetIndex = resolveSortTargetIndex(pointerViewportY, visibleServerRowBounds(), order.lastIndex)
+                                        recomputeDrag()
                                     }
                                 }
                             },
@@ -3090,8 +3159,8 @@ private fun SlockSidebarSortOverlay(
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val rowStepPx = with(density) { (ChannelRowHeight + 2.dp).toPx().coerceAtLeast(1f) }
-    val edgeScrollZonePx = with(density) { 56.dp.toPx() }
-    val edgeScrollStepPx = with(density) { 10.dp.toPx() }
+    val edgeScrollZonePx = with(density) { SlockSortEdgeScrollZone.toPx() }
+    val edgeScrollStepPx = with(density) { SlockSortEdgeScrollStep.toPx() }
     val listState = rememberLazyListState()
 
     // Content-space drag model. The LazyColumn item order and layout stay FIXED
@@ -3145,26 +3214,19 @@ private fun SlockSidebarSortOverlay(
     // gesture (task #356 device feedback: auto-release + jitter).
     LaunchedEffect(draggedId) {
         if (draggedId == null) return@LaunchedEffect
-        while (draggedId != null) {
-            val info = listState.layoutInfo
-            val start = info.viewportStartOffset.toFloat()
-            val end = info.viewportEndOffset.toFloat()
-            val delta =
-                when {
-                    pointerViewportY < start + edgeScrollZonePx -> -edgeScrollStepPx
-                    pointerViewportY > end - edgeScrollZonePx -> edgeScrollStepPx
-                    else -> 0f
-                }
-            if (delta != 0f) {
-                val consumed = listState.dispatchRawDelta(delta)
-                recomputeDrag()
-                slockLogInfo(
-                    "SlockHomeSort",
-                    "autoscroll delta=$delta consumed=$consumed pointerY=$pointerViewportY " +
-                        "target=$targetIndex firstVisible=${listState.firstVisibleItemIndex}"
-                )
-            }
-            withFrameNanos { }
+        runSlockSortAutoScrollLoop(
+            listState = listState,
+            isDragging = { draggedId != null },
+            pointerViewportY = { pointerViewportY },
+            edgeScrollZonePx = edgeScrollZonePx,
+            edgeScrollStepPx = edgeScrollStepPx
+        ) { delta, consumed ->
+            recomputeDrag()
+            slockLogInfo(
+                "SlockHomeSort",
+                "autoscroll delta=$delta consumed=$consumed pointerY=$pointerViewportY " +
+                    "target=$targetIndex firstVisible=${listState.firstVisibleItemIndex}"
+            )
         }
     }
 
