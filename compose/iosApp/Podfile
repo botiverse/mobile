@@ -28,15 +28,17 @@ target 'iosApp' do
     :shell_path => '/bin/sh',
     :script => <<-CMD
 set -e
-REPO_ROOT="$SRCROOT/../.."
-LOCAL_PROPS="$REPO_ROOT/local.properties"
+# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),
+# which is one level up from this target's $SRCROOT (compose/iosApp).
+GRADLE_ROOT="$SRCROOT/.."
+LOCAL_PROPS="$GRADLE_ROOT/local.properties"
 touch "$LOCAL_PROPS"
 /usr/bin/sed -i '' '/^tmm\\.resources\\./d' "$LOCAL_PROPS" || true
 {
   echo "tmm.resources.BUILT_PRODUCTS_DIR=$BUILT_PRODUCTS_DIR"
   echo "tmm.resources.CONTENTS_FOLDER_PATH=$CONTENTS_FOLDER_PATH"
 } >> "$LOCAL_PROPS"
-"$REPO_ROOT/gradlew" -p "$REPO_ROOT" :shared:copyFrameworkResourcesToApp \\
+"$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
   -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\
   -Ptmm.resources.PLATFORM_NAME="$PLATFORM_NAME" \\
   -Ptmm.resources.ARCHS="$ARCHS"
