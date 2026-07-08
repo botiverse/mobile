@@ -28,6 +28,10 @@ on:
       - "third_party/sqldelight"
       - "third_party/kuikly-compose-markdown/**"
   workflow_dispatch:
+  # Nightly run so the (slow, macOS) iOS compile still runs on a schedule even
+  # though it no longer gates pull requests. See the `ios` job's `if:` guard.
+  schedule:
+    - cron: "0 18 * * *"
 
 permissions:
   contents: read
@@ -425,6 +429,12 @@ jobs:
 
   ios:
     name: iOS compile
+    # The macOS iOS compile takes ~40min and was blocking/slowing PR merges.
+    # Run it only on main pushes + the nightly schedule (and manual dispatch),
+    # not on pull requests. iOS is a pure commonMain consumer, so Android +
+    # OHOS shared compile on PRs already catch shared-code breaks; iOS-specific
+    # regressions are caught on main/nightly. (artin, 2026-07-08.)
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: macos-latest
     timeout-minutes: 75
     env:
