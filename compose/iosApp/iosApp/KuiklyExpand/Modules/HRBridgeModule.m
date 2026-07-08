@@ -1,7 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
-#import <Quiver/QuiverReport.h>
+#import <Quiver/Quiver.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -22,12 +22,18 @@ static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
 static NSString *const SlockBridgeReplaceCurrentPageKey = @"slockReplaceCurrentPage";
 static NSString *const SlockDiagnosticsLogDirName = @"Slock/diagnostics";
 static NSString *const SlockDiagnosticsLogFileName = @"slock-diagnostics.jsonl";
+static NSString *const SlockDiagnosticsFeedbackDirName = @"slock-feedback";
+static NSString *const SlockDiagnosticsFeedbackFilePrefix = @"slock-feedback-";
+static NSString *const SlockDiagnosticsSummaryFileName = @"slock-diagnostics-summary.txt";
 static NSString *const SlockApiEnvironmentMMKVNamespace = @"slock_api_server_environment";
 static NSUInteger const SlockDiagnosticsMemoryEntryLimit = 512;
 static NSUInteger const SlockDiagnosticsMessageMaxChars = 2048;
 static NSUInteger const SlockDiagnosticsRecentMaxChars = 120000;
 static unsigned long long const SlockDiagnosticsLogMaxBytes = 512ULL * 1024ULL;
 static NSUInteger const SlockDiagnosticsLogMaxFiles = 4;
+static NSUInteger const SlockDiagnosticsAttachmentMaxLogFiles = 6;
+static NSUInteger const SlockDiagnosticsFeedbackFileKeepCount = 5;
+static char SlockDiagnosticsWriterQueueSpecificKey;
 
 static NSDictionary *SlockBridgeDictionaryFromValue(id value) {
     if ([value isKindOfClass:NSDictionary.class]) {
@@ -166,8 +172,21 @@ static dispatch_queue_t SlockDiagnosticsWriterQueue(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         queue = dispatch_queue_create("build.raft.app.ios.diagnostics.writer", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_set_specific(
+            queue,
+            &SlockDiagnosticsWriterQueueSpecificKey,
+            &SlockDiagnosticsWriterQueueSpecificKey,
+            NULL
+        );
     });
     return queue;
+}
+
+static void SlockDiagnosticsFlushWriterQueue(void) {
+    if (dispatch_get_specific(&SlockDiagnosticsWriterQueueSpecificKey) == &SlockDiagnosticsWriterQueueSpecificKey) {
+        return;
+    }
+    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{});
 }
 
 static NSString *SlockDiagnosticsTimestamp(void) {
@@ -354,7 +373,7 @@ static NSString *SlockDiagnosticsReadTail(NSString *path, NSUInteger maxChars) {
 }
 
 static NSString *SlockDiagnosticsExportRecentText(NSUInteger maxChars) {
-    dispatch_sync(SlockDiagnosticsWriterQueue(), ^{});
+    SlockDiagnosticsFlushWriterQueue();
     NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"App-owned recent diagnostics\n"];
@@ -384,6 +403,7 @@ static void SlockDiagnosticsClear(void) {
     @synchronized (entries) {
         [entries removeAllObjects];
     }
+    SlockDiagnosticsFlushWriterQueue();
     dispatch_sync(SlockDiagnosticsWriterQueue(), ^{
         NSString *dir = SlockDiagnosticsDirectoryPath();
         NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
@@ -398,7 +418,7 @@ static void SlockDiagnosticsClear(void) {
 static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
-    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"buildTime", @"gitCommit", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel"];
+    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"buildTime", @"gitCommit", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel", @"diagnosticsReason", @"crashAtMillis", @"crashAt"];
     for (NSString *key in keys) {
         NSString *value = SlockBridgeString(about[key]);
         if (value.length > 0) {
@@ -408,6 +428,154 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     [text appendString:@"\niOS diagnostics\n"];
     [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
     return text;
+}
+
+static NSString *SlockDiagnosticsFeedbackDirectoryPath(void) {
+    return [SlockDiagnosticsDirectoryPath() stringByAppendingPathComponent:SlockDiagnosticsFeedbackDirName];
+}
+
+static void SlockDiagnosticsPruneFeedbackFiles(NSString *dir) {
+    NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil] ?: @[];
+    NSMutableArray<NSString *> *paths = [NSMutableArray array];
+    for (NSString *name in names) {
+        if ([name hasPrefix:SlockDiagnosticsFeedbackFilePrefix]) {
+            [paths addObject:[dir stringByAppendingPathComponent:name]];
+        }
+    }
+    [paths sortUsingComparator:^NSComparisonResult(NSString *left, NSString *right) {
+        NSDate *leftDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:left error:nil] fileModificationDate] ?: NSDate.distantPast;
+        NSDate *rightDate = [[[NSFileManager defaultManager] attributesOfItemAtPath:right error:nil] fileModificationDate] ?: NSDate.distantPast;
+        return [rightDate compare:leftDate];
+    }];
+    if (paths.count <= SlockDiagnosticsFeedbackFileKeepCount) {
+        return;
+    }
+    for (NSUInteger index = SlockDiagnosticsFeedbackFileKeepCount; index < paths.count; index++) {
+        [[NSFileManager defaultManager] removeItemAtPath:paths[index] error:nil];
+    }
+}
+
+static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about, NSString *reason, BOOL includeBodyBase64) {
+    SlockDiagnosticsFlushWriterQueue();
+    NSString *summaryText = SlockDiagnosticsBuildExportText(about ?: @{});
+    NSString *safeReason = SlockBridgeSanitizedLogString(reason ?: @"diagnostics").lowercaseString;
+    NSData *summaryData = [summaryText dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
+    NSString *dir = SlockDiagnosticsFeedbackDirectoryPath();
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    [fileManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    SlockDiagnosticsPruneFeedbackFiles(dir);
+    long long timestampMs = (long long)(NSDate.date.timeIntervalSince1970 * 1000.0);
+    NSString *snapshotDir =
+        [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@%lld", SlockDiagnosticsFeedbackFilePrefix, timestampMs]];
+    [fileManager createDirectoryAtPath:snapshotDir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *fileName = SlockDiagnosticsSummaryFileName;
+    NSString *path = [snapshotDir stringByAppendingPathComponent:fileName];
+    if (![summaryData writeToFile:path atomically:YES]) {
+        return @{
+            @"status" : @"error",
+            @"code" : @"diagnostics_summary_write_failed",
+            @"message" : @"Unable to write diagnostics summary."
+        };
+    }
+    NSMutableArray<NSString *> *attachmentPaths = [NSMutableArray arrayWithObject:path];
+    NSArray<NSString *> *files = SlockDiagnosticsLogFiles();
+    NSUInteger fileCount = MIN(files.count, SlockDiagnosticsAttachmentMaxLogFiles);
+    for (NSUInteger index = 0; index < fileCount; index++) {
+        NSString *logPath = files[index];
+        if ([[NSFileManager defaultManager] isReadableFileAtPath:logPath]) {
+            [attachmentPaths addObject:logPath];
+        }
+    }
+    NSMutableDictionary *result = [@{
+        @"status" : @"ok",
+        @"reason" : safeReason.length > 0 ? safeReason : @"diagnostics",
+        @"fileName" : fileName,
+        @"mimeType" : @"text/plain",
+        @"sizeBytes" : @(summaryData.length),
+        @"filePath" : path,
+        @"attachmentPaths" : [attachmentPaths copy],
+        @"logFileCount" : @(attachmentPaths.count > 0 ? attachmentPaths.count - 1 : 0)
+    } mutableCopy];
+    if (includeBodyBase64) {
+        result[@"bodyBase64"] = [summaryData base64EncodedStringWithOptions:0];
+    }
+    SlockDiagnosticsRecord(
+        @"info",
+        @"SlockDiagnostics",
+        [NSString stringWithFormat:@"diagnostics_attachments_prepared reason=%@ summary=%@ bytes=%lu paths=%lu",
+            result[@"reason"],
+            fileName,
+            (unsigned long)summaryData.length,
+            (unsigned long)attachmentPaths.count]
+    );
+    return result;
+}
+
+static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
+    NSMutableDictionary *about = [@{
+        @"diagnosticsReason" : @"crash",
+        @"crashAtMillis" : @(crashAtMillis)
+    } mutableCopy];
+    if (crashAtMillis > 0) {
+        NSDate *date = [NSDate dateWithTimeIntervalSince1970:((NSTimeInterval)crashAtMillis / 1000.0)];
+        if (@available(iOS 10.0, *)) {
+            NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+            formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+            about[@"crashAt"] = [formatter stringFromDate:date];
+        } else {
+            about[@"crashAt"] = date.description;
+        }
+    }
+    return about;
+}
+
+NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason) {
+    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(@{}, reason ?: @"crash", NO);
+    NSArray *paths = [attachments[@"attachmentPaths"] isKindOfClass:NSArray.class] ? attachments[@"attachmentPaths"] : @[];
+    return paths;
+}
+
+NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPathsForCrash(int64_t crashAtMillis) {
+    NSString *reason = crashAtMillis > 0
+        ? [NSString stringWithFormat:@"crash-%lld", (long long)crashAtMillis]
+        : @"crash";
+    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(SlockDiagnosticsCrashAbout((long long)crashAtMillis), reason, NO);
+    NSArray *paths = [attachments[@"attachmentPaths"] isKindOfClass:NSArray.class] ? attachments[@"attachmentPaths"] : @[];
+    return paths;
+}
+
+NSString *SlockIosPrepareDiagnosticsCrashAttachmentPath(void) {
+    return SlockIosPrepareDiagnosticsAttachmentPaths(@"crash").firstObject;
+}
+
+static void SlockIosRegisterQuiverDiagnosticsProvider(void) {
+    Class crashReporter = NSClassFromString(@"QuiverCrashReporter");
+    SEL selector = NSSelectorFromString(@"setDiagnosticsProvider:");
+    if (!crashReporter || ![crashReporter respondsToSelector:selector]) {
+        SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"quiver_diagnostics_provider_unavailable");
+        return;
+    }
+    NSArray<NSString *> *_Nullable (^provider)(int64_t) = ^NSArray<NSString *> *_Nullable(int64_t crashAtMillis) {
+        return SlockIosPrepareDiagnosticsAttachmentPathsForCrash(crashAtMillis);
+    };
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+    [crashReporter performSelector:selector withObject:[provider copy]];
+#pragma clang diagnostic pop
+    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_diagnostics_provider_registered crashAtMillis=true");
+}
+
+void SlockIosInstallQuiverReporting(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // App-owned Quiver reporting config (client key is DSN-class: it
+        // identifies the app; rotate from the Quiver console if leaked).
+        SlockIosRegisterQuiverDiagnosticsProvider();
+        [Quiver installWithConfig:[QuiverConfig configWithBaseUrl:@"https://quiver.oranix.io"
+                                                          appSlug:@"raft-ios"
+                                                          channel:@"main"
+                                                        clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
+    });
 }
 
 // 扩展桥接接口
@@ -929,13 +1097,14 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
 - (void)slock_submitQuiverFeedbackWithDescription:(NSString *)description {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
+        NSArray *draftPaths = [draft[@"attachmentPaths"] isKindOfClass:NSArray.class] ? draft[@"attachmentPaths"] : @[];
         NSString *path = SlockBridgeString(draft[@"filePath"]);
-        NSArray<NSString *> *attachments = path.length > 0 ? @[ path ] : @[];
-        [QuiverReport submitFeedback:description
-                                 kind:@"bug"
-                      attachmentPaths:attachments
-                               extras:nil
-                           completion:^(NSString *ticketId, NSError *error) {
+        NSArray<NSString *> *attachments = draftPaths.count > 0 ? draftPaths : (path.length > 0 ? @[ path ] : @[]);
+        [Quiver submitFeedback:description
+                           kind:@"bug"
+                attachmentPaths:attachments
+                         extras:nil
+                     completion:^(NSString *ticketId, NSError *error) {
             SlockBridgeRunOnMain(^{
                 UIViewController *controller = [self slock_currentViewController];
                 if (error || ticketId.length == 0) {
@@ -967,24 +1136,21 @@ static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
 
 - (NSDictionary *)slock_prepareDiagnosticsFeedbackDraft {
     NSDictionary *about = [self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
-    NSString *summaryText = SlockDiagnosticsBuildExportText(about);
-    NSString *fileName = [NSString stringWithFormat:@"slock-feedback-%lld.txt", (long long)(NSDate.date.timeIntervalSince1970 * 1000.0)];
-    NSString *dir = SlockDiagnosticsDirectoryPath();
-    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *path = [dir stringByAppendingPathComponent:fileName];
-    [summaryText writeToFile:path atomically:YES encoding:NSUTF8StringEncoding error:nil];
-    NSData *data = [summaryText dataUsingEncoding:NSUTF8StringEncoding] ?: [NSData data];
-    NSString *bodyBase64 = [data base64EncodedStringWithOptions:0];
+    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
+    if (![SlockBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
+        return attachments;
+    }
+    NSString *fileName = SlockBridgeString(attachments[@"fileName"]);
     NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
-    SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", [NSString stringWithFormat:@"diagnostics_feedback_prepared file=%@ bytes=%lu", fileName, (unsigned long)data.length]);
     return @{
         @"status" : @"ok",
         @"message" : message,
         @"fileName" : fileName,
-        @"mimeType" : @"text/plain",
-        @"sizeBytes" : @(data.length),
-        @"bodyBase64" : bodyBase64,
-        @"filePath" : path
+        @"mimeType" : SlockBridgeString(attachments[@"mimeType"]),
+        @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
+        @"bodyBase64" : SlockBridgeString(attachments[@"bodyBase64"]),
+        @"filePath" : SlockBridgeString(attachments[@"filePath"]),
+        @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
     };
 }
 
