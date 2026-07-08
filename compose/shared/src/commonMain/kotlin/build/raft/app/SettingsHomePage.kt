@@ -332,6 +332,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -3249,42 +3250,39 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         activeAnnouncement =
                             (announcementsClient.activeAnnouncements() as? DataResult.Content)?.data?.items?.firstOrNull()
                     }
-                    if (event is MessageNew) {
-                        val directory = latestAppShellConversationDirectory
+                    // task #459: `message:new` is a data-sync trigger only — the store
+                    // accept above is its whole job. Attention comes from the
+                    // server-qualified `notification:push` stream (server PR #4233):
+                    // identity is typed on the payload, so there is nothing to defer.
+                    if (event is NotificationPushReceived) {
                         if (latestForegroundMessageBannersEnabled) {
-                            val projection =
-                                slockForegroundMessageBannerProjectionResult(
-                                    serverId = serverId,
+                            val banner =
+                                slockNotificationPushBannerOrNull(
+                                    event = event,
                                     currentServerId = activeSession?.currentServerId,
-                                    message = event.message,
-                                    currentMemberId = activeSession?.user?.id,
                                     visibleConversationKey =
                                         appShellVisibleForegroundConversationKey(
                                             selectedTab = latestSelectedTab,
                                             selectedHomeDestination = latestSelectedHomeDestination,
                                             selectedConversationId = latestSelectedHomeConversationId
                                         ),
-                                    conversationDirectory = directory
+                                    conversationDirectory = latestAppShellConversationDirectory,
+                                    onSuppressed = { reason ->
+                                        bridge.log(
+                                            "notification_push_banner_suppressed reason=$reason " +
+                                                "serverId=${event.serverId.value} messageId=${event.messageId.value} kind=${event.kind.name}"
+                                        )
+                                    }
                                 )
-                            bridge.log(projection.appShellForegroundBannerProjectionLog(event.message, source = "message_new"))
-                            if (projection.shouldWaitForActivityThreadProjection(event.message)) {
-                                pendingForegroundMessage =
-                                    event.message.toAppShellPendingForeground(serverId)
+                            banner?.let {
                                 bridge.log(
-                                    "foreground_banner_projection_defer reason=activity_thread_projection_pending " +
-                                        "messageId=${event.message.id.value} streamId=${event.message.appShellForegroundStreamId().orEmpty()}"
+                                    "notification_push_banner_shown serverId=${event.serverId.value} " +
+                                        "messageId=${event.messageId.value} kind=${event.kind.name}"
                                 )
-                                homeShellStore.dispatch(SharedHomeShellIntent.Activity(SharedActivityIntent.Refresh))
-                            } else {
-                                projection.banner?.let { banner ->
-                                    foregroundMessageBanner = banner
-                                    pendingForegroundMessage =
-                                        pendingForegroundMessage?.takeUnless { it.ticket.messageId == event.message.id.value }
-                                }
+                                foregroundMessageBanner = it
                             }
                         } else {
                             foregroundMessageBanner = null
-                            pendingForegroundMessage = null
                         }
                     } else if (event is ThreadUpdated) {
                         val pending = pendingForegroundMessage
@@ -15807,6 +15805,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is Heartbeat -> "heartbeat"
         is PerReceiverReadStateChanged -> "read_state_updated"
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+        is NotificationPushReceived -> "notification_push"
     }
 
 private fun RealtimeEvent.performanceMarkerPhase(): String =
@@ -15828,6 +15827,7 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
         is PerReceiverNotificationPrefsChanged -> "realtime_content_apply"
+        is NotificationPushReceived -> "realtime_notification_apply"
     }
 
 private fun RealtimeEvent.shouldEmitAppShellRouteMarker(): Boolean =

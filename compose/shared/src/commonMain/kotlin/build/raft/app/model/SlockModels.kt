@@ -608,6 +608,28 @@ data class PerReceiverNotificationPrefsChanged(
     val prefsVersion: Long
 ) : RealtimeEvent
 
+/**
+ * task #459: server-qualified notification event (server PR #4233 mirror of
+ * the web-push targets to `user:<id>` rooms). The server has already decided
+ * this message deserves attention (DM membership, per-channel notification
+ * scope incl. mentions-only, thread followers, mute exclusion) — the client
+ * never re-derives eligibility. Identity is typed (same seven-field family
+ * as MessageConversationContext); display strings are server-formatted.
+ */
+@Serializable
+data class NotificationPushReceived(
+    val serverId: ServerId,
+    val kind: ConversationKind,
+    val channelId: ChannelId? = null,
+    val threadId: ChannelId? = null,
+    val parentChannelId: ChannelId? = null,
+    val parentMessageId: MessageId? = null,
+    val messageId: MessageId,
+    val title: String,
+    val body: String,
+    val tag: String
+) : RealtimeEvent
+
 // Settings Models
 @Serializable
 data class SettingsSummary(

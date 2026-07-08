@@ -8,6 +8,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 
@@ -26,7 +27,7 @@ interface SlockRealtimeAppScopeSink {
     fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: String)
     suspend fun maybePostBackgroundUnreadNotification(
         serverId: ServerId,
-        event: MessageNew,
+        event: NotificationPushReceived,
         isAppInForeground: Boolean
     )
 }
@@ -360,7 +361,8 @@ class SlockRealtimeAppScopeEngine {
             eventName = eventName,
             logMessage = receivedLog,
             roomCommandDecision = roomCommandDecision,
-            shouldPostBackgroundUnreadNotification = event is MessageNew,
+            // task #459: the tray posts only from the server-qualified stream.
+            shouldPostBackgroundUnreadNotification = event is NotificationPushReceived,
             isAppInForeground = isAppInForeground
         )
     }
@@ -537,7 +539,9 @@ class SlockRealtimeAppScopeCoordinator(
             }
         }
         val currentServerId = decision.serverId ?: return
-        if (decision.shouldPostBackgroundUnreadNotification && event is MessageNew) {
+        // task #459: the tray posts from the server-qualified stream only —
+        // message:new is a data-sync trigger and never reaches the poster.
+        if (decision.shouldPostBackgroundUnreadNotification && event is NotificationPushReceived) {
             sink.maybePostBackgroundUnreadNotification(
                 serverId = currentServerId,
                 event = event,

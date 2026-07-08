@@ -8,6 +8,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
@@ -781,5 +782,85 @@ class RealtimeEventMapperTest {
         assertEquals(900L, changed.preference.muteFromSeq)
         assertTrue(changed.preference.activityMuteSupported)
         assertEquals(2L, changed.prefsVersion)
+    }
+
+    // task #459: server-qualified notification stream (server PR #4233).
+    @Test
+    fun notificationPushMapsThreadIdentityAndDisplay() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPush,
+                """
+                {
+                  "serverId": "server-1",
+                  "kind": "thread",
+                  "channelId": null,
+                  "threadId": "reply-stream",
+                  "parentChannelId": "parent-channel",
+                  "parentMessageId": "parent-message",
+                  "messageId": "reply-1",
+                  "title": "Thread in #home-fixes · Raft",
+                  "body": "Cindy: hello",
+                  "tag": "message:reply-1",
+                  "url": "https://app.raft.build/s/raft/c/parent-channel"
+                }
+                """.trimIndent()
+            )
+
+        val push = assertIs<NotificationPushReceived>(event)
+        assertEquals("server-1", push.serverId.value)
+        assertEquals(ConversationKind.Thread, push.kind)
+        assertEquals("reply-stream", push.threadId?.value)
+        assertEquals("parent-channel", push.parentChannelId?.value)
+        assertEquals("parent-message", push.parentMessageId?.value)
+        assertEquals("reply-1", push.messageId.value)
+        assertEquals("Thread in #home-fixes · Raft", push.title)
+        assertEquals("Cindy: hello", push.body)
+    }
+
+    @Test
+    fun notificationPushThreadWithoutParentPairIsDropped() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "thread", "threadId": "reply-stream", "messageId": "reply-1" }"""
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun notificationPushChannelWithoutChannelIdIsDropped() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "channel", "messageId": "m-1" }"""
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun notificationPushUnknownKindIsDropped() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "carrier-pigeon", "channelId": "c-1", "messageId": "m-1" }"""
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun notificationPushDmMapsChannelIdentity() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.NotificationPush,
+                """{ "serverId": "server-1", "kind": "dm", "channelId": "dm-1", "messageId": "m-2", "title": "DM · Raft", "body": "Cindy: hi", "tag": "message:m-2" }"""
+            )
+
+        val push = assertIs<NotificationPushReceived>(event)
+        assertEquals(ConversationKind.DirectMessage, push.kind)
+        assertEquals("dm-1", push.channelId?.value)
     }
 }

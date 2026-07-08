@@ -666,3 +666,19 @@ Raft mobile ships and reports through Quiver. Two reference docs:
   feedback diagnostics attachment (`slock-feedback-*.zip`: summary +
   `app_logs/*.jsonl`), the app-owned log format, and triage tips. Quiver
   delivers the raw attachment; this app owns the archive layout.
+
+## Adding a RealtimeEvent subtype — checklist
+
+Missing any of these compiles-or-bites in a different layer than the one you
+edited (it bit #360 and #387 on the same day):
+
+1. Event name into `RealtimeSocketEvents.ServerWireEvents` — the socket client
+   subscribes ONLY to that list; an unlisted event is silently never received.
+2. `SettingsHomePage.kt`: both exhaustive `when`s —
+   `performanceMarkerName()` and `performanceMarkerPhase()`.
+3. `SocketIoRealtimeClient.kt` (androidApp): both exhaustive `when`s —
+   `realtimeDiagnosticName()` and `realtimeDiagnosticFields()`. The shared
+   compile does NOT check these; only the androidApp compile does.
+4. If the event should refresh Home while hidden: `updatesHomeSnapshot()` /
+   `homeRealtimeDirtyReason()` (both have `else` branches — decide, don't
+   default silently).

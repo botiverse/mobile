@@ -13,6 +13,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -373,7 +374,7 @@ class SlockRealtimeAppScopePolicyTest {
 
         override suspend fun maybePostBackgroundUnreadNotification(
             serverId: ServerId,
-            event: MessageNew,
+            event: NotificationPushReceived,
             isAppInForeground: Boolean
         ) = Unit
     }

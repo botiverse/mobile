@@ -17,6 +17,7 @@ import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.MessageNew
+import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -403,7 +404,11 @@ class SocketIoRealtimeClient(
 private fun RealtimeAuth.toWireMap(): Map<String, String> =
     mapOf(
         "token" to token,
-        "serverId" to serverId.value
+        "serverId" to serverId.value,
+        // task #459/#103: platform-scoped event delivery — the server filters
+        // platform-scoped events (e.g. notification:push) by this declaration.
+        // Closed set web|mobile|desktop|cli; undeclared sockets default to web.
+        "clientKind" to "mobile"
     )
 
 private fun Any?.isAuthFailurePayload(): Boolean =
@@ -433,6 +438,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is Heartbeat -> "heartbeat"
     is PerReceiverReadStateChanged -> "read_state_updated"
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+    is NotificationPushReceived -> "notification_push"
 }
 
 private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
@@ -464,4 +470,7 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
             "firstScopeId=${scopes.firstOrNull()?.scopeId?.value.orEmpty()} firstVersion=${scopes.firstOrNull()?.readStateVersion ?: -1L}"
     is PerReceiverNotificationPrefsChanged ->
         "serverId=${serverId?.value.orEmpty()} scopeId=${scopeId.value} version=$prefsVersion muted=${preference.activityMuted}"
+    is NotificationPushReceived ->
+        "serverId=${serverId.value} kind=${kind.name} messageId=${messageId.value} " +
+            "channelId=${channelId?.value.orEmpty()} threadId=${threadId?.value.orEmpty()}"
 }
