@@ -184,6 +184,15 @@ private suspend fun SlockNetworkClient.updateSettingsServerSidebarOrder(
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/sidebar-order", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.settingsServerOrder(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "servers/order")
+
+private suspend fun SlockNetworkClient.updateSettingsServerOrder(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/order", method = "PATCH", bodyText = bodyText)
+
 private suspend fun SlockNetworkClient.updateSettingsServerMemberRole(
     priority: DataRequestPriority,
     serverId: String,
@@ -1109,6 +1118,16 @@ class RealSettingsRepository(
         return settingsUpdateServerSidebarOrder(serverId, request)
     }
 
+    override suspend fun getServerOrder(): DataResult<SettingsServerOrderSnapshot> =
+        fetchServerOrder()
+
+    override suspend fun updateServerOrder(
+        request: SettingsServerOrderUpdateRequest
+    ): DataResult<SettingsServerOrderSnapshot> {
+        if (request.serverOrder.isEmpty()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsUpdateServerOrder(request)
+    }
+
     override suspend fun updateSystemChannelVisibility(
         allChannelId: String,
         hide: Boolean
@@ -1765,6 +1784,35 @@ class RealSettingsRepository(
             mapper = { bodyText ->
                 parseSharedSettingsSidebarOrder(bodyText)
                     ?: settingsContractMismatch("settings_server_sidebar_order_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerOrder(): DataResult<SettingsServerOrderSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_order",
+            contractCode = "settings_server_order_contract_mismatch",
+            block = { networkClient.settingsServerOrder(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerOrder(bodyText)
+                    ?: settingsContractMismatch("settings_server_order_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateServerOrder(
+        request: SettingsServerOrderUpdateRequest
+    ): DataResult<SettingsServerOrderSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_order_update",
+            contractCode = "settings_server_order_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerOrder(
+                    DataRequestPriority.Foreground,
+                    buildSharedSettingsServerOrderUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerOrder(bodyText)
+                    ?: settingsContractMismatch("settings_server_order_contract_mismatch")
             }
         )
 
@@ -2938,6 +2986,11 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val agentPanelTabOrder: List<String>? = null
 )
 
+@Serializable
+data class SettingsServerOrderUpdateRequestBody(
+    val serverOrder: List<String>
+)
+
 fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSidebarOrderUpdateRequest): String =
     settingsRepositoryJson.encodeToString(
         SettingsServerSidebarOrderUpdateRequestBody(
@@ -2954,6 +3007,11 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             channelPanelTabOrder = request.channelPanelTabOrder,
             agentPanelTabOrder = request.agentPanelTabOrder
         )
+    )
+
+fun buildSharedSettingsServerOrderUpdateBody(request: SettingsServerOrderUpdateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsServerOrderUpdateRequestBody(serverOrder = request.serverOrder)
     )
 
 @Serializable

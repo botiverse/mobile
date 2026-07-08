@@ -837,6 +837,29 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersPreservesServerAvatarUrlInSharedLayer() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        serversResponse =
+                            AuthNetworkResponse(
+                                200,
+                                """[{"id":"server-1","name":"Slock","slug":"slock","avatarUrl":"https://cdn.slock.ai/server.png"}]"""
+                            )
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("https://cdn.slock.ai/server.png", store.readSession()?.servers?.single()?.avatarUrl)
+        assertEquals("https://cdn.slock.ai/server.png", result.data.servers.single().avatarUrl)
+    }
+
+    @Test
     fun loadServersRefreshesUnauthorizedAccessTokenBeforeSigningOut() = runBlocking {
         val logs = mutableListOf<String>()
         val store =
@@ -874,7 +897,11 @@ class AuthDataSourceTest {
         assertEquals(listOf("server-2"), store.readSession()?.servers?.map { it.id })
         assertEquals(listOf("Bearer expired-token", "Bearer fresh-token"), api.serversAuthorizations)
         assertContains(logs, "auth_servers_load_result result=unauthorized source=access_token action=refresh")
-        assertContains(logs, "auth_servers_load_result result=success source=refresh_retry serversCount=1 selectedServer=false")
+        assertTrue(
+            logs.any {
+                it.startsWith("auth_servers_load_result result=success source=refresh_retry serversCount=1 selectedServer=false")
+            }
+        )
     }
 
     @Test

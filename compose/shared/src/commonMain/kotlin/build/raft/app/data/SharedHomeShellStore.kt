@@ -271,6 +271,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.SetPinnedSortMode -> "patch:pinned-sort:$mode"
         is SharedHomeIntent.SetChannelSortMode -> "patch:channel-sort:$mode"
         is SharedHomeIntent.ReorderSidebar -> "patch:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
+        is SharedHomeIntent.ReorderServers -> "patch:server-order:${serverOrder.size}"
         is SharedHomeIntent.MarkRead -> "patch:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"

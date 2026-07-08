@@ -146,6 +146,7 @@ private val HomeLoadingSkeletonLineHeight = 12.dp
 private val HomePanelShadowOffset = 4.dp
 private val HomeServerSwitcherTopGap = 4.dp
 private val HomeServerSwitcherRowMinHeight = 52.dp
+private val HomeServerSwitcherDragHandleWidth = 32.dp
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
@@ -202,6 +203,7 @@ data class SlockServerSwitcherItem(
     val id: String = "",
     val name: String = "",
     val slug: String = "",
+    val avatarUrl: String? = null,
     val unreadCount: Int = 0
 )
 
@@ -463,6 +465,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         onServerBadgeClick = { unsupportedStandaloneHomeAction("toggleServerSwitcher") },
         onServerSwitcherDismiss = { unsupportedStandaloneHomeAction("dismissServerSwitcher") },
         onServerSelected = { unsupportedStandaloneHomeAction("selectServer", it) },
+        onServerOrderChange = { order -> standaloneHomeStore.dispatch(SharedHomeIntent.ReorderServers(order)) },
         onCreateServerClick = { unsupportedStandaloneHomeAction("createServer") },
         onCreateChannelClick = { unsupportedStandaloneHomeAction("createChannel") },
         onInboxClick = { unsupportedStandaloneHomeAction("openInbox") },
@@ -702,6 +705,7 @@ internal fun SlockStructuralHomeShell(
     onServerBadgeClick: () -> Unit = {},
     onServerSwitcherDismiss: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
+    onServerOrderChange: (List<String>) -> Unit = {},
     onCreateServerClick: () -> Unit = {},
     onCreateChannelClick: () -> Unit = {},
     onTabSelected: (String) -> Unit = {},
@@ -1274,6 +1278,7 @@ internal fun SlockStructuralHomeShell(
                         prefersChineseCommunity,
                         labels,
                         onServerSelected,
+                        onServerOrderChange,
                         onCreateServerClick,
                         Modifier
                             .padding(
@@ -2313,13 +2318,61 @@ private fun HomeInlineErrorCard(
 }
 
 @Composable
-private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, prefersChineseCommunity: Boolean, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun ServerSwitcherPanel(
+    servers: List<SlockServerSwitcherItem>,
+    currentServerId: String,
+    pendingServerId: String?,
+    prefersChineseCommunity: Boolean,
+    labels: SlockHomeShellLabels,
+    onServerSelected: (String) -> Unit,
+    onServerOrderChange: (List<String>) -> Unit,
+    onCreateServerClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val joinCommunityActions =
         homeServerSwitcherJoinCommunityActions(
             servers = servers,
             labels = labels,
             includeChineseCommunity = prefersChineseCommunity
         )
+    val incomingOrder = servers.map { it.id }
+    var order by remember { mutableStateOf(incomingOrder) }
+    var pendingIncomingOrder by remember { mutableStateOf<List<String>?>(null) }
+    val serversById = remember(servers) { servers.associateBy { it.id } }
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val handleWidthPx = with(density) { HomeServerSwitcherDragHandleWidth.toPx() }
+    val rowStepPx = with(density) { HomeServerSwitcherRowMinHeight.toPx().coerceAtLeast(1f) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var draggedStartIndex by remember { mutableStateOf(0) }
+    var pointerViewportY by remember { mutableStateOf(0f) }
+    var targetIndex by remember { mutableStateOf(-1) }
+
+    LaunchedEffect(incomingOrder) {
+        if (draggedId == null) {
+            order = incomingOrder
+            pendingIncomingOrder = null
+        } else {
+            pendingIncomingOrder = incomingOrder
+        }
+    }
+    LaunchedEffect(draggedId) {
+        if (draggedId == null) {
+            pendingIncomingOrder?.let { nextOrder ->
+                order = nextOrder
+                pendingIncomingOrder = null
+            }
+        }
+    }
+
+    fun visibleServerRowBounds(): List<SlockSortRowBounds> =
+        listState.layoutInfo.visibleItemsInfo.mapNotNull { info ->
+            val key = info.key as? String ?: return@mapNotNull null
+            val id = key.removePrefix("server-").takeIf { key.startsWith("server-") } ?: return@mapNotNull null
+            val index = order.indexOf(id).takeIf { it >= 0 } ?: return@mapNotNull null
+            SlockSortRowBounds(index = index, top = info.offset.toFloat(), size = info.size.toFloat())
+        }
+
     HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
@@ -2331,18 +2384,103 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
                 } else {
                     Modifier.fillMaxWidth().height(serverListMaxHeight)
                 }
-            LazyColumn(
-                modifier = serverListModifier,
-                beyondBoundsItemCount = homeListBeyondBoundsItemCount(servers.size)
-            ) {
-                items(servers.size, key = { index -> servers[index].id }) { index ->
-                    val server = servers[index]
-                    ServerSwitcherRow(
-                        server,
-                        server.id == currentServerId,
-                        server.id == pendingServerId
-                    ) {
-                        onServerSelected(server.id)
+            Box(modifier = serverListModifier) {
+                LazyColumn(
+                    state = listState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .pointerInput(order) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { pos ->
+                                        if (pos.x < size.width - handleWidthPx) return@detectDragGesturesAfterLongPress
+                                        val target = resolveSortTargetIndex(pos.y, visibleServerRowBounds(), order.lastIndex)
+                                        val id = order.getOrNull(target)
+                                        if (id != null) {
+                                            draggedId = id
+                                            draggedStartIndex = target
+                                            pointerViewportY = pos.y
+                                            targetIndex = target
+                                            slockLogInfo("SlockServerSwitcher", "dragStart id=$id index=$target size=${order.size}")
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        val active = draggedId
+                                        var changed = false
+                                        if (active != null && targetIndex >= 0 && targetIndex != draggedStartIndex) {
+                                            changed = true
+                                            val next = order.moveItem(active, targetIndex)
+                                            order = next
+                                            onServerOrderChange(next)
+                                        }
+                                        slockLogInfo("SlockServerSwitcher", "dragEnd changed=$changed from=$draggedStartIndex to=$targetIndex")
+                                        draggedId = null
+                                        targetIndex = -1
+                                    },
+                                    onDragCancel = {
+                                        slockLogInfo("SlockServerSwitcher", "dragCancel id=$draggedId")
+                                        draggedId = null
+                                        targetIndex = -1
+                                    }
+                                ) { change, dragAmount ->
+                                    if (draggedId != null) {
+                                        change.consume()
+                                        pointerViewportY += dragAmount.y
+                                        targetIndex = resolveSortTargetIndex(pointerViewportY, visibleServerRowBounds(), order.lastIndex)
+                                    }
+                                }
+                            },
+                    beyondBoundsItemCount = homeListBeyondBoundsItemCount(order.size),
+                    userScrollEnabled = draggedId == null
+                ) {
+                    items(order.size, key = { index -> "server-${order[index]}" }) { index ->
+                        val server = serversById[order[index]] ?: return@items
+                        if (draggedId == server.id) {
+                            Spacer(Modifier.fillMaxWidth().height(HomeServerSwitcherRowMinHeight))
+                        } else {
+                            ServerSwitcherRow(
+                                server,
+                                server.id == currentServerId,
+                                server.id == pendingServerId,
+                                dragHandleVisible = order.size > 1,
+                                onClick = if (draggedId == null) ({ onServerSelected(server.id) }) else null
+                            )
+                        }
+                    }
+                }
+                val active = draggedId
+                if (active != null && targetIndex >= 0) {
+                    val bounds = visibleServerRowBounds()
+                    val targetRow = bounds.firstOrNull { it.index == targetIndex }
+                    val lineY =
+                        when {
+                            targetRow != null && targetIndex >= draggedStartIndex -> targetRow.top + targetRow.size
+                            targetRow != null -> targetRow.top
+                            else -> bounds.maxByOrNull { it.index }?.let { it.top + it.size }
+                        }
+                    if (lineY != null) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .offset { IntOffset(0, lineY.roundToInt()) }
+                                    .height(2.dp)
+                                    .background(SlockColor.AccentPink)
+                        )
+                    }
+                    serversById[active]?.let { server ->
+                        ServerSwitcherRow(
+                            server,
+                            server.id == currentServerId,
+                            server.id == pendingServerId,
+                            dragHandleVisible = true,
+                            pressed = true,
+                            onClick = null,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .offset { IntOffset(0, (pointerViewportY - rowStepPx / 2f).roundToInt()) }
+                        )
                     }
                 }
             }
@@ -2372,17 +2510,31 @@ private fun HardShadowPanel(
 }
 
 @Composable
-private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean, pending: Boolean, onClick: () -> Unit) {
+private fun ServerSwitcherRow(
+    server: SlockServerSwitcherItem,
+    selected: Boolean,
+    pending: Boolean,
+    dragHandleVisible: Boolean = false,
+    pressed: Boolean = false,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val clickModifier = onClick?.let { Modifier.clickable(onClick = it) } ?: Modifier
     com.tencent.kuikly.compose.foundation.layout.Row(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
-                .background(SlockColor.SurfaceWhite)
-                .clickable(onClick = onClick)
+                .background(
+                    when {
+                        selected || pressed -> SlockColor.BrandYellow
+                        else -> SlockColor.SurfaceWhite
+                    }
+                )
+                .then(clickModifier)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
             when {
@@ -2391,6 +2543,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
+        ServerSwitcherAvatarTile(server)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -2404,7 +2557,60 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
         val badgeLabel =
             homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = server.unreadCount))
                 .label
-        if (!selected && badgeLabel != null) HomeUnreadBadge(badgeLabel)
+        if (badgeLabel != null) HomeUnreadBadge(badgeLabel)
+        if (dragHandleVisible) {
+            Box(modifier = Modifier.width(HomeServerSwitcherDragHandleWidth), contentAlignment = Alignment.Center) {
+                Text(
+                    text = "\u22EE\u22EE",
+                    style =
+                        SlockType.Caption.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 18.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
+    val avatarWireValue = server.avatarUrl?.takeIf { it.isNotBlank() }
+    if (avatarWireValue != null) {
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = server.name.take(1).uppercase(),
+            avatarSize = 32.dp,
+            borderWidth = SlockStroke.Default
+        )
+    } else {
+        Box(
+            modifier =
+                Modifier
+                    .size(32.dp)
+                    .background(SlockColor.TextBlack)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                server.name.take(1).uppercase(),
+                style =
+                    SlockType.Button.copy(
+                        fontFamily = SlockMonoFamily,
+                        fontSize = 17.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                color = SlockColor.BrandYellow,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -2958,12 +3164,15 @@ private fun SlockSidebarSortOverlay(
                                 },
                                 onDragEnd = {
                                     val active = draggedId
-                                    val changed = active != null && targetIndex >= 0 && targetIndex != draggedStartIndex
+                                    var changed = false
+                                    if (active != null && targetIndex >= 0 && targetIndex != draggedStartIndex) {
+                                        changed = true
+                                        order = order.moveItem(active, targetIndex)
+                                    }
                                     slockLogInfo(
                                         "SlockHomeSort",
                                         "dragEnd changed=$changed from=$draggedStartIndex to=$targetIndex"
                                     )
-                                    if (changed && active != null) order = order.moveItem(active, targetIndex)
                                     draggedId = null
                                     targetIndex = -1
                                 },

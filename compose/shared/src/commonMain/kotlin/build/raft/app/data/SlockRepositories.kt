@@ -125,6 +125,10 @@ interface SettingsServerManagementRepository {
     suspend fun updateServerSidebarOrder(
         request: SettingsServerSidebarOrderUpdateRequest
     ): DataResult<SettingsServerSidebarOrderSnapshot>
+    suspend fun getServerOrder(): DataResult<SettingsServerOrderSnapshot>
+    suspend fun updateServerOrder(
+        request: SettingsServerOrderUpdateRequest
+    ): DataResult<SettingsServerOrderSnapshot>
 
     suspend fun updateServerMemberRole(
         request: SettingsServerMemberRoleUpdateRequest
@@ -586,6 +590,14 @@ data class SettingsServerSidebarOrderUpdateRequest(
     val hiddenDmIds: List<String>? = null,
     val channelPanelTabOrder: List<String>? = null,
     val agentPanelTabOrder: List<String>? = null
+)
+
+data class SettingsServerOrderSnapshot(
+    val serverOrder: List<String> = emptyList()
+)
+
+data class SettingsServerOrderUpdateRequest(
+    val serverOrder: List<String>
 )
 
 data class SettingsServerMemberRoleUpdateRequest(

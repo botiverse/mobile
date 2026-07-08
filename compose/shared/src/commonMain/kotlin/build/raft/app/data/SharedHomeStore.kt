@@ -59,6 +59,12 @@ internal class SharedHomeStore(
     private var updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
+    private var loadServerOrder: suspend () -> DataResult<SettingsServerOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
+    private var updateServerOrder: suspend (SettingsServerOrderUpdateRequest) -> DataResult<SettingsServerOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
     private var markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
@@ -98,6 +104,7 @@ internal class SharedHomeStore(
 
     private var loadJob: Job? = null
     private var agentDirectMessageStatusJob: Job? = null
+    private var serverOrderLoadJob: Job? = null
     private val contentByServer = linkedMapOf<ServerId, SharedHomeContentState.Content>()
     // #211: serialize sidebar-order loads and mutations so a Pin/Unpin
     // arriving before the initial load resolves cannot PATCH from an empty
@@ -119,6 +126,12 @@ internal class SharedHomeStore(
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
         },
         updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        loadServerOrder: suspend () -> DataResult<SettingsServerOrderSnapshot> = {
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        },
+        updateServerOrder: suspend (SettingsServerOrderUpdateRequest) -> DataResult<SettingsServerOrderSnapshot> = {
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
         },
         markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
@@ -143,6 +156,8 @@ internal class SharedHomeStore(
         this.diagnosticsLogger = diagnosticsLogger
         this.loadSidebarOrder = loadSidebarOrder
         this.updateSidebarOrder = updateSidebarOrder
+        this.loadServerOrder = loadServerOrder
+        this.updateServerOrder = updateServerOrder
         this.markChannelReadAll = markChannelReadAll
         this.markChannelUnread = markChannelUnread
         this.archiveChannel = archiveChannel
@@ -261,8 +276,11 @@ internal class SharedHomeStore(
                     _state.value.serverSwitchState,
                     showRefreshAffordance = false,
                 )
-            SharedHomeIntent.ToggleServerSwitcher ->
-                reduceState(_state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded))
+            SharedHomeIntent.ToggleServerSwitcher -> {
+                val expanding = !_state.value.serverSwitcherExpanded
+                reduceState(_state.value.copy(serverSwitcherExpanded = expanding))
+                if (expanding) launchServerOrderRefreshForOpenSwitcher()
+            }
             SharedHomeIntent.DismissServerSwitcher ->
                 reduceState(_state.value.copy(serverSwitcherExpanded = false))
             is SharedHomeIntent.SelectConversation ->
@@ -326,6 +344,8 @@ internal class SharedHomeStore(
                 setChannelSortMode(intent.mode)
             is SharedHomeIntent.ReorderSidebar ->
                 reorderSidebar(intent)
+            is SharedHomeIntent.ReorderServers ->
+                reorderServers(intent.serverOrder)
             is SharedHomeIntent.MarkRead ->
                 markConversationRead(intent.conversationId)
             is SharedHomeIntent.MarkUnread ->
@@ -940,6 +960,73 @@ internal class SharedHomeStore(
         return true
     }
 
+    private suspend fun applyHomeSessionLocally(session: StoredAuthSession) {
+        authStore.saveSession(session)
+        contentByServer.entries.forEach { entry ->
+            entry.setValue(entry.value.copy(session = session))
+        }
+        val current = _state.value.content
+        val nextContent =
+            when (current) {
+                is SharedHomeContentState.Content -> current.copy(session = session)
+                is SharedHomeContentState.Empty -> current.copy(session = session)
+                is SharedHomeContentState.Error -> current.copy(session = session)
+                is SharedHomeContentState.Loading -> current.copy(session = session)
+            }
+        reduceState(_state.value.copy(content = nextContent))
+    }
+
+    private fun StoredAuthSession.withServerOrder(serverOrder: List<String>): StoredAuthSession {
+        if (servers.isEmpty()) return this
+        val byId = servers.associateBy { it.id }
+        val seen = linkedSetOf<String>()
+        val cleaned =
+            serverOrder
+                .mapNotNull { id ->
+                    val server = byId[id] ?: return@mapNotNull null
+                    if (!seen.add(server.id)) return@mapNotNull null
+                    server
+                }
+        val nextServers = cleaned + servers.filterNot { it.id in seen }
+        return if (nextServers == servers) this else copy(servers = nextServers)
+    }
+
+    private suspend fun refreshServerOrderBeforeSwitcherOpen() {
+        val previousSession = _state.value.content.sessionOrNull() ?: authStore.readSession() ?: return
+        when (val result = loadServerOrder()) {
+            is DataResult.Content -> {
+                val orderedSession = previousSession.withServerOrder(result.data.serverOrder)
+                if (orderedSession.servers != previousSession.servers) {
+                    applyHomeSessionLocally(orderedSession)
+                }
+                diagnosticsLogger(
+                    "home_server_order_load_result result=content count=${result.data.serverOrder.size} " +
+                        "order=${result.data.serverOrder.serverOrderDiagnosticsValue()}"
+                )
+            }
+            is DataResult.Empty ->
+                diagnosticsLogger("home_server_order_load_result result=empty")
+            is DataResult.Error ->
+                diagnosticsLogger("home_server_order_load_result result=error code=${result.error.code}")
+            is DataResult.NoPermission ->
+                diagnosticsLogger("home_server_order_load_result result=no_permission code=${result.blocker.code}")
+        }
+    }
+
+    private fun launchServerOrderRefreshForOpenSwitcher() {
+        if (serverOrderLoadJob?.isActive == true) return
+        serverOrderLoadJob =
+            scope.launch {
+                val previousReason = stateDiagnosticsReason
+                stateDiagnosticsReason = "ServerOrderRefresh"
+                try {
+                    refreshServerOrderBeforeSwitcherOpen()
+                } finally {
+                    stateDiagnosticsReason = previousReason
+                }
+            }
+    }
+
     private suspend fun togglePinned(conversationId: String) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val serverId = current?.snapshot?.server?.id
@@ -1152,6 +1239,40 @@ internal class SharedHomeStore(
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to reorder sidebar")
+            }
+        }
+    }
+
+    private suspend fun reorderServers(serverOrder: List<String>) {
+        val previousSession = _state.value.content.sessionOrNull()
+        if (previousSession == null) {
+            pinUpdateFailureCallback("Unable to reorder servers: home not loaded")
+            return
+        }
+        val optimisticSession = previousSession.withServerOrder(serverOrder)
+        if (optimisticSession.servers == previousSession.servers) return
+        applyHomeSessionLocally(optimisticSession)
+        val optimisticOrder = optimisticSession.servers.map { it.id }
+        diagnosticsLogger(
+            "home_server_order_patch_start count=${optimisticOrder.size} " +
+                "order=${optimisticOrder.serverOrderDiagnosticsValue()}"
+        )
+        when (val result = updateServerOrder(SettingsServerOrderUpdateRequest(optimisticOrder))) {
+            is DataResult.Content -> {
+                val savedSession = optimisticSession.withServerOrder(result.data.serverOrder)
+                applyHomeSessionLocally(savedSession)
+                diagnosticsLogger(
+                    "home_server_order_patch_result result=content count=${result.data.serverOrder.size} " +
+                        "order=${result.data.serverOrder.serverOrderDiagnosticsValue()}"
+                )
+            }
+            is DataResult.Empty ->
+                diagnosticsLogger("home_server_order_patch_result result=empty")
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                applyHomeSessionLocally(previousSession)
+                diagnosticsLogger("home_server_order_patch_result result=error")
+                pinUpdateFailureCallback("Unable to reorder servers")
             }
         }
     }
@@ -1697,6 +1818,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SetPinnedSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:pinned-sort:$mode"
         is SharedHomeIntent.SetChannelSortMode -> "${SharedHomeChannelFoldEvent.Patch.wireName}:channel-sort:$mode"
         is SharedHomeIntent.ReorderSidebar -> "${SharedHomeChannelFoldEvent.Patch.wireName}:sidebar-order:${channelOrder?.size ?: 0}/${jointChannelOrder?.size ?: 0}/${dmOrder?.size ?: 0}/${pinnedOrder?.size ?: 0}"
+        is SharedHomeIntent.ReorderServers -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-order:${serverOrder.size}"
         is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
@@ -2153,6 +2275,7 @@ sealed interface SharedHomeIntent {
         val dmOrder: List<String>? = null,
         val pinnedOrder: List<String>? = null
     ) : SharedHomeIntent
+    data class ReorderServers(val serverOrder: List<String>) : SharedHomeIntent
     data class MarkRead(val conversationId: String) : SharedHomeIntent
     data class MarkUnread(val conversationId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
@@ -2184,6 +2307,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
             is SharedHomeIntent.ReorderSidebar,
+            is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
@@ -2215,6 +2339,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
             is SharedHomeIntent.ReorderSidebar,
+            is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
@@ -2246,6 +2371,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SetPinnedSortMode,
             is SharedHomeIntent.SetChannelSortMode,
             is SharedHomeIntent.ReorderSidebar,
+            is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.CloseDirectMessage,
@@ -2286,6 +2412,17 @@ private fun SharedHomeContentState.asRefreshFailed(code: String): SharedHomeCont
         is SharedHomeContentState.Loading -> SharedHomeContentState.Error(code, session)
         is SharedHomeContentState.Error -> copy(code = code)
     }
+
+private fun SharedHomeContentState.sessionOrNull(): StoredAuthSession? =
+    when (this) {
+        is SharedHomeContentState.Content -> session
+        is SharedHomeContentState.Empty -> session
+        is SharedHomeContentState.Error -> session
+        is SharedHomeContentState.Loading -> session
+    }
+
+private fun List<String>.serverOrderDiagnosticsValue(): String =
+    joinToString(separator = ",", prefix = "[", postfix = "]")
 
 private fun SharedHomeContentState.refreshFailureMapping(): String =
     when (this) {

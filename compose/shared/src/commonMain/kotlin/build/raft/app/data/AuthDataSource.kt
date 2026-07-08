@@ -700,7 +700,10 @@ class SharedAuthDataSource(
         val updated = session.withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         diagnosticsLogger(
-            "auth_servers_load_result result=success source=$source serversCount=${servers.size} selectedServer=${!updated.selectedServerId.isNullOrBlank()}"
+            "auth_servers_load_result result=success source=$source serversCount=${servers.size} " +
+                "selectedServer=${!updated.selectedServerId.isNullOrBlank()} " +
+                "avatarCount=${servers.count { !it.avatarUrl.isNullOrBlank() }} " +
+                "order=${servers.map { it.id }.authServerOrderDiagnosticsValue()}"
         )
         return SharedAuthResult.Success(updated)
     }
@@ -1312,6 +1315,9 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
 
 private fun AuthNetworkResponse.toAuthApiFailure(): AuthApiResult.Failure =
     AuthApiResult.Failure(code = code, errorBodyText = errorBodyText)
+
+private fun List<String>.authServerOrderDiagnosticsValue(): String =
+    joinToString(separator = ",", prefix = "[", postfix = "]")
 
 /**
  * Single-shot, typed decode of the response body.

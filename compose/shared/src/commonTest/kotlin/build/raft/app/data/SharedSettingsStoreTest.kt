@@ -2571,6 +2571,16 @@ class SharedSettingsStoreTest {
             return DataResult.Content(sidebarOrder)
         }
 
+        override suspend fun getServerOrder(): DataResult<SettingsServerOrderSnapshot> =
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun updateServerOrder(
+            request: SettingsServerOrderUpdateRequest
+        ): DataResult<SettingsServerOrderSnapshot> {
+            calls += "updateServerOrder:${request.serverOrder.size}"
+            return DataResult.Content(SettingsServerOrderSnapshot(serverOrder = request.serverOrder))
+        }
+
         override suspend fun updateServerMemberRole(
             request: SettingsServerMemberRoleUpdateRequest
         ): DataResult<SettingsServerActionResult> {

@@ -135,6 +135,7 @@ data class StoredAuthServer(
     val planDowngradedAt: String? = null,
     val hideHumansFromMembers: Boolean = false,
     val role: String? = null,
+    val avatarUrl: String? = null,
     val createdAt: String? = null
 ) {
     fun toServerSummary(): ServerSummary =
@@ -146,6 +147,7 @@ data class StoredAuthServer(
             plan = plan,
             onboardingAgentId = onboardingAgentId,
             description = slug?.let { "/$it" },
+            avatarUrl = avatarUrl,
             permissions =
                 ServerPermissions(
                     canManageSettings = role == "owner" || role == "admin"

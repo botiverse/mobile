@@ -3225,6 +3225,81 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun reorderServersPersistsNormalizedSessionOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session =
+            sampleSession().copy(
+                servers =
+                    sampleSession().servers +
+                        StoredAuthServer(id = "server-3", name = "Design", slug = "design")
+            )
+        val sessionStore = InMemorySlockAuthSessionStore(session)
+        val updateCalls = mutableListOf<List<String>>()
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
+            scope = scope,
+            updateServerOrder = { request ->
+                updateCalls += request.serverOrder
+                DataResult.Content(SettingsServerOrderSnapshot(serverOrder = listOf("server-2", "server-1")))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ReorderServers(listOf("server-3", "server-2", "server-2", "unknown")))
+
+        assertEquals(listOf(listOf("server-3", "server-2", "server-1")), updateCalls)
+        assertEquals(listOf("server-2", "server-1", "server-3"), sessionStore.readSession()?.servers?.map { it.id })
+        val after = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(listOf("server-2", "server-1", "server-3"), after.session.servers.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
+    fun openingServerSwitcherRefreshesServerOrderFromServer() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val session =
+            sampleSession().copy(
+                servers =
+                    sampleSession().servers +
+                        StoredAuthServer(id = "server-3", name = "Design", slug = "design")
+            )
+        val sessionStore = InMemorySlockAuthSessionStore(session)
+        var loadCount = 0
+        val blockedLoad = BlockingCall()
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
+            scope = scope,
+            loadServerOrder = {
+                loadCount += 1
+                blockedLoad.started.complete(Unit)
+                blockedLoad.released.await()
+                DataResult.Content(SettingsServerOrderSnapshot(serverOrder = listOf("server-3", "server-2", "server-1")))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.ToggleServerSwitcher)
+        blockedLoad.awaitStarted()
+
+        assertEquals(1, loadCount)
+        assertEquals(true, store.state.value.serverSwitcherExpanded)
+        assertEquals(listOf("server-1", "server-2", "server-3"), sessionStore.readSession()?.servers?.map { it.id })
+        blockedLoad.release()
+        awaitCondition {
+            (store.state.value.content as? SharedHomeContentState.Content)
+                ?.session
+                ?.servers
+                ?.map { it.id } == listOf("server-3", "server-2", "server-1")
+        }
+        assertEquals(listOf("server-3", "server-2", "server-1"), sessionStore.readSession()?.servers?.map { it.id })
+        val after = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(listOf("server-3", "server-2", "server-1"), after.session.servers.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
     fun closeDirectMessagePersistsHiddenDmIds() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot()
