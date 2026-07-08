@@ -77,6 +77,8 @@ internal data class SharedCreateAgentDialogSubmit(
     val external: Boolean = false
 )
 
+internal const val SharedCreateAgentDialogHostRoute = "create-agent"
+
 @Composable
 internal fun CreateAgentDialogVisualContent() {
     val params = (LocalActivity.current.getPager() as Pager).pageData.params
@@ -534,7 +536,8 @@ internal fun SharedCreateAgentDialog(
     SlockUnifiedDialog(
         title = if (external) "CREATE EXTERNAL AGENT" else "CREATE AGENT",
         dismissEnabled = !submitting,
-        onDismiss = onDismiss
+        onDismiss = onDismiss,
+        hostRoute = SharedCreateAgentDialogHostRoute
     ) {
         // #55 visual parity fix: the dialog body used to be capped at
         // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp` with Cancel/Create

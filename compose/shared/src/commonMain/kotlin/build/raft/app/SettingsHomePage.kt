@@ -562,10 +562,12 @@ private class AppShellChildTabEntry(
     initialSelectedTab: String = "home",
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
-    }
+    },
+    initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
     var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
+    var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 }
 
 private data class AppShellChildTabRegistration(
@@ -1274,7 +1276,14 @@ private fun SlockAppShellChildTabPageContent() {
             )
         }
     }
-    entry.renderer(tab, active)
+    val modalHostState = entry.modalHostState
+    if (modalHostState != null) {
+        SlockUnifiedDialogHostProvider(modalHostState) {
+            entry.renderer(tab, active)
+        }
+    } else {
+        entry.renderer(tab, active)
+    }
 }
 
 @Serializable
@@ -2390,6 +2399,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         bridge.log("diagnostics_deeplink_complete id=${request.id}")
     }
     val shellScope = rememberSlockAppShellScope()
+    val appShellModalHostState = rememberSlockUnifiedDialogHostState()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
@@ -3345,7 +3355,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 }
             },
             networkStatus = hostNetworkStatus,
-            showBottomTabs = showAppShellBottomTabs
+            showBottomTabs = showAppShellBottomTabs,
+            modalHostState = appShellModalHostState
         ) {
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
@@ -3625,7 +3636,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 initialSelectedTab = currentChildTab,
-                                initialRenderer = childTabRenderer
+                                initialRenderer = childTabRenderer,
+                                initialModalHostState = appShellModalHostState
                             )
                             val replaced = AppShellChildTabRegistry.register(childTabShellId, entry)
                             AppShellChildTabRegistration(entry = entry, replacedEntryId = replaced?.debugId ?: 0)
@@ -3634,6 +3646,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     SideEffect {
                         childTabEntry.selectedTab = currentChildTab
                         childTabEntry.renderer = childTabRenderer
+                        childTabEntry.modalHostState = appShellModalHostState
                     }
                     LaunchedEffect(childTabShellId, childTabEntry.debugId) {
                         bridge.log(

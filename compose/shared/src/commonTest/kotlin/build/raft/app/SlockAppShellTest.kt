@@ -55,6 +55,8 @@ class SlockAppShellTest {
         assertEquals(18.dp + SlockSpacing.Lg, scope.bottomInset(includeBottomTabBar = false))
         assertEquals(88.dp - SlockSpacing.Lg, scope.bottomTabBarHostInset(includeBottomTabBar = true))
         assertEquals(0.dp, scope.bottomTabBarHostInset(includeBottomTabBar = false))
+        assertEquals(88.dp, scope.globalDialogBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.globalDialogBottomInset(includeBottomTabBar = false))
         assertEquals(SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = true))
         assertEquals(18.dp + SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = false))
     }
@@ -73,6 +75,8 @@ class SlockAppShellTest {
             )
 
         assertEquals(0.dp, scope.bottomTabBarHostInset(includeBottomTabBar = true))
+        assertEquals(110.dp, scope.globalDialogBottomInset(includeBottomTabBar = true))
+        assertEquals(0.dp, scope.globalDialogBottomInset(includeBottomTabBar = false))
         assertEquals(110.dp, scope.contentBottomInset(includeBottomTabBar = true))
         assertEquals(18.dp + SlockSpacing.Lg, scope.contentBottomInset(includeBottomTabBar = false))
     }
@@ -99,6 +103,19 @@ class SlockAppShellTest {
         assertTrue(SlockFloatingOverlayHostZIndex > SlockGlobalModalHostZIndex)
         assertTrue(SlockGlobalModalHostZIndex > SlockAppBottomTabBarHostZIndex)
         assertTrue(SlockAppBottomTabBarHostZIndex > SlockAppContentHostZIndex)
+    }
+
+    @Test
+    fun createAgentDialogRegistersGlobalHostRoute() {
+        assertTrue(SharedCreateAgentDialogHostRoute.isNotBlank())
+        assertTrue(SharedCreateAgentDialogHostRoute != SlockUnifiedDialogGenericHostRoute)
+
+        val hostState = SlockUnifiedDialogHostState()
+        val key = SlockUnifiedDialogHostKey()
+        hostState.upsert(key, SharedCreateAgentDialogHostRoute) {}
+
+        assertEquals(1, hostState.entries.size)
+        assertEquals(SharedCreateAgentDialogHostRoute, hostState.entries.single().route)
     }
 
     @Test
