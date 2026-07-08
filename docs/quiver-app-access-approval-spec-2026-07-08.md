@@ -65,8 +65,11 @@ capability (SHA-V0-006C: a grant is subject-relative *supplied-observed*, not an
 }
 ```
 
-Allow Quiver's OAuth client to request it (client `allowedScopes`). Nothing
-else on the platform side — the existing consent/approval card renders it.
+The `label` is the single source of the card's consent copy, so it must read as
+the **truth of the grant** — "read a Quiver app's release/feedback data" — and
+**not** inherit the approve-login card's "login" framing. Allow Quiver's OAuth
+client to request the scope (client `allowedScopes`). Nothing else on the
+platform side — the existing consent/approval card renders it.
 
 ### 2. Quiver — request + honor
 
@@ -87,7 +90,13 @@ else on the platform side — the existing consent/approval card renders it.
   `expiresAt`); v0 does not force a TTL, but a grant is never permanent /
   non-revocable (authority ≠ liveness — "was granted" ≠ "still valid"; a
   non-revocable grant would degrade from *supplied-observed* to *owned*,
-  SHA-V0-006C anti-pattern). Records approval provenance for the audit log.
+  SHA-V0-006C anti-pattern).
+- **Visibility for revocation** (revocable is only real if the admin can find
+  the grant): the grant *is* an `app_member` row, so it already shows in the
+  app's **Access** tab with its role and a revoke control (`removeAppMember`) —
+  no new surface needed. Record approval **provenance** (granted via the
+  approval flow, when, by which card) so the Access tab can distinguish these
+  from hand-added members, for the audit log.
 - **403 descriptor**: extend the existing `insufficient_app_role` body with a
   `request_access` hint (the exact `raft integration invoke … request-app-access`
   command), so an agent learns the next step from the error.
@@ -106,7 +115,7 @@ else on the platform side — the existing consent/approval card renders it.
 6. Agent retries `get-feedback` → `200`. (Subsequent requests auto-approve via
    the remembered grant.)
 
-## Resolved decisions (review — @Kai, @LiBai, 2026-07-08)
+## Resolved decisions (review — @Kai, @LiBai, @Joy, 2026-07-08)
 
 1. **Scope name:** `quiver:app:access`, namespaced + resource-scoped
    (`resource = appId`) — not a flat `app:access` (must stay per-app
@@ -117,11 +126,18 @@ else on the platform side — the existing consent/approval card renders it.
 3. **Lifecycle:** revocable app_member with `grantedAt` (+ optional `expiresAt`);
    no forced TTL in v0, but never permanent/non-revocable (authority ≠ liveness).
 
-Still open for @Kai's against-the-code check: whether the existing
-`approve_agent_login` card, when rendering a resource-scoped scope, already
-surfaces **which app** (resource) and **which role** clearly to the approver —
-if not, the only card-side change is adding resource/role display to that card's
-**canonical** metadata (single source; no second hand-written skin).
+Verification once the card-rendering code is available:
+- **@Kai (completeness / single-source):** does the existing `approve_agent_login`
+  card, rendering a resource-scoped scope, surface **which app** (resource) and
+  **which role** clearly? If not, the only card-side change is adding
+  resource/role display to that card's **canonical** metadata (no second skin).
+- **@Joy (consent truthfulness):** does the card read as a real grant — "grant
+  `<agent>` access to `<app>`'s data" — with no leftover "login" framing?
+  Driven by the scope `label` above.
+
+Forward-looking (non-v0): when publisher/admin roles open, the single card must
+carry per-role consent copy (different consequences) — derived from `role`, not
+hand-written; loop in @Joy.
 
 ## Rollout
 
