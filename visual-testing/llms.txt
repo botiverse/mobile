@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-08 20:44:37 UTC
-Latest run: 6ae2789-20260708204330
-Latest commit: 6ae2789-20260708204330
-Commit subject: ci(visual-testing): manifest generator v2 — helper templates + completeness invariant (#397)
+Generated: 2026-07-08 22:46:05 UTC
+Latest run: 86f2b41-20260708224504
+Latest commit: 86f2b41-20260708224504
+Commit subject: ci(visual-testing): report requires actual capture success, not just non-failure (#404)
 Providers: react vs android, react vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
-AI analysis: ready 0 / total 89, pending 89
+AI analysis: ready 87 / total 89, pending 2
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
@@ -115,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 86f2b41-20260708224504: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/86f2b41-20260708224504/component-matrix.json, page runs/86f2b41-20260708224504/
 - 6ae2789-20260708204330: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/6ae2789-20260708204330/component-matrix.json, page runs/6ae2789-20260708204330/
 - 6ae2789-20260708200615: react vs android, total 89, pass 0, basic-pass 0, different 0, matrix runs/6ae2789-20260708200615/component-matrix.json, page runs/6ae2789-20260708200615/
 - 7d77b5b-20260708182309: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/7d77b5b-20260708182309/component-matrix.json, page runs/7d77b5b-20260708182309/
