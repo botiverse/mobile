@@ -239,7 +239,7 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = "Could not load tasks",
+                    title = stringResource(MR.strings.tasks_error_load),
                     detail = loadState.error.code,
                     actionLabel = "Retry",
                     onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
@@ -250,7 +250,7 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = "Tasks unavailable",
+                    title = stringResource(MR.strings.tasks_unavailable),
                     detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
                 )
             }
@@ -264,7 +264,7 @@ private fun SharedTasksHeader(
     refreshing: Boolean = false
 ) {
     SlockTopPageHeader(
-        title = "Tasks",
+        title = stringResource(MR.strings.tasks_title),
         subtitle = subtitle,
         iconName = SlockLucideIconName.SquareCheckBig,
         refreshing = refreshing
@@ -677,7 +677,7 @@ private fun SharedTasksLoadedBodyContent(
             "channel" ->
                 SlockFilterPopover(
                     anchor = channelAnchor,
-                    title = "Filter by channel",
+                    title = stringResource(MR.strings.tasks_filter_channel),
                     searchPlaceholder = "Search channels",
                     searchText = presentationState.channelSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
@@ -690,7 +690,7 @@ private fun SharedTasksLoadedBodyContent(
             "creator" ->
                 SlockFilterPopover(
                     anchor = creatorAnchor,
-                    title = "Filter by creator",
+                    title = stringResource(MR.strings.tasks_filter_creator),
                     searchPlaceholder = "Search creators",
                     searchText = presentationState.creatorSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
@@ -703,7 +703,7 @@ private fun SharedTasksLoadedBodyContent(
             "assignee" ->
                 SlockFilterPopover(
                     anchor = assigneeAnchor,
-                    title = "Filter by assignee",
+                    title = stringResource(MR.strings.tasks_filter_assignee),
                     searchPlaceholder = "Search assignees",
                     searchText = presentationState.assigneeSearch,
                     onSearchChange = { presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
@@ -868,7 +868,7 @@ private fun SharedTasksToolbar(
     }
     val clearAllChip: @Composable () -> Unit = {
         SlockToolbarChip(
-            label = "Clear all",
+            label = stringResource(MR.strings.tasks_action_clear_all),
             iconName = SlockLucideIconName.X,
             uppercase = false,
             active = false,
@@ -877,7 +877,7 @@ private fun SharedTasksToolbar(
     }
     val newTaskButton: @Composable () -> Unit = {
         SlockBrutalActionButton(
-            label = "NEW TASK",
+            label = stringResource(MR.strings.tasks_action_new_task),
             leadingIcon = SlockLucideIconName.Plus,
             backgroundColor = SlockColor.AccentPink,
             minWidth = 0.dp,
@@ -1325,8 +1325,8 @@ private fun SharedTasksSegmentedControl(
         selectedValue = selectedMode.name,
         options =
             listOf(
-                SegmentedControlOption(value = TasksViewMode.Board.name, label = "Board", iconName = SlockLucideIconName.Columns3),
-                SegmentedControlOption(value = TasksViewMode.List.name, label = "List", iconName = SlockLucideIconName.LayoutList)
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(MR.strings.tasks_view_board), iconName = SlockLucideIconName.Columns3),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(MR.strings.tasks_view_list), iconName = SlockLucideIconName.LayoutList)
             ),
         onValueSelected = { value ->
             when (value) {
@@ -1497,7 +1497,7 @@ private fun TasksCreateDialog(
                         onValueChange = { next ->
                             titles = titles.toMutableList().also { it[index] = next }
                         },
-                        placeholder = "Task title",
+                        placeholder = stringResource(MR.strings.tasks_label_title),
                         placeholderColor = SlockColor.TextMutedGray,
                         autoFocus = index == 0,
                         maxLines = 2,
@@ -1510,7 +1510,7 @@ private fun TasksCreateDialog(
                     )
                 }
                 SlockToolbarChip(
-                    label = "Add another",
+                    label = stringResource(MR.strings.tasks_action_add_another),
                     iconName = SlockLucideIconName.Plus,
                     active = false,
                     onClick = { titles = titles + "" }
