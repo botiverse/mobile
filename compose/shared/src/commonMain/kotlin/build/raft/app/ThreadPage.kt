@@ -14491,7 +14491,7 @@ private fun ThreadInlineMetaTag(label: String) {
             Modifier
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .background(SlockColor.SurfaceCream)
-                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(horizontal = SlockSpacing.Sm, vertical = 2.dp)
     )
 }
 
@@ -14998,7 +14998,7 @@ private fun ThreadAttachmentCommentComposer(
     val enabled = canComment && state.status == "loaded" && !state.sending
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Sm),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
