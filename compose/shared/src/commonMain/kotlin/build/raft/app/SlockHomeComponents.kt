@@ -2311,7 +2311,7 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
                 if (serverListMaxHeight == null) {
                     Modifier.fillMaxWidth()
                 } else {
-                    Modifier.fillMaxWidth().heightIn(max = serverListMaxHeight)
+                    Modifier.fillMaxWidth().height(serverListMaxHeight)
                 }
             LazyColumn(
                 modifier = serverListModifier,

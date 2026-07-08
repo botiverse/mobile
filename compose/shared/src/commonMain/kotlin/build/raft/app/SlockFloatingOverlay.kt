@@ -159,19 +159,6 @@ internal fun Modifier.slockFloatingContentClickTarget(): Modifier =
 
 private fun Modifier.slockFloatingContentPointerBarrier(): Modifier =
     slockNativeDispatchCapture()
-        .pointerInput(Unit) {
-            awaitEachGesture {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    event.changes.forEach { change ->
-                        if (change.positionChanged()) {
-                            change.consume()
-                        }
-                    }
-                    if (event.changes.all { !it.pressed }) break
-                }
-            }
-        }
 
 @Composable
 private fun SlockFloatingOverlayDismissBarrier(
