@@ -2125,7 +2125,7 @@ private fun MemberDetailRoutePageShell(
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = "Member",
-            subtitle = "Profile",
+            subtitle = stringResource(MR.strings.member_label_profile),
             iconName = SlockLucideIconName.Users,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
@@ -2674,7 +2674,7 @@ internal fun MembersListContent(
                     trailingContent = {
                         SlockSectionHeaderIconAction(
                             icon = SlockLucideIconName.Plus,
-                            contentDescription = "Invite human",
+                            contentDescription = stringResource(MR.strings.member_action_invite_human),
                             onClick = { activeInviteHuman = true }
                         )
                     }
@@ -3604,7 +3604,7 @@ private fun MembersDetailHeader(
                 }
             }
             SlockBrutalActionButton(
-                label = "Message",
+                label = stringResource(MR.strings.member_label_message),
                 leadingIcon = SlockLucideIconName.MessageSquare,
                 enabled = member.kind != MemberKind.System && !deleted,
                 // Match the three-dot IconButton visual height so both sit on the same row
@@ -3750,7 +3750,7 @@ private fun MembersDetailActions(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailActionButton(
-            label = "Message",
+            label = stringResource(MR.strings.member_label_message),
             iconName = SlockLucideIconName.MessageSquare,
             enabled = member.kind != MemberKind.System && !deleted,
             onClick = onOpenDirectMessage,
@@ -4250,7 +4250,7 @@ private fun MembersAgentRuntimeErrorBanner(
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 SlockBrutalActionButton(
-                    label = "View logs",
+                    label = stringResource(MR.strings.member_action_view_logs),
                     leadingIcon = SlockLucideIconName.FileText,
                     minWidth = 92.dp,
                     minHeight = 30.dp,
@@ -4370,14 +4370,14 @@ private fun MembersHumanInfoSection(
     ) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle("INFO")
-        MembersHumanInfoItem(label = "Role") {
+        MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
             MembersHumanRoleChip(
                 label = member.roleDescription?.takeIf { it.isNotBlank() } ?: "Member",
                 backgroundColor = member.membersHumanRoleChipColor()
             )
         }
         member.email?.takeIf { it.isNotBlank() }?.let { email ->
-            MembersHumanInfoItem(label = "Email") {
+            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_email)) {
                 Text(
                     text = email,
                     style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
@@ -4388,7 +4388,7 @@ private fun MembersHumanInfoSection(
             }
         }
         joined?.takeIf { it.isNotBlank() }?.let { joinedDate ->
-            MembersHumanInfoItem(label = "Joined") {
+            MembersHumanInfoItem(label = stringResource(MR.strings.member_label_joined)) {
                 Text(
                     text = joinedDate,
                     style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 22.sp),
@@ -4633,7 +4633,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle("ACTIONS")
         SlockBrutalActionButton(
-            label = "Remove Member",
+            label = stringResource(MR.strings.member_action_remove_member),
             leadingIcon = SlockLucideIconName.Trash2,
             minHeight = 40.dp,
             backgroundColor = SlockColor.AccentRed,
@@ -5411,13 +5411,13 @@ private fun MembersAgentProfileTab(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
                     SlockFormField(
-                        label = "Display name",
+                        label = stringResource(MR.strings.member_label_display_name),
                         error = displayNameError,
                         showLabel = false
                     ) {
                         SlockBrutalInputField(
                             value = draftDisplayName,
-                            placeholder = "Display name",
+                            placeholder = stringResource(MR.strings.member_label_display_name),
                             onValueChange = {
                                 if (storeBackedProfileEdit) {
                                     profileStore.dispatch(
@@ -5625,7 +5625,7 @@ private fun MembersAgentProfileTab(
                         )
                         if (serverRoleMenuExpanded && !savingServerRole) {
                             SlockRaftUiSelectionPopover(
-                                title = "Role",
+                                title = stringResource(MR.strings.member_label_role),
                                 options = membersAgentServerRoleOptions(draftServerRole),
                                 selectedId = draftServerRole.wireValue,
                                 modifier = Modifier.width(160.dp),
@@ -5912,7 +5912,7 @@ private fun MembersAgentProfileActionsSection(
             )
         }
         SlockBrutalActionButton(
-            label = "Restart / Reset",
+            label = stringResource(MR.strings.member_label_restart_reset),
             leadingIcon = SlockLucideIconName.RotateCcw,
             enabled = lifecycleInFlight == null,
             minHeight = 42.dp,
@@ -6063,7 +6063,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         SlockSectionEyebrow(
-            label = "Environment Variables",
+            label = stringResource(MR.strings.member_section_environment_variables),
             fontSize = 11.sp,
             lineHeight = 16.sp
         )
@@ -6896,7 +6896,7 @@ private fun MembersAgentRemindersTab(
     ) {
         if (rows.isEmpty()) {
             SlockEmptyState(
-                title = "No reminders yet",
+                title = stringResource(MR.strings.member_state_no_reminders),
                 detail = "This agent hasn't scheduled anything. Reminders appear here in real time as soon as the agent schedules them.",
                 iconName = SlockLucideIconName.BellRing,
                 modifier = Modifier
@@ -7324,7 +7324,7 @@ private fun MembersAgentAppLoginCard(
         }
         item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
             SlockBrutalActionButton(
-                label = "View service",
+                label = stringResource(MR.strings.member_action_view_service),
                 leadingIcon = SlockLucideIconName.ExternalLink,
                 enabled = true,
                 backgroundColor = SlockColor.SurfaceWhite,
@@ -7396,7 +7396,7 @@ private fun MembersAgentActivityTab(
             }
         if (rows.isEmpty()) {
             SlockEmptyState(
-                title = "No activity yet",
+                title = stringResource(MR.strings.member_state_no_activity),
                 detail = "Start the agent to see its activity log.",
                 iconName = SlockLucideIconName.Activity,
                 modifier = Modifier
@@ -7835,7 +7835,7 @@ private fun MembersAgentPermissionsTab(
             }
             if (isCustom) {
                 SlockBrutalActionButton(
-                    label = "Use default",
+                    label = stringResource(MR.strings.member_action_use_default),
                     onClick = {
                         scope.launch { resetToDefault() }
                     },
@@ -7850,8 +7850,8 @@ private fun MembersAgentPermissionsTab(
         val notificationGroups = membersAgentScopeGroups.filter { it.section == "notifications" }
         val cliGroups = membersAgentScopeGroups.filter { it.section == "cli" }
 
-        PermissionsSection(title = "Notifications / inbox", description = "Controls what can wake the agent or enter its inbox.", groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
-        PermissionsSection(title = "Raft CLI permissions", description = "Controls what the agent can actively do through slock CLI commands.", groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(MR.strings.member_label_notifications_inbox), description = "Controls what can wake the agent or enter its inbox.", groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(MR.strings.member_role_raft_cli), description = "Controls what the agent can actively do through slock CLI commands.", groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
 
         // Action bar
         Row(
