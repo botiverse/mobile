@@ -71,7 +71,7 @@ internal fun SharedInviteHumanDialog(
     val copyableJoinLink = inviteHumanJoinUrlCopyPayload(joinLinkUrl)
 
     SlockUnifiedDialog(
-        title = "INVITE HUMAN",
+        title = stringResource(MR.strings.agent_invite_title),
         dismissEnabled = !submitting,
         onDismiss = onDismiss
     ) {
@@ -85,7 +85,7 @@ internal fun SharedInviteHumanDialog(
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SlockBrutalSectionLabel(label = "Join link", required = false)
+                SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_join_link), required = false)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -134,23 +134,23 @@ internal fun SharedInviteHumanDialog(
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockBrutalSectionLabel(label = "Emails", required = false)
+                SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_invite_label_emails), required = false)
                 SlockBrutalInputField(
                     value = email1,
                     onValueChange = { email1 = it },
-                    placeholder = "teammate@example.com",
+                    placeholder = stringResource(MR.strings.agent_invite_placeholder_email),
                     enabled = !submitting
                 )
                 SlockBrutalInputField(
                     value = email2,
                     onValueChange = { email2 = it },
-                    placeholder = "optional",
+                    placeholder = stringResource(MR.strings.agent_invite_label_optional),
                     enabled = !submitting
                 )
                 SlockBrutalInputField(
                     value = email3,
                     onValueChange = { email3 = it },
-                    placeholder = "optional",
+                    placeholder = stringResource(MR.strings.agent_invite_label_optional),
                     enabled = !submitting
                 )
             }
