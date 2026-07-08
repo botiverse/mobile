@@ -6,6 +6,7 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +36,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 

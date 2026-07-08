@@ -226,4 +226,21 @@
     <string name="agent_invite_placeholder_email">teammate@example.com</string>
     <string name="agent_invite_label_join_link">Join link</string>
     <string name="agent_invite_label_optional">optional</string>
+    <string name="settings_storage_clear_downloaded_files">Clear downloaded files</string>
+    <string name="settings_storage_clear_image_cache">Clear image cache</string>
+    <string name="settings_storage_clear_temp_files">Clear temp files and logs</string>
+    <string name="settings_billing_thirty_days_history">30 days of message history</string>
+    <string name="auth_link_check_email_secure">Check %1$s for your secure link.</string>
+    <string name="auth_link_terms_of_service">Terms of Service</string>
+    <string name="auth_link_privacy_policy">Privacy Policy</string>
+    <string name="translation_state_in_progress">Translating…</string>
+    <string name="translation_state_unavailable">Translation unavailable</string>
+    <string name="translation_state_show_original">Show original</string>
+    <string name="translation_state_show_translation">Show translation</string>
+    <string name="translation_state_prefer_original">Prefer original</string>
+    <string name="pagination_prev_bilingual">上一页 / Prev</string>
+    <string name="pagination_next_bilingual">下一页 / Next</string>
+    <string name="announcement_action_got_it_bilingual">知道了 / Got it</string>
+    <string name="announcement_action_skip_bilingual">跳过 / Skip</string>
+    <string name="tasks_label_new_tasks">New tasks</string>
 </resources>
