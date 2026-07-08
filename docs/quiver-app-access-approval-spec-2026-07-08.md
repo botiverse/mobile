@@ -75,13 +75,15 @@ platform side — the existing consent/approval card renders it.
 
 - **Manifest action** `request-app-access` →
   `POST /api/apps/{app_id}/access-grants/self`, invoked with
-  `--scope quiver:app:access` and the app as the OAuth **resource**, plus a
-  `role` param and `--target <admin conversation>`.
-- The grant is a typed `(principal × resource × role)` capability, not a
-  boolean. The `role` field is in the schema from day one (viewer / publisher /
-  admin); **v0 only issues `viewer`** (least privilege), but publisher/admin
-  open later with zero schema migration. Card text derives from `role`
-  (single-source — no per-role hand-written copy).
+  `--scope quiver:app:access`, the app as the OAuth **resource**, and
+  `--target <admin conversation>`.
+- **The scope *is* the capability** (scope-per-capability, not a `role` field):
+  `quiver:app:access` maps to `viewer`. **v0 issues `viewer` only** (least
+  privilege). Higher roles open later as **new catalog entries**
+  (`quiver:app:publish` → publisher, etc.), each resource-scoped — zero schema
+  migration, and each scope carries its own `label` = its own consent copy
+  (so there is never a "one card, per-role copy" branch; the label is
+  single-source per capability). The token's granted scope determines the role.
 - On a session whose token carries `quiver:app:access` for `resource = {app_id}`,
   Quiver grants the requesting account that role on the app
   (`INSERT INTO app_members …`, idempotent), authorizing **on the token scope**
@@ -120,9 +122,11 @@ platform side — the existing consent/approval card renders it.
 1. **Scope name:** `quiver:app:access`, namespaced + resource-scoped
    (`resource = appId`) — not a flat `app:access` (must stay per-app
    attributable/revocable; SHA-V0-006C).
-2. **Role:** carry a `role` field (viewer/publisher/admin) in the schema from
-   day one; **v0 issues `viewer` only** (least privilege); card text derives
-   from `role`. Future roles = zero migration.
+2. **Role → scope-per-capability** (Kai, revised): no `role` field. Each
+   capability is its own resource-scoped catalog entry — `quiver:app:access` →
+   viewer (v0 only); future `quiver:app:publish` etc. = new entries, zero schema
+   migration. Each scope's `label` is its own consent copy (single-source per
+   capability; no per-role branching in one card).
 3. **Lifecycle:** revocable app_member with `grantedAt` (+ optional `expiresAt`);
    no forced TTL in v0, but never permanent/non-revocable (authority ≠ liveness).
 
@@ -135,9 +139,10 @@ Verification once the card-rendering code is available:
   `<agent>` access to `<app>`'s data" — with no leftover "login" framing?
   Driven by the scope `label` above.
 
-Forward-looking (non-v0): when publisher/admin roles open, the single card must
-carry per-role consent copy (different consequences) — derived from `role`, not
-hand-written; loop in @Joy.
+Forward-looking (non-v0): higher roles open as new capability scopes
+(`quiver:app:publish`, …), each with its own `label`/consent copy — so there is
+no per-role branching inside one card. Loop in @Joy to write each new scope's
+consent copy when it lands.
 
 ## Rollout
 
