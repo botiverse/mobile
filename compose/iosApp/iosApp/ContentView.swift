@@ -11,8 +11,17 @@ struct ContentView: View {
         // as the root instead of the app shell so the Simulator screenshot
         // captures the fixture. Same pageName+pageData contract as Android.
         if let fixture = ContentView.visualFixtureLaunch() {
-            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data, hidesSystemChrome: true)
+            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
                 .ignoresSafeArea()
+                // task #419: hide the status bar so the capture screenshot has no
+                // clock/wifi/battery overlaying the fixture (the changing clock is
+                // the main diff-noise source). This is applied at the SwiftUI layer
+                // because the app uses the SwiftUI App lifecycle — the window's
+                // UIHostingController honors this, whereas a UIKit prefers-hidden on
+                // a VC embedded via a representable never gets consulted. The home
+                // indicator has no SwiftUI control before iOS 16 (deployment target
+                // is 14.1); left visible for now (fixed bottom bar, low diff impact).
+                .statusBar(hidden: true)
                 .onAppear {
                     // Settle signal for the capture job: it reads this line via
                     // `simctl launch --console` (+ a small buffer) before taking
