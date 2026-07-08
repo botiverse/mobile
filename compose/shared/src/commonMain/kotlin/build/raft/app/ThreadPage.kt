@@ -15220,6 +15220,7 @@ private fun ThreadForwardBundleModal(
         minWidth = 320.dp,
         maxWidth = 420.dp,
         contentPadding = 0.dp,
+        headerPadding = 16.dp,
         titleFontSize = 16,
         titleLineHeight = 20,
         contentSpacing = 0.dp
@@ -15417,6 +15418,65 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
             }
     }
 
+// Visual-testing fixture (task #560): renders the Forward target modal with a
+// seeded destination list so the header/content alignment (title + close vs the
+// 16dp-inset rows below) is captured and can't regress unseen.
+@Page("compose_thread_forward_modal_visual", supportInLocal = true)
+internal class ComposeThreadForwardModalVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadForwardModalVisualScreen() }
+    }
+}
+
+@Composable
+internal fun ThreadForwardModalVisualScreen() {
+    val targets =
+        remember {
+            listOf(
+                ThreadForwardTargetItem(
+                    id = "channel-design",
+                    title = "design",
+                    subtitle = "Product and UI decisions",
+                    kind = ThreadForwardTargetKind.Channel
+                ),
+                ThreadForwardTargetItem(
+                    id = "dm-artin",
+                    title = "artin",
+                    subtitle = "Direct message",
+                    kind = ThreadForwardTargetKind.DirectMessage
+                ),
+                ThreadForwardTargetItem(
+                    id = "channel-android",
+                    title = "android-artifacts",
+                    subtitle = "Public channel",
+                    kind = ThreadForwardTargetKind.PublicChannelUnjoined
+                ),
+                ThreadForwardTargetItem(
+                    id = "member-cindy",
+                    title = "Cindy",
+                    subtitle = "Keeps visual testing release notes aligned",
+                    kind = ThreadForwardTargetKind.Member
+                )
+            )
+        }
+    ThreadForwardTargetModal(
+        selectedCount = 2,
+        query = "",
+        loading = false,
+        targets = targets,
+        selectedTargetId = "channel-design",
+        errorCode = null,
+        sendingTargetId = null,
+        note = "",
+        onQueryChange = {},
+        onNoteChange = {},
+        onDismiss = {},
+        onSelectTarget = {},
+        onSend = {}
+    )
+}
+
 @Composable
 private fun ThreadForwardTargetModal(
     selectedCount: Int,
@@ -15439,6 +15499,7 @@ private fun ThreadForwardTargetModal(
         minWidth = 320.dp,
         maxWidth = 430.dp,
         contentPadding = 0.dp,
+        headerPadding = 16.dp,
         titleFontSize = 18,
         titleLineHeight = 22,
         contentSpacing = 0.dp
@@ -15526,48 +15587,19 @@ private fun ThreadForwardTargetModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = onDismiss,
-                    pressFeedback = false,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                ) {
-                    Text(
-                        text = "Cancel",
-                        style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-                Button(
+                // Design-system brutal-shadow action buttons (task #560): the raw
+                // Button+border above had no drop shadow, unlike the rest of the app.
+                SlockModalActionButton(
+                    label = "Cancel",
+                    onClick = onDismiss
+                )
+                SlockModalActionButton(
+                    label = if (sendingTargetId == null) "Send" else "Sending",
+                    icon = if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
                     onClick = onSend,
-                    enabled = selectedTargetId != null && sendingTargetId == null,
-                    pressFeedback = false,
-                    modifier =
-                        Modifier
-                            .background(
-                                if (selectedTargetId != null && sendingTargetId == null) {
-                                    SlockColor.AccentPink
-                                } else {
-                                    SlockColor.SurfaceCream
-                                }
-                            )
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SlockLucideIcon(
-                            if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
-                            modifier = Modifier.size(14.dp),
-                            color = "#FF111111"
-                        )
-                        Text(
-                            text = if (sendingTargetId == null) "Send" else "Sending",
-                            style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 17.sp),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1
-                        )
-                    }
-                }
+                    color = SlockColor.AccentPink,
+                    enabled = selectedTargetId != null && sendingTargetId == null
+                )
             }
         }
     }

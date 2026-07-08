@@ -77,6 +77,11 @@ internal fun SlockUnifiedDialog(
     maxWidth: Dp = 408.dp,
     outerPadding: Dp = SlockSpacing.Md,
     contentPadding: Dp = 20.dp,
+    // Horizontal inset for the title/close header. Defaults to contentPadding so
+    // ordinary dialogs are unchanged; dialogs that set contentPadding = 0 to let
+    // an edge-to-edge list bleed (e.g. Forward) still keep the header aligned
+    // with their own 16dp-inset content instead of flush against the border.
+    headerPadding: Dp = contentPadding,
     titleFontSize: Int = 22,
     titleLineHeight: Int = 26,
     titleMaxLines: Int = 1,
@@ -117,7 +122,18 @@ internal fun SlockUnifiedDialog(
                     verticalArrangement = Arrangement.spacedBy(contentSpacing)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    // When a dialog sets contentPadding = 0 for an
+                                    // edge-bleed body, the header would otherwise sit
+                                    // flush against the top and left borders; restore
+                                    // its inset to headerPadding on both axes.
+                                    start = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                    end = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                    top = (headerPadding - contentPadding).coerceAtLeast(0.dp)
+                                ),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

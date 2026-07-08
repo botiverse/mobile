@@ -682,6 +682,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadForwardModal() {
+        captureKmpComponentCase(
+            caseId = "components.thread.forward-modal",
+            pageName = "compose_thread_forward_modal_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-forward-modal"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_000
+        )
+    }
+
+    @Test
     fun captureThreadMessageShareSelection() {
         captureKmpComponentCase(
             caseId = "components.thread.message-share.selection",
