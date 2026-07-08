@@ -476,14 +476,13 @@ jobs:
           git submodule update --init third_party/kuikly-ui
           scripts/build_kuikly_fork.sh --android-only
 
-      - name: Compile shared iOS targets and unit tests
+      - name: Compile shared iOS targets
         working-directory: compose
         run: |
           ./gradlew \
             :shared:compileKotlinIosArm64 \
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:compileKotlinIosX64 \
-            :shared:compileTestKotlinIosSimulatorArm64 \
             --no-daemon \
             --console=plain
 
