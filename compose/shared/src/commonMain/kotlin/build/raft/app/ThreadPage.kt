@@ -9643,6 +9643,8 @@ private fun ThreadMessagesList(
     var firstViewportProbeActive by remember(threadInstanceKey) { mutableStateOf(true) }
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
+    // task #569: long-press on a reaction chip shows who reacted.
+    var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
@@ -10445,6 +10447,15 @@ private fun ThreadMessagesList(
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
+                        onShowReactionDetails = { reaction, anchor ->
+                            reactionDetails =
+                                ThreadReactionDetailsRequest(
+                                    emoji = reaction.emoji,
+                                    names = reaction.reactorNames,
+                                    count = reaction.count,
+                                    anchor = anchor
+                                )
+                        },
                         onShowActions = { message, anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
@@ -10693,6 +10704,15 @@ private fun ThreadMessagesList(
                                     taskStatusMenuAnchor = anchor
                                 },
                                 onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                                onShowReactionDetails = { reaction, anchor ->
+                                    reactionDetails =
+                                        ThreadReactionDetailsRequest(
+                                            emoji = reaction.emoji,
+                                            names = reaction.reactorNames,
+                                            count = reaction.count,
+                                            anchor = anchor
+                                        )
+                                },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
                                 onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
@@ -10808,6 +10828,12 @@ private fun ThreadMessagesList(
                         }
                     }
                 }
+            )
+        }
+        reactionDetails?.let { details ->
+            ThreadReactionDetailsTooltip(
+                details = details,
+                onDismiss = { reactionDetails = null }
             )
         }
         actionMessageId?.let { messageId ->
@@ -11951,6 +11977,7 @@ private fun ThreadMessageCard(
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: (String) -> Unit,
+    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null,
     onToggleSaved: () -> Unit,
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
@@ -12277,7 +12304,8 @@ private fun ThreadMessageCard(
                                     onShowActions = onShowActions,
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
                                     showReactionAddAction = showReactionAddAction,
-                                    onToggleReaction = onToggleReaction
+                                    onToggleReaction = onToggleReaction,
+                                    onShowReactionDetails = onShowReactionDetails
                                 )
                             }
                         }
@@ -12847,7 +12875,8 @@ private fun threadCreateAgentMachinesErrorCopy(code: String): String =
 @Composable
 private fun ThreadReactionChip(
     reaction: KuiklyThreadReactionItem,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onLongPress: ((Offset) -> Unit)? = null
 ) {
     val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
     val chipModifier = Modifier
@@ -12870,7 +12899,30 @@ private fun ThreadReactionChip(
             }
         }
     }
-    if (onClick != null) {
+    if (onLongPress != null) {
+        // task #569: tap keeps toggling the reaction; long-press surfaces the
+        // reactor tooltip. Both live on one gesture detector so the long
+        // press cannot fire a toggle. The anchor is reported in root pixels
+        // (same contract as the message long-press menu).
+        val rootPos = remember { SlockMutableOffsetRef() }
+        Box(
+            modifier = Modifier
+                .onGloballyPositioned { rootPos.update(it.positionInRoot()) }
+                .pointerInput(reaction.emoji, onClick != null) {
+                    detectTapGestures(
+                        onTap = { onClick?.invoke() },
+                        onLongPress = { localOffset ->
+                            val base = rootPos.value.takeIf { rootPos.hasValue } ?: Offset.Zero
+                            onLongPress(Offset(base.x + localOffset.x, base.y + localOffset.y))
+                        }
+                    )
+                }
+                .then(chipModifier),
+            contentAlignment = Alignment.Center
+        ) {
+            chipContent()
+        }
+    } else if (onClick != null) {
         Button(onClick = onClick, pressFeedback = false) {
             Box(
                 modifier = chipModifier,
@@ -12889,6 +12941,34 @@ private fun ThreadReactionChip(
     }
 }
 
+// task #569: everything the tooltip needs, captured at long-press time.
+internal data class ThreadReactionDetailsRequest(
+    val emoji: String,
+    val names: List<String>,
+    val count: Int,
+    val anchor: Offset
+)
+
+// Label formatting for the reactor tooltip: first N names + "+K" for the
+// rest (mobile pendant of the web hover tooltip). Falls back to a bare count
+// when the payload carries no names (older servers).
+internal fun threadReactionDetailsLabel(
+    names: List<String>,
+    count: Int,
+    maxNames: Int = ThreadReactionDetailsMaxNames
+): String {
+    val clean = names.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    if (clean.isEmpty()) {
+        return if (count == 1) "1 person" else "$count people"
+    }
+    val shown = clean.take(maxNames)
+    val hidden = maxOf(count, clean.size) - shown.size
+    val joined = shown.joinToString(", ")
+    return if (hidden > 0) "$joined +$hidden" else joined
+}
+
+internal const val ThreadReactionDetailsMaxNames = 4
+
 @Composable
 private fun ThreadReactionAddChip(onClick: (Offset) -> Unit) {
     Button(
@@ -12898,6 +12978,63 @@ private fun ThreadReactionAddChip(onClick: (Offset) -> Unit) {
         ThreadReactionAddChipChrome()
     }
 }
+
+// task #569: who-reacted tooltip, long-press pendant of the web hover
+// tooltip. Reuses the anchored-popover infra (viewport clamping, outside-tap
+// dismiss with the long-press activation window, Back participation).
+@Composable
+private fun ThreadReactionDetailsTooltip(
+    details: ThreadReactionDetailsRequest,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val label = threadReactionDetailsLabel(details.names, details.count)
+    val estimatedSize =
+        with(density) {
+            Size(
+                width =
+                    (ThreadReactionDetailsGlyphSize + ThreadReactionDetailsHorizontalPadding * 2 + 10.dp).toPx() +
+                        label.length * ThreadReactionDetailsLabelCharWidth.toPx(),
+                height = ThreadReactionDetailsHeight.toPx()
+            )
+        }
+    SlockAnchoredPopover(
+        anchor = details.anchor,
+        contentSize = estimatedSize,
+        onDismiss = onDismiss,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto
+    ) { popoverModifier, _ ->
+        Row(
+            modifier = popoverModifier
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .slockFloatingContentClickTarget()
+                .height(ThreadReactionDetailsHeight)
+                .padding(horizontal = ThreadReactionDetailsHorizontalPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ThreadQuickReactionGlyph(
+                threadDisplayReactionEmoji(details.emoji),
+                modifier = Modifier.size(ThreadReactionDetailsGlyphSize)
+            )
+            Text(
+                text = label,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private val ThreadReactionDetailsHeight = 28.dp
+private val ThreadReactionDetailsGlyphSize = 15.dp
+private val ThreadReactionDetailsHorizontalPadding = 8.dp
+// Rough per-character width at 12sp bold caption — only used to pre-size the
+// popover for viewport clamping; the row itself wraps its real content.
+private val ThreadReactionDetailsLabelCharWidth = 7.dp
 
 @Composable
 private fun ThreadReactionAddChipChrome() {
@@ -13316,7 +13453,8 @@ private fun ThreadMessageFooterMeta(
     onShowActions: (Offset) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
     showReactionAddAction: Boolean = false,
-    onToggleReaction: ((String) -> Unit)? = null
+    onToggleReaction: ((String) -> Unit)? = null,
+    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null
 ) {
     val hasTask = message.hasThreadTaskFooterMeta()
     val hasReplies = replyMetadata.replyCount > 0 || hasReplyDraft
@@ -13391,7 +13529,11 @@ private fun ThreadMessageFooterMeta(
                 key("reaction:${message.id}:${reaction.emoji}") {
                     ThreadReactionChip(
                         reaction = reaction,
-                        onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } }
+                        onClick = onToggleReaction?.let { callback -> { callback(reaction.emoji) } },
+                        onLongPress =
+                            onShowReactionDetails?.let { callback ->
+                                { anchor -> callback(reaction, anchor) }
+                            }
                     )
                 }
             }
@@ -14205,6 +14347,7 @@ private fun ThreadOriginCard(
     onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
+    onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null,
     onMentionAuthor: (KuiklyThreadMessageItem) -> Unit,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
@@ -14290,6 +14433,7 @@ private fun ThreadOriginCard(
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                            onShowReactionDetails = onShowReactionDetails,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
                             onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
