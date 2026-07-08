@@ -178,6 +178,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockKuiklyAdapters.init(applicationContext)
         setContentView(R.layout.activity_slock_kuikly)
         setupImmersiveMode()
+        setupImeInsetsRelayout()
         suppressVisualKeyboard()
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         installSlockInputFontBridge(container)
@@ -882,6 +883,23 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
+        }
+    }
+
+    // task #232: with setDecorFitsSystemWindows(false) (edge-to-edge, task
+    // #230) the window no longer resizes when the IME toggles — adjustResize
+    // is inert in that model — so no layout pass follows the keyboard and
+    // Kuikly's Android11PlusKeyboardWatcher (global-layout driven, reads
+    // rootWindowInsets ime−nav) never fires: the composer stayed behind the
+    // keyboard. Insets are still dispatched, so force the layout pass the
+    // watcher is waiting for whenever they change. API 30+ only: below that
+    // decorFits stays true and the legacy popup watcher still sees resizes.
+    private fun setupImeInsetsRelayout() {
+        if (Build.VERSION.SDK_INT < 30) return
+        val content = findViewById<View>(android.R.id.content) ?: return
+        content.setOnApplyWindowInsetsListener { view, insets ->
+            view.requestLayout()
+            insets
         }
     }
 
