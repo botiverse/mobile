@@ -116,6 +116,7 @@ internal class BridgeSettingsPlatformCapabilities(
             SharedSettingsAboutSnapshot(
                 appName = response.optString("appName").ifBlank { "Raft" },
                 versionLabel = response.optString("versionLabel"),
+                versionCodeLabel = response.optString("versionCodeLabel"),
                 buildLabel = response.optString("buildLabel"),
                 sourceLabel = response.optString("sourceLabel"),
                 packageName = response.optString("packageName"),
@@ -126,6 +127,12 @@ internal class BridgeSettingsPlatformCapabilities(
                 notificationStatusLabel = response.optString("notificationStatusLabel"),
                 deviceLabel = response.optString("deviceLabel"),
                 platformLabel = response.optString("platformLabel"),
+                sdkLabel = response.optString("sdkLabel"),
+                installTimeLabel = response.optString("installTimeLabel"),
+                screenLabel = response.optString("screenLabel"),
+                densityLabel = response.optString("densityLabel"),
+                fontScaleLabel = response.optString("fontScaleLabel"),
+                modelLabel = response.optString("modelLabel"),
                 buildTime = response.optString("buildTime"),
                 gitCommit = response.optString("gitCommit")
             )

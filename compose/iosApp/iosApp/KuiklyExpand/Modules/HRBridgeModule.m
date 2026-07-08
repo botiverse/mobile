@@ -77,6 +77,46 @@ static NSString *SlockBridgeGitCommit(void) {
     return SlockBridgeString(SLOCK_IOS_GIT_COMMIT);
 }
 
+static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {
+    NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
+    NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
+    NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
+    NSString *gitCommit = SlockBridgeGitCommit();
+    UIDevice *device = UIDevice.currentDevice;
+    UIScreen *screen = UIScreen.mainScreen;
+    CGRect bounds = screen.bounds;
+    CGFloat scale = screen.scale;
+    NSString *contentSizeCategory = @"--";
+    if (@available(iOS 10.0, *)) {
+        contentSizeCategory = SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory).length > 0
+            ? SlockBridgeString(UIApplication.sharedApplication.preferredContentSizeCategory)
+            : @"--";
+    }
+    return @{
+        @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
+        @"versionLabel" : version,
+        @"versionCodeLabel" : build,
+        @"buildLabel" : build,
+        @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
+        @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
+        @"buildTime" : SlockBridgeBuildTime(),
+        @"gitCommit" : gitCommit,
+        @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
+        @"modelLabel" : device.model ?: @"--",
+        @"platformLabel" : [NSString stringWithFormat:@"iOS %@", device.systemVersion ?: @""],
+        @"sdkLabel" : @"--",
+        @"installTimeLabel" : @"--",
+        @"screenLabel" : [NSString stringWithFormat:@"%.0fx%.0f pt @%.0fx", bounds.size.width, bounds.size.height, scale],
+        @"densityLabel" : [NSString stringWithFormat:@"@%.0fx", scale],
+        @"fontScaleLabel" : contentSizeCategory,
+        @"sessionStatusLabel" : @"Not wired",
+        @"signedInUserLabel" : @"--",
+        @"selectedServerLabel" : @"--",
+        @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
+        @"notificationStatusLabel" : @"Notifications unsupported"
+    };
+}
+
 static BOOL SlockBridgeBool(id value) {
     if ([value isKindOfClass:NSNumber.class]) {
         return [(NSNumber *)value boolValue];
@@ -418,16 +458,49 @@ static void SlockDiagnosticsClear(void) {
 static NSString *SlockDiagnosticsBuildExportText(NSDictionary *about) {
     NSMutableString *text = [NSMutableString string];
     [text appendString:@"Raft diagnostics\n\nEnvironment\n"];
-    NSArray<NSString *> *keys = @[@"appName", @"versionLabel", @"buildLabel", @"sourceLabel", @"packageName", @"buildTime", @"gitCommit", @"platformLabel", @"deviceLabel", @"sessionStatusLabel", @"socketStatusLabel", @"diagnosticsReason", @"crashAtMillis", @"crashAt"];
-    for (NSString *key in keys) {
+    NSArray<NSDictionary *> *rows = @[
+        @{ @"key": @"appName", @"label": @"App" },
+        @{ @"key": @"versionLabel", @"label": @"Version" },
+        @{ @"key": @"versionCodeLabel", @"label": @"Version code" },
+        @{ @"key": @"buildLabel", @"label": @"Build" },
+        @{ @"key": @"sourceLabel", @"label": @"Source" },
+        @{ @"key": @"packageName", @"label": @"Package" },
+        @{ @"key": @"platformLabel", @"label": @"Platform" },
+        @{ @"key": @"sdkLabel", @"label": @"SDK" },
+        @{ @"key": @"deviceLabel", @"label": @"Device" },
+        @{ @"key": @"modelLabel", @"label": @"Model" },
+        @{ @"key": @"installTimeLabel", @"label": @"Install time" },
+        @{ @"key": @"screenLabel", @"label": @"Screen" },
+        @{ @"key": @"densityLabel", @"label": @"Density" },
+        @{ @"key": @"fontScaleLabel", @"label": @"Font scale" },
+        @{ @"key": @"sessionStatusLabel", @"label": @"Session" },
+        @{ @"key": @"signedInUserLabel", @"label": @"Signed in user" },
+        @{ @"key": @"selectedServerLabel", @"label": @"Selected server" },
+        @{ @"key": @"socketStatusLabel", @"label": @"Socket" },
+        @{ @"key": @"diagnosticsReason", @"label": @"Diagnostics reason" },
+        @{ @"key": @"crashAtMillis", @"label": @"Crash at millis" },
+        @{ @"key": @"crashAt", @"label": @"Crash at" }
+    ];
+    for (NSDictionary *row in rows) {
+        NSString *key = row[@"key"];
         NSString *value = SlockBridgeString(about[key]);
-        if (value.length > 0) {
-            [text appendFormat:@"%@: %@\n", key, value];
-        }
+        [text appendFormat:@"%@: %@\n", row[@"label"], value.length > 0 ? value : @"--"];
     }
     [text appendString:@"\niOS diagnostics\n"];
     [text appendString:SlockDiagnosticsExportRecentText(SlockDiagnosticsRecentMaxChars)];
     return text;
+}
+
+static NSString *SlockDiagnosticsEnvironmentSectionFromExportText(NSString *exportText) {
+    NSRange environmentRange = [exportText rangeOfString:@"Environment\n"];
+    if (environmentRange.location == NSNotFound) {
+        return @"";
+    }
+    NSUInteger sectionStart = environmentRange.location + environmentRange.length;
+    NSRange diagnosticsRange = [exportText rangeOfString:@"\niOS diagnostics" options:0 range:NSMakeRange(sectionStart, exportText.length - sectionStart)];
+    NSUInteger sectionEnd = diagnosticsRange.location == NSNotFound ? exportText.length : diagnosticsRange.location;
+    NSString *section = [exportText substringWithRange:NSMakeRange(sectionStart, sectionEnd - sectionStart)];
+    return [section stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
 }
 
 static NSString *SlockDiagnosticsFeedbackDirectoryPath(void) {
@@ -512,10 +585,11 @@ static NSDictionary *SlockDiagnosticsPrepareAttachmentFiles(NSDictionary *about,
 }
 
 static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
-    NSMutableDictionary *about = [@{
+    NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+    [about addEntriesFromDictionary:@{
         @"diagnosticsReason" : @"crash",
         @"crashAtMillis" : @(crashAtMillis)
-    } mutableCopy];
+    }];
     if (crashAtMillis > 0) {
         NSDate *date = [NSDate dateWithTimeIntervalSince1970:((NSTimeInterval)crashAtMillis / 1000.0)];
         if (@available(iOS 10.0, *)) {
@@ -530,7 +604,9 @@ static NSDictionary *SlockDiagnosticsCrashAbout(long long crashAtMillis) {
 }
 
 NSArray<NSString *> *SlockIosPrepareDiagnosticsAttachmentPaths(NSString *reason) {
-    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(@{}, reason ?: @"crash", NO);
+    NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+    about[@"diagnosticsReason"] = reason ?: @"crash";
+    NSDictionary *attachments = SlockDiagnosticsPrepareAttachmentFiles(about, reason ?: @"crash", NO);
     NSArray *paths = [attachments[@"attachmentPaths"] isKindOfClass:NSArray.class] ? attachments[@"attachmentPaths"] : @[];
     return paths;
 }
@@ -900,26 +976,9 @@ void SlockIosInstallQuiverReporting(void) {
                                              message:@"Missing settings capability action"];
     }
     if ([action isEqualToString:@"loadAbout"]) {
-        NSDictionary *info = NSBundle.mainBundle.infoDictionary ?: @{};
-        NSString *version = SlockBridgeString(info[@"CFBundleShortVersionString"]);
-        NSString *build = SlockBridgeString(info[@"CFBundleVersion"]);
-        NSString *gitCommit = SlockBridgeGitCommit();
-        UIDevice *device = UIDevice.currentDevice;
-        return @{
-            @"status" : @"ok",
-            @"appName" : SlockBridgeString(info[@"CFBundleDisplayName"]).length > 0 ? SlockBridgeString(info[@"CFBundleDisplayName"]) : @"Raft",
-            @"versionLabel" : version,
-            @"buildLabel" : build,
-            @"sourceLabel" : gitCommit.length > 0 ? gitCommit : @"unknown",
-            @"packageName" : SlockBridgeString(NSBundle.mainBundle.bundleIdentifier),
-            @"buildTime" : SlockBridgeBuildTime(),
-            @"gitCommit" : gitCommit,
-            @"deviceLabel" : [NSString stringWithFormat:@"%@ %@", device.model ?: @"iOS", device.systemVersion ?: @""],
-            @"platformLabel" : @"iOS",
-            @"sessionStatusLabel" : @"Not wired",
-            @"socketStatusLabel" : [SlockIosRealtimeHost shared].statusLabel,
-            @"notificationStatusLabel" : @"Notifications unsupported"
-        };
+        NSMutableDictionary *about = [SlockDiagnosticsCurrentEnvironmentAbout() mutableCopy];
+        about[@"status"] = @"ok";
+        return about;
     }
     if ([action isEqualToString:@"loadStorage"]) {
         return @{
@@ -1119,7 +1178,14 @@ void SlockIosInstallQuiverReporting(void) {
                     return;
                 }
                 NSString *shortId = [ticketId substringToIndex:MIN(ticketId.length, (NSUInteger)8)];
-                NSString *shareText = [NSString stringWithFormat:@"Quiver feedback %@\n%@", shortId, description];
+                NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
+                    SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
+                );
+                NSString *shareText = [NSString stringWithFormat:@"Quiver feedback %@\nTicket: %@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
+                    shortId,
+                    ticketId,
+                    environment.length > 0 ? environment : @"--",
+                    description];
                 UIPasteboard.generalPasteboard.string = shareText;
                 SlockDiagnosticsRecord(@"info", @"SlockDiagnostics",
                     [NSString stringWithFormat:@"quiver_feedback_submitted ticket=%@", shortId]);

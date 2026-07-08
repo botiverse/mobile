@@ -39,6 +39,51 @@ class SlockKuiklyNotificationLaunchTest {
     }
 
     @Test
+    fun mergedDiagnosticsExportIncludesDeviceFactsWithoutSensitiveFields() {
+        val exportText =
+            formatMergedSettingsDiagnosticsExportText(
+                about =
+                    mapOf(
+                        "appName" to "Raft",
+                        "versionLabel" to "1.2.3",
+                        "versionCodeLabel" to "123",
+                        "buildLabel" to "123",
+                        "sourceLabel" to "abc123",
+                        "packageName" to "build.raft.app",
+                        "platformLabel" to "Android 16 / SDK 36",
+                        "sdkLabel" to "36",
+                        "deviceLabel" to "Google Pixel",
+                        "modelLabel" to "Pixel",
+                        "installTimeLabel" to "2026-07-09T00:00:00Z",
+                        "screenLabel" to "1080x2400 px",
+                        "densityLabel" to "2.75 (440 dpi)",
+                        "fontScaleLabel" to "1.0",
+                        "sessionStatusLabel" to "Signed in",
+                        "signedInUserLabel" to "Artin",
+                        "selectedServerLabel" to "Botiverse",
+                        "socketStatusLabel" to "Host active"
+                    ),
+                recentLogs = "",
+                hasFallbackDiagnosticsLogs = false
+            )
+
+        listOf(
+            "Version code:",
+            "SDK:",
+            "Install time:",
+            "Screen:",
+            "Density:",
+            "Font scale:",
+            "Model:"
+        ).forEach { label ->
+            assertTrue("missing $label", exportText.contains(label))
+        }
+        listOf("token", "credential", "authorization", "bearer", "sessionToken").forEach { sensitive ->
+            assertFalse("export leaked $sensitive", exportText.contains(sensitive, ignoreCase = true))
+        }
+    }
+
+    @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {
         val pageData =
             SlockKuiklyActivity.buildUnreadNotificationThreadPageData(
