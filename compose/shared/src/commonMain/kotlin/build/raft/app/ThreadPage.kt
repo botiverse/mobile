@@ -193,6 +193,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
+import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -2127,6 +2128,7 @@ private fun ThreadMessageVisualScreenContent() {
                 ThreadMessageMenuChrome(
                     actions = menuActions,
                     showReactionActions = payload.showReactionActions,
+                    reactionAtlasImage = LocalThreadReactionAtlasImage.current,
                     onReact = {},
                     modifier = Modifier
                 )
@@ -2301,7 +2303,10 @@ internal fun ThreadReactionAtlasVisualScreen() {
                             .border(SlockStroke.Default, SlockColor.BorderBlack, RoundedCornerShape(SlockRadius.Sm))
                             .padding(vertical = SlockSpacing.Xs)
                 ) {
-                    ThreadMessageReactionRow(onReact = {})
+                    ThreadMessageReactionRow(
+                        reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                        onReact = {}
+                    )
                 }
             }
             ThreadReactionVisualSection("Chips") {
@@ -13288,6 +13293,7 @@ private fun ThreadMessageActionMenu(
     onTranslate: () -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {}
 ) {
+    val reactionAtlasImage = LocalThreadReactionAtlasImage.current
     val actions =
         remember(
             message,
@@ -13375,6 +13381,7 @@ private fun ThreadMessageActionMenu(
         ThreadMessageMenuChrome(
             actions = actions,
             showReactionActions = showReactionActions,
+            reactionAtlasImage = reactionAtlasImage,
             onReact = onReact,
             modifier =
                 popoverModifier
@@ -13456,6 +13463,7 @@ private fun ThreadMessageTextSelectionDialog(
 private fun ThreadMessageMenuChrome(
     actions: List<ThreadMessageMenuAction>,
     showReactionActions: Boolean,
+    reactionAtlasImage: ImageBitmap?,
     onReact: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -13478,7 +13486,10 @@ private fun ThreadMessageMenuChrome(
                 .slockFloatingContentClickTarget()
         ) {
             if (showReactionActions) {
-                ThreadMessageReactionRow(onReact = onReact)
+                ThreadMessageReactionRow(
+                    reactionAtlasImage = reactionAtlasImage,
+                    onReact = onReact
+                )
                 ThreadMessageMenuDivider()
             }
             actions.forEachIndexed { index, action ->
@@ -13493,7 +13504,10 @@ private fun ThreadMessageMenuChrome(
 }
 
 @Composable
-private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
+private fun ThreadMessageReactionRow(
+    reactionAtlasImage: ImageBitmap?,
+    onReact: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -13509,7 +13523,11 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
                 modifier = Modifier
                     .size(28.dp)
             ) {
-                ThreadQuickReactionGlyph(reaction, modifier = Modifier.size(18.dp))
+                ThreadQuickReactionGlyph(
+                    reaction,
+                    modifier = Modifier.size(18.dp),
+                    reactionAtlasImage = reactionAtlasImage
+                )
             }
         }
     }
@@ -13553,11 +13571,16 @@ private fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
 @Composable
 private fun ThreadQuickReactionGlyph(
     emoji: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reactionAtlasImage: ImageBitmap? = null
 ) {
     val sprite = ThreadReactionSpriteCatalogV1.resolve(emoji)
     if (sprite != null) {
-        ThreadReactionSpriteGlyph(sprite = sprite, modifier = modifier)
+        ThreadReactionSpriteGlyph(
+            sprite = sprite,
+            modifier = modifier,
+            reactionAtlasImage = reactionAtlasImage
+        )
         return
     }
     ThreadReactionGlyphDiagnosticLog(
@@ -13571,7 +13594,8 @@ private fun ThreadQuickReactionGlyph(
 @Composable
 private fun ThreadReactionSpriteGlyph(
     sprite: ThreadReactionSprite,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    reactionAtlasImage: ImageBitmap? = null
 ) {
     // task #376 (Quiver 389d855b): consume the atlas image hoisted to the
     // ThreadPage root via LocalThreadReactionAtlasImage instead of starting a
@@ -13581,14 +13605,14 @@ private fun ThreadReactionSpriteGlyph(
     // the provided ready bitmap avoids that timing hole. A null value here is
     // only a transient "not decoded yet" state — the root keeps the atlas
     // mounted and this consumer recomposes to the sprite once it is ready.
-    val image = LocalThreadReactionAtlasImage.current
+    val image = reactionAtlasImage ?: LocalThreadReactionAtlasImage.current
     if (image == null) {
         ThreadReactionGlyphDiagnosticLog(
             path = "sprite_atlas_not_ready",
             emoji = sprite.value,
             detail = "sprite=${sprite.name} imageWidth=0 imageHeight=0"
         )
-        ThreadTextReactionGlyph(emoji = sprite.value, modifier = modifier)
+        ThreadReactionSpritePlaceholderGlyph(sprite = sprite, modifier = modifier)
         return
     }
     ThreadReactionGlyphDiagnosticLog(
@@ -13604,6 +13628,41 @@ private fun ThreadReactionSpriteGlyph(
             srcSize = IntSize(rect.width, rect.height),
             dstOffset = IntOffset.Zero,
             dstSize = size.toIntSize()
+        )
+    }
+}
+
+@Composable
+private fun ThreadReactionSpritePlaceholderGlyph(
+    sprite: ThreadReactionSprite,
+    modifier: Modifier = Modifier
+) {
+    ThreadReactionGlyphDiagnosticLog(
+        path = "sprite_atlas_placeholder",
+        emoji = sprite.value,
+        detail = "sprite=${sprite.name}"
+    )
+    Canvas(modifier = modifier) {
+        val stroke = SlockStroke.Thin.toPx().coerceAtLeast(1f)
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = ((minOf(size.width, size.height) - stroke) / 2f).coerceAtLeast(0f)
+        drawCircle(
+            color = SlockColor.SurfaceCream,
+            radius = radius,
+            center = center,
+            style = Fill
+        )
+        drawCircle(
+            color = SlockColor.BorderBlack,
+            radius = radius,
+            center = center,
+            style = Stroke(width = stroke)
+        )
+        drawCircle(
+            color = SlockColor.BrandYellow,
+            radius = (radius * 0.36f).coerceAtLeast(0f),
+            center = center,
+            style = Fill
         )
     }
 }
