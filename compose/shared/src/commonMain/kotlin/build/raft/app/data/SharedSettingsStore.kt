@@ -132,6 +132,7 @@ data class SharedSettingsStorageRow(
 data class SharedSettingsAboutSnapshot(
     val appName: String = "Raft",
     val versionLabel: String = "",
+    val versionCodeLabel: String = "",
     val buildLabel: String = "",
     val sourceLabel: String = "",
     val packageName: String = "",
@@ -142,6 +143,12 @@ data class SharedSettingsAboutSnapshot(
     val notificationStatusLabel: String = "",
     val deviceLabel: String = "",
     val platformLabel: String = "",
+    val sdkLabel: String = "",
+    val installTimeLabel: String = "",
+    val screenLabel: String = "",
+    val densityLabel: String = "",
+    val fontScaleLabel: String = "",
+    val modelLabel: String = "",
     val buildTime: String = "",
     val gitCommit: String = ""
 )

@@ -604,13 +604,20 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "status": "ok",
       "appName": "Raft",
       "versionLabel": bundleInfo.versionName,
+      "versionCodeLabel": `${bundleInfo.versionCode}`,
       "buildLabel": `${bundleInfo.versionCode}`,
       "sourceLabel": SLOCK_OHOS_GIT_COMMIT.length > 0 ? SLOCK_OHOS_GIT_COMMIT : "unknown",
       "packageName": bundleInfo.name,
       "socketStatusLabel": "Shared shell",
       "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
       "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
+      "modelLabel": deviceInfo.productModel,
       "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
+      "sdkLabel": `${deviceInfo.sdkApiVersion}`,
+      "installTimeLabel": "--",
+      "screenLabel": "--",
+      "densityLabel": "--",
+      "fontScaleLabel": "--",
       "baseUrl": SlockOhosApiEnvironmentStore.current(this).apiBaseUrl,
       "filesDir": context.filesDir,
       "buildTime": SLOCK_OHOS_BUILD_TIME.length > 0 ? SLOCK_OHOS_BUILD_TIME : "unknown",
@@ -748,7 +755,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         [],
       );
       const shortId = ticketId.slice(0, 8);
-      const shareText = `Quiver feedback ${shortId}\n${message}`;
+      const environmentText = SlockOhosAppDiagnostics.exportEnvironmentText(context);
+      const shareText = `Quiver feedback ${shortId}\nTicket: ${ticketId}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
       SlockOhosClipboard.copyText(shareText);
       SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${shortId}`);
       return { "status": "ok", "ticketId": ticketId, "shareText": shareText };

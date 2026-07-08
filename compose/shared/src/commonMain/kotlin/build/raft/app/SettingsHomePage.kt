@@ -4575,6 +4575,7 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
+                    onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsDestinationOpenSourceLicenses ->
@@ -7994,6 +7995,7 @@ private fun SharedSettingsAboutContent(
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
     onOpenSourceLicenses: () -> Unit,
+    onCopyEnvironmentInfo: () -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot =
@@ -8008,6 +8010,7 @@ private fun SharedSettingsAboutContent(
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
+            "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
             "feedback" -> onSendFeedback()
         }
     }
@@ -10093,6 +10096,16 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                             )
                             add(
                                 KuiklySharedSettingsRow(
+                                    key = "copyEnvironmentInfo",
+                                    iconName = SlockLucideIconName.Clipboard,
+                                    title = "Copy environment info",
+                                    detail = "Copy the same sanitized environment used for diagnostics and feedback.",
+                                    status = "Copy",
+                                    enabled = true
+                                )
+                            )
+                            add(
+                                KuiklySharedSettingsRow(
                                     key = "feedback",
                                     iconName = SlockLucideIconName.MessageSquare,
                                     title = "Send feedback",
@@ -10442,8 +10455,12 @@ private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(): List<Kui
     listOf(
         KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, "App", appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { "Version" }),
         KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, "Build", buildLabel.ifBlank { "Unknown" }, status = sourceLabel.ifBlank { "Source" }),
+        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, "Version code", versionCodeLabel.ifBlank { buildLabel.ifBlank { "Unknown" } }, status = sdkLabel.ifBlank { "SDK" }),
         KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Host"),
         KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, "Platform", platformLabel.ifBlank { "Unknown" }, status = deviceLabel.ifBlank { "Device" }),
+        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, "Device facts", modelLabel.ifBlank { deviceLabel.ifBlank { "Unknown" } }, status = screenLabel.ifBlank { "Screen" }),
+        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, "Display", densityLabel.ifBlank { "Density" }, status = fontScaleLabel.ifBlank { "Font scale" }),
+        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, "Install time", installTimeLabel.ifBlank { "--" }, status = "Host"),
         KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, "Session", signedInUserLabel.ifBlank { "No signed-in user" }, status = sessionStatusLabel.ifBlank { "Unknown" }),
         KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "Unknown" }, status = socketStatusLabel.ifBlank { "Socket" })
     )

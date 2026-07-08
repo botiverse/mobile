@@ -4,6 +4,7 @@ import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import zlib from '@ohos.zlib';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
+import { SLOCK_OHOS_GIT_COMMIT } from '../kuikly/generated/SlockOhosBuildMetadata';
 
 /**
  * App diagnostics for HarmonyOS: local log breadcrumbs + a feedback archive
@@ -52,27 +53,57 @@ export class SlockOhosAppDiagnostics {
         ? diagnostics.slice(diagnostics.length - MAX_DIAGNOSTIC_EXPORT_CHARS)
         : diagnostics;
     return [
-      SlockOhosAppDiagnostics.feedbackSummaryText(context, bundleInfo),
+      SlockOhosAppDiagnostics.diagnosticsHeaderText(bundleInfo),
       '',
       clippedDiagnostics,
     ].join('\n');
   }
 
-  private static feedbackSummaryText(
-    context: common.UIAbilityContext,
+  static exportEnvironmentText(context: common.UIAbilityContext): string {
+    const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+    return SlockOhosAppDiagnostics.environmentLines(bundleInfo).join('\n');
+  }
+
+  private static diagnosticsHeaderText(
     bundleInfo: bundleManager.BundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT)
   ): string {
     return [
-      'Raft OHOS diagnostics',
-      `Exported at: ${new Date().toString()}`,
-      `Bundle: ${bundleInfo.name}`,
-      `Version name: ${bundleInfo.versionName}`,
-      `Version code: ${bundleInfo.versionCode}`,
-      `Device: ${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
-      `Device type: ${deviceInfo.deviceType}`,
-      `OS: ${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
-      `Files dir: ${context.filesDir}`,
+      'Raft diagnostics',
+      '',
+      'Environment',
+      ...SlockOhosAppDiagnostics.environmentLines(bundleInfo),
+      '',
+      'OHOS diagnostics',
     ].join('\n');
+  }
+
+  private static environmentLines(
+    bundleInfo: bundleManager.BundleInfo
+  ): Array<string> {
+    return [
+      'App: Raft',
+      `Version: ${bundleInfo.versionName}`,
+      `Version code: ${bundleInfo.versionCode}`,
+      `Build: ${bundleInfo.versionCode}`,
+      `Source: ${SlockOhosAppDiagnostics.valueOrDash(SLOCK_OHOS_GIT_COMMIT)}`,
+      `Package: ${bundleInfo.name}`,
+      `Platform: ${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
+      `SDK: ${deviceInfo.sdkApiVersion}`,
+      `Device: ${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
+      `Model: ${SlockOhosAppDiagnostics.valueOrDash(deviceInfo.productModel)}`,
+      'Install time: --',
+      'Screen: --',
+      'Density: --',
+      'Font scale: --',
+      'Session: --',
+      'Signed in user: --',
+      'Selected server: --',
+      'Socket: Shared shell',
+    ];
+  }
+
+  private static valueOrDash(value: string | undefined): string {
+    return value !== undefined && value.length > 0 ? value : '--';
   }
 
   private static recordDiagnosticsEnvironment(
@@ -83,6 +114,7 @@ export class SlockOhosAppDiagnostics {
       TAG,
       `environment bundle=${bundleInfo.name} version=${bundleInfo.versionName} code=${bundleInfo.versionCode} ` +
         `device=${`${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim()} ` +
+        `model=${deviceInfo.productModel} sdk=${deviceInfo.sdkApiVersion} installTime=-- screen=-- density=-- fontScale=-- ` +
         `deviceType=${deviceInfo.deviceType} ` +
         `os=${deviceInfo.osFullName}/${deviceInfo.displayVersion}/api${deviceInfo.sdkApiVersion} ` +
         `filesDir=${context.filesDir}`

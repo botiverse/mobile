@@ -147,6 +147,69 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal fun formatMergedSettingsDiagnosticsExportText(
+        about: Map<String, Any>,
+        recentLogs: String,
+        hasFallbackDiagnosticsLogs: Boolean
+): String =
+        buildString {
+            appendLine("Raft diagnostics")
+            appendLine()
+            appendLine("Environment")
+            appendDiagnosticsExportLine("App", about.diagnosticsStringValue("appName").ifBlank { "Raft" })
+            appendDiagnosticsExportLine("Version", about.diagnosticsStringValue("versionLabel"))
+            appendDiagnosticsExportLine("Version code", about.diagnosticsStringValue("versionCodeLabel"))
+            appendDiagnosticsExportLine("Build", about.diagnosticsStringValue("buildLabel"))
+            appendDiagnosticsExportLine("Source", about.diagnosticsStringValue("sourceLabel"))
+            appendDiagnosticsExportLine("Package", about.diagnosticsStringValue("packageName"))
+            appendDiagnosticsExportLine("Platform", about.diagnosticsStringValue("platformLabel"))
+            appendDiagnosticsExportLine("SDK", about.diagnosticsStringValue("sdkLabel"))
+            appendDiagnosticsExportLine("Device", about.diagnosticsStringValue("deviceLabel"))
+            appendDiagnosticsExportLine("Model", about.diagnosticsStringValue("modelLabel"))
+            appendDiagnosticsExportLine("Install time", about.diagnosticsStringValue("installTimeLabel"))
+            appendDiagnosticsExportLine("Screen", about.diagnosticsStringValue("screenLabel"))
+            appendDiagnosticsExportLine("Density", about.diagnosticsStringValue("densityLabel"))
+            appendDiagnosticsExportLine("Font scale", about.diagnosticsStringValue("fontScaleLabel"))
+            appendDiagnosticsExportLine("Session", about.diagnosticsStringValue("sessionStatusLabel"))
+            appendDiagnosticsExportLine("Signed in user", about.diagnosticsStringValue("signedInUserLabel"))
+            appendDiagnosticsExportLine("Selected server", about.diagnosticsStringValue("selectedServerLabel"))
+            appendDiagnosticsExportLine("Socket", about.diagnosticsStringValue("socketStatusLabel"))
+            appendLine()
+            appendLine("App diagnostics")
+            appendDiagnosticsExportLine("TDLog", "disabled")
+            appendDiagnosticsExportLine(
+                    "App JSONL log",
+                    if (hasFallbackDiagnosticsLogs) {
+                        "enabled"
+                    } else {
+                        "pending"
+                    }
+            )
+            appendDiagnosticsExportLine("Attachment", "App-owned diagnostics JSONL files are included in this zip when available.")
+            appendLine()
+            appendLine("Recent logs")
+            appendLine()
+            appendLine(recentLogs.trim().ifBlank { "No local diagnostics log files are currently available." })
+        }
+
+internal fun settingsDiagnosticsEnvironmentSection(exportText: String): String {
+    val environmentStart = exportText.indexOf("Environment")
+    if (environmentStart < 0) return ""
+    val sectionStart = environmentStart + "Environment".length
+    val diagnosticsStart = exportText.indexOf("\nApp diagnostics", sectionStart)
+    val sectionEnd = if (diagnosticsStart >= 0) diagnosticsStart else exportText.length
+    return exportText.substring(sectionStart, sectionEnd).trim()
+}
+
+private fun Map<String, Any>.diagnosticsStringValue(key: String): String =
+        this[key]?.toString().orEmpty()
+
+private fun StringBuilder.appendDiagnosticsExportLine(label: String, value: String?) {
+    append(label)
+    append(": ")
+    appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
+}
+
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
@@ -2899,6 +2962,13 @@ internal class SlockKuiklyBridgeModule(
 
     private fun loadSettingsAbout(): Map<String, Any> {
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        val displayMetrics = appContext.resources.displayMetrics
+        val configuration = appContext.resources.configuration
+        val versionCode = packageInfo.versionCodeCompat()
+        val installTimeLabel =
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+                        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                        .format(Date(packageInfo.firstInstallTime))
         val session =
                 runBlocking {
                     KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
@@ -2910,7 +2980,8 @@ internal class SlockKuiklyBridgeModule(
                 "status" to "ok",
                 "appName" to "Raft",
                 "versionLabel" to (packageInfo.versionName ?: "unknown"),
-                "buildLabel" to packageInfo.versionCodeCompat(),
+                "versionCodeLabel" to versionCode,
+                "buildLabel" to versionCode,
                 "sourceLabel" to BuildConfig.GIT_COMMIT.ifBlank { "unknown" },
                 "packageName" to appContext.packageName,
                 "signedInUserLabel" to (session?.user?.bestDisplayName ?: "Signed out"),
@@ -2919,7 +2990,13 @@ internal class SlockKuiklyBridgeModule(
                 "socketStatusLabel" to "Host active",
                 "notificationStatusLabel" to "Managed by system settings",
                 "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+                "modelLabel" to Build.MODEL,
                 "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}",
+                "sdkLabel" to Build.VERSION.SDK_INT.toString(),
+                "installTimeLabel" to installTimeLabel,
+                "screenLabel" to "${displayMetrics.widthPixels}x${displayMetrics.heightPixels} px",
+                "densityLabel" to "${displayMetrics.density} (${displayMetrics.densityDpi} dpi)",
+                "fontScaleLabel" to configuration.fontScale.toString(),
                 "baseUrl" to AndroidAuthApiFactory.currentBaseUrl(appContext),
                 "buildTime" to BuildConfig.BUILD_TIME,
                 "gitCommit" to BuildConfig.GIT_COMMIT
@@ -3459,14 +3536,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun buildQuiverFeedbackShareText(ticketId: String, description: String): String {
-        val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-        val session =
-                runBlocking {
-                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
-                }
-        val selectedServer =
-                session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
-                        ?: session?.servers?.firstOrNull()
+        val environment = settingsDiagnosticsEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
                         .apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -3481,27 +3551,12 @@ internal class SlockKuiklyBridgeModule(
             appendLine()
             append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
             appendLine()
-            append("App: Raft ")
-                .append(packageInfo.versionName ?: "unknown")
-                .append(" (")
-                .append(packageInfo.versionCodeCompat())
-                .append(")")
-            appendLine()
             append("Quiver: slug=").append(BuildConfig.QUIVER_APP_SLUG)
                 .append(", channel=").append(BuildConfig.QUIVER_CHANNEL)
             appendLine()
-            append("Server: ")
-                .append(selectedServer?.name?.takeIf { it.isNotBlank() } ?: "No selected server")
-                .append(selectedServer?.slug?.takeIf { it.isNotBlank() }?.let { " /$it" } ?: "")
             appendLine()
-            append("Device: ")
-                .append("${Build.MANUFACTURER} ${Build.MODEL}".trim())
-                .append(", Android ")
-                .append(Build.VERSION.RELEASE)
-                .append(" / SDK ")
-                .append(Build.VERSION.SDK_INT)
-            appendLine()
-            append("Package: ").append(appContext.packageName)
+            appendLine("Environment:")
+            appendLine(environment.ifBlank { "--" })
             appendLine()
             appendLine()
             append("Feedback:")
@@ -3695,38 +3750,11 @@ internal class SlockKuiklyBridgeModule(
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
         val recentLogs = SlockAndroidAppDiagnostics.exportRecentDiagnosticsText(appContext)
-        return buildString {
-            appendLine("Raft diagnostics")
-            appendLine()
-            appendLine("Environment")
-            appendDiagnosticsLine("App", about.stringValue("appName").ifBlank { "Raft" })
-            appendDiagnosticsLine("Version", about.stringValue("versionLabel"))
-            appendDiagnosticsLine("Build", about.stringValue("buildLabel"))
-            appendDiagnosticsLine("Source", about.stringValue("sourceLabel"))
-            appendDiagnosticsLine("Package", about.stringValue("packageName"))
-            appendDiagnosticsLine("Platform", about.stringValue("platformLabel"))
-            appendDiagnosticsLine("Device", about.stringValue("deviceLabel"))
-            appendDiagnosticsLine("Session", about.stringValue("sessionStatusLabel"))
-            appendDiagnosticsLine("Signed in user", about.stringValue("signedInUserLabel"))
-            appendDiagnosticsLine("Selected server", about.stringValue("selectedServerLabel"))
-            appendDiagnosticsLine("Socket", about.stringValue("socketStatusLabel"))
-            appendLine()
-            appendLine("App diagnostics")
-            appendDiagnosticsLine("TDLog", "disabled")
-            appendDiagnosticsLine(
-                "App JSONL log",
-                if (SlockAndroidAppDiagnostics.hasFallbackDiagnosticsLogs(appContext)) {
-                    "enabled"
-                } else {
-                    "pending"
-                }
-            )
-            appendDiagnosticsLine("Attachment", "App-owned diagnostics JSONL files are included in this zip when available.")
-            appendLine()
-            appendLine("Recent logs")
-            appendLine()
-            appendLine(recentLogs.trim().ifBlank { "No local diagnostics log files are currently available." })
-        }
+        return formatMergedSettingsDiagnosticsExportText(
+                about = about,
+                recentLogs = recentLogs,
+                hasFallbackDiagnosticsLogs = SlockAndroidAppDiagnostics.hasFallbackDiagnosticsLogs(appContext)
+        )
     }
 
     private fun recordSettingsDiagnosticsEnvironment(about: Map<String, Any>) {
@@ -3735,11 +3763,18 @@ internal class SlockKuiklyBridgeModule(
                 "SlockDiagnostics",
                 "environment app=${about.stringValue("appName").ifBlank { "Raft" }} " +
                         "version=${about.stringValue("versionLabel")} " +
+                        "versionCode=${about.stringValue("versionCodeLabel")} " +
                         "build=${about.stringValue("buildLabel")} " +
                         "source=${about.stringValue("sourceLabel")} " +
                         "package=${about.stringValue("packageName")} " +
                         "platform=${about.stringValue("platformLabel")} " +
+                        "sdk=${about.stringValue("sdkLabel")} " +
                         "device=${about.stringValue("deviceLabel")} " +
+                        "model=${about.stringValue("modelLabel")} " +
+                        "installTime=${about.stringValue("installTimeLabel")} " +
+                        "screen=${about.stringValue("screenLabel")} " +
+                        "density=${about.stringValue("densityLabel")} " +
+                        "fontScale=${about.stringValue("fontScaleLabel")} " +
                         "session=${about.stringValue("sessionStatusLabel")} " +
                         "signedInUser=${about.stringValue("signedInUserLabel")} " +
                         "selectedServer=${about.stringValue("selectedServerLabel")} " +
@@ -3749,12 +3784,6 @@ internal class SlockKuiklyBridgeModule(
 
     private fun Map<String, Any>.stringValue(key: String): String =
             this[key]?.toString().orEmpty()
-
-    private fun StringBuilder.appendDiagnosticsLine(label: String, value: String?) {
-        append(label)
-        append(": ")
-        appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
-    }
 
     private fun shareText(subject: String, text: String) {
         val intent =

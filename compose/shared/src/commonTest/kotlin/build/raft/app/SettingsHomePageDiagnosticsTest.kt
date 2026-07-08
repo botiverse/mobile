@@ -207,7 +207,14 @@ class SettingsHomePageDiagnosticsTest {
                                 SharedSettingsAboutSnapshot(
                                     appName = "Raft",
                                     versionLabel = "1.2.3",
+                                    versionCodeLabel = "10203",
                                     sourceLabel = "abc1234",
+                                    sdkLabel = "36",
+                                    installTimeLabel = "2026-07-09T00:00:00Z",
+                                    screenLabel = "1080x2400 px",
+                                    densityLabel = "2.75 (440 dpi)",
+                                    fontScaleLabel = "1.0",
+                                    modelLabel = "Pixel",
                                     signedInUserLabel = "Artin",
                                     selectedServerLabel = "Botiverse",
                                     sessionStatusLabel = "Signed in",
@@ -224,6 +231,13 @@ class SettingsHomePageDiagnosticsTest {
             payload.sections.map { it.title }
         )
         val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
+        assertEquals("10203", environmentRows.getValue("diagnosticsVersionCode").detail)
+        assertEquals("36", environmentRows.getValue("diagnosticsVersionCode").status)
+        assertEquals("Pixel", environmentRows.getValue("diagnosticsDeviceFacts").detail)
+        assertEquals("1080x2400 px", environmentRows.getValue("diagnosticsDeviceFacts").status)
+        assertEquals("2.75 (440 dpi)", environmentRows.getValue("diagnosticsDisplay").detail)
+        assertEquals("1.0", environmentRows.getValue("diagnosticsDisplay").status)
+        assertEquals("2026-07-09T00:00:00Z", environmentRows.getValue("diagnosticsInstallTime").detail)
         assertEquals("Artin", environmentRows.getValue("diagnosticsSession").detail)
         assertEquals("Botiverse", environmentRows.getValue("diagnosticsServer").detail)
     }
@@ -379,6 +393,11 @@ class SettingsHomePageDiagnosticsTest {
         assertTrue(updateRow.enabled)
         assertFalse(updateRow.detail.contains("Quiver"))
         assertTrue(updateRow.detail.contains("app update"))
+
+        val copyEnvironmentRow = rows.first { it.key == "copyEnvironmentInfo" }
+        assertEquals("Copy environment info", copyEnvironmentRow.title)
+        assertEquals("Copy", copyEnvironmentRow.status)
+        assertTrue(copyEnvironmentRow.enabled)
     }
 
     @Test
