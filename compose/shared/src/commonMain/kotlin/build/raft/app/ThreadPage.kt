@@ -8791,17 +8791,20 @@ private fun ThreadComposerContentWithSuggestions(
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
     val loadedMemberSuggestions =
         remember(memberSuggestionSlice.suggestions, threadMessages, originMessage, prioritizeThreadParticipants) {
-            memberSuggestionSlice.suggestions
-                .sortForThreadMentionParticipants(
+            val threadParticipantRanks =
+                threadMentionParticipantRanks(
                     threadMessages = threadMessages,
                     originMessage = originMessage,
                     prioritizeThreadParticipants = prioritizeThreadParticipants
                 )
+            memberSuggestionSlice.suggestions
+                .sortForThreadMentionParticipants(threadParticipantRanks)
                 .map { suggestion ->
                     KuiklyComposerMemberItem(
                         displayName = suggestion.displayName,
                         handle = suggestion.handle,
                         inMentionChannel = suggestion.inMentionChannel,
+                        inThread = suggestion.isThreadMentionParticipant(threadParticipantRanks),
                         sourceServerLabel = suggestion.sourceServerLabel,
                         kind = suggestion.kind,
                         description = suggestion.description,
@@ -8878,9 +8881,18 @@ internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipant
     originMessage: KuiklyThreadMessageItem? = null,
     prioritizeThreadParticipants: Boolean
 ): List<SharedMembersMemberSuggestion> {
-    if (!prioritizeThreadParticipants || (threadMessages.isEmpty() && originMessage == null)) return this
-    val participantMessages = listOfNotNull(originMessage) + threadMessages
-    val ranks = participantMessages.recentThreadParticipantRanks()
+    val ranks =
+        threadMentionParticipantRanks(
+            threadMessages = threadMessages,
+            originMessage = originMessage,
+            prioritizeThreadParticipants = prioritizeThreadParticipants
+        )
+    return sortForThreadMentionParticipants(ranks)
+}
+
+private fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipants(
+    ranks: Map<String, Int>
+): List<SharedMembersMemberSuggestion> {
     if (ranks.isEmpty()) return this
     fun List<SharedMembersMemberSuggestion>.sortGroup(): List<SharedMembersMemberSuggestion> =
         withIndex()
@@ -8891,9 +8903,27 @@ internal fun List<SharedMembersMemberSuggestion>.sortForThreadMentionParticipant
                 )
             )
             .map { indexed -> indexed.value }
-    val inChannel = filter { it.inMentionChannel }.sortGroup()
-    val notInChannel = filterNot { it.inMentionChannel }.sortGroup()
-    return inChannel + notInChannel
+    val inThread = filter { it.isThreadMentionParticipant(ranks) }.sortGroup()
+    val inThreadKeys = inThread.mapTo(mutableSetOf()) { it.threadMentionSuggestionKey() }
+    val inChannel =
+        filter { suggestion -> suggestion.inMentionChannel && suggestion.threadMentionSuggestionKey() !in inThreadKeys }
+            .sortGroup()
+    val inChannelKeys = inChannel.mapTo(mutableSetOf()) { it.threadMentionSuggestionKey() }
+    val notInChannel =
+        filter { suggestion ->
+            val key = suggestion.threadMentionSuggestionKey()
+            key !in inThreadKeys && key !in inChannelKeys
+        }.sortGroup()
+    return inThread + inChannel + notInChannel
+}
+
+private fun threadMentionParticipantRanks(
+    threadMessages: List<KuiklyThreadMessageItem>,
+    originMessage: KuiklyThreadMessageItem?,
+    prioritizeThreadParticipants: Boolean
+): Map<String, Int> {
+    if (!prioritizeThreadParticipants || (threadMessages.isEmpty() && originMessage == null)) return emptyMap()
+    return (listOfNotNull(originMessage) + threadMessages).recentThreadParticipantRanks()
 }
 
 private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<String, Int> {
@@ -8919,6 +8949,14 @@ private fun SharedMembersMemberSuggestion.threadParticipantRank(ranks: Map<Strin
         .mapNotNull { key -> ranks[key] }
         .minOrNull()
         ?: Int.MAX_VALUE
+
+private fun SharedMembersMemberSuggestion.isThreadMentionParticipant(ranks: Map<String, Int>): Boolean =
+    threadParticipantRank(ranks) != Int.MAX_VALUE
+
+private fun SharedMembersMemberSuggestion.threadMentionSuggestionKey(): String =
+    memberId?.trim()?.takeIf { it.isNotBlank() }
+        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }
+        ?: displayName.trim().lowercase()
 
 private fun SharedMembersMemberSuggestion.threadParticipantKeys(): List<String> =
     buildList {
