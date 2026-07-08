@@ -1280,7 +1280,15 @@ internal fun SlockStructuralHomeShell(
                                 top = homeServerSwitcherPanelTopOffset(topSafeArea),
                                 start = SlockSpacing.Lg
                             )
-                            .slockFloatingContentClickTarget()
+                            // The switcher contains a LazyColumn. Using
+                            // slockFloatingContentClickTarget() here installs
+                            // nativeDispatchCapture on Android/OHOS, which can
+                            // intercept the list's drag stream before Kuikly's
+                            // lazy-list scroll handler sees it. A plain no-op
+                            // clickable still prevents taps on empty panel space
+                            // from dismissing through the overlay without
+                            // starving child scroll gestures.
+                            .clickable(onClick = {})
                     )
                 }
             }
