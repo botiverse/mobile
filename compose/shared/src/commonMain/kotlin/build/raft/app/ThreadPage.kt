@@ -176,6 +176,7 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.foundation.layout.wrapContentHeight
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
@@ -1982,7 +1983,8 @@ private fun ThreadMessageVisualScreenContent() {
         }
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION) {
         val messages = payload.toThreadTimelineSlice().messages
-        Column(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
+        // task #415: measure unbounded (see the default fixture Column below).
+        Column(modifier = Modifier.width(390.dp).wrapContentHeight(align = Alignment.Top, unbounded = true).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
             messages.forEach { selectedMessage ->
                 ThreadMessageCard(
                     message = selectedMessage,
@@ -2086,6 +2088,14 @@ private fun ThreadMessageVisualScreenContent() {
         modifier =
             Modifier
                 .width(threadMessageVisualWidth(visualFixture))
+                // task #415: the visual route's window gives BOUNDED height
+                // constraints (unlike production's LazyColumn, whose items
+                // measure unbounded). TextStringRichNode clamps the natively
+                // measured text height to constraints.maxHeight, but the native
+                // view still draws the full layout — so a body taller than the
+                // window overlapped the siblings placed at the clamped height.
+                // Measure unbounded like production.
+                .wrapContentHeight(align = Alignment.Top, unbounded = true)
                 .background(SlockColor.SurfaceWhite)
                 .padding(SlockSpacing.Md)
     ) {
