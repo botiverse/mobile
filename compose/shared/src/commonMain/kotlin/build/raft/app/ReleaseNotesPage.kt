@@ -15,6 +15,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -35,6 +36,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 const val RELEASE_NOTES_PAGE = "compose_release_notes"
 
@@ -68,7 +70,9 @@ internal fun Pager.openReleaseNotesPage() {
 // race-free instead of depending on the shell having loaded About.
 @Composable
 private fun ReleaseNotesScreen() {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
+    val loadingMessage = stringResource(MR.strings.release_notes_loading)
     // Render the header on the first frame. The body's first composition is heavy
     // (rememberStandaloneSettingsEnvironment builds the settings stores + the
     // WebView native view attaches), which otherwise delays the header a frame and
@@ -78,7 +82,7 @@ private fun ReleaseNotesScreen() {
     LaunchedEffect(Unit) { bodyReady = true }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
-            title = "Release Notes",
+            title = stringResource(MR.strings.release_notes_title),
             iconName = SlockLucideIconName.FileText,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
@@ -98,7 +102,7 @@ private fun ReleaseNotesScreen() {
             if (bodyReady) {
                 ReleaseNotesScreenBody(pager)
             } else {
-                ReleaseNotesCenteredNotice("加载中… / Loading…")
+                ReleaseNotesCenteredNotice(loadingMessage)
             }
         }
     }
@@ -126,10 +130,14 @@ private fun ReleaseNotesScreenBody(pager: Pager) {
 
 @Composable
 private fun ReleaseNotesWebViewBody(versionCode: String) {
+    val loadingMessage = stringResource(MR.strings.release_notes_loading)
     if (versionCode.isBlank()) {
-        ReleaseNotesCenteredNotice("加载中… / Loading…")
+        ReleaseNotesCenteredNotice(loadingMessage)
         return
     }
+    val errorTitle = stringResource(MR.strings.release_notes_error_title)
+    val errorBody = stringResource(MR.strings.release_notes_error_body)
+    val retryLabel = stringResource(MR.strings.common_retry)
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
@@ -154,7 +162,7 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
         // Cover the network-load gap: until the first successful load, the WebView
         // paints bare white, so show a loading notice over it instead (task #227).
         if (!loaded && loadError == null) {
-            ReleaseNotesCenteredNotice("加载中… / Loading…")
+            ReleaseNotesCenteredNotice(loadingMessage)
         }
         if (loadError != null) {
             Column(
@@ -171,10 +179,10 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
                 ) {
                     SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp))
                 }
-                Text("Couldn't load release notes", style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-                Text("Check your connection and try again.", style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+                Text(errorTitle, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(errorBody, style = SlockType.Body.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
                 SlockBrutalActionButton(
-                    label = "重试 / Retry",
+                    label = retryLabel,
                     onClick = { reloadKey += 1 },
                     leadingIcon = SlockLucideIconName.RefreshCw,
                     backgroundColor = SlockColor.SurfaceWhite
