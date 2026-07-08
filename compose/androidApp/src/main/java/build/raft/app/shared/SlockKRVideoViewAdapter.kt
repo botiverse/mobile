@@ -1,20 +1,30 @@
 package build.raft.app.shared
 
 import android.content.Context
-import android.media.MediaPlayer
-import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.view.Gravity
 import android.widget.FrameLayout
-import android.widget.VideoView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import com.tencent.kuikly.core.render.android.adapter.IKRVideoView
 import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRVideoViewListener
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoPlayState
 import com.tencent.kuikly.core.render.android.expand.component.KRVideoViewContentMode
 
+/**
+ * Media3 (ExoPlayer) backed Kuikly video view (task #556).
+ *
+ * Replaces the legacy android.widget.VideoView/MediaPlayer host: one player
+ * covers video (mp4/HLS/…) and audio-only sources (mp3/m4a/…) — an audio
+ * source simply renders no frames while playback state/progress/seek behave
+ * identically, which is what the shared file-preview audio entry relies on.
+ * Kuikly draws its own controls, so the PlayerView chrome stays disabled.
+ */
 internal object SlockKRVideoViewAdapter : IKRVideoViewAdapter {
     override fun createVideoView(context: Context, src: String, listener: IKRVideoViewListener): IKRVideoView =
         SlockKRVideoView(context, src, listener)
@@ -25,117 +35,137 @@ private class SlockKRVideoView(
     src: String,
     private val listener: IKRVideoViewListener
 ) : FrameLayout(context), IKRVideoView {
+
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val videoView =
-        VideoView(context).also { view ->
-            view.layoutParams =
-                LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER)
-            addView(view)
-        }
-    private var mediaPlayer: MediaPlayer? = null
-    private var prepared = false
-    private var shouldPlayWhenPrepared = false
-    private var muted = false
-    private var rate = 1f
     private var stopped = false
+    private var lastReportedState: KRVideoPlayState? = null
+
+    private val player: ExoPlayer =
+        ExoPlayer.Builder(context).build().also { player ->
+            player.setMediaItem(MediaItem.fromUri(src))
+            player.playWhenReady = false
+        }
+
+    private val playerView: PlayerView =
+        PlayerView(context).also { view ->
+            view.useController = false
+            view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            view.player = player
+            addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        }
+
     private val timeTicker =
         object : Runnable {
             override fun run() {
                 if (stopped) return
-                if (prepared) {
-                    listener.playTimeDidChangedWithCurrentTime(
-                        videoView.currentPosition.toLong(),
-                        videoView.duration.takeIf { it > 0 }?.toLong() ?: 0L
-                    )
-                }
-                mainHandler.postDelayed(this, 500L)
+                val duration = player.duration.takeIf { it > 0 } ?: 0L
+                listener.playTimeDidChangedWithCurrentTime(player.currentPosition, duration)
+                mainHandler.postDelayed(this, PROGRESS_TICK_MS)
             }
         }
 
     init {
-        videoView.setOnPreparedListener { player ->
-            mediaPlayer = player
-            prepared = true
-            applyMute(player)
-            applyRate(player)
-            listener.videoFirstFrameDidDisplay()
-            listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStatePaused, emptyMap())
-            if (shouldPlayWhenPrepared) {
-                play()
-            }
-        }
-        videoView.setOnCompletionListener {
-            listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStatePlayEnd, emptyMap())
-        }
-        videoView.setOnErrorListener { _, what, extra ->
-            listener.videoPlayStateDidChangedWithState(
-                KRVideoPlayState.KRVideoPlayStateFaild,
-                mapOf("what" to what.toString(), "extra" to extra.toString())
-            )
-            true
-        }
-        videoView.setOnInfoListener { _, what, extra ->
-            when (what) {
-                MediaPlayer.MEDIA_INFO_BUFFERING_START ->
-                    listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStateCaching, emptyMap())
-                MediaPlayer.MEDIA_INFO_BUFFERING_END ->
-                    if (videoView.isPlaying) {
-                        listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStatePlaying, emptyMap())
+        player.addListener(
+            object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    listener.videoFirstFrameDidDisplay()
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    when (playbackState) {
+                        Player.STATE_BUFFERING ->
+                            reportState(KRVideoPlayState.KRVideoPlayStateCaching)
+                        Player.STATE_READY ->
+                            reportState(
+                                if (player.playWhenReady) {
+                                    KRVideoPlayState.KRVideoPlayStatePlaying
+                                } else {
+                                    KRVideoPlayState.KRVideoPlayStatePaused
+                                }
+                            )
+                        Player.STATE_ENDED ->
+                            reportState(KRVideoPlayState.KRVideoPlayStatePlayEnd)
+                        Player.STATE_IDLE -> Unit
                     }
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (player.playbackState == Player.STATE_READY) {
+                        reportState(
+                            if (playWhenReady) {
+                                KRVideoPlayState.KRVideoPlayStatePlaying
+                            } else {
+                                KRVideoPlayState.KRVideoPlayStatePaused
+                            }
+                        )
+                    }
+                }
+
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    reportState(
+                        KRVideoPlayState.KRVideoPlayStateFaild,
+                        mapOf(
+                            "errorCode" to error.errorCode.toString(),
+                            "errorCodeName" to error.errorCodeName
+                        )
+                    )
+                }
             }
-            false
-        }
-        videoView.setVideoURI(Uri.parse(src))
+        )
+        player.prepare()
         mainHandler.post(timeTicker)
     }
 
     override fun preplay() {
-        if (prepared) {
-            videoView.seekTo(1)
-        }
+        // prepare() already ran with playWhenReady=false: the first frame is
+        // decoded and reported without starting playback — the Media3-native
+        // equivalent of the old seekTo(1) warm-up hack.
     }
 
     override fun play() {
-        shouldPlayWhenPrepared = true
-        if (!prepared || stopped) return
-        videoView.start()
-        listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStatePlaying, emptyMap())
+        if (stopped) return
+        if (player.playbackState == Player.STATE_ENDED) {
+            player.seekTo(0L)
+        }
+        player.play()
     }
 
     override fun pause() {
-        shouldPlayWhenPrepared = false
-        if (!prepared || stopped) return
-        videoView.pause()
-        listener.videoPlayStateDidChangedWithState(KRVideoPlayState.KRVideoPlayStatePaused, emptyMap())
+        if (stopped) return
+        player.pause()
     }
 
     override fun stop() {
+        if (stopped) return
         stopped = true
-        shouldPlayWhenPrepared = false
         mainHandler.removeCallbacks(timeTicker)
-        runCatching { videoView.stopPlayback() }
-        prepared = false
-        mediaPlayer = null
+        playerView.player = null
+        player.release()
     }
 
     override fun setVideoContentMode(videoViewContentMode: KRVideoViewContentMode) {
-        // Android platform VideoView does not expose a stable crop/contain API.
-        // The shared UI frames the view in a black 16:9 surface, so default fit is acceptable for phase 1.
+        playerView.resizeMode =
+            when (videoViewContentMode) {
+                KRVideoViewContentMode.KRVideoViewContentModeScaleAspectFit ->
+                    AspectRatioFrameLayout.RESIZE_MODE_FIT
+                KRVideoViewContentMode.KRVideoViewContentModeScaleAspectFill ->
+                    AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                KRVideoViewContentMode.KRVideoViewContentModeScaleToFill ->
+                    AspectRatioFrameLayout.RESIZE_MODE_FILL
+            }
     }
 
     override fun setMuted(muted: Boolean) {
-        this.muted = muted
-        mediaPlayer?.let(::applyMute)
+        player.volume = if (muted) 0f else 1f
     }
 
     override fun setRate(rate: Float) {
-        this.rate = rate.coerceAtLeast(0.25f)
-        mediaPlayer?.let(::applyRate)
+        player.playbackParameters = PlaybackParameters(rate.coerceAtLeast(0.25f))
     }
 
     override fun seekToTime(seekToTimeMs: Long) {
-        if (!prepared || stopped) return
-        videoView.seekTo(seekToTimeMs.coerceAtLeast(0L).toInt())
+        if (stopped) return
+        player.seekTo(seekToTimeMs.coerceAtLeast(0L))
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean =
@@ -149,16 +179,15 @@ private class SlockKRVideoView(
 
     override fun call(method: String, params: String?) = Unit
 
-    private fun applyMute(player: MediaPlayer) {
-        val volume = if (muted) 0f else 1f
-        player.setVolume(volume, volume)
+    private fun reportState(state: KRVideoPlayState, extInfo: Map<String, String> = emptyMap()) {
+        if (stopped) return
+        if (state == lastReportedState && extInfo.isEmpty()) return
+        lastReportedState = state
+        listener.videoPlayStateDidChangedWithState(state, extInfo)
     }
 
-    private fun applyRate(player: MediaPlayer) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        runCatching {
-            player.playbackParams = player.playbackParams.setSpeed(rate)
-        }
+    companion object {
+        private const val PROGRESS_TICK_MS = 500L
     }
 }
 

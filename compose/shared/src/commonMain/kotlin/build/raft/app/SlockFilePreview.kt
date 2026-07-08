@@ -1054,6 +1054,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             fileName = previewFileName,
             mimeType = externalMimeType
         )
+    val wantsMp3Audio =
+        slockFilePreviewIsMp3AudioAttachment(
+            fileName = previewFileName,
+            mimeType = externalMimeType
+        )
     val wantsHtml =
         slockFilePreviewIsHtmlAttachment(
             fileName = previewFileName,
@@ -1070,6 +1075,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
+        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = "Audio preview")
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
@@ -1127,7 +1133,8 @@ private suspend fun SlockFilePreviewPayload.loadThreadHtmlAttachmentPreview(
 }
 
 private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
-    threadApi: SlockThreadApiClient
+    threadApi: SlockThreadApiClient,
+    title: String = "Video preview"
 ): SlockFilePreviewPayload {
     val target =
         when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
@@ -1136,12 +1143,12 @@ private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
         } ?: return copy(
             kind = "error",
             title = "Preview unavailable",
-            message = "Unable to load video preview.",
+            message = "Unable to load media preview.",
             error = "video_preview_url_failed"
         )
     return copy(
         kind = "video",
-        title = "Video preview",
+        title = title,
         videoUrl = target,
         message = "",
         error = null
@@ -1392,6 +1399,16 @@ internal fun slockFilePreviewIsMp4VideoAttachment(fileName: String, mimeType: St
     val normalizedMime = mimeType.substringBefore(';').trim()
     if (normalizedMime.equals("video/mp4", ignoreCase = true)) return true
     return fileName.substringBefore('?').substringBefore('#').endsWith(".mp4", ignoreCase = true)
+}
+
+// task #556: mp3 attachments play through the same Media3-backed player as
+// video (audio-only source, blank surface). Scoped to mp3 like video is
+// scoped to mp4 — widen deliberately, per codec, when asked.
+internal fun slockFilePreviewIsMp3AudioAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    if (normalizedMime.equals("audio/mpeg", ignoreCase = true)) return true
+    if (normalizedMime.equals("audio/mp3", ignoreCase = true)) return true
+    return fileName.substringBefore('?').substringBefore('#').endsWith(".mp3", ignoreCase = true)
 }
 
 internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {

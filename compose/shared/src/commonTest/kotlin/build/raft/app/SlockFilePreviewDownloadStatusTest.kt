@@ -338,6 +338,18 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun mp3AudioClassifierAcceptsOnlyMp3ForMobilePreview() {
+        // task #556: mp3 plays through the same player panel as mp4 video.
+        assertEquals(true, slockFilePreviewIsMp3AudioAttachment(fileName = "song.mp3", mimeType = ""))
+        assertEquals(true, slockFilePreviewIsMp3AudioAttachment(fileName = "song.bin", mimeType = "audio/mpeg"))
+        assertEquals(true, slockFilePreviewIsMp3AudioAttachment(fileName = "song.bin", mimeType = "audio/mp3"))
+        assertEquals(true, slockFilePreviewIsMp3AudioAttachment(fileName = "song.MP3?token=1", mimeType = ""))
+        assertEquals(false, slockFilePreviewIsMp3AudioAttachment(fileName = "song.wav", mimeType = "audio/wav"))
+        assertEquals(false, slockFilePreviewIsMp3AudioAttachment(fileName = "song.m4a", mimeType = "audio/mp4"))
+        assertEquals(false, slockFilePreviewIsMp3AudioAttachment(fileName = "clip.mp4", mimeType = "video/mp4"))
+    }
+
+    @Test
     fun htmlClassifierUsesSandboxPreviewContract() {
         assertEquals(true, slockFilePreviewIsHtmlAttachment(fileName = "report.html", mimeType = ""))
         assertEquals(true, slockFilePreviewIsHtmlAttachment(fileName = "report.htm?token=1", mimeType = ""))
