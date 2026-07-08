@@ -1,0 +1,20 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "screens.settings.server-danger-modal",
+  "image": "screens.settings.server-danger-modal.png",
+  "pageName": "compose_settings_page_visual",
+  "pageData": {
+    "variant": "server-danger-modal",
+    "pageName": "compose_settings_page_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}
