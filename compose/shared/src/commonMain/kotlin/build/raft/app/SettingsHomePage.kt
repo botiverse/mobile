@@ -3582,7 +3582,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
-                            onOpenReleaseNotes = { pager.openReleaseNotesPage() },
+                            onOpenReleaseNotes = {
+                                val releaseNotesVersionCode =
+                                    (settingsState.about as? ScreenLoadState.Content)
+                                        ?.data
+                                        ?.buildLabel
+                                        .orEmpty()
+                                pager.openReleaseNotesPage(releaseNotesVersionCode)
+                            },
                             onOpenBilling = { pager.openSettingsBillingPage() },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
