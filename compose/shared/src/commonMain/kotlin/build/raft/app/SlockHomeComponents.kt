@@ -922,6 +922,46 @@ internal fun SlockStructuralHomeShell(
             bottomContentPadding
         }
     val bottomBarOverlaysContent = showBottomBar && slockAppBottomTabBarOverlaysContent()
+    val dismissNotificationCenterForFocusLoss = {
+        if (notificationCenterExpanded) {
+            notificationCenterExpanded = false
+        }
+    }
+    val onServerBadgeClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onServerBadgeClick()
+    }
+    val onSearchClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onSearchClick()
+    }
+    val onInboxClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onInboxClick()
+    }
+    val onSavedClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
+        onSavedClick()
+    }
+    val onChannelClickWithDismiss: (String) -> Unit = { conversationId ->
+        dismissNotificationCenterForFocusLoss()
+        onChannelClick(conversationId)
+    }
+    val onChannelLongPressWithDismiss: (String, Offset) -> Unit = { conversationId, anchor ->
+        dismissNotificationCenterForFocusLoss()
+        onChannelLongPress(conversationId, anchor)
+    }
+    val onBottomTabSelected: (String) -> Unit = { tabKey ->
+        if (shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = notificationCenterExpanded,
+                selectedTabKey = selectedTabKey,
+                targetTabKey = tabKey
+            )
+        ) {
+            notificationCenterExpanded = false
+        }
+        onTabSelected(tabKey)
+    }
     Box(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -935,8 +975,9 @@ internal fun SlockStructuralHomeShell(
                         notifications = visibleNotifications,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
-                        onServerBadgeClick = onServerBadgeClick,
+                        onServerBadgeClick = onServerBadgeClickWithDismiss,
                         onBlankClick = {
+                            dismissNotificationCenterForFocusLoss()
                             listScope.launch {
                                 listState.animateScrollToTopExpressive()
                             }
@@ -976,7 +1017,7 @@ internal fun SlockStructuralHomeShell(
                                 )
                             }
                             item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                            item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
+                            item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                             item {
                                 val activityProjection =
                                     homeActivitySidebarProjection(
@@ -989,10 +1030,10 @@ internal fun SlockStructuralHomeShell(
                                     totalCount = activityProjection.totalLabel,
                                     selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    onClick = if (sidebarInteractionsEnabled) onInboxClick else null
+                                    onClick = if (sidebarInteractionsEnabled) onInboxClickWithDismiss else null
                                 )
                             }
-                            item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                            item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
                             inlineError?.let { error ->
                                 item {
                                     HomeInlineErrorCard(
@@ -1039,7 +1080,7 @@ internal fun SlockStructuralHomeShell(
                                         else -> ChannelRowInteractionState.Default
                                     }
                                     val handleLongPress: (Offset) -> Unit = { anchor ->
-                                        onChannelLongPress(pinned.id, anchor)
+                                        onChannelLongPressWithDismiss(pinned.id, anchor)
                                         activePinMenuConversationId = pinned.id
                                         activeMenuSection = SlockHomeSortSection.Pinned
                                         pinMenuAnchor = anchor
@@ -1065,7 +1106,7 @@ internal fun SlockStructuralHomeShell(
                                         badgeTone = badgeProjection.tone,
                                         interactionState = rowInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
                                         onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
                                         onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
                                         onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
@@ -1083,7 +1124,7 @@ internal fun SlockStructuralHomeShell(
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = rowInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
                                         onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
                                         onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
                                         onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
@@ -1133,9 +1174,9 @@ internal fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = channelInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                        onChannelLongPress(channel.id, anchor)
+                                        onChannelLongPressWithDismiss(channel.id, anchor)
                                         activePinMenuConversationId = channel.id
                                         activeMenuSection = SlockHomeSortSection.Channels
                                         pinMenuAnchor = anchor
@@ -1183,9 +1224,9 @@ internal fun SlockStructuralHomeShell(
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = jointInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
                                         onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                            onChannelLongPress(channel.id, anchor)
+                                            onChannelLongPressWithDismiss(channel.id, anchor)
                                             activePinMenuConversationId = channel.id
                                             activeMenuSection = SlockHomeSortSection.JointChannels
                                             pinMenuAnchor = anchor
@@ -1240,9 +1281,9 @@ internal fun SlockStructuralHomeShell(
                                     badgeTone = badgeProjection.tone,
                                     interactionState = dmInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(dm.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                        onChannelLongPress(dm.id, anchor)
+                                        onChannelLongPressWithDismiss(dm.id, anchor)
                                         activePinMenuConversationId = dm.id
                                         activeMenuSection = SlockHomeSortSection.DirectMessages
                                         pinMenuAnchor = anchor
@@ -1489,7 +1530,7 @@ internal fun SlockStructuralHomeShell(
             }
             SlockAppBottomTabBarHost(
                 items = bottomTabItems,
-                onSelect = onTabSelected,
+                onSelect = onBottomTabSelected,
                 modifier = Modifier.fillMaxWidth(),
                 bottomSafeArea = bottomSafeArea
             )
@@ -1516,7 +1557,7 @@ internal fun SlockStructuralHomeShell(
             }
             SlockAppBottomTabBarHost(
                 items = bottomTabItems,
-                onSelect = onTabSelected,
+                onSelect = onBottomTabSelected,
                 modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter),
                 bottomSafeArea = bottomSafeArea
             )
@@ -2149,6 +2190,13 @@ private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + Home
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + SlockSize.PageHeaderHeight + HomeNotificationPopoverTopGap
+
+internal fun shouldDismissHomeNotificationCenterForTabSelection(
+    expanded: Boolean,
+    selectedTabKey: String,
+    targetTabKey: String
+): Boolean =
+    expanded && selectedTabKey != targetTabKey
 
 internal fun List<SlockHomeNotificationItem>.visibleHomeNotifications(): List<SlockHomeNotificationItem> =
     filter { notification ->

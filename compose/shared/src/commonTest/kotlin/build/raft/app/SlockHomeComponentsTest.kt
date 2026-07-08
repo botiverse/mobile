@@ -1082,6 +1082,31 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun notificationPopoverDismissesWhenSelectingAnotherBottomTab() {
+        assertTrue(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = true,
+                selectedTabKey = "home",
+                targetTabKey = "tasks"
+            )
+        )
+        assertFalse(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = true,
+                selectedTabKey = "home",
+                targetTabKey = "home"
+            )
+        )
+        assertFalse(
+            shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = false,
+                selectedTabKey = "home",
+                targetTabKey = "tasks"
+            )
+        )
+    }
+
+    @Test
     fun notificationActionButtonsUseBoldFontFamily() {
         assertEquals(slockFontFamilyForWeight(FontWeight.Bold), HomeNotificationActionButtonTextStyle.fontFamily)
         assertEquals(FontWeight.Normal, HomeNotificationActionButtonTextStyle.fontWeight)
