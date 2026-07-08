@@ -11,7 +11,7 @@ struct ContentView: View {
         // as the root instead of the app shell so the Simulator screenshot
         // captures the fixture. Same pageName+pageData contract as Android.
         if let fixture = ContentView.visualFixtureLaunch() {
-            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data)
+            KuiklyRenderViewPage(pageName: fixture.pageName, data: fixture.data, hidesSystemChrome: true)
                 .ignoresSafeArea()
                 .onAppear {
                     // Settle signal for the capture job: it reads this line via
