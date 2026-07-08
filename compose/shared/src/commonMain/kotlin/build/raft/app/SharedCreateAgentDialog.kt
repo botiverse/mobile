@@ -26,6 +26,7 @@ import build.raft.app.model.supportsRuntimeFastMode
 import build.raft.app.model.supportsRuntimeCustomModelName
 import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.validateAgentName
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +58,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
@@ -717,7 +719,7 @@ internal fun SharedCreateAgentDialog(
             ) {
                 Spacer(Modifier.weight(1f))
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     enabled = !submitting,
                     backgroundColor = SlockColor.SurfaceWhite,
                     onClick = onDismiss

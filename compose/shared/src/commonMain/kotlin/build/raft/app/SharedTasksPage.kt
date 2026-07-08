@@ -29,6 +29,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +80,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 
 private const val TasksListDefaultBeyondBoundsItemCount = 1
@@ -1520,7 +1522,7 @@ private fun TasksCreateDialog(
                 ) {
                     Spacer(Modifier.weight(1f))
                     SlockToolbarChip(
-                        label = "Cancel",
+                        label = stringResource(MR.strings.common_cancel),
                         iconName = null,
                         active = false,
                         onClick = onDismiss

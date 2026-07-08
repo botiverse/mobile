@@ -23,6 +23,7 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -83,6 +84,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.kuikly.core.views.VideoPlayControl
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
@@ -574,7 +576,7 @@ private fun SlockFilePreviewComposerImageActionBar(
     ) {
         if (payload.composerImageCanEdit) {
             SlockBrutalActionButton(
-                label = "Edit",
+                label = stringResource(MR.strings.common_edit),
                 onClick = onEdit,
                 enabled = enabled && payload.imageUrl != null,
                 leadingIcon = SlockLucideIconName.Pencil,
@@ -586,7 +588,7 @@ private fun SlockFilePreviewComposerImageActionBar(
         }
         if (payload.composerImageCanComplete) {
             SlockBrutalActionButton(
-                label = "Done",
+                label = stringResource(MR.strings.common_done),
                 onClick = onComplete,
                 enabled = enabled && payload.composerImageFileRef.isNotBlank(),
                 leadingIcon = SlockLucideIconName.Check,
@@ -803,7 +805,7 @@ private fun SlockFilePreviewComposerImageEditor(
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
                     SlockBrutalActionButton(
-                        label = "Add",
+                        label = stringResource(MR.strings.common_add),
                         onClick = ::addTextAnnotation,
                         enabled = !saving && textDraft.isNotBlank(),
                         leadingIcon = SlockLucideIconName.Check,
@@ -820,7 +822,7 @@ private fun SlockFilePreviewComposerImageEditor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     onClick = onCancel,
                     enabled = !saving,
                     leadingIcon = SlockLucideIconName.X,
@@ -830,7 +832,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     modifier = Modifier.weight(1f)
                 )
                 SlockBrutalActionButton(
-                    label = "Undo",
+                    label = stringResource(MR.strings.common_undo),
                     onClick = {
                         when {
                             textAnnotations.isNotEmpty() -> textAnnotations = textAnnotations.dropLast(1)
@@ -845,7 +847,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     modifier = Modifier.weight(1f)
                 )
                 SlockBrutalActionButton(
-                    label = "Clear",
+                    label = stringResource(MR.strings.common_clear),
                     onClick = {
                         strokes = emptyList()
                         activeStroke = emptyList()
@@ -2839,7 +2841,7 @@ private fun SlockFilePreviewDownloadControls(
             textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp)
         )
         SlockBrutalActionButton(
-            label = "Stop",
+            label = stringResource(MR.strings.common_stop),
             onClick = onStop,
             leadingIcon = SlockLucideIconName.Square,
             minWidth = 82.dp,

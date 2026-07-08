@@ -31,6 +31,7 @@ import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -82,6 +83,7 @@ import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -664,7 +666,7 @@ private fun SharedActivityList(
                             label = if (item.unreadCount > 0) "Mark as Read" else "Mark as Unread",
                             icon = SlockLucideIconName.Mail
                         ),
-                        SlockBaseMenuItem(id = "done", label = "Done", icon = SlockLucideIconName.Check)
+                        SlockBaseMenuItem(id = "done", label = stringResource(MR.strings.common_done), icon = SlockLucideIconName.Check)
                     ),
                 selectedId = "",
                 uppercaseLabels = false,
@@ -1019,7 +1021,7 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
             modifier = Modifier.padding(end = 8.dp)
         )
         SlockBrutalActionButton(
-            label = "Retry",
+            label = stringResource(MR.strings.common_retry),
             minHeight = 30.dp,
             minWidth = 0.dp,
             shadowOffset = 2.dp,

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -24,6 +25,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 
@@ -432,7 +434,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
             style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        ThreadFilesLoadMore(loading = false, onClick = onRetry, label = "Retry")
+        ThreadFilesLoadMore(loading = false, onClick = onRetry, label = stringResource(MR.strings.common_retry))
     }
 }
 

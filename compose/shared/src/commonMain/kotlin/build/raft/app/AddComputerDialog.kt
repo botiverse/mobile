@@ -9,6 +9,7 @@ import build.raft.app.data.AddComputerStep
 import build.raft.app.data.AddComputerType
 import build.raft.app.data.SettingsComputerRegisterRequest
 import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
@@ -30,6 +31,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 
 @Composable
@@ -128,7 +130,7 @@ private fun AddComputerTypeStep(
         ) {
             Spacer(modifier = Modifier.weight(1f))
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
                 enabled = !state.registering,
                 backgroundColor = SlockColor.SurfaceWhite
@@ -230,12 +232,12 @@ private fun AddComputerWaitingStep(
         ) {
             Spacer(modifier = Modifier.weight(1f))
             SlockBrutalActionButton(
-                label = "Cancel",
+                label = stringResource(MR.strings.common_cancel),
                 onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
                 backgroundColor = SlockColor.SurfaceWhite
             )
             SlockBrutalActionButton(
-                label = "Done",
+                label = stringResource(MR.strings.common_done),
                 onClick = {},
                 enabled = false,
                 backgroundColor = SlockColor.AccentLime
