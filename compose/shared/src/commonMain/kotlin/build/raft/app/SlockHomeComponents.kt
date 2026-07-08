@@ -2305,7 +2305,7 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 }
 
 @Composable
-private fun HomeInlineErrorCard(
+internal fun HomeInlineErrorCard(
     error: SlockHomeInlineError,
     modifier: Modifier = Modifier,
     onAction: () -> Unit

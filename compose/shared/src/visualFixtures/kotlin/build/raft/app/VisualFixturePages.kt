@@ -217,6 +217,14 @@ internal class ComposeHomeSearchChannelDropdownVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_search_error_visual", supportInLocal = true)
+internal class ComposeHomeSearchErrorVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchErrorVisualContent() }
+    }
+}
+
 @Page("compose_home_saved_visual", supportInLocal = true)
 internal class ComposeHomeSavedVisualPage : BasePager() {
     override fun willInit() {

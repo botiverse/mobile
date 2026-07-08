@@ -32,6 +32,23 @@ import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
     @Test
+    fun homeSearchErrorDisplayUsesUnifiedRetryModel() {
+        val serverError = sharedHomeSearchErrorDisplay("server_unavailable")
+
+        assertEquals("Could not load Search", serverError.title)
+        assertEquals("The server is unavailable right now. Please try again shortly.", serverError.detail)
+        assertEquals("server_unavailable", serverError.code)
+        assertEquals("Retry", serverError.actionLabel)
+
+        val permissionError = sharedHomeSearchErrorDisplay("search_permission_denied")
+
+        assertEquals("Search is unavailable", permissionError.title)
+        assertEquals("You do not have access to search this workspace right now.", permissionError.detail)
+        assertEquals("search_permission_denied", permissionError.code)
+        assertEquals("Retry", permissionError.actionLabel)
+    }
+
+    @Test
     fun homeActivitySidebarUnreadCountUsesActivityUnreadOnly() {
         assertEquals(
             14,
