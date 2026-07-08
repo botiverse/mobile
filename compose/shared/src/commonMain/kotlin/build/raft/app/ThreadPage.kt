@@ -5541,6 +5541,16 @@ internal fun SharedThreadRouteContent(
                             }
                             return@launch
                         }
+                        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
+                        if (skippedCount > 0) {
+                            bridge.toast(
+                                if (skippedCount == 1) {
+                                    "One attachment could not be read and was skipped."
+                                } else {
+                                    "$skippedCount attachments could not be read and were skipped."
+                                }
+                            )
+                        }
                         when (
                             resolveThreadPickedAttachmentComposerAction(
                                 action = action,
