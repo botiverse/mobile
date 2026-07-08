@@ -1529,10 +1529,11 @@ class SharedThreadStoreTest {
         assertFalse(messages.any { it.id == "local-send-channel-1-1" })
         assertEquals(1, messages.count { it.id == "server-1" })
         assertEquals(listOf("cached body", "sent body"), messages.map { it.body })
-        // task #231: the realtime echo no longer writes the first-frame cache —
-        // it invalidates the stale candidate instead (visible state above is
-        // the authority for the active screen).
-        assertNull(dataSource.cachedPayload("channel-1"))
+        // task #562: the cache snapshot follows the live store — canonical
+        // echo present, transient local-send bubble already replaced.
+        val cachedMessages = dataSource.cachedPayload("channel-1")?.messages.orEmpty()
+        assertFalse(cachedMessages.any { it.id == "local-send-channel-1-1" })
+        assertEquals(1, cachedMessages.count { it.id == "server-1" })
         scope.cancel()
     }
 
@@ -4690,11 +4691,11 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeMergeIsVisibleOnlyAndInvalidatesFirstFrameCache() = runBlocking {
-        // task #231 SSOT: the raw realtime merge updates the ACTIVE screen's
-        // render state but never writes the route first-frame cache (that
-        // durable-adjacent write belongs to the domain owner) — instead the
-        // now-stale candidate is dropped so the next entry refreshes.
+    fun realtimeMergeWarmsFirstFrameCacheWithLiveStoreSnapshot() = runBlocking {
+        // task #562 contract (KMP-专家/HanXin agreed): the first-frame cache is
+        // a read-only snapshot of the LIVE STORE's merged state, written after
+        // the reduce — one merge algorithm, no cache-side event logic. Active
+        // conversations stay warm on re-entry; every open still refreshes.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -4722,12 +4723,33 @@ class SharedThreadStoreTest {
         )
 
         val payload = store.state.value.payload
-        // Active in-memory state (incl. any expanded/paginated window) keeps
-        // the merge — invalidation must never clear the live screen.
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
-        // The first-frame candidate is gone, not rewritten with the raw merge.
-        assertNull(dataSource.cachedPayload("channel-1"))
+        // Cache == what the user is looking at: the post-merge store snapshot.
+        assertEquals(
+            listOf("cached body", "realtime body"),
+            dataSource.cachedPayload("channel-1")?.messages?.map { it.body }
+        )
+        // Durable local-store never rides the first-frame cache path.
         assertNull(localStore.readThread(ThreadId("channel-1")))
+        scope.cancel()
+    }
+
+    @Test
+    fun noPermissionRefreshInvalidatesFirstFrameCache() = runBlocking {
+        // task #562 boundary: invalidation is reserved for unrecoverable
+        // scenarios — the canonical fetch reporting permission loss drops the
+        // candidate so a revoked thread can never seed a first frame again.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(channelMessagesResponseCode = 403),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertNull(dataSource.cachedPayload("channel-1"))
         scope.cancel()
     }
 
@@ -4913,9 +4935,10 @@ class SharedThreadStoreTest {
         assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
         assertNull(localStore.readThread(ThreadId("channel-1")))
-        // task #231: the realtime merge no longer writes the first-frame cache;
-        // the avatar-resolution contract is asserted on the visible state above.
-        assertNull(dataSource.cachedPayload("channel-1"))
+        // task #562: cache snapshot carries the same resolved avatar fields.
+        val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single { it.id == "m2" }
+        assertEquals("pixel:robot", cachedMessage?.avatarWireValue)
+        assertEquals(null, cachedMessage?.gravatarHash)
         scope.cancel()
     }
 
@@ -5034,9 +5057,8 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
         assertEquals(listOf("cached body"), backingStore.readThread(ThreadId("channel-1"))?.messages?.map { it.body })
-        // task #231: no first-frame cache write on realtime merge — the stale
-        // candidate is invalidated; the visible payload above stays authoritative.
-        assertNull(dataSource.cachedPayload("channel-1"))
+        // task #562: the first-frame cache mirrors the visible merged state.
+        assertEquals(listOf("cached body", "realtime body"), dataSource.cachedPayload("channel-1")?.messages?.map { it.body })
         assertFalse(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
@@ -6994,7 +7016,8 @@ class SharedThreadStoreTest {
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
         var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),
-        var failChannelMessages: Boolean = false
+        var failChannelMessages: Boolean = false,
+        var channelMessagesResponseCode: Int = 200
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
@@ -7051,7 +7074,7 @@ class SharedThreadStoreTest {
                     afterSeqs += afterSeq
                     HomeNetworkResponse(code = 200, bodyText = newerBodyText)
                 }
-                else -> HomeNetworkResponse(code = 200, bodyText = responseBody)
+                else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
             }
         }
 
