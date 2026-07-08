@@ -513,9 +513,38 @@ jobs:
             xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
             echo "[$i/$total] $case_id OK"
           done < /tmp/ios-cases.tsv
-          captured=$(ls visual-testing-results/ios/ | wc -l | tr -d ' ')
+          captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
           echo "captured=$captured failed=$failed total=$total"
           cp /tmp/ios-manifest.json visual-testing-results/ios-manifest.json
+          # Per-case metadata alongside each PNG, mirroring the android
+          # provider's <caseId>.metadata.json so the CLI panels don't show n/a.
+          python3 -c "
+          import json, struct
+          m = json.load(open('/tmp/ios-manifest.json'))
+          by_id = {c['caseId']: c for c in m['cases']}
+          import glob, os
+          for png in glob.glob('visual-testing-results/ios/*.png'):
+              case_id = os.path.basename(png)[:-4]
+              with open(png, 'rb') as f:
+                  head = f.read(24)
+              w, h = struct.unpack('>II', head[16:24])
+              case = by_id.get(case_id, {})
+              meta = {
+                  'provider': 'ios',
+                  'providerType': 'ios-kuikly-shared-page',
+                  'source': 'kmp-shared',
+                  'caseId': case_id,
+                  'image': os.path.basename(png),
+                  'pageName': case.get('pageName'),
+                  'pageData': case.get('pageData'),
+                  'viewport': {'width': w, 'height': h, 'density': 1},
+                  'device': os.environ.get('SIM_DEVICE'),
+                  'systemBars': 'status-hidden-home-indicator-visible',
+              }
+              with open(png[:-4] + '.metadata.json', 'w') as out:
+                  json.dump(meta, out, indent=2)
+          print('metadata written for', len(glob.glob('visual-testing-results/ios/*.metadata.json')), 'cases')
+          "
           if [ "$captured" -eq 0 ]; then
             echo "::error::no cases captured"; exit 1
           fi
