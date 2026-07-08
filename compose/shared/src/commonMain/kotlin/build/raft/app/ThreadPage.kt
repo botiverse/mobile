@@ -322,8 +322,21 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
             status == "loading" &&
                 timelineSlice.messages.isEmpty() &&
                 timelineSlice.originMessage == null &&
-                originPreview.isNullOrBlank()
+                originPreview.isNullOrBlank() &&
+                !hasProgressiveThreadLoadingShell()
         )
+
+private fun KuiklyThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
+    if (status != "loading") return false
+    val routeIdentity = resolveThreadRouteIdentity()
+    val timelineKey = routeIdentity.timelineKey?.takeIf { it.isNotBlank() }
+    if (timelineKey != null) return true
+    val replyParentId = parentMessageId?.takeIf { it.isNotBlank() }
+        ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        parentChannelId?.isNotBlank() == true &&
+        replyParentId != null
+}
 
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
@@ -8892,7 +8905,7 @@ private fun ThreadChatTab(
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
-                ThreadStateMessage("Loading...", null)
+                ThreadProgressiveLoadingSkeleton()
             }
         "error" ->
             ThreadStateActionMessage(
@@ -9271,7 +9284,11 @@ private fun ThreadMessagesList(
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
-        ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+        if (timelineSlice.status == "loading") {
+            ThreadProgressiveLoadingSkeleton()
+        } else {
+            ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+        }
         return
     }
     val translationState =
@@ -9312,7 +9329,9 @@ private fun ThreadMessagesList(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
-    val showReplyEmptyState = renderPayload.messages.isEmpty() && renderPayload.originStatus != "none"
+    val showReplyLoadingSkeleton = renderPayload.status == "loading" && renderPayload.messages.isEmpty()
+    val showReplyEmptyState =
+        renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
     val lazyItemCount =
         remember(
             renderPayload.originStatus,
@@ -9326,7 +9345,7 @@ private fun ThreadMessagesList(
                 showHistoryBoundary = renderPayload.hasThreadHistoryBoundaryItem(),
                 messagesCount = renderPayload.messages.size,
                 canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-                showReplyEmptyState = showReplyEmptyState,
+                showReplyEmptyState = showReplyEmptyState || showReplyLoadingSkeleton,
                 showBottomScrollPadding = true
             )
         }
@@ -10087,6 +10106,11 @@ private fun ThreadMessagesList(
                     ThreadStateMessage(renderPayload.emptyTitle, renderPayload.emptyDetail)
                 }
             }
+            if (showReplyLoadingSkeleton) {
+                item(key = ThreadReplyLoadingListItemKey) {
+                    ThreadProgressiveLoadingSkeleton()
+                }
+            }
             items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
                 val message = renderPayload.messages[index]
                 val absoluteMessageIndex = index
@@ -10572,6 +10596,7 @@ private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadOriginListItemKey = "thread-page:origin"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
+private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 private val ThreadBottomScrollPaddingHeight = 16.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
@@ -16236,6 +16261,42 @@ private fun ThreadStateMessage(title: String, detail: String?) {
                     text = it,
                     style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadProgressiveLoadingSkeleton() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        repeat(3) { index ->
+            val widthFraction =
+                when (index) {
+                    0 -> 0.82f
+                    1 -> 0.66f
+                    else -> 0.74f
+                }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(96.dp)
+                        .height(10.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(widthFraction)
+                        .height(38.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.18f))
                 )
             }
         }
