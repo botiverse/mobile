@@ -2490,7 +2490,7 @@ internal fun ChannelSettingsPanelVisualScreen() {
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
-            subtitle = "Product and UI decisions",
+            subtitle = stringResource(MR.strings.channel_description_design),
             actions = channelPanelVisualSettingsActions(),
             onDismiss = {},
             onOpenAction = {}
@@ -5892,7 +5892,7 @@ private fun ThreadMarkdownTaskCandidateModal(
                 if (state.candidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = "NO TASKS",
+                            title = stringResource(MR.strings.thread_state_no_tasks),
                             detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
                         )
                     }
@@ -10522,7 +10522,7 @@ private fun ThreadMessagesList(
                     when {
                         renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
-                                label = "Retry older messages",
+                                label = stringResource(MR.strings.thread_retry_older),
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
                         renderPayload.canLoadMoreBefore ->
@@ -11012,7 +11012,7 @@ private fun ThreadInlineSearchBar(
                 onSubmit = {},
                 onClear = onClear,
                 autoFocus = true,
-                placeholder = "Search this thread…",
+                placeholder = stringResource(MR.strings.thread_placeholder_search),
                 modifier = Modifier.weight(1f),
             )
             Box(
@@ -15226,7 +15226,7 @@ private fun ThreadAttachmentCommentsDialog(
                         if (comments.isEmpty()) {
                             item {
                                 ThreadModalEmptyState(
-                                    title = "NO COMMENTS",
+                                    title = stringResource(MR.strings.thread_state_no_comments),
                                     detail = if (state.filter == "unresolved") "ALL COMMENTS ARE RESOLVED." else "START A COMMENT BELOW."
                                 )
                             }
@@ -15364,7 +15364,7 @@ private fun ThreadAttachmentCommentRow(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             ThreadAttachmentCommentTinyButton(
-                label = "Quote",
+                label = stringResource(MR.strings.thread_action_quote),
                 icon = SlockLucideIconName.MessageSquarePlus,
                 enabled = canComment && comment.content.isNotBlank(),
                 onClick = onQuote
@@ -16005,7 +16005,7 @@ private fun ThreadForwardTargetModal(
     onSend: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "Forward",
+        title = stringResource(MR.strings.thread_action_forward),
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 430.dp,
@@ -16037,7 +16037,7 @@ private fun ThreadForwardTargetModal(
                 onQueryChange = onQueryChange,
                 onSubmit = {},
                 onClear = { onQueryChange("") },
-                placeholder = "Search",
+                placeholder = stringResource(MR.strings.thread_action_search),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
             )
             Spacer(Modifier.height(10.dp))
@@ -16085,7 +16085,7 @@ private fun ThreadForwardTargetModal(
             }
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.12f)))
             SlockBrutalTextField(
-                label = "NOTE",
+                label = stringResource(MR.strings.thread_state_note),
                 value = note,
                 placeholder = "FORWARDED $selectedCount ${if (selectedCount == 1) "MESSAGE" else "MESSAGES"}",
                 maxLines = 2,
@@ -16254,7 +16254,7 @@ private fun ThreadShareSelectionToolbar(
                     enabled = hasSelection && selectedCount < selectableCount
                 )
                 ThreadShareSelectionActionButton(
-                    label = "Forward",
+                    label = stringResource(MR.strings.thread_action_forward),
                     icon = SlockLucideIconName.Send,
                     onClick = onForward,
                     enabled = hasSelection
@@ -16439,7 +16439,7 @@ private fun ThreadMembersModal(
                 if (members.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = "NO MEMBERS",
+                            title = stringResource(MR.strings.thread_state_no_members),
                             detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
                         )
                     }
@@ -16495,7 +16495,7 @@ private fun ThreadMembersModal(
                 }
             }
             SlockModalFullWidthActionButton(
-                label = "Add Member",
+                label = stringResource(MR.strings.thread_action_add_member),
                 icon = SlockLucideIconName.UserPlus,
                 onClick = { if (canAddMembers) onAddMember() },
                 color = SlockColor.AccentPink,
@@ -16549,7 +16549,7 @@ private fun ThreadAddMemberModal(
             else -> null
         }
     SlockUnifiedDialog(
-        title = "Add Member",
+        title = stringResource(MR.strings.thread_action_add_member),
         onDismiss = onDismiss,
         minWidth = 356.dp,
         maxWidth = 356.dp,
@@ -16897,7 +16897,7 @@ private fun ThreadSettingsModal(
                     // (btn-brutal text-only Cancel / Save Changes) — task #348.
                     SlockModalActionButton(label = "Cancel", onClick = onDismiss)
                     SlockModalActionButton(
-                        label = "Save Changes",
+                        label = stringResource(MR.strings.thread_action_save_changes),
                         color = SlockColor.AccentPink,
                         onClick = onDismiss
                     )

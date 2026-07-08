@@ -363,7 +363,7 @@ private fun SharedActivityBodyContent(
                 )
             snapshot == null && state.errorCode != null ->
                 SharedActivityRefreshableStateBody(
-                    title = "Could not load activity",
+                    title = stringResource(MR.strings.inbox_error_load_activity),
                     detail = state.errorCode,
                     actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
@@ -375,7 +375,7 @@ private fun SharedActivityBodyContent(
                 )
             snapshot == null ->
                 SharedActivityRefreshableStateBody(
-                    title = "Activity is empty",
+                    title = stringResource(MR.strings.inbox_state_activity_empty),
                     detail = state.selectedFilter.emptyCopy(),
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
@@ -503,7 +503,7 @@ private fun SharedActivityFilterBar(
             )
             if (totalUnreadCount > 0) {
                 SlockBrutalActionButton(
-                    label = "Mark all read",
+                    label = stringResource(MR.strings.inbox_action_mark_all_read),
                     minHeight = 28.dp,
                     minWidth = 0.dp,
                     shadowOffset = 2.dp,
