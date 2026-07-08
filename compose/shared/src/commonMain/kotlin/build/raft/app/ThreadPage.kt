@@ -84,6 +84,7 @@ import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
+import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.RealtimeActiveThreadSink
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.PermissionBlocker
@@ -2036,6 +2037,51 @@ private fun ThreadMessageVisualScreenContent() {
                 onCopyMarkdown = {},
                 onDownloadImage = {}
             )
+        }
+        return
+    }
+    if (
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG ||
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD ||
+        visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED
+    ) {
+        val messages = payload.toThreadTimelineSlice().messages
+        Column(
+            modifier =
+                Modifier
+                    .width(390.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(SlockSpacing.Md)
+        ) {
+            messages.forEachIndexed { index, visualMessage ->
+                if (index > 0) {
+                    Spacer(Modifier.height(SlockSpacing.Sm))
+                }
+                ThreadMessageCard(
+                    message = visualMessage,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(visualMessage),
+                    highlightedMentions = highlightedMentions,
+                    alignOwnMessageRight = false,
+                    showReplyAction = false,
+                    taskOpenEnabled = false,
+                    taskStatusActionsEnabled = false,
+                    showReactionAddAction = false,
+                    timestampLabel = payload.formatTimestampLabel(visualMessage.timestampLabel),
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    onToggleReaction = {},
+                    onToggleSaved = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {},
+                    outerPadding = 0.dp
+                )
+            }
         }
         return
     }
@@ -6835,6 +6881,9 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "task524_markdown_visible"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG = "action_card_catalog"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD = "approve_login_action_card"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED = "approve_login_action_card_executed"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP) {
@@ -7382,6 +7431,12 @@ internal fun threadVisualFixture(
                         enabled = false
                     )
             )
+        THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG ->
+            threadActionCardVisualFixture(resolvedInstanceId, threadActionCardCatalogMessages())
+        THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD ->
+            threadActionCardVisualFixture(resolvedInstanceId, approveLoginActionCardVisualMessages(executed = false))
+        THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED ->
+            threadActionCardVisualFixture(resolvedInstanceId, approveLoginActionCardVisualMessages(executed = true))
         else ->
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
@@ -7390,6 +7445,161 @@ internal fun threadVisualFixture(
             )
     }
 }
+
+private fun threadActionCardVisualFixture(
+    resolvedInstanceId: String,
+    messages: List<KuiklyThreadMessageItem>
+): KuiklyThreadScreenPayload =
+    KuiklyThreadScreenPayload(
+        instanceId = resolvedInstanceId,
+        title = "#visual-testing",
+        subtitle = "Thread action card visual fixture",
+        status = "content",
+        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        streamChannelId = "channel-visual-testing",
+        sourceThreadId = "channel-visual-testing",
+        selectedTab = "chat",
+        showModeTabs = false,
+        showReplyActions = false,
+        alignOwnMessagesRight = false,
+        showMessageSaveAction = false,
+        showTaskOpenActions = false,
+        showTaskStatusActions = false,
+        messages = messages,
+        members =
+            listOf(
+                KuiklyThreadMemberItem(
+                    id = "agent-cindy",
+                    displayName = "Cindy",
+                    handle = "Cindy",
+                    kind = "agent",
+                    avatarLabel = "CI"
+                ),
+                KuiklyThreadMemberItem(
+                    id = "visual-user",
+                    displayName = "artin",
+                    handle = "artin",
+                    kind = "human",
+                    avatarLabel = "AR"
+                )
+            ),
+        showComposer = false,
+        joined = true,
+        composer =
+            KuiklyThreadComposerPayload(
+                instanceId = resolvedInstanceId,
+                enabled = false
+            )
+    )
+
+private fun threadActionCardCatalogMessages(): List<KuiklyThreadMessageItem> =
+    listOf(
+        threadActionCardVisualMessage(
+            id = "msg-action-card-channel-create",
+            body = "Prepared a channel creation action card.",
+            card =
+                ThreadActionCard(
+                    type = "channel:create",
+                    name = "release-gate",
+                    description = "Coordinate release smoke checks.",
+                    visibility = "private",
+                    initialHumans = listOf("artin"),
+                    initialAgents = listOf("Cindy")
+                )
+        ),
+        threadActionCardVisualMessage(
+            id = "msg-action-card-agent-create",
+            body = "Prepared an agent creation action card.",
+            card =
+                ThreadActionCard(
+                    type = "agent:create",
+                    name = "Visual-QA",
+                    description = "Compare React and Android captures.",
+                    suggestedComputer = "Jiachengs-MacBook-Pro"
+                )
+        ),
+        threadActionCardVisualMessage(
+            id = "msg-action-card-add-member",
+            body = "Prepared an add-member action card.",
+            card =
+                ThreadActionCard(
+                    type = "channel:add_member",
+                    channel = "visual-testing",
+                    humans = listOf("artin"),
+                    agents = listOf("Android-Developer-4"),
+                    draftHint = "Add the implementation owner before capture starts."
+                )
+        ),
+        threadActionCardVisualMessage(
+            id = "msg-action-card-channel-done",
+            body = "Completed channel creation action card.",
+            card =
+                ThreadActionCard(
+                    type = "channel:create",
+                    state = "executed",
+                    name = "visual-release",
+                    visibility = "public",
+                    executedByUserName = "artin",
+                    resultKind = "channel",
+                    resultName = "visual-release"
+                )
+        )
+    )
+
+private fun approveLoginActionCardVisualMessages(executed: Boolean): List<KuiklyThreadMessageItem> {
+    val duplicateDraftHint =
+        "LiBai is requesting human approval to use Quiver. Server-installed apps do not need this approval; Marketplace apps do."
+    val prepared =
+        ThreadActionCard(
+            type = "integration:approve_agent_login",
+            state = "prepared",
+            name = "LiBai",
+            requestId = "login-request-visual",
+            agentId = "agent-libai",
+            agentName = "LiBai",
+            clientId = "client-quiver",
+            clientKey = "quiver",
+            clientName = "Quiver",
+            scopes = listOf("identity", "openid", "profile"),
+            draftHint = duplicateDraftHint
+        )
+    val card =
+        if (executed) {
+            prepared.copy(
+                state = "executed",
+                executedByUserName = "artin",
+                resultKind = "agent-integration-login",
+                resultName = "Quiver"
+            )
+        } else {
+            prepared
+        }
+    return listOf(
+        threadActionCardVisualMessage(
+            id = if (executed) "msg-action-card-approve-login-executed" else "msg-action-card-approve-login-prepared",
+            body = if (executed) "Quiver login approved for @LiBai" else "Approve Quiver for @LiBai",
+            card = card
+        )
+    )
+}
+
+private fun threadActionCardVisualMessage(
+    id: String,
+    body: String,
+    card: ThreadActionCard
+): KuiklyThreadMessageItem =
+    KuiklyThreadMessageItem(
+        id = id,
+        authorId = "agent-cindy",
+        authorName = "Cindy",
+        authorDescription = "Keeps visual testing release notes aligned.",
+        authorKind = "agent",
+        avatarLabel = "CI",
+        timestampLabel = "07/08 14:30",
+        messageType = "System",
+        body = body,
+        metadata = card.toMessageMetadata()
+    )
 
 private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
     val resolvedComposer = resolveThreadComposer()
@@ -12083,16 +12293,8 @@ private fun ThreadActionCardView(
                 color = SlockColor.TextMutedGray
             )
         }
-        card.draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
-            Text(
-                text = hint,
-                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                        .padding(SlockSpacing.Xs)
-            )
+        card.actionCardDraftHint()?.let { hint ->
+            ThreadActionCardHintBox(text = hint, italic = false)
         }
         if (card.isExecuted) {
             val committed = renderCopy.committedLabel
@@ -12138,24 +12340,38 @@ private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
         scopes.forEach { scope ->
             ThreadIntegrationScopeCard(scope)
         }
-        Text(
+        ThreadActionCardHintBox(
             text =
                 "${agent.removePrefix("@")} is requesting human approval to use $service. " +
                     "Server-installed apps do not need this approval; Marketplace apps do.",
-            style =
-                SlockType.Caption.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    color = SlockColor.TextMutedGray,
-                    fontStyle = com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic
-                ),
-            color = SlockColor.TextMutedGray,
-            modifier =
-                Modifier
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            italic = true
         )
     }
+}
+
+@Composable
+private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
+    val style =
+        if (italic) {
+            SlockType.Caption.copy(
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = SlockColor.TextMutedGray,
+                fontStyle = com.tencent.kuikly.compose.ui.text.font.FontStyle.Italic
+            )
+        } else {
+            SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
+        }
+    Text(
+        text = text,
+        style = style,
+        color = SlockColor.TextMutedGray,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+    )
 }
 
 @Composable
@@ -12303,6 +12519,11 @@ private fun ThreadActionCard.actionCardDetails(): String =
             add("Scopes: $scopeLine")
         }
     }.joinToString("\n")
+
+internal fun ThreadActionCard.actionCardDraftHint(): String? =
+    draftHint
+        ?.takeIf { it.isNotBlank() }
+        ?.takeUnless { isIntegrationApproveLoginAction() }
 
 private fun ThreadActionCard.isIntegrationApproveLoginAction(): Boolean =
     type.equals("integration:approve_agent_login", ignoreCase = true)
