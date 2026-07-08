@@ -31,7 +31,7 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 @Volatile
 private var networkKmmInitialized = false
 
-private fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
+internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
     if (networkKmmInitialized) return
     try {
         VBTransportInitHelper.init(
