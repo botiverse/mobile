@@ -9666,6 +9666,14 @@ private fun ThreadMessagesList(
     // message ~1s after entry, cancelling the active drag).
     var consumedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var scrollInterruptedFocusedMessageAnchorIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // task #567 anchor session bookkeeping. Elapsed time accumulates across
+    // effect restarts (structural data changes restart the anchor effect; the
+    // hard cap must span restarts or a busy thread could hold the one-shot
+    // open forever). Reset when a new anchor identity arrives (re-tap).
+    var focusedAnchorSessionIdentity by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    var focusedAnchorSessionElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
+    var focusedAnchorSessionReanchors by remember(threadInstanceKey) { mutableStateOf(0) }
+    var bottomAnchorFocusedYieldElapsedMs by remember(threadInstanceKey) { mutableStateOf(0L) }
     val pendingFocusedMessageAnchorIdentityState =
         rememberUpdatedState(
             renderPayload.focusedMessageId
@@ -10165,7 +10173,74 @@ private fun ThreadMessagesList(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
-        consumedFocusedMessageAnchorIdentity = targetIdentity
+        // task #567 first-principles invariant: once anchored, the target must
+        // hold its viewport position until the user scrolls. The list is
+        // item-key anchored and the target itself becomes the anchor item
+        // after scrollToItem(target, 0), so drift can only come from another
+        // scroll actor or an anchor handoff moment — instead of trusting any
+        // single culprit fix, watch the position until it is provably quiet
+        // (or the cap expires) and silently re-pin on drift. scrollToItem is
+        // non-animated: corrections are invisible unless something moved the
+        // viewport, in which case they restore what the user was promised.
+        if (focusedAnchorSessionIdentity != targetIdentity) {
+            focusedAnchorSessionIdentity = targetIdentity
+            focusedAnchorSessionElapsedMs = 0L
+            focusedAnchorSessionReanchors = 0
+        }
+        var anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+        var quietMs = 0L
+        var driftMaxPx = 0
+        while (true) {
+            delay(FocusedAnchorSessionRecheckIntervalMs)
+            focusedAnchorSessionElapsedMs += FocusedAnchorSessionRecheckIntervalMs
+            val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
+            val action =
+                focusedAnchorSessionAction(
+                    userInteracting = listState.isScrollInProgress,
+                    drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
+                    quietMs = quietMs,
+                    elapsedMs = focusedAnchorSessionElapsedMs
+                )
+            when (action) {
+                FocusedAnchorSessionAction.Interrupt -> {
+                    scrollInterruptedFocusedMessageAnchorIdentity = targetIdentity
+                    diagnosticsLogger(
+                        "thread_focused_anchor_session outcome=interrupted " +
+                            "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
+                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                    )
+                    return@LaunchedEffect
+                }
+                FocusedAnchorSessionAction.Consume -> {
+                    consumedFocusedMessageAnchorIdentity = targetIdentity
+                    val outcome =
+                        if (quietMs >= FocusedAnchorSessionQuietMs) "consumed_quiet" else "consumed_cap"
+                    diagnosticsLogger(
+                        "thread_focused_anchor_session outcome=$outcome " +
+                            "reanchors=$focusedAnchorSessionReanchors driftMaxPx=$driftMaxPx " +
+                            "elapsedMs=$focusedAnchorSessionElapsedMs messageId=$targetMessageId"
+                    )
+                    return@LaunchedEffect
+                }
+                FocusedAnchorSessionAction.Reanchor -> {
+                    focusedAnchorSessionReanchors += 1
+                    val driftPx = focusedAnchorDriftMagnitude(anchoredOffset, currentOffset)
+                    driftMaxPx = maxOf(driftMaxPx, driftPx)
+                    diagnosticsLogger(
+                        "thread_focused_anchor_session_drift deltaPx=$driftPx " +
+                            "reanchor=$focusedAnchorSessionReanchors targetIndex=$targetIndex " +
+                            "originStatus=${renderPayload.originStatus} totalItems=${listState.layoutInfo.totalItemsCount} " +
+                            "firstVisible=${listState.firstVisibleItemIndex} messageId=$targetMessageId"
+                    )
+                    listState.scrollThreadItemToFocusedViewport(targetIndex)
+                    anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    quietMs = 0L
+                }
+                FocusedAnchorSessionAction.Continue -> {
+                    quietMs += FocusedAnchorSessionRecheckIntervalMs
+                }
+            }
+        }
     }
     LaunchedEffect(threadInstanceKey, inlineSearchVisible, activeInlineSearchMatch) {
         val match = activeInlineSearchMatch ?: return@LaunchedEffect
@@ -10198,6 +10273,42 @@ private fun ThreadMessagesList(
             renderPayload.focusedMessageListItemIndex()
         if (focusedMessageTargetIndex >= 0) {
             return@LaunchedEffect
+        }
+        // task #567: while a focused-message anchor request is pending, the
+        // bottom anchor must not touch the viewport at all — it was the second
+        // scroll actor racing the focused anchor on cold entry
+        // (anchorInitialThreadBottomToLatest is a multi-step suspend that can
+        // land a scroll after the focused anchor positioned the target). The
+        // yield is bounded: if the focused target never becomes anchorable
+        // (deleted message, failed context fetch), normal bottom anchoring
+        // resumes after the cap so the entry is never left blank.
+        while (
+            shouldYieldBottomAnchorToFocusedAnchor(
+                pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+            )
+        ) {
+            delay(FocusedAnchorSessionRecheckIntervalMs)
+            bottomAnchorFocusedYieldElapsedMs += FocusedAnchorSessionRecheckIntervalMs
+        }
+        pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
+            if (
+                !shouldRunFocusedMessageAnchor(
+                    targetIdentity = pendingIdentity,
+                    consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                    scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
+                )
+            ) {
+                // The focused anchor consumed or the user took over while we
+                // waited — either way the viewport is owned; stay out.
+                return@LaunchedEffect
+            }
+            diagnosticsLogger(
+                "thread_initial_bottom_anchor result=focused_yield_cap_fallback " +
+                    "elapsedMs=$bottomAnchorFocusedYieldElapsedMs"
+            )
         }
         // A drag during the initial-anchor window wins: reveal the list where
         // the user already is instead of yanking to the bottom (task #554
@@ -11134,6 +11245,87 @@ internal fun shouldRunFocusedMessageAnchor(
 internal fun focusedMessageAnchorOriginSettled(originStatus: String): Boolean =
     originStatus != "loading"
 
+// task #567 anchor-session tuning. Rationale, so future re-tuning needs no
+// archaeology:
+// - Recheck 250ms: a couple of frames past the layout-stability delay — fast
+//   enough to correct drift before a user reads it as "wrong position",
+//   cheap enough to poll for at most the cap.
+// - Quiet 500ms: two consecutive clean rechecks; entry content that has not
+//   moved for half a second has finished its late measurements (origin row,
+//   image dimensions, markdown) in every trace we have.
+// - Hard cap 1500ms: upper bound so a busy thread (typing indicators,
+//   realtime arrivals restarting the effect) cannot hold the one-shot open
+//   forever; covers the longest first-entry settle observed in the cddfcd85
+//   device log (~1.4s from first probe to settled probe).
+// - Bottom-yield cap 3000ms: how long the initial bottom anchor stays out of
+//   the focused anchor's way before concluding the target will never become
+//   anchorable and falling back — 2× the session cap plus fetch slack.
+// - Drift tolerance 4px: item offsets are ints and re-layout rounding can
+//   jitter by a pixel or two; anything beyond this is a real shift.
+internal const val FocusedAnchorSessionRecheckIntervalMs = 250L
+internal const val FocusedAnchorSessionQuietMs = 500L
+internal const val FocusedAnchorSessionHardCapMs = 1_500L
+internal const val FocusedAnchorBottomYieldCapMs = 3_000L
+internal const val FocusedAnchorDriftTolerancePx = 4
+
+internal enum class FocusedAnchorSessionAction { Interrupt, Consume, Reanchor, Continue }
+
+// The session policy as a pure state machine (task #567). Precedence:
+// user interaction always wins (#554 semantics), then the hard cap (never
+// hold the one-shot open forever), then drift correction, then quiet
+// consumption.
+internal fun focusedAnchorSessionAction(
+    userInteracting: Boolean,
+    drifted: Boolean,
+    quietMs: Long,
+    elapsedMs: Long
+): FocusedAnchorSessionAction =
+    when {
+        userInteracting -> FocusedAnchorSessionAction.Interrupt
+        elapsedMs >= FocusedAnchorSessionHardCapMs -> FocusedAnchorSessionAction.Consume
+        drifted -> FocusedAnchorSessionAction.Reanchor
+        quietMs >= FocusedAnchorSessionQuietMs -> FocusedAnchorSessionAction.Consume
+        else -> FocusedAnchorSessionAction.Continue
+    }
+
+// Drift predicate: the target leaving the viewport entirely is always drift;
+// otherwise compare against the offset captured right after anchoring.
+internal fun focusedAnchorTargetDrifted(anchoredOffset: Int?, currentOffset: Int?): Boolean =
+    when {
+        currentOffset == null -> true
+        anchoredOffset == null -> false
+        else -> {
+            val delta = currentOffset - anchoredOffset
+            delta > FocusedAnchorDriftTolerancePx || delta < -FocusedAnchorDriftTolerancePx
+        }
+    }
+
+// Marker magnitude: -1 encodes "target left the viewport" so the log line
+// stays greppable next to pixel deltas.
+internal fun focusedAnchorDriftMagnitude(anchoredOffset: Int?, currentOffset: Int?): Int =
+    if (anchoredOffset != null && currentOffset != null) {
+        val delta = currentOffset - anchoredOffset
+        if (delta >= 0) delta else -delta
+    } else {
+        -1
+    }
+
+// task #567: the initial bottom anchor yields the viewport to a pending
+// focused anchor (bounded by FocusedAnchorBottomYieldCapMs).
+internal fun shouldYieldBottomAnchorToFocusedAnchor(
+    pendingIdentity: String?,
+    consumedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    yieldElapsedMs: Long
+): Boolean =
+    pendingIdentity != null &&
+        shouldRunFocusedMessageAnchor(
+            targetIdentity = pendingIdentity,
+            consumedIdentity = consumedIdentity,
+            scrollInterruptedIdentity = scrollInterruptedIdentity
+        ) &&
+        yieldElapsedMs < FocusedAnchorBottomYieldCapMs
+
 internal fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1
     return firstMessageListItemIndex() + messages.lastIndex
@@ -11354,6 +11546,11 @@ private fun LazyListState.isThreadItemVisible(index: Int): Boolean {
     if (index < 0) return false
     return layoutInfo.visibleItemsInfo.any { it.index == index }
 }
+
+// task #567: the target's current offset inside the viewport, or null when it
+// is not among the visible items (= fully drifted).
+private fun LazyListState.focusedAnchorTargetOffset(targetIndex: Int): Int? =
+    layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }?.offset
 
 private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
