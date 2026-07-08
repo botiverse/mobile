@@ -31,10 +31,10 @@ class SlockKuiklyNotificationLaunchTest {
     }
 
     @Test
-    fun androidHostNavigationExclusionFollowsNavigationMode() {
+    fun androidHostNavigationExclusionStaysOffForEdgeToEdgeHost() {
         assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(2))
-        assertTrue(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(1))
-        assertTrue(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(0))
+        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(1))
+        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(0))
         assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(null))
     }
 
