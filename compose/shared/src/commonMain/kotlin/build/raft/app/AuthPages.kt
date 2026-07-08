@@ -26,6 +26,7 @@ import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -66,6 +67,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.core.pager.Pager
 
 const val LOGIN_PAGE = "compose_login"
@@ -692,8 +694,8 @@ private fun AuthDiagnosticsScreen() {
 
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
-            title = "Diagnostics",
-            subtitle = "Auth diagnostics",
+            title = stringResource(MR.strings.auth_diagnostics_title),
+            subtitle = stringResource(MR.strings.auth_diagnostics_label),
             iconName = SlockLucideIconName.Activity,
             leadingContent = {
                 SlockBrutalIconButton(
@@ -728,7 +730,7 @@ private fun AuthDiagnosticsScreen() {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SlockBrutalActionButton(
-                        label = "Copy",
+                        label = stringResource(MR.strings.auth_action_copy),
                         leadingIcon = SlockLucideIconName.Copy,
                         onClick = { copyNonce += 1 },
                         backgroundColor = SlockColor.BrandYellow,
@@ -1033,7 +1035,7 @@ internal fun LoginContent(
                 },
                 // React parity: LoginPage.tsx labels are plain "Email"/"Password"
                 // (no pink required asterisk).
-                label = "Email",
+                label = stringResource(MR.strings.auth_label_email),
                 modifier =
                     Modifier.onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && !event.isShiftPressed) {
@@ -1055,7 +1057,7 @@ internal fun LoginContent(
                     passwordDraft = it
                     onPasswordChange(it)
                 },
-                label = "Password",
+                label = stringResource(MR.strings.auth_label_password),
                 modifier =
                     Modifier.onPreviewKeyEvent { event ->
                         if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && event.isShiftPressed) {
@@ -1183,7 +1185,7 @@ internal fun RegisterContent(
                 name,
                 onNameChange,
                 "Name",
-                placeholder = "Letters, numbers, hyphens, underscores",
+                placeholder = stringResource(MR.strings.auth_password_pattern),
                 isError = !nameError.isNullOrBlank(),
                 errorText = nameError,
                 forceFocused = forceNameFocused,
@@ -1204,7 +1206,7 @@ internal fun RegisterContent(
                 password,
                 onPasswordChange,
                 "Password",
-                placeholder = "Min 8 characters",
+                placeholder = stringResource(MR.strings.auth_password_min_length),
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
@@ -1263,7 +1265,7 @@ internal fun ForgotPasswordContent(
             AuthTextField(
                 value = email,
                 onValueChange = onEmailChange,
-                label = "Email",
+                label = stringResource(MR.strings.auth_label_email),
                 // React parity (ForgotPasswordPage.tsx): the email input stays
                 // enabled while the reset request is in flight (task #372).
                 // After `sent`, react swaps to a page without the input at all,
@@ -1278,7 +1280,7 @@ internal fun ForgotPasswordContent(
             AuthError(errorMessage)
             if (sent) {
                 AuthSuccessNotice(
-                    title = "Check your email",
+                    title = stringResource(MR.strings.auth_check_email_title),
                     detail = "If an account exists with ${email.ifBlank { "your email" }}, we've sent a password reset link."
                 )
             }
