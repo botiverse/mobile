@@ -17,12 +17,31 @@ import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SettingsServerAdminSnapshot
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
+    @Test
+    fun feedbackComposerBottomPaddingLiftsAboveKeyboard() {
+        assertEquals(
+            24.dp,
+            settingsQuiverFeedbackComposerBottomPadding(
+                keyboardInsetDp = 0f,
+                bottomContentPadding = 24.dp
+            )
+        )
+        assertEquals(
+            292.dp,
+            settingsQuiverFeedbackComposerBottomPadding(
+                keyboardInsetDp = 280f,
+                bottomContentPadding = 24.dp
+            )
+        )
+    }
+
     @Test
     fun administrationSectionsMatchReactOrder() {
         assertEquals(

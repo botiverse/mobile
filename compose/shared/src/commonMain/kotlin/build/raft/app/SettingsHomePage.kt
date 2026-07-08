@@ -8364,6 +8364,7 @@ private fun SharedQuiverFeedbackContent(
 ) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    var composerKeyboardInsetDp by remember { mutableStateOf(0f) }
     var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val message = messageFieldValue.text
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
@@ -8580,6 +8581,16 @@ private fun SharedQuiverFeedbackContent(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
+                    .padding(
+                        start = SlockSpacing.Sm,
+                        top = 12.dp,
+                        end = SlockSpacing.Sm,
+                        bottom =
+                            settingsQuiverFeedbackComposerBottomPadding(
+                                keyboardInsetDp = composerKeyboardInsetDp,
+                                bottomContentPadding = bottomContentPadding
+                            )
+                    )
         ) {
             ThreadComposerContent(
                 surface =
@@ -8622,11 +8633,27 @@ private fun SharedQuiverFeedbackContent(
                         "previewAttachment", "retryAttachments", "blur", "toggleAsTask" -> Unit
                     }
                 },
+                onKeyboardHeightChange = { nextInset ->
+                    if (nextInset != composerKeyboardInsetDp) {
+                        composerKeyboardInsetDp = nextInset
+                    }
+                },
                 contentPaddingTop = 10.dp,
                 contentPaddingBottom = 8.dp
             )
-            Spacer(Modifier.height(bottomContentPadding))
         }
+    }
+}
+
+internal fun settingsQuiverFeedbackComposerBottomPadding(
+    keyboardInsetDp: Float,
+    bottomContentPadding: Dp
+): Dp {
+    val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
+    return if (keyboardInsetDp > 0f) {
+        12.dp + keyboardInset
+    } else {
+        bottomContentPadding
     }
 }
 
