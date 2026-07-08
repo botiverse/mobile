@@ -10,6 +10,7 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,6 +46,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -242,7 +244,7 @@ private fun SettingsBillingScreen() {
     LaunchedEffect(Unit) { bodyReady = true }
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
-            title = "Billing",
+            title = stringResource(MR.strings.settings_billing_title),
             iconName = SlockLucideIconName.CreditCard,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
