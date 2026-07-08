@@ -25,8 +25,6 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.zIndex
 
-internal const val SlockFloatingOverlayHostZIndex = 1000f
-
 internal expect fun Modifier.slockNativeDispatchCapture(): Modifier
 
 internal data class SlockFloatingOverlayLayout(

@@ -91,8 +91,13 @@ class SlockAppShellTest {
             slockSharedBottomTabBarHostHeight(18.dp) + SlockSpacing.Lg,
             slockSharedBottomTabBarContentInset(18.dp)
         )
-        assertEquals(999f, SlockAppBottomTabBarHostZIndex)
-        assertTrue(SlockFloatingOverlayHostZIndex > SlockAppBottomTabBarHostZIndex)
+    }
+
+    @Test
+    fun appShellLayerZOrderKeepsGlobalModalsAboveTabs() {
+        assertTrue(SlockFloatingOverlayHostZIndex > SlockGlobalModalHostZIndex)
+        assertTrue(SlockGlobalModalHostZIndex > SlockAppBottomTabBarHostZIndex)
+        assertTrue(SlockAppBottomTabBarHostZIndex > SlockAppContentHostZIndex)
     }
 
     @Test

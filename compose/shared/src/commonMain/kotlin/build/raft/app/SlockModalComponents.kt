@@ -10,10 +10,15 @@ import build.raft.app.components.SlockBrutalModalLayer
 import build.raft.app.components.SlockActionSheetRowModel
 import build.raft.app.components.SlockModalShellModel
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -41,8 +46,73 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.zIndex
 
 private val SlockUnifiedDialogShadowOffset = 4.dp
+
+internal class SlockUnifiedDialogHostKey
+
+internal data class SlockUnifiedDialogHostEntry(
+    val key: SlockUnifiedDialogHostKey,
+    val content: @Composable () -> Unit
+)
+
+internal class SlockUnifiedDialogHostState {
+    var entries by mutableStateOf<List<SlockUnifiedDialogHostEntry>>(emptyList())
+        private set
+
+    fun upsert(key: SlockUnifiedDialogHostKey, content: @Composable () -> Unit) {
+        val nextEntry = SlockUnifiedDialogHostEntry(key, content)
+        val currentEntries = entries
+        val existingIndex = currentEntries.indexOfFirst { it.key === key }
+        entries =
+            if (existingIndex >= 0) {
+                currentEntries.toMutableList().also { it[existingIndex] = nextEntry }
+            } else {
+                currentEntries + nextEntry
+            }
+    }
+
+    fun remove(key: SlockUnifiedDialogHostKey) {
+        entries = entries.filterNot { it.key === key }
+    }
+}
+
+private val LocalSlockUnifiedDialogHostState = compositionLocalOf<SlockUnifiedDialogHostState?> { null }
+
+@Composable
+internal fun rememberSlockUnifiedDialogHostState(): SlockUnifiedDialogHostState =
+    remember { SlockUnifiedDialogHostState() }
+
+@Composable
+internal fun SlockUnifiedDialogHostProvider(
+    state: SlockUnifiedDialogHostState,
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(LocalSlockUnifiedDialogHostState provides state, content = content)
+}
+
+@Composable
+internal fun SlockUnifiedDialogHost(
+    state: SlockUnifiedDialogHostState,
+    modifier: Modifier = Modifier
+) {
+    if (state.entries.isEmpty()) {
+        return
+    }
+    Box(
+        modifier =
+            modifier
+                .zIndex(SlockGlobalModalHostZIndex)
+                .fillMaxSize()
+    ) {
+        state.entries.forEach { entry ->
+            key(entry.key) {
+                entry.content()
+            }
+        }
+    }
+}
 
 @Composable
 internal fun SlockModalLayer(
@@ -88,78 +158,154 @@ internal fun SlockUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     content: @Composable () -> Unit
 ) {
-    Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+    val hostState = LocalSlockUnifiedDialogHostState.current
+    if (hostState == null) {
+        Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+            SlockUnifiedDialogSurface(
+                title = title,
+                onDismiss = onDismiss,
+                modifier = modifier,
+                dismissEnabled = dismissEnabled,
+                overlayAlpha = overlayAlpha,
+                minWidth = minWidth,
+                maxWidth = maxWidth,
+                outerPadding = outerPadding,
+                contentPadding = contentPadding,
+                headerPadding = headerPadding,
+                titleFontSize = titleFontSize,
+                titleLineHeight = titleLineHeight,
+                titleMaxLines = titleMaxLines,
+                contentSpacing = contentSpacing,
+                handleBack = false,
+                content = content
+            )
+        }
+        return
+    }
+    val currentDialogContent =
+        rememberUpdatedState<@Composable () -> Unit> {
+            SlockUnifiedDialogSurface(
+                title = title,
+                onDismiss = onDismiss,
+                modifier = modifier,
+                dismissEnabled = dismissEnabled,
+                overlayAlpha = overlayAlpha,
+                minWidth = minWidth,
+                maxWidth = maxWidth,
+                outerPadding = outerPadding,
+                contentPadding = contentPadding,
+                headerPadding = headerPadding,
+                titleFontSize = titleFontSize,
+                titleLineHeight = titleLineHeight,
+                titleMaxLines = titleMaxLines,
+                contentSpacing = contentSpacing,
+                handleBack = true,
+                content = content
+            )
+        }
+    val hostKey = remember { SlockUnifiedDialogHostKey() }
+    DisposableEffect(hostState, hostKey) {
+        hostState.upsert(hostKey) {
+            currentDialogContent.value()
+        }
+        onDispose {
+            hostState.remove(hostKey)
+        }
+    }
+}
+
+@Composable
+private fun SlockUnifiedDialogSurface(
+    title: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier,
+    dismissEnabled: Boolean,
+    overlayAlpha: Float,
+    minWidth: Dp,
+    maxWidth: Dp,
+    outerPadding: Dp,
+    contentPadding: Dp,
+    headerPadding: Dp,
+    titleFontSize: Int,
+    titleLineHeight: Int,
+    titleMaxLines: Int,
+    contentSpacing: Dp,
+    handleBack: Boolean,
+    content: @Composable () -> Unit
+) {
+    if (handleBack) {
+        SlockBackHandler(enabled = dismissEnabled, label = "unified_dialog", onBack = onDismiss)
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
+                .clickable(enabled = dismissEnabled, onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
         Box(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
-                    .clickable(enabled = dismissEnabled, onClick = onDismiss),
-            contentAlignment = Alignment.Center
+                modifier
+                    .padding(outerPadding)
+                    .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
+                    .widthIn(min = minWidth, max = maxWidth)
+                    .clickable(onClick = {})
         ) {
             Box(
                 modifier =
-                    modifier
-                        .padding(outerPadding)
-                        .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
-                        .widthIn(min = minWidth, max = maxWidth)
-                        .clickable(enabled = false, onClick = {})
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = SlockUnifiedDialogShadowOffset, y = SlockUnifiedDialogShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing)
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = SlockUnifiedDialogShadowOffset, y = SlockUnifiedDialogShadowOffset)
-                            .background(SlockColor.ShadowBlack)
-                )
-                Column(
+                Row(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .padding(contentPadding),
-                    verticalArrangement = Arrangement.spacedBy(contentSpacing)
+                            .padding(
+                                // When a dialog sets contentPadding = 0 for an
+                                // edge-bleed body, the header would otherwise sit
+                                // flush against the top and left borders; restore
+                                // its inset to headerPadding on both axes.
+                                start = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                end = (headerPadding - contentPadding).coerceAtLeast(0.dp),
+                                top = (headerPadding - contentPadding).coerceAtLeast(0.dp)
+                            ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    // When a dialog sets contentPadding = 0 for an
-                                    // edge-bleed body, the header would otherwise sit
-                                    // flush against the top and left borders; restore
-                                    // its inset to headerPadding on both axes.
-                                    start = (headerPadding - contentPadding).coerceAtLeast(0.dp),
-                                    end = (headerPadding - contentPadding).coerceAtLeast(0.dp),
-                                    top = (headerPadding - contentPadding).coerceAtLeast(0.dp)
-                                ),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = title,
-                            style =
-                                SlockType.PageTitle.copy(
-                                    fontSize = titleFontSize.sp,
-                                    lineHeight = titleLineHeight.sp,
-                                    color = SlockColor.TextBlack
-                                ),
-                            color = SlockColor.TextBlack,
-                            modifier = Modifier.weight(1f),
-                            maxLines = titleMaxLines,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        SlockBrutalIconButton(
-                            enabled = dismissEnabled,
-                            iconName = SlockLucideIconName.X,
-                            onClick = onDismiss,
-                            size = 34.dp,
-                            shadowOffset = 3.dp
-                        )
-                    }
-                    content()
+                    Text(
+                        text = title,
+                        style =
+                            SlockType.PageTitle.copy(
+                                fontSize = titleFontSize.sp,
+                                lineHeight = titleLineHeight.sp,
+                                color = SlockColor.TextBlack
+                            ),
+                        color = SlockColor.TextBlack,
+                        modifier = Modifier.weight(1f),
+                        maxLines = titleMaxLines,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    SlockBrutalIconButton(
+                        enabled = dismissEnabled,
+                        iconName = SlockLucideIconName.X,
+                        onClick = onDismiss,
+                        size = 34.dp,
+                        shadowOffset = 3.dp
+                    )
                 }
+                content()
             }
         }
     }
