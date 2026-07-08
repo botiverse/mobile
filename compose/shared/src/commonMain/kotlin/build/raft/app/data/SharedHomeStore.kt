@@ -941,7 +941,8 @@ internal class SharedHomeStore(
     }
 
     private suspend fun togglePinned(conversationId: String) {
-        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val serverId = current?.snapshot?.server?.id
         if (serverId == null) {
             pinUpdateFailureCallback("Unable to update pinned channels: home not loaded")
             return
@@ -951,21 +952,49 @@ internal class SharedHomeStore(
             pinUpdateFailureCallback("Unable to update pinned channels: sidebar order not loaded")
             return
         }
-        val isCurrentlyPinned = previous.pinnedChannelIds.contains(conversationId)
+        val target = current.snapshot.pinnedToggleTarget(conversationId)
+        val isCurrentlyPinned =
+            if (target.agentId != null) {
+                previous.pinnedAgentIds.contains(target.agentId) ||
+                    previous.pinnedChannelIds.contains(target.conversationId)
+            } else {
+                previous.pinnedChannelIds.contains(target.conversationId)
+            }
         val next = if (isCurrentlyPinned) {
-            previous.copy(
-                pinnedChannelIds = previous.pinnedChannelIds - conversationId,
-                pinnedOrder = previous.pinnedOrder.filterNot { it == conversationId }
-            )
+            if (target.agentId != null) {
+                previous.copy(
+                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
+                    pinnedAgentIds = previous.pinnedAgentIds - target.agentId,
+                    pinnedOrder =
+                        previous.pinnedOrder.filterNot { it == target.conversationId || it == target.agentId }
+                )
+            } else {
+                previous.copy(
+                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
+                    pinnedOrder = previous.pinnedOrder.filterNot { it == target.conversationId }
+                )
+            }
         } else {
-            previous.copy(
-                pinnedChannelIds = previous.pinnedChannelIds + conversationId,
-                pinnedOrder = previous.pinnedOrder + conversationId
-            )
+            if (target.agentId != null) {
+                previous.copy(
+                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
+                    pinnedAgentIds = (previous.pinnedAgentIds + target.agentId).distinct(),
+                    pinnedOrder =
+                        (previous.pinnedOrder.filterNot { it == target.conversationId || it == target.agentId } +
+                            target.agentId)
+                            .distinct()
+                )
+            } else {
+                previous.copy(
+                    pinnedChannelIds = (previous.pinnedChannelIds + target.conversationId).distinct(),
+                    pinnedOrder = (previous.pinnedOrder + target.conversationId).distinct()
+                )
+            }
         }
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinnedChannelIds = next.pinnedChannelIds,
+            pinnedAgentIds = next.pinnedAgentIds,
             pinnedOrder = next.pinnedOrder
         )
         when (val result = updateSidebarOrder(request)) {
@@ -977,6 +1006,23 @@ internal class SharedHomeStore(
                 pinUpdateFailureCallback("Unable to update pinned channels")
             }
         }
+    }
+
+    private fun HomeSnapshot.pinnedToggleTarget(conversationId: String): PinnedToggleTarget {
+        val directMessage =
+            directMessages.firstOrNull { row ->
+                row.threadId.value == conversationId || row.channelId.value == conversationId
+            }
+        val agentId =
+            directMessage
+                ?.takeIf { it.directMessagePeerType.equals("agent", ignoreCase = true) }
+                ?.presenceMemberId
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+        return PinnedToggleTarget(
+            conversationId = conversationId,
+            agentId = agentId
+        )
     }
 
     private suspend fun setPinnedSortMode(mode: SlockSidebarSortMode) {
@@ -1610,6 +1656,11 @@ internal expect fun defaultNowMillis(): Long
 
 private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConversationRow? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
+
+private data class PinnedToggleTarget(
+    val conversationId: String,
+    val agentId: String? = null
+)
 
 private data class ChannelActivityMuteRequest(
     val id: Long,

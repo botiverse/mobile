@@ -2751,6 +2751,151 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun togglePinnedAgentDirectMessagePatchesPinnedAgentIds() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = emptyList(),
+            pinnedAgentIds = emptyList(),
+            pinnedOrder = emptyList(),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(
+            pinnedAgentIds = listOf("agent-1"),
+            pinnedOrder = listOf("agent-1")
+        )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Active)
+                            .copy(directMessagePeerType = "agent")
+                    ),
+                sidebarOrder = initial
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("dm-agent-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(emptyList(), after?.pinnedChannelIds)
+        assertEquals(listOf("agent-1"), after?.pinnedAgentIds)
+        assertEquals(listOf("agent-1"), after?.pinnedOrder)
+        assertEquals(1, updateCalls.size)
+        assertEquals(emptyList(), updateCalls.first().pinnedChannelIds)
+        assertEquals(listOf("agent-1"), updateCalls.first().pinnedAgentIds)
+        assertEquals(listOf("agent-1"), updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedAgentDirectMessageUnpinsLegacyMixedFamilies() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("dm-agent-1"),
+            pinnedAgentIds = listOf("agent-1"),
+            pinnedOrder = listOf("dm-agent-1", "agent-1"),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(
+            pinnedChannelIds = emptyList(),
+            pinnedAgentIds = emptyList(),
+            pinnedOrder = emptyList()
+        )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-agent-1", "Agent One", "agent-1", Presence.Active)
+                            .copy(directMessagePeerType = "agent")
+                    ),
+                sidebarOrder = initial
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("dm-agent-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(emptyList(), after?.pinnedChannelIds)
+        assertEquals(emptyList(), after?.pinnedAgentIds)
+        assertEquals(emptyList(), after?.pinnedOrder)
+        assertEquals(1, updateCalls.size)
+        assertEquals(emptyList(), updateCalls.first().pinnedChannelIds)
+        assertEquals(emptyList(), updateCalls.first().pinnedAgentIds)
+        assertEquals(emptyList(), updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedHumanDirectMessageStillPatchesPinnedChannelIds() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = emptyList(),
+            pinnedAgentIds = emptyList(),
+            pinnedOrder = emptyList(),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(
+            pinnedChannelIds = listOf("dm-user-1"),
+            pinnedOrder = listOf("dm-user-1")
+        )
+        val home =
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-user-1", "Artin", "user-1", Presence.Active)
+                            .copy(directMessagePeerType = "user")
+                    ),
+                sidebarOrder = initial
+            )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSnapshot(home),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("dm-user-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("dm-user-1"), after?.pinnedChannelIds)
+        assertEquals(emptyList(), after?.pinnedAgentIds)
+        assertEquals(listOf("dm-user-1"), after?.pinnedOrder)
+        assertEquals(1, updateCalls.size)
+        assertEquals(listOf("dm-user-1"), updateCalls.first().pinnedChannelIds)
+        assertEquals(emptyList(), updateCalls.first().pinnedAgentIds)
+        assertEquals(listOf("dm-user-1"), updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
     fun togglePinnedWritesSidebarOrderToHomeIdentityPersist() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val storage = InMemorySlockKeyValueStore()
