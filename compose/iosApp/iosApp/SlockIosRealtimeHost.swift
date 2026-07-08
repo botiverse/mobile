@@ -155,6 +155,7 @@ final class SlockIosRealtimeHost: NSObject {
         socket.connect(withPayload: [
             "token": params.accessToken,
             "serverId": params.serverId,
+            "clientKind": "mobile",
         ])
     }
 
