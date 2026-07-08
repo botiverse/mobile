@@ -131,7 +131,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.2")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.12")
