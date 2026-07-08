@@ -609,11 +609,11 @@ internal fun SharedCreateAgentDialog(
                 }
                 item(key = "name") {
                     SlockBrutalTextField(
-                        label = "Name",
+                        label = stringResource(MR.strings.agent_create_label_name),
                         required = true,
                         value = name,
                         onValueChange = { name = it },
-                        placeholder = "e.g. Noel",
+                        placeholder = stringResource(MR.strings.agent_create_placeholder_name),
                         enabled = !submitting,
                         autoFocus = true
                     )
@@ -629,7 +629,7 @@ internal fun SharedCreateAgentDialog(
                 }
                 item(key = "description") {
                     SlockBrutalTextField(
-                        label = "Description",
+                        label = stringResource(MR.strings.agent_create_label_description),
                         optional = true,
                         value = description,
                         onValueChange = {
@@ -794,7 +794,7 @@ private fun MachinePicker(
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = "Computer", required = true)
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
         when {
             machinesLoading -> Text(
                 text = "Loading computers...",
@@ -835,7 +835,7 @@ private fun MachinePicker(
                     selectedLabel =
                         machineItems.firstOrNull { it.id == selectedMachineId }?.label
                             ?: "Select computer",
-                    placeholder = "Select computer",
+                    placeholder = stringResource(MR.strings.agent_create_placeholder_select_computer),
                     enabled = enabled,
                     rowHeight = 40.dp,
                     onSelect = { item -> onSelect(item.id) }
@@ -912,7 +912,7 @@ internal fun AdvancedRuntimeSection(
     val focusManager = LocalFocusManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SlockBrutalSectionLabel(label = "Runtime")
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
         SlockBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
@@ -920,7 +920,7 @@ internal fun AdvancedRuntimeSection(
                 runtimeOptions.firstOrNull { it.id == runtime }?.label
                     ?: runtime.takeIf { runtimeAvailabilityError == null }?.let { getRuntimeDisplayName(it) }
                     ?: "No runtimes available",
-            placeholder = "Select runtime",
+            placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
             enabled = runtimeEnabled,
             rowHeight = 36.dp,
             onSelect = { option ->
@@ -937,13 +937,13 @@ internal fun AdvancedRuntimeSection(
         }
         if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
-            SlockBrutalSectionLabel(label = "Provider", required = false)
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
             val providerOptions = createAgentProviderDropdownItems()
             SlockBrutalSelectField(
                 options = providerOptions.toBrutalSelectOptions(),
                 selectedId = providerMode,
                 selectedLabel = providerOptions.firstOrNull { it.id == providerMode }?.label ?: "Default",
-                placeholder = "Select provider",
+                placeholder = stringResource(MR.strings.agent_create_placeholder_select_provider),
                 enabled = enabled,
                 rowHeight = 36.dp,
                 onSelect = { option ->
@@ -999,7 +999,7 @@ internal fun AdvancedRuntimeSection(
             }
         }
         CreateAgentSectionLabelWithAction(
-            label = "Model",
+            label = stringResource(MR.strings.agent_create_label_model),
             required = false,
             actionIcon = SlockLucideIconName.RefreshCw,
             actionEnabled = enabled && !runtimeModelsLoading,
@@ -1016,7 +1016,7 @@ internal fun AdvancedRuntimeSection(
                 } else {
                     modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
                 },
-            placeholder = "Select model",
+            placeholder = stringResource(MR.strings.agent_create_placeholder_select_model),
             enabled = enabled,
             rowHeight = 36.dp,
             onSelect = { item ->
@@ -1035,11 +1035,11 @@ internal fun AdvancedRuntimeSection(
         key(customModelMode) {
             if (customModelMode) {
                 SlockBrutalTextField(
-                    label = "Custom model",
+                    label = stringResource(MR.strings.agent_create_label_custom_model),
                     required = true,
                     value = customModelName,
                     onValueChange = { onCustomModelNameChange(it) },
-                    placeholder = "Enter model name",
+                    placeholder = stringResource(MR.strings.agent_create_placeholder_model),
                     enabled = enabled
                 )
                 if (customModelName.isBlank()) {
@@ -1052,14 +1052,14 @@ internal fun AdvancedRuntimeSection(
             }
         }
         if (supportsRuntimeReasoningEffort(runtime)) {
-            SlockBrutalSectionLabel(label = "Reasoning")
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
             val reasoningOptions = createAgentReasoningDropdownItems()
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
             SlockBrutalSelectField(
                 options = reasoningOptions.toBrutalSelectOptions(),
                 selectedId = reasoningSelectedId,
                 selectedLabel = reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label ?: "Default",
-                placeholder = "Default",
+                placeholder = stringResource(MR.strings.agent_create_action_default),
                 enabled = enabled,
                 rowHeight = 36.dp,
                 onSelect = { option ->
@@ -1071,7 +1071,7 @@ internal fun AdvancedRuntimeSection(
             )
         }
         if (supportsRuntimeFastMode(runtime)) {
-            SlockBrutalSectionLabel(label = "Mode")
+            SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_mode))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1111,7 +1111,7 @@ internal fun AdvancedRuntimeSection(
                 )
                 if (supportsRuntimeCommand(runtime)) {
                     SlockBrutalTextField(
-                        label = "Command",
+                        label = stringResource(MR.strings.agent_create_label_command),
                         optional = true,
                         value = command,
                         onValueChange = { onCommandChange(it) },
@@ -1204,7 +1204,7 @@ private fun EnvVarsEditor(
     enabled: Boolean
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = "Environment variables", optional = true)
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_environment_variables), optional = true)
         entries.forEachIndexed { idx, (key, value) ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1212,7 +1212,7 @@ private fun EnvVarsEditor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalTextField(
-                    label = "Key",
+                    label = stringResource(MR.strings.agent_create_label_key),
                     value = key,
                     onValueChange = { newKey ->
                         onChange(entries.toMutableList().also { it[idx] = newKey to value })
@@ -1223,7 +1223,7 @@ private fun EnvVarsEditor(
                     modifier = Modifier.weight(1f)
                 )
                 SlockBrutalTextField(
-                    label = "Value",
+                    label = stringResource(MR.strings.agent_create_label_value),
                     value = value,
                     onValueChange = { newValue ->
                         onChange(entries.toMutableList().also { it[idx] = key to newValue })
