@@ -8316,16 +8316,41 @@ private fun SharedQuiverFeedbackContent(
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
     var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val message = messageFieldValue.text
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var submission by remember { mutableStateOf<SettingsQuiverFeedbackSubmission?>(null) }
+    var nextEntryId by remember { mutableStateOf(1) }
+    var entries by remember {
+        mutableStateOf(
+            listOf(
+                SettingsQuiverFeedbackEntry(
+                    id = 0,
+                    kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                    title = "Quiver",
+                    body = "请反馈问题。每次发送都会创建一条反馈消息，并自动复制可分享的结果。"
+                )
+            )
+        )
+    }
     val attachmentLimit = 3
     val attachmentMaxBytes = 10L * 1024L * 1024L
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
+
+    LaunchedEffect(entries.size, busy) {
+        if (entries.isNotEmpty()) {
+            listState.scrollToItem(entries.lastIndex)
+        }
+    }
+
+    fun nextConversationEntryId(): Int {
+        val id = nextEntryId
+        nextEntryId += 1
+        return id
+    }
 
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
@@ -8372,47 +8397,95 @@ private fun SharedQuiverFeedbackContent(
         if (normalizedMessage.isBlank()) {
             settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
             error = "Message is required."
-            submission = null
             return
         }
         settingsCapabilities.log("settings_quiver_feedback_submit_enter")
         busy = true
         error = null
-        submission = null
+        val submittedMessage = normalizedMessage
+        val submittedAttachments = attachments.take(attachmentLimit)
+        entries =
+            entries +
+                SettingsQuiverFeedbackEntry(
+                    id = nextConversationEntryId(),
+                    kind = SettingsQuiverFeedbackEntryKind.User,
+                    title = "You",
+                    body = submittedMessage,
+                    detail =
+                        submittedAttachments
+                            .takeIf { it.isNotEmpty() }
+                            ?.joinToString { it.fileName.ifBlank { "Attachment" } }
+                )
         scope.launch {
             try {
-                when (val result = settingsCapabilities.submitQuiverFeedback(normalizedMessage, attachments.take(attachmentLimit))) {
+                when (val result = settingsCapabilities.submitQuiverFeedback(submittedMessage, submittedAttachments)) {
                     is DataResult.Content -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=ok ticket=${result.data.ticketId.take(8)}"
                         )
-                        submission = result.data
+                        entries =
+                            entries +
+                                result.data.toQuiverFeedbackEntry(
+                                    id = nextConversationEntryId()
+                                )
                         messageFieldValue = TextFieldValue("")
                         attachments = emptyList()
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
                         error = "settings_feedback_submit_unavailable"
+                        entries =
+                            entries +
+                                SettingsQuiverFeedbackEntry(
+                                    id = nextConversationEntryId(),
+                                    kind = SettingsQuiverFeedbackEntryKind.Error,
+                                    title = "Quiver unavailable",
+                                    body = "settings_feedback_submit_unavailable"
+                                )
                     }
                     is DataResult.Error -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
                         )
                         error = result.error.code
+                        entries =
+                            entries +
+                                SettingsQuiverFeedbackEntry(
+                                    id = nextConversationEntryId(),
+                                    kind = SettingsQuiverFeedbackEntryKind.Error,
+                                    title = "Feedback failed",
+                                    body = result.error.code
+                                )
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
                         )
                         error = result.blocker.code
+                        entries =
+                            entries +
+                                SettingsQuiverFeedbackEntry(
+                                    id = nextConversationEntryId(),
+                                    kind = SettingsQuiverFeedbackEntryKind.Error,
+                                    title = "Permission needed",
+                                    body = result.blocker.code
+                                )
                     }
                 }
             } catch (throwable: Throwable) {
                 settingsCapabilities.log(
-                    "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
+                        "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
                         "message=${throwable.message.orEmpty()}"
                 )
                 error = "settings_feedback_submit_failed"
+                entries =
+                    entries +
+                        SettingsQuiverFeedbackEntry(
+                            id = nextConversationEntryId(),
+                            kind = SettingsQuiverFeedbackEntryKind.Error,
+                            title = "Feedback failed",
+                            body = "settings_feedback_submit_failed"
+                        )
             } finally {
                 settingsCapabilities.log("settings_quiver_feedback_submit_finished")
                 busy = false
@@ -8420,55 +8493,50 @@ private fun SharedQuiverFeedbackContent(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquarePlus, title = "Feedback") {
-                SettingsFormDetailText("Send feedback to Quiver. Device diagnostics are attached automatically when there is room.")
-                SlockBrutalTextarea(
-                    value = messageFieldValue,
-                    onValueChange = {
-                        messageFieldValue = it
-                        submission = null
-                    },
-                    placeholder = "What happened?",
-                    hint = "Include the screen, expected result, and what you saw.",
-                    error = if (normalizedMessage.isBlank() && message.isNotEmpty()) "Message is required." else null,
-                    enabled = !busy,
-                    fieldHeight = 118.dp,
-                    maxLines = 6,
-                    showCounter = true,
-                    limit = 2000
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    SlockBrutalActionButton(
-                        label = "Image",
-                        onClick = { pickAttachment(imageOnly = true) },
-                        enabled = !busy && remainingSlots > 0,
-                        leadingIcon = SlockLucideIconName.Image,
-                        modifier = Modifier.weight(1f),
-                        minWidth = 0.dp
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            entries.forEach { entry ->
+                item(key = entry.id) {
+                    SettingsQuiverFeedbackConversationRow(
+                        entry = entry,
+                        onCopy = { shareText ->
+                            settingsCapabilities.bridgeCopyToClipboard(shareText)
+                        }
                     )
-                    SlockBrutalActionButton(
-                        label = "File",
-                        onClick = { pickAttachment(imageOnly = false) },
-                        enabled = !busy && remainingSlots > 0,
-                        leadingIcon = SlockLucideIconName.Paperclip,
-                        modifier = Modifier.weight(1f),
-                        minWidth = 0.dp
+                }
+            }
+            if (busy) {
+                item {
+                    SettingsQuiverFeedbackConversationRow(
+                        entry =
+                            SettingsQuiverFeedbackEntry(
+                                id = -1,
+                                kind = SettingsQuiverFeedbackEntryKind.Quiver,
+                                title = "Quiver",
+                                body = "Submitting feedback and preparing the copied reference..."
+                            ),
+                        onCopy = {}
                     )
                 }
             }
         }
-        item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.Paperclip, title = "Attachments") {
-                SettingsFormDetailText("${attachments.size}/$attachmentLimit selected · 10 MB per file")
-                if (attachments.isEmpty()) {
-                    SettingsFormEmptyText("No attachments selected.")
-                } else {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (attachments.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsFormDetailText("${attachments.size}/$attachmentLimit attachments · 10 MB each")
                     attachments.forEach { file ->
                         SharedQuiverFeedbackAttachmentRow(
                             file = file,
@@ -8478,30 +8546,144 @@ private fun SharedQuiverFeedbackContent(
                     }
                 }
             }
-        }
-        item {
-            SlockBrutalActionButton(
-                label = if (busy) "Sending" else "Send feedback",
-                onClick = {
-                    settingsCapabilities.log("settings_quiver_feedback_button_on_click")
-                    submitFeedback()
+            SlockBrutalTextarea(
+                value = messageFieldValue,
+                onValueChange = {
+                    messageFieldValue = it
+                    error = null
                 },
+                placeholder = "请反馈问题",
+                hint = "设备诊断会在有剩余附件位时自动附加。",
+                error = if (normalizedMessage.isBlank() && message.isNotEmpty()) "Message is required." else null,
                 enabled = !busy,
-                leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
-                backgroundColor = SlockColor.BrandYellow,
-                modifier = Modifier.fillMaxWidth()
+                fieldHeight = 104.dp,
+                maxLines = 5,
+                showCounter = true,
+                limit = 2000
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                SlockBrutalActionButton(
+                    label = "Image",
+                    onClick = { pickAttachment(imageOnly = true) },
+                    enabled = !busy && remainingSlots > 0,
+                    leadingIcon = SlockLucideIconName.Image,
+                    modifier = Modifier.weight(1f),
+                    minWidth = 0.dp
+                )
+                SlockBrutalActionButton(
+                    label = "File",
+                    onClick = { pickAttachment(imageOnly = false) },
+                    enabled = !busy && remainingSlots > 0,
+                    leadingIcon = SlockLucideIconName.Paperclip,
+                    modifier = Modifier.weight(1f),
+                    minWidth = 0.dp
+                )
+                SlockBrutalActionButton(
+                    label = if (busy) "Sending" else "Send",
+                    onClick = {
+                        settingsCapabilities.log("settings_quiver_feedback_button_on_click")
+                        submitFeedback()
+                    },
+                    enabled = !busy,
+                    leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
+                    backgroundColor = SlockColor.BrandYellow,
+                    modifier = Modifier.weight(1f),
+                    minWidth = 0.dp
+                )
+            }
             error?.takeIf { it.isNotBlank() }?.let { SettingsFormErrorText(it) }
-            submission?.let { submitted ->
-                SettingsFormDetailText(
-                    listOf(
-                        "Submitted ${submitted.ticketId.take(8).ifBlank { "feedback" }}.",
-                        submitted.shareText.takeIf { it.isNotBlank() }?.let { "Reference copied for sharing." }
-                    ).filterNotNull().joinToString(" ")
+            Spacer(Modifier.height(bottomContentPadding))
+        }
+    }
+}
+
+private enum class SettingsQuiverFeedbackEntryKind {
+    User,
+    Quiver,
+    Error
+}
+
+private data class SettingsQuiverFeedbackEntry(
+    val id: Int,
+    val kind: SettingsQuiverFeedbackEntryKind,
+    val title: String,
+    val body: String,
+    val detail: String? = null,
+    val ticketId: String? = null,
+    val shareText: String? = null
+)
+
+private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(id: Int): SettingsQuiverFeedbackEntry =
+    SettingsQuiverFeedbackEntry(
+        id = id,
+        kind = SettingsQuiverFeedbackEntryKind.Quiver,
+        title = "Quiver result",
+        body =
+            listOf(
+                "Submitted ${ticketId.take(8).ifBlank { "feedback" }}.",
+                shareText.takeIf { it.isNotBlank() }?.let { "Reference copied automatically." }
+            ).filterNotNull().joinToString(" "),
+        detail = shareText.takeIf { it.isNotBlank() },
+        ticketId = ticketId,
+        shareText = shareText
+    )
+
+@Composable
+private fun SettingsQuiverFeedbackConversationRow(
+    entry: SettingsQuiverFeedbackEntry,
+    onCopy: (String) -> Unit
+) {
+    val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .background(
+                        when (entry.kind) {
+                            SettingsQuiverFeedbackEntryKind.User -> SlockColor.BrandYellow
+                            SettingsQuiverFeedbackEntryKind.Quiver -> SlockColor.SurfaceWhite
+                            SettingsQuiverFeedbackEntryKind.Error -> SlockColor.AccentRed.copy(alpha = 0.18f)
+                        }
+                    )
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = entry.title,
+                style = SlockType.SectionLabel,
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = entry.body,
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack
+            )
+            entry.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+                Text(
+                    text = detail,
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
+                SlockBrutalActionButton(
+                    label = "Copy result",
+                    onClick = { onCopy(shareText) },
+                    leadingIcon = SlockLucideIconName.Clipboard,
+                    modifier = Modifier.fillMaxWidth(),
+                    minWidth = 0.dp
                 )
             }
         }
-        item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
 
