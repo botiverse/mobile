@@ -413,6 +413,7 @@ internal data class KuiklyComposerMemberItem(
     val displayName: String,
     val handle: String,
     val inMentionChannel: Boolean = true,
+    val inThread: Boolean = false,
     val sourceServerLabel: String? = null,
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
@@ -1453,13 +1454,28 @@ private fun ComposerSuggestionSlot(
     onChannelClick: (KuiklyComposerChannelItem) -> Unit
 ) {
     if (panelState == ThreadComposerSuggestionPanelState.Hidden) return
+    val memberSuggestionTitle = surface.memberSuggestionTitle()
+    val memberPanelEntryCount =
+        remember(surface.memberSuggestionHeadersVisible, memberSuggestionTitle, memberSuggestions) {
+            if (surface.memberSuggestionHeadersVisible) {
+                composerMemberSuggestionPanelEntries(memberSuggestionTitle, memberSuggestions).entries.size
+            } else {
+                memberSuggestions.size
+            }
+        }
     val slotHeight =
-        remember(panelState, surface.memberSuggestionHeadersVisible, memberSuggestions.size, channelSuggestions.size) {
+        remember(
+            panelState,
+            surface.memberSuggestionHeadersVisible,
+            memberPanelEntryCount,
+            channelSuggestions.size
+        ) {
             composerSuggestionPanelSlotHeight(
                 panelState = panelState,
                 memberCount = memberSuggestions.size,
                 channelCount = channelSuggestions.size,
-                includeMemberHeader = surface.memberSuggestionHeadersVisible
+                includeMemberHeader = surface.memberSuggestionHeadersVisible,
+                memberPanelEntryCount = memberPanelEntryCount
             )
         }
     Box(
@@ -1490,13 +1506,14 @@ internal fun composerSuggestionPanelSlotHeight(
     panelState: ThreadComposerSuggestionPanelState,
     memberCount: Int,
     channelCount: Int,
-    includeMemberHeader: Boolean = true
+    includeMemberHeader: Boolean = true,
+    memberPanelEntryCount: Int = memberCount
 ): Dp {
     val estimated =
         when (panelState) {
             ThreadComposerSuggestionPanelState.MemberItems ->
                 composerSuggestionPanelContentHeight(
-                    itemCount = memberCount,
+                    itemCount = memberPanelEntryCount,
                     rowMinHeight = ComposerMemberSuggestionRowMinHeight,
                     includeHeader = includeMemberHeader
                 )
@@ -1667,15 +1684,40 @@ internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionCandidateAt(
     if (!groupByMentionChannel) {
         return getOrNull(threadComposerSuggestionSelectedIndex(selectedIndex, size))
     }
-    val inChannel = filter { it.inMentionChannel }
-    val notInChannel = filterNot { it.inMentionChannel }
-    val index = threadComposerSuggestionSelectedIndex(selectedIndex, size)
-    return if (index < inChannel.size) {
-        inChannel[index]
-    } else {
-        notInChannel.getOrNull(index - inChannel.size)
-    }
+    val groups = composerMemberSuggestionGroups()
+    val ordered = groups.inThread + groups.inMentionChannel + groups.notInMentionChannel
+    val index = threadComposerSuggestionSelectedIndex(selectedIndex, ordered.size)
+    return ordered.getOrNull(index)
 }
+
+internal data class ComposerMemberSuggestionGroups(
+    val inThread: List<KuiklyComposerMemberItem>,
+    val inMentionChannel: List<KuiklyComposerMemberItem>,
+    val notInMentionChannel: List<KuiklyComposerMemberItem>
+)
+
+internal fun List<KuiklyComposerMemberItem>.composerMemberSuggestionGroups(): ComposerMemberSuggestionGroups {
+    val inThread = filter { it.inThread }
+    val inThreadKeys = inThread.mapTo(mutableSetOf()) { it.composerMemberSuggestionKey() }
+    val inMentionChannel =
+        filter { item -> item.inMentionChannel && item.composerMemberSuggestionKey() !in inThreadKeys }
+    val inMentionChannelKeys = inMentionChannel.mapTo(mutableSetOf()) { it.composerMemberSuggestionKey() }
+    val notInMentionChannel =
+        filter { item ->
+            val key = item.composerMemberSuggestionKey()
+            key !in inThreadKeys && key !in inMentionChannelKeys
+        }
+    return ComposerMemberSuggestionGroups(
+        inThread = inThread,
+        inMentionChannel = inMentionChannel,
+        notInMentionChannel = notInMentionChannel
+    )
+}
+
+private fun KuiklyComposerMemberItem.composerMemberSuggestionKey(): String =
+    memberId?.trim()?.takeIf { it.isNotBlank() }
+        ?: handle.trim().lowercase().takeIf { it.isNotBlank() }
+        ?: displayName.trim().lowercase()
 
 internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
@@ -1797,47 +1839,33 @@ private fun ComposerMemberSuggestionPanel(
         }
         return
     }
-    val inChannel = members.filter { it.inMentionChannel }
-    val notInChannel = members.filterNot { it.inMentionChannel }
-    val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, members.size)
-    val headerIndex = inChannel.size
-    val itemCount = inChannel.size + notInChannel.size + if (notInChannel.isNotEmpty()) 1 else 0
+    val panelEntries = composerMemberSuggestionPanelEntries(title, members)
+    val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, panelEntries.selectableCount)
     ComposerSuggestionPanel(
-        title = title,
+        title = panelEntries.title,
         showTitleDivider = false,
-        panelHeight = composerSuggestionPanelContentHeight(itemCount, ComposerMemberSuggestionRowMinHeight),
-        itemCount = itemCount,
+        panelHeight = composerSuggestionPanelContentHeight(
+            itemCount = panelEntries.entries.size,
+            rowMinHeight = ComposerMemberSuggestionRowMinHeight,
+            includeHeader = panelEntries.title != null
+        ),
+        itemCount = panelEntries.entries.size,
         itemKey = { index ->
-            when {
-                index < inChannel.size -> "in-${inChannel[index].handle}"
-                notInChannel.isNotEmpty() && index == headerIndex -> "not-in-header"
-                else -> "not-in-${notInChannel[index - headerIndex - 1].handle}"
-            }
+            panelEntries.entries[index].key
         }
     ) { index ->
-        when {
-            index < inChannel.size -> {
-                val member = inChannel[index]
+        val entry = panelEntries.entries[index]
+        if (entry.headerText != null) {
+            ComposerSuggestionHeader(
+                text = entry.headerText,
+                topDivider = entry.topDivider
+            )
+        } else {
+            entry.member?.let { member ->
                 ComposerMemberSuggestionRow(
                     member = member,
-                    inChannel = true,
-                    selected = clampedSelectedIndex == index,
-                    agentStatusResolver = agentStatusResolver,
-                    onClick = { onClick(member) }
-                )
-            }
-            notInChannel.isNotEmpty() && index == headerIndex -> {
-                ComposerSuggestionHeader(
-                    text = "NOT IN THIS CHANNEL",
-                    topDivider = inChannel.isNotEmpty()
-                )
-            }
-            else -> {
-                val member = notInChannel[index - headerIndex - 1]
-                ComposerMemberSuggestionRow(
-                    member = member,
-                    inChannel = false,
-                    selected = clampedSelectedIndex == inChannel.size + (index - headerIndex - 1),
+                    inChannel = entry.inChannel,
+                    selected = clampedSelectedIndex == entry.selectableIndex,
                     agentStatusResolver = agentStatusResolver,
                     onClick = { onClick(member) }
                 )
@@ -1845,6 +1873,74 @@ private fun ComposerMemberSuggestionPanel(
         }
     }
 }
+
+private data class ComposerMemberSuggestionPanelModel(
+    val title: String?,
+    val entries: List<ComposerMemberSuggestionPanelEntry>,
+    val selectableCount: Int
+)
+
+private data class ComposerMemberSuggestionPanelEntry(
+    val key: String,
+    val headerText: String? = null,
+    val topDivider: Boolean = false,
+    val member: KuiklyComposerMemberItem? = null,
+    val selectableIndex: Int = -1,
+    val inChannel: Boolean = true
+)
+
+private fun composerMemberSuggestionPanelEntries(
+    title: String?,
+    members: List<KuiklyComposerMemberItem>
+): ComposerMemberSuggestionPanelModel {
+    val groups = members.composerMemberSuggestionGroups()
+    val entries = mutableListOf<ComposerMemberSuggestionPanelEntry>()
+    var selectableIndex = 0
+    fun addRows(prefix: String, rows: List<KuiklyComposerMemberItem>, inChannel: Boolean) {
+        rows.forEach { member ->
+            entries +=
+                ComposerMemberSuggestionPanelEntry(
+                    key = "$prefix-${member.composerMemberSuggestionKey()}",
+                    member = member,
+                    selectableIndex = selectableIndex,
+                    inChannel = inChannel
+                )
+            selectableIndex += 1
+        }
+    }
+    val hasThreadSection = groups.inThread.isNotEmpty()
+    addRows(prefix = "thread", rows = groups.inThread, inChannel = true)
+    if (hasThreadSection && groups.inMentionChannel.isNotEmpty()) {
+        entries +=
+            ComposerMemberSuggestionPanelEntry(
+                key = "mention-channel-header",
+                headerText = title ?: "IN THIS CHANNEL",
+                topDivider = true
+            )
+    }
+    addRows(prefix = "mention-channel", rows = groups.inMentionChannel, inChannel = true)
+    if (groups.notInMentionChannel.isNotEmpty()) {
+        entries +=
+            ComposerMemberSuggestionPanelEntry(
+                key = "not-in-mention-channel-header",
+                headerText = title.notInMentionScopeHeader(),
+                topDivider = entries.isNotEmpty()
+            )
+    }
+    addRows(prefix = "not-in-mention-channel", rows = groups.notInMentionChannel, inChannel = false)
+    return ComposerMemberSuggestionPanelModel(
+        title = if (hasThreadSection) "IN THIS THREAD" else title,
+        entries = entries,
+        selectableCount = selectableIndex
+    )
+}
+
+private fun String?.notInMentionScopeHeader(): String =
+    when (this) {
+        "IN PARENT CHANNEL" -> "NOT IN PARENT CHANNEL"
+        "IN THIS CHANNEL" -> "NOT IN THIS CHANNEL"
+        else -> "NOT IN THIS CHANNEL"
+    }
 
 @Composable
 private fun ComposerSuggestionStatusPanel(

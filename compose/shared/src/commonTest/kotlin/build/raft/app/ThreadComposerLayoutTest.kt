@@ -260,6 +260,20 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun suggestionPanelSlotHeightIncludesMemberSectionHeaders() {
+        assertEquals(
+            220.dp,
+            composerSuggestionPanelSlotHeight(
+                panelState = ThreadComposerSuggestionPanelState.MemberItems,
+                memberCount = 3,
+                channelCount = 0,
+                includeMemberHeader = true,
+                memberPanelEntryCount = 5
+            )
+        )
+    }
+
+    @Test
     fun suggestionPanelContentHeightCanOmitHeaderForChannelRows() {
         assertEquals(
             102.dp,
@@ -336,8 +350,16 @@ class ThreadComposerLayoutTest {
                 handle = "inside",
                 inMentionChannel = true
             )
+        val inThread =
+            KuiklyComposerMemberItem(
+                displayName = "Thread",
+                handle = "thread",
+                inMentionChannel = false,
+                inThread = true
+            )
 
         assertEquals(inside, listOf(outside, inside).firstComposerMemberSuggestionCandidate())
+        assertEquals(inThread, listOf(outside, inside, inThread).firstComposerMemberSuggestionCandidate())
         assertEquals(outside, listOf(outside).firstComposerMemberSuggestionCandidate())
     }
 
@@ -404,12 +426,52 @@ class ThreadComposerLayoutTest {
                 handle = "inside-two",
                 inMentionChannel = true
             )
-        val suggestions = listOf(outside, insideOne, insideTwo)
+        val threadParticipant =
+            KuiklyComposerMemberItem(
+                displayName = "Thread Participant",
+                handle = "thread-participant",
+                inMentionChannel = false,
+                inThread = true
+            )
+        val suggestions = listOf(outside, insideOne, threadParticipant, insideTwo)
 
-        assertEquals(insideOne, suggestions.composerMemberSuggestionCandidateAt(0))
-        assertEquals(insideTwo, suggestions.composerMemberSuggestionCandidateAt(1))
-        assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(2))
+        assertEquals(threadParticipant, suggestions.composerMemberSuggestionCandidateAt(0))
+        assertEquals(insideOne, suggestions.composerMemberSuggestionCandidateAt(1))
+        assertEquals(insideTwo, suggestions.composerMemberSuggestionCandidateAt(2))
+        assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(3))
         assertEquals(outside, suggestions.composerMemberSuggestionCandidateAt(99))
+    }
+
+    @Test
+    fun memberSuggestionGroupsDeduplicateThreadParticipantsFromChannelSections() {
+        val threadCopy =
+            KuiklyComposerMemberItem(
+                displayName = "Cindy",
+                handle = "cindy",
+                memberId = "u-cindy",
+                inMentionChannel = true,
+                inThread = true
+            )
+        val channelCopy =
+            KuiklyComposerMemberItem(
+                displayName = "Cindy",
+                handle = "cindy",
+                memberId = "u-cindy",
+                inMentionChannel = true
+            )
+        val outside =
+            KuiklyComposerMemberItem(
+                displayName = "Outside",
+                handle = "outside",
+                inMentionChannel = false
+            )
+
+        val groups = listOf(channelCopy, outside, threadCopy).composerMemberSuggestionGroups()
+
+        assertEquals(listOf(threadCopy), groups.inThread)
+        assertEquals(emptyList(), groups.inMentionChannel)
+        assertEquals(listOf(outside), groups.notInMentionChannel)
+        assertEquals(outside, listOf(channelCopy, outside, threadCopy).composerMemberSuggestionCandidateAt(99))
     }
 
     @Test

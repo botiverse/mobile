@@ -282,22 +282,20 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMentionSuggestionsRankRecentParticipantsWithinChannelGroups() {
+    fun threadMentionSuggestionsRankThreadParticipantsBeforeChannelGroups() {
         val suggestions =
             listOf(
-                mentionSuggestion("Cindy", "cindy", "u-cindy", inMentionChannel = true),
-                mentionSuggestion("Build Agent", "build-agent", "agent-build", inMentionChannel = true, kind = MemberKind.Agent),
-                mentionSuggestion("Artin", "artin", "u-artin", inMentionChannel = true),
-                mentionSuggestion("Mina", "mina", "u-mina", inMentionChannel = false),
-                mentionSuggestion("Guest", "guest", "u-guest", inMentionChannel = false)
+                mentionSuggestion("Parent Only", "parent-only", "u-parent-only", inMentionChannel = true),
+                mentionSuggestion("Outside Only", "outside-only", "u-outside-only", inMentionChannel = false),
+                mentionSuggestion("Thread Parent", "thread-parent", "u-thread-parent", inMentionChannel = true),
+                mentionSuggestion("Thread Outside", "thread-outside", "u-thread-outside", inMentionChannel = false),
+                mentionSuggestion("Build Agent", "build-agent", "agent-build", inMentionChannel = true, kind = MemberKind.Agent)
             )
         val messages =
             listOf(
-                threadMessage("m1", "u-cindy", "cindy"),
-                threadMessage("m2", "u-mina", "mina"),
+                threadMessage("m1", "u-thread-parent", "thread-parent"),
+                threadMessage("m2", "u-thread-outside", "thread-outside"),
                 threadMessage("m3", "agent-build", "build-agent"),
-                threadMessage("m4", "u-artin", "artin"),
-                threadMessage("m5", "u-guest", "guest")
             )
 
         val sorted =
@@ -307,7 +305,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals(
-            listOf("artin", "build-agent", "cindy", "guest", "mina"),
+            listOf("build-agent", "thread-outside", "thread-parent", "parent-only", "outside-only"),
             sorted.map { it.handle }
         )
     }
