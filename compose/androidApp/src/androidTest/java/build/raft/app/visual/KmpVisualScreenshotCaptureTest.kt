@@ -866,6 +866,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchError() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.error",
+            pageName = "compose_home_search_error_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeSavedResults() {
         captureKmpComponentCase(
             caseId = "components.home.saved.results",

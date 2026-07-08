@@ -1691,6 +1691,33 @@ private fun sharedHomeErrorDisplay(code: String): SlockHomeInlineError =
         actionLabel = "Retry"
     )
 
+internal fun sharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
+    SlockHomeInlineError(
+        title =
+            when {
+                code.contains("permission", ignoreCase = true) -> "Search is unavailable"
+                code.contains("timeout", ignoreCase = true) -> "Search timed out"
+                code.contains("offline", ignoreCase = true) -> "You are offline"
+                code.contains("network", ignoreCase = true) -> "Could not refresh Search"
+                else -> "Could not load Search"
+            },
+        detail =
+            when {
+                code.contains("permission", ignoreCase = true) ->
+                    "You do not have access to search this workspace right now."
+                code.contains("timeout", ignoreCase = true) ->
+                    "The server did not respond in time. Retry search after a moment."
+                code.contains("offline", ignoreCase = true) ->
+                    "Check your connection, then retry search."
+                code.contains("network", ignoreCase = true) ->
+                    "The current server could not be reached. Retry search after it reconnects."
+                else ->
+                    settingsUserFacingErrorCodeMessage(code)
+            },
+        code = code.ifBlank { "unknown_error" },
+        actionLabel = "Retry"
+    )
+
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
     (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
 
@@ -12845,13 +12872,10 @@ private fun SharedHomeSearchPanel(
                     if (state.loading && !hasSearchRows) {
                         SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
                     } else if (state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
-                        SharedHomePanelStatus(
-                            errorCode = state.errorCode,
-                            noPermissionCode = state.noPermissionCode,
-                            empty = false,
-                            emptyTitle = "",
-                            emptyDetail = "",
-                            onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
+                        HomeInlineErrorCard(
+                            error = sharedHomeSearchErrorDisplay(state.noPermissionCode ?: state.errorCode.orEmpty()),
+                            modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
+                            onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
                         )
                     } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
                         SharedHomeSearchEmptyState(
@@ -17147,6 +17171,43 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
             includeTopSafeArea = false,
             showSenderFilter = true,
             initialOpenFilterId = openFilterId,
+            onOpenItem = {},
+            onOpenEntity = {},
+            bottomContentPadding = 12.dp,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+internal fun HomeSearchErrorVisualContent() {
+    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+        SharedHomeSearchPanel(
+            state =
+                homeSearchVisualSearchState.copy(
+                    query = "卡片",
+                    sort = SearchSort.Relevance,
+                    timeRange = SearchTimeRange.Any,
+                    myMessagesOnly = false,
+                    selectedSenderIds = emptyList(),
+                    selectedChannelId = null,
+                    items = emptyList(),
+                    totalCount = 0,
+                    searched = true,
+                    loading = false,
+                    refreshing = false,
+                    querySearchPending = false,
+                    empty = false,
+                    hasMore = false,
+                    errorCode = "server_unavailable",
+                    noPermissionCode = null
+                ),
+            homeState = homeSearchVisualHomeState,
+            onIntent = {},
+            onClose = {},
+            interactiveSearchField = false,
+            includeTopSafeArea = false,
+            showSenderFilter = true,
             onOpenItem = {},
             onOpenEntity = {},
             bottomContentPadding = 12.dp,
