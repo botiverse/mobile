@@ -598,7 +598,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: slock-source/pnpm-lock.yaml
 
-      - name: Install visual-testing CLI deps (sharp)
+      # Installs the visual-testing package deps from slock's lockfile,
+      # including @earendil-works/pi-ai for the direct pi-SDK AI diff analysis.
+      - name: Install visual-testing CLI deps (sharp, pi-ai)
         working-directory: slock-source
         run: pnpm install --frozen-lockfile --filter "@botiverse/raft-visual-testing..."
 
@@ -666,13 +668,12 @@ jobs:
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
-          # AI analysis credentials: either a pi.dev/OpenAI-compatible gateway
-          # (PI_API_KEY + PI_BASE_URL + PI_MODEL, e.g. MiniMax vision models)
-          # or a plain OPENAI_API_KEY. Absent -> the analyze step skips.
+          # AI analysis credential: the visual-testing CLI calls the pi SDK
+          # (@earendil-works/pi-ai, provider minimax) directly when
+          # MINIMAX_API_KEY is set. PI_MODEL picks the vision model
+          # (default MiniMax-M3). Absent credential -> the analyze step skips.
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
-          PI_BASE_URL: ${{ vars.PI_BASE_URL }}
           PI_MODEL: ${{ vars.PI_MODEL }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           # ios joins the pair list only when its captures are present, so a
           # red/absent ios leg degrades to the classic react__android site.
@@ -683,23 +684,17 @@ jobs:
           echo "diff pairs: baseline=react current=$CURRENT"
           node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
           # AI diff analysis (task: site "AI diff notes"/summary badges). Runs
-          # only when the codex credential is configured; imageHash caching in
-          # the CLI keeps re-runs incremental (only changed cases re-analyze).
-          # Failure degrades to a site without fresh notes — never blocks.
-          if [ -n "$PI_API_KEY" ] || [ -n "$OPENAI_API_KEY" ]; then
-            npm install -g @openai/codex >/dev/null 2>&1 || echo "::warning::codex CLI install failed"
-            ANALYZE_ARGS=""
-            if [ -n "$PI_API_KEY" ]; then
-              # pi.dev (OpenAI-compatible gateway): point codex at the gateway
-              # and use the configured vision model (e.g. MiniMax-VL).
-              export OPENAI_API_KEY="$PI_API_KEY"
-              export OPENAI_BASE_URL="${PI_BASE_URL:-https://api.pi.dev/v1}"
-              [ -n "$PI_MODEL" ] && ANALYZE_ARGS="--model $PI_MODEL"
-            fi
-            node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" $ANALYZE_ARGS \
+          # only when the pi credential is configured; the CLI then calls the
+          # pi SDK (minimax/$PI_MODEL) in-process — no codex CLI install.
+          # imageHash caching in the CLI keeps re-runs incremental (only
+          # changed cases re-analyze). Failure degrades to a site without
+          # fresh notes — never blocks.
+          if [ -n "$PI_API_KEY" ]; then
+            export MINIMAX_API_KEY="$PI_API_KEY"
+            node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" \
               || echo "::warning::AI diff analysis failed; publishing without fresh notes"
           else
-            echo "No AI credential (PI_API_KEY / OPENAI_API_KEY); skipping AI diff analysis"
+            echo "No AI credential (PI_API_KEY); skipping AI diff analysis"
           fi
           node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
           node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
