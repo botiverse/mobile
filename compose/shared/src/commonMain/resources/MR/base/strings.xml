@@ -152,4 +152,27 @@
     <string name="member_label_restart_reset">Restart / Reset</string>
     <string name="member_label_profile">Profile</string>
     <string name="member_label_notifications_inbox">Notifications / inbox</string>
+    <string name="file_preview_title">File preview</string>
+    <string name="file_preview_unavailable">Preview unavailable</string>
+    <string name="file_preview_hidden">Preview hidden</string>
+    <string name="file_preview_image">Image preview</string>
+    <string name="file_preview_text">Text preview</string>
+    <string name="file_preview_markdown">Markdown preview</string>
+    <string name="file_preview_markdown_unavailable">Markdown preview unavailable</string>
+    <string name="file_preview_html">HTML preview</string>
+    <string name="file_preview_audio">Audio preview</string>
+    <string name="file_preview_error_load_text">Unable to load text preview.</string>
+    <string name="file_preview_error_load_markdown">Unable to load markdown preview.</string>
+    <string name="file_preview_error_load_media">Unable to load media preview.</string>
+    <string name="file_preview_error_load_html">Unable to load HTML preview.</string>
+    <string name="file_preview_error_load_payload">Preview payload could not be loaded.</string>
+    <string name="file_preview_error_markdown_empty">Markdown file is empty.</string>
+    <string name="file_preview_file_hidden">File hidden: %1$s</string>
+    <string name="file_preview_file_unavailable">File content is unavailable.</string>
+    <string name="file_preview_error_load">Failed to load: %1$s</string>
+    <string name="file_preview_toolbar_pen">Pen</string>
+    <string name="file_preview_toolbar_text">Text</string>
+    <string name="file_preview_toolbar_erase">Erase</string>
+    <string name="file_preview_action_delete_downloaded">Delete downloaded file</string>
+    <string name="file_preview_placeholder_tap_to_add_text">Tap image to place text</string>
 </resources>

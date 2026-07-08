@@ -492,7 +492,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                     if (attachmentCacheState) {
                         SlockRaftUiMenuItem(
                             id = SlockFilePreviewDeleteDownloadActionId,
-                            label = "Delete downloaded file",
+                            label = stringResource(MR.strings.file_preview_action_delete_downloaded),
                             icon = SlockLucideIconName.Trash2
                         )
                     } else {
@@ -758,7 +758,7 @@ private fun SlockFilePreviewComposerImageEditor(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockFilePreviewEditorToolButton(
-                    label = "Pen",
+                    label = stringResource(MR.strings.file_preview_toolbar_pen),
                     icon = SlockLucideIconName.Pencil,
                     selected = tool == SlockComposerImageEditorTool.Pen,
                     enabled = !saving,
@@ -766,7 +766,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     modifier = Modifier.weight(1f)
                 )
                 SlockFilePreviewEditorToolButton(
-                    label = "Text",
+                    label = stringResource(MR.strings.file_preview_toolbar_text),
                     icon = SlockLucideIconName.Type,
                     selected = tool == SlockComposerImageEditorTool.Text,
                     enabled = !saving,
@@ -774,7 +774,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     modifier = Modifier.weight(1f)
                 )
                 SlockFilePreviewEditorToolButton(
-                    label = "Erase",
+                    label = stringResource(MR.strings.file_preview_toolbar_erase),
                     icon = SlockLucideIconName.Eraser,
                     selected = tool == SlockComposerImageEditorTool.Eraser,
                     enabled = !saving,
@@ -791,7 +791,7 @@ private fun SlockFilePreviewComposerImageEditor(
                     TextField(
                         value = textDraft,
                         onValueChange = { textDraft = it.take(80) },
-                        placeholder = "Tap image to place text",
+                        placeholder = stringResource(MR.strings.file_preview_placeholder_tap_to_add_text),
                         placeholderColor = SlockColor.TextMutedGray,
                         autoFocus = false,
                         maxLines = 1,
@@ -1677,7 +1677,7 @@ internal fun SlockFilePreviewPayloadContent(
                 } else {
                     SlockFilePreviewMessage(
                         iconName = SlockLucideIconName.TriangleAlert,
-                        title = "Preview unavailable",
+                        title = stringResource(MR.strings.file_preview_unavailable),
                         detail = payload.message.ifBlank { "Unable to load HTML preview." },
                         modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md)
                     )
@@ -1716,7 +1716,7 @@ internal fun SlockFilePreviewPayloadContent(
         "error" ->
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
-                title = "Preview unavailable",
+                title = stringResource(MR.strings.file_preview_unavailable),
                 detail = payload.error ?: payload.message.ifBlank { "Unable to load this file preview." },
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
@@ -2917,7 +2917,7 @@ internal fun SlockFilePreviewMarkdownPanel(
             "error" ->
                 SlockFilePreviewMessage(
                     iconName = SlockLucideIconName.FileText,
-                    title = "Markdown preview unavailable",
+                    title = stringResource(MR.strings.file_preview_markdown_unavailable),
                     detail = error.orEmpty().ifBlank { "Open with system viewer to inspect this file." },
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
