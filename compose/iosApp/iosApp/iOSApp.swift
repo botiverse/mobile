@@ -1,4 +1,5 @@
 import SwiftUI
+import shared
 
 private enum SlockIosSharedLogBridge {
     private static var observer: NSObjectProtocol?
@@ -24,6 +25,10 @@ private enum SlockIosSharedLogBridge {
 @main
 struct iOSApp: App {
     init() {
+        // task #423: point the kmmresource loader at the "shared" pod bundle so
+        // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
+        // any page renders / touches MR.
+        SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
         SlockIosAppScopeMMKV.install()
         SlockIosSharedLogBridge.install()
         SlockIosInstallQuiverReporting()
