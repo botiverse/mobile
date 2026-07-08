@@ -27,20 +27,25 @@ internal data class ConversationOpenSourceMessageIdentity(
     val unreadCount: Int = 0,
     val originFallback: ThreadLaunchOriginFallback? = null
 ) {
-    // Order IS the contract: ids that name the conversation itself (stream, channel)
-    // resolve before parent/anchor ids, so a row lands on its OWN projection before any
-    // parent or message-derived association can claim it (t432 family ③).
+    // task #441 (superseding the old ordered-fallback contract): the lookup resolves ONLY
+    // ids that name the conversation itself (thread stream, channel). The parent/anchor
+    // fallback tail (parentMessageId, parentChannelId, message ids) is deleted — a parent
+    // or association row can no longer be hit into becoming this source's identity at all
+    // (artin: "兜底命中那些都删掉吧"). Parent ids still feed the trusted typed rebuild and
+    // anchors; they just never LOOK UP a target.
     fun lookupIds(): List<String> =
         listOfNotNull(
             threadChannelId,
-            channelId,
-            parentMessageId,
-            parentChannelId,
-            messageId,
-            firstUnreadMessageId,
-            lastMessageId,
-            latestActivityMessageId
+            channelId
         ).mapNotNull { it.takeIf(String::isNotBlank) }
+
+    // Thread-shaped means the source demonstrably describes a reply thread: wire-attested
+    // kind, or a parent message id (notification requests carry no typed kind but a thread
+    // notification always names its parent message). Used to refuse non-reply-thread
+    // projection hits — a thread request's channelId can name the PARENT channel on some
+    // wire shapes, and that self-lookup hit must not become the thread's identity either.
+    fun isThreadShaped(): Boolean =
+        conversationKind == ConversationKind.Thread || !parentMessageId.isNullOrBlank()
 }
 
 internal sealed interface ConversationOpenResolution {
@@ -63,16 +68,17 @@ internal fun resolveOpenRequest(
             .lookupIds()
             .firstNotNullOfOrNull { id -> conversationDirectory.resolve(id)?.also { hitLookupId = id } }
             ?.takeIf { projection -> serverId.isBlank() || projection.serverId == serverId || projection.serverId.isBlank() }
-    // task #441: a Thread-attested source may only take identity from its OWN reply-thread
-    // row. The lookup list falls through to parent/anchor ids when the thread's row is not
-    // registered yet, and a parent CHANNEL row hit there must not become this thread's
-    // identity — that is the #415 parent-claims-child misroute returning through the lookup
-    // fallback instead of aliases (Quiver feedback 20d596f9: Activity reply row opened the
+    // task #441: a thread-shaped source (any origin — Activity row, notification, banner)
+    // may only take identity from its OWN reply-thread row. Even with the lookup fallback
+    // tail deleted, a thread request's channelId can name the PARENT channel on some wire
+    // shapes — a non-reply-thread hit must not become the thread's identity (the #415
+    // parent-claims-child misroute; Quiver feedback 20d596f9: Activity reply row opened the
     // outer channel stream). Rejecting the hit routes the source to the trusted typed
-    // rebuild below (Activity rows carry parentChannelKind), or Pending without one.
+    // rebuild below (Activity rows carry parentChannelKind), or an honest Pending — never
+    // a guessed parent surface, regardless of source.
     val projection =
         projectionHit?.takeIf { hit ->
-            sourceMessageIdentity.conversationKind != ConversationKind.Thread ||
+            !sourceMessageIdentity.isThreadShaped() ||
                 hit.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
         }
     // Two-tier drop (t5/#419): a projection that resolved but whose reply-thread parent shape
