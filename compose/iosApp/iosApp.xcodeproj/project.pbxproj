@@ -247,6 +247,7 @@
 				D4C7A0112E15000100C0DE01 /* Generate Raft Build Metadata */,
 				7555FF77242A565900829871 /* Sources */,
 				7555FF79242A565900829871 /* Resources */,
+				D4C7A0122E15000100C0DE01 /* Stamp Quiver Build Metadata */,
 				412082966DD7AFE0B53032CB /* Frameworks */,
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				70E4183CF2B3FF25AA2B7C8F /* [CP] Copy Pods Resources */,
@@ -329,7 +330,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nmkdir -p \"${DERIVED_FILE_DIR}\"\nbuild_time=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")\ngit_commit=$(git -C \"${SRCROOT}\" rev-parse --short HEAD 2>/dev/null || echo unknown)\nescape_objc() {\n  printf \"%s\" \"$1\" | sed 's/\\\\/\\\\\\\\/g; s/\"/\\\\\"/g'\n}\ncat > \"${DERIVED_FILE_DIR}/SlockIosBuildMetadata.h\" <<EOF\n#define SLOCK_IOS_BUILD_TIME @\"$(escape_objc \"${build_time}\")\"\n#define SLOCK_IOS_GIT_COMMIT @\"$(escape_objc \"${git_commit}\")\"\nEOF\n";
+			shellScript = "\"${SRCROOT}/scripts/generate_slock_build_metadata.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		D4C7A0122E15000100C0DE01 /* Stamp Quiver Build Metadata */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Quiver Build Metadata";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/scripts/stamp_quiver_build_metadata.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */ = {
@@ -551,6 +571,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "iosApp-Bridging-Header.h";
@@ -576,6 +598,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				CURRENT_PROJECT_VERSION = 1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = build.raft.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "iosApp-Bridging-Header.h";
