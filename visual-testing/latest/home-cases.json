@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-07T22:26:27.859Z",
-  "runId": "b0f6a2f-20260707222554",
+  "generatedAt": "2026-07-08T18:24:10.048Z",
+  "runId": "7d77b5b-20260708182309",
   "cases": [
     {
       "id": "components.ui.segmented-control.states",
@@ -25,6 +25,29 @@
         "currentWidth": 1026,
         "currentHeight": 288
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9907441163365334,
+          "rgbSimilarity": 0.9271303874838634,
+          "currentImage": "latest/ios/components.ui.segmented-control.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.segmented-control.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9907441163365334,
+            "rgbSimilarity": 0.9271303874838634,
+            "pixelMismatchRatio": 0.009255883663466635,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 288,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Mentions Selected",
@@ -57,6 +80,29 @@
         "currentWidth": 1026,
         "currentHeight": 450
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9851345512482953,
+          "rgbSimilarity": 0.8802865594012123,
+          "currentImage": "latest/ios/components.ui.button.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.button.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9851345512482953,
+            "rgbSimilarity": 0.8802865594012123,
+            "pixelMismatchRatio": 0.014865448751704702,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 450,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Tones And Sizes"
@@ -86,6 +132,29 @@
         "currentWidth": 1026,
         "currentHeight": 276
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.97696763478754,
+          "rgbSimilarity": 0.8954617312011077,
+          "currentImage": "latest/ios/components.ui.badge.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.badge.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.97696763478754,
+            "rgbSimilarity": 0.8954617312011077,
+            "pixelMismatchRatio": 0.023032365212459993,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 276,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Tones"
@@ -115,6 +184,29 @@
         "currentWidth": 1026,
         "currentHeight": 678
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9516169103846829,
+          "rgbSimilarity": 0.912403558787066,
+          "currentImage": "latest/ios/components.ui.form-field.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.form-field.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9516169103846829,
+            "rgbSimilarity": 0.912403558787066,
+            "pixelMismatchRatio": 0.04838308961531712,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 888,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Label Hint Error"
@@ -144,6 +236,29 @@
         "currentWidth": 1026,
         "currentHeight": 720
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9101548048230512,
+          "rgbSimilarity": 0.8940449248117871,
+          "currentImage": "latest/ios/components.ui.textarea.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.textarea.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9101548048230512,
+            "rgbSimilarity": 0.8940449248117871,
+            "pixelMismatchRatio": 0.08984519517694878,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 720,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Helper And Error"
@@ -173,6 +288,29 @@
         "currentWidth": 1026,
         "currentHeight": 396
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9880642308367427,
+          "rgbSimilarity": 0.9555998822027391,
+          "currentImage": "latest/ios/components.ui.checkbox.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.checkbox.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9880642308367427,
+            "rgbSimilarity": 0.9555998822027391,
+            "pixelMismatchRatio": 0.011935769163257337,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 396,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Checked Unchecked Disabled"
@@ -202,6 +340,29 @@
         "currentWidth": 1026,
         "currentHeight": 336
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9898087387423881,
+          "rgbSimilarity": 0.9494511215053004,
+          "currentImage": "latest/ios/components.ui.check-marker.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.check-marker.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9898087387423881,
+            "rgbSimilarity": 0.9494511215053004,
+            "pixelMismatchRatio": 0.010191261257611939,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 336,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Shape Size Tone"
@@ -231,6 +392,29 @@
         "currentWidth": 1026,
         "currentHeight": 240
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9949409945855443,
+          "rgbSimilarity": 0.969046732189411,
+          "currentImage": "latest/ios/components.ui.attention-dot.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.attention-dot.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9949409945855443,
+            "rgbSimilarity": 0.969046732189411,
+            "pixelMismatchRatio": 0.005059005414455697,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 240,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Sizes And Tones"
@@ -245,13 +429,13 @@
       "captureType": "component-fixture",
       "status": "basic-pass",
       "similarity": 0.9771732067689353,
-      "rgbSimilarity": 0.9897301680416402,
+      "rgbSimilarity": 0.9898085045056623,
       "baselineImage": "latest/react/components.ui.status-dot.states.png",
       "currentImage": "latest/android/components.ui.status-dot.states.png",
       "sideBySideImage": "latest/diff/react__android/components.ui.status-dot.states.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.9771732067689353,
-        "rgbSimilarity": 0.9897301680416402,
+        "rgbSimilarity": 0.9898085045056623,
         "pixelMismatchRatio": 0.022826793231064735,
         "comparisonWidth": 1026,
         "comparisonHeight": 276,
@@ -260,6 +444,29 @@
         "currentWidth": 1026,
         "currentHeight": 276
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9954257301413699,
+          "rgbSimilarity": 0.9783623502195202,
+          "currentImage": "latest/ios/components.ui.status-dot.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.status-dot.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9954257301413699,
+            "rgbSimilarity": 0.9783623502195202,
+            "pixelMismatchRatio": 0.004574269858630076,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 276,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Presence Tones"
@@ -289,6 +496,29 @@
         "currentWidth": 1026,
         "currentHeight": 372
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.973991371977154,
+          "rgbSimilarity": 0.8595262199073419,
+          "currentImage": "latest/ios/components.ui.progress-bar.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.progress-bar.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.973991371977154,
+            "rgbSimilarity": 0.8595262199073419,
+            "pixelMismatchRatio": 0.02600862802284598,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 372,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Determinate Tones"
@@ -318,6 +548,29 @@
         "currentWidth": 1026,
         "currentHeight": 450
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9280731424096353,
+          "rgbSimilarity": 0.9526738398739142,
+          "currentImage": "latest/ios/components.ui.skeleton.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.skeleton.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9280731424096353,
+            "rgbSimilarity": 0.9526738398739142,
+            "pixelMismatchRatio": 0.07192685759036466,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 450,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Row Block Circle"
@@ -347,6 +600,29 @@
         "currentWidth": 1026,
         "currentHeight": 276
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9941683207086051,
+          "rgbSimilarity": 0.9506385449090589,
+          "currentImage": "latest/ios/components.ui.spinner.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.spinner.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9941683207086051,
+            "rgbSimilarity": 0.9506385449090589,
+            "pixelMismatchRatio": 0.005831679291394942,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 276,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Sizes And Inverse"
@@ -376,6 +652,29 @@
         "currentWidth": 1026,
         "currentHeight": 366
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9702157680830666,
+          "rgbSimilarity": 0.8905662436188616,
+          "currentImage": "latest/ios/components.ui.slug-input.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.slug-input.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9702157680830666,
+            "rgbSimilarity": 0.8905662436188616,
+            "pixelMismatchRatio": 0.029784231916933357,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 366,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Filled And Disabled"
@@ -405,6 +704,29 @@
         "currentWidth": 1026,
         "currentHeight": 276
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.991630210232106,
+          "rgbSimilarity": 0.9705460363754216,
+          "currentImage": "latest/ios/components.ui.section-eyebrow.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.section-eyebrow.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.991630210232106,
+            "rgbSimilarity": 0.9705460363754216,
+            "pixelMismatchRatio": 0.008369789767894042,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 276,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Tones"
@@ -434,6 +756,29 @@
         "currentWidth": 1026,
         "currentHeight": 264
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9932039129906428,
+          "rgbSimilarity": 0.9513774818020082,
+          "currentImage": "latest/ios/components.ui.section-header.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.section-header.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9932039129906428,
+            "rgbSimilarity": 0.9513774818020082,
+            "pixelMismatchRatio": 0.006796087009357188,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 264,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Count And Action"
@@ -463,6 +808,29 @@
         "currentWidth": 1026,
         "currentHeight": 756
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9546164648060382,
+          "rgbSimilarity": 0.8868125652118778,
+          "currentImage": "latest/ios/components.ui.selection-popover.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.selection-popover.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9546164648060382,
+            "rgbSimilarity": 0.8868125652118778,
+            "pixelMismatchRatio": 0.045383535193961766,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 756,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Searchable Options"
@@ -492,6 +860,29 @@
         "currentWidth": 1026,
         "currentHeight": 543
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9917686096596049,
+          "rgbSimilarity": 0.9119251366984036,
+          "currentImage": "latest/ios/components.ui.menu-item.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.menu-item.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9917686096596049,
+            "rgbSimilarity": 0.9119251366984036,
+            "pixelMismatchRatio": 0.008231390340395106,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 543,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Default Disabled Divider"
@@ -521,6 +912,29 @@
         "currentWidth": 1026,
         "currentHeight": 582
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9965670190788675,
+          "rgbSimilarity": 0.9178243384973465,
+          "currentImage": "latest/ios/components.ui.select.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.select.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9965670190788675,
+            "rgbSimilarity": 0.9178243384973465,
+            "pixelMismatchRatio": 0.0034329809211325335,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 582,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Closed And Disabled"
@@ -550,6 +964,29 @@
         "currentWidth": 1026,
         "currentHeight": 546
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9543605946449548,
+          "rgbSimilarity": 0.9094261376838855,
+          "currentImage": "latest/ios/components.ui.surface-list-item.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.surface-list-item.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9543605946449548,
+            "rgbSimilarity": 0.9094261376838855,
+            "pixelMismatchRatio": 0.04563940535504518,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 546,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Default And Selected"
@@ -579,6 +1016,29 @@
         "currentWidth": 1026,
         "currentHeight": 504
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9518282226813033,
+          "rgbSimilarity": 0.8740540856931593,
+          "currentImage": "latest/ios/components.ui.avatar-list-row.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.ui.avatar-list-row.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9518282226813033,
+            "rgbSimilarity": 0.8740540856931593,
+            "pixelMismatchRatio": 0.04817177731869671,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 504,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Agent And Human"
@@ -608,6 +1068,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7984850326082553,
+          "rgbSimilarity": 0.9033612228143522,
+          "currentImage": "latest/ios/components.auth.register.inputs.png",
+          "sideBySideImage": "latest/diff/react__ios/components.auth.register.inputs.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7984850326082553,
+            "rgbSimilarity": 0.9033612228143522,
+            "pixelMismatchRatio": 0.20151496739174468,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React RegisterPage auth input typography and placeholders vs Android rendering of the shared KMP Register page.",
       "variants": [
         {
@@ -643,6 +1126,29 @@
         "currentWidth": 1170,
         "currentHeight": 159
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "pass",
+          "similarity": 0.9921483641862788,
+          "rgbSimilarity": 0.8443248993741755,
+          "currentImage": "latest/ios/components.navigation.tabbar.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.navigation.tabbar.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9921483641862788,
+            "rgbSimilarity": 0.8443248993741755,
+            "pixelMismatchRatio": 0.00785163581372117,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 159,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "React now captures the real MainLayout MobileTabBar from the visual route. The previous hand-built VisualMobileTabBar approximation was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -676,6 +1182,29 @@
         "currentWidth": 1026,
         "currentHeight": 300
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9780039426958859,
+          "rgbSimilarity": 0.8706824947251465,
+          "currentImage": "latest/ios/components.thread.composer.empty.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.empty.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9780039426958859,
+            "rgbSimilarity": 0.8706824947251465,
+            "pixelMismatchRatio": 0.021996057304114136,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 300,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput empty state vs Android connected visual-only rendering of ThreadComposerContent with an empty seed. This case specifically protects the disabled send button color/opacity and empty placeholder treatment.",
       "variants": [
         {
@@ -711,6 +1240,29 @@
         "currentWidth": 1026,
         "currentHeight": 300
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9763931083836297,
+          "rgbSimilarity": 0.8419225187362112,
+          "currentImage": "latest/ios/components.thread.composer.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9763931083836297,
+            "rgbSimilarity": 0.8419225187362112,
+            "pixelMismatchRatio": 0.023606891616370307,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 300,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.",
       "variants": [
         {
@@ -746,6 +1298,29 @@
         "currentWidth": 1026,
         "currentHeight": 300
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9739825954280931,
+          "rgbSimilarity": 0.8182030790197747,
+          "currentImage": "latest/ios/components.thread.composer.as-task-selected.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.as-task-selected.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9739825954280931,
+            "rgbSimilarity": 0.8182030790197747,
+            "pixelMismatchRatio": 0.026017404571906932,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 300,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput with As Task checked vs Android connected visual-only rendering of ThreadComposerContent seeded with seedAsTask=true. This is a focused diff for the selected As Task toggle.",
       "variants": [
         {
@@ -766,15 +1341,15 @@
       "category": "app/thread",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7723734974009097,
-      "rgbSimilarity": 0.8415600447727491,
+      "similarity": 0.7602410250162444,
+      "rgbSimilarity": 0.8343832455821868,
       "baselineImage": "latest/react/components.thread.composer.member-suggestions.png",
       "currentImage": "latest/android/components.thread.composer.member-suggestions.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.composer.member-suggestions.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7723734974009097,
-        "rgbSimilarity": 0.8415600447727491,
-        "pixelMismatchRatio": 0.22762650259909034,
+        "pixelPerfectSimilarity": 0.7602410250162444,
+        "rgbSimilarity": 0.8343832455821868,
+        "pixelMismatchRatio": 0.23975897498375565,
         "comparisonWidth": 1026,
         "comparisonHeight": 960,
         "baselineWidth": 1026,
@@ -782,6 +1357,29 @@
         "currentWidth": 1026,
         "currentHeight": 960
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9212220331888579,
+          "rgbSimilarity": 0.8409781629399015,
+          "currentImage": "latest/ios/components.thread.composer.member-suggestions.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.member-suggestions.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9212220331888579,
+            "rgbSimilarity": 0.8409781629399015,
+            "pixelMismatchRatio": 0.07877796681114213,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 960,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.",
       "variants": [
         {
@@ -817,6 +1415,29 @@
         "currentWidth": 1026,
         "currentHeight": 960
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.8802895586070941,
+          "rgbSimilarity": 0.8526482440331455,
+          "currentImage": "latest/ios/components.thread.composer.channel-suggestions.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.channel-suggestions.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.8802895586070941,
+            "rgbSimilarity": 0.8526482440331455,
+            "pixelMismatchRatio": 0.11971044139290588,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 960,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput #channel autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the channel suggestion panel open. Covers the # icon, channel name, and description row layout.",
       "variants": [
         {
@@ -852,6 +1473,29 @@
         "currentWidth": 1026,
         "currentHeight": 810
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.954989468141127,
+          "rgbSimilarity": 0.8904985044567572,
+          "currentImage": "latest/ios/components.thread.composer.image-preview.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.composer.image-preview.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.954989468141127,
+            "rgbSimilarity": 0.8904985044567572,
+            "pixelMismatchRatio": 0.04501053185887305,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 630,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageInput pending image attachment chip vs Android connected visual-only rendering of ThreadComposerContent with a ready image preview above the composer card.",
       "variants": [
         {
@@ -871,15 +1515,15 @@
       "category": "app/thread",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.815221589110478,
-      "rgbSimilarity": 0.8932214349705261,
+      "similarity": 0.8267252295030073,
+      "rgbSimilarity": 0.8963324509079729,
       "baselineImage": "latest/react/components.thread.files.list.png",
       "currentImage": "latest/android/components.thread.files.list.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.files.list.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.815221589110478,
-        "rgbSimilarity": 0.8932214349705261,
-        "pixelMismatchRatio": 0.18477841088952196,
+        "pixelPerfectSimilarity": 0.8267252295030073,
+        "rgbSimilarity": 0.8963324509079729,
+        "pixelMismatchRatio": 0.1732747704969927,
         "comparisonWidth": 1170,
         "comparisonHeight": 1080,
         "baselineWidth": 1170,
@@ -887,6 +1531,29 @@
         "currentWidth": 1170,
         "currentHeight": 1080
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9299594253385722,
+          "rgbSimilarity": 0.9154661812515885,
+          "currentImage": "latest/ios/components.thread.files.list.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.files.list.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9299594253385722,
+            "rgbSimilarity": 0.9154661812515885,
+            "pixelMismatchRatio": 0.07004057466142777,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 1080,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React ChannelFilesPanel vs Android connected visual-only rendering of ThreadFilesContent with image, PDF, archive, download/open state, and load-more affordance.",
       "variants": [
         {
@@ -920,6 +1587,29 @@
         "currentWidth": 1170,
         "currentHeight": 360
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9742604069618288,
+          "rgbSimilarity": 0.8586899930485318,
+          "currentImage": "latest/ios/components.thread.header.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.header.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9742604069618288,
+            "rgbSimilarity": 0.8586899930485318,
+            "pixelMismatchRatio": 0.025739593038171193,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 360,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -939,15 +1629,15 @@
       "category": "app/thread",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7134058449417926,
-      "rgbSimilarity": 0.8589085063688385,
+      "similarity": 0.6713980766268348,
+      "rgbSimilarity": 0.8526378383632809,
       "baselineImage": "latest/react/components.thread.message.row.png",
       "currentImage": "latest/android/components.thread.message.row.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.message.row.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7134058449417926,
-        "rgbSimilarity": 0.8589085063688385,
-        "pixelMismatchRatio": 0.2865941550582074,
+        "pixelPerfectSimilarity": 0.6713980766268348,
+        "rgbSimilarity": 0.8526378383632809,
+        "pixelMismatchRatio": 0.3286019233731652,
         "comparisonWidth": 1122,
         "comparisonHeight": 324,
         "baselineWidth": 1122,
@@ -955,6 +1645,18 @@
         "currentWidth": 1122,
         "currentHeight": 324
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React MessageItem vs Android rendering of shared ThreadMessageCard with matching fixture text, reply count, and task metadata.",
       "variants": [
         {
@@ -990,6 +1692,18 @@
         "currentWidth": 1122,
         "currentHeight": 327
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React MessageItem vs Android shared ThreadMessageCard fixture for deleted human authors. Protects muted uploaded-avatar styling and gray-border Deleted sender tag.",
       "variants": [
         {
@@ -1020,6 +1734,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React MessageItem right-click menu captured through the portal plus Android shared ThreadMessageMenuChrome with default message actions. Protects quick reactions and grouped row separators.",
       "variants": [
         {
@@ -1035,13 +1761,13 @@
       "captureType": "component-fixture",
       "status": "different",
       "similarity": 0.8974801177407813,
-      "rgbSimilarity": 0.9272848781339278,
+      "rgbSimilarity": 0.9272845127753244,
       "baselineImage": "latest/react/components.thread.message-menu.task.png",
       "currentImage": "latest/android/components.thread.message-menu.task.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.message-menu.task.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.8974801177407813,
-        "rgbSimilarity": 0.9272848781339278,
+        "rgbSimilarity": 0.9272845127753244,
         "pixelMismatchRatio": 0.10251988225921871,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
@@ -1050,6 +1776,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React MessageItem right-click menu for a linked task message plus Android shared ThreadMessageMenuChrome task-state action variant.",
       "variants": [
         {
@@ -1080,12 +1818,120 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Android shared/KMP selected-message rows and bottom shared-message toolbar. React source of truth is SelectModeToolbar; KMP adds Generate to seed an editable composer draft.",
       "variants": [
         {
           "name": "Two Selected Messages"
         }
       ]
+    },
+    {
+      "id": "components.thread.forward-modal",
+      "title": "Thread Forward Modal",
+      "surface": "thread",
+      "category": "app/thread",
+      "captureType": "component-fixture",
+      "status": "different",
+      "similarity": 0.7634811169171358,
+      "rgbSimilarity": 0.8551253519774541,
+      "baselineImage": "latest/react/components.thread.forward-modal.png",
+      "currentImage": "latest/android/components.thread.forward-modal.png",
+      "sideBySideImage": "latest/diff/react__android/components.thread.forward-modal.side-by-side.png",
+      "metrics": {
+        "pixelPerfectSimilarity": 0.7634811169171358,
+        "rgbSimilarity": 0.8551253519774541,
+        "pixelMismatchRatio": 0.23651888308286417,
+        "comparisonWidth": 1170,
+        "comparisonHeight": 2532,
+        "baselineWidth": 1170,
+        "baselineHeight": 2532,
+        "currentWidth": 1170,
+        "currentHeight": 2532
+      },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7624346822214121,
+          "rgbSimilarity": 0.8550922459871843,
+          "currentImage": "latest/ios/components.thread.forward-modal.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.forward-modal.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7624346822214121,
+            "rgbSimilarity": 0.8550922459871843,
+            "pixelMismatchRatio": 0.23756531777858791,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
+      "note": "Android Forward target modal (SlockUnifiedDialog): header title/close aligned with the 16dp-inset content rows and brutal-shadow action buttons (task #560). React ForwardComposerDialog vs Android ThreadForwardTargetModal, same seeded destinations."
+    },
+    {
+      "id": "components.thread.comment-anchor",
+      "title": "Thread Attachment Comment Anchor",
+      "surface": "thread",
+      "category": "app/thread",
+      "captureType": "component-fixture",
+      "status": "different",
+      "similarity": 0.36927195149943964,
+      "rgbSimilarity": 0.6677059578956537,
+      "baselineImage": "latest/react/components.thread.comment-anchor.png",
+      "currentImage": "latest/android/components.thread.comment-anchor.png",
+      "sideBySideImage": "latest/diff/react__android/components.thread.comment-anchor.side-by-side.png",
+      "metrics": {
+        "pixelPerfectSimilarity": 0.36927195149943964,
+        "rgbSimilarity": 0.6677059578956537,
+        "pixelMismatchRatio": 0.6307280485005604,
+        "comparisonWidth": 1170,
+        "comparisonHeight": 2532,
+        "baselineWidth": 1170,
+        "baselineHeight": 2532,
+        "currentWidth": 1170,
+        "currentHeight": 2532
+      },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.37150828371207517,
+          "rgbSimilarity": 0.6683490084528483,
+          "currentImage": "latest/ios/components.thread.comment-anchor.png",
+          "sideBySideImage": "latest/diff/react__ios/components.thread.comment-anchor.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.37150828371207517,
+            "rgbSimilarity": 0.6683490084528483,
+            "pixelMismatchRatio": 0.6284917162879249,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
+      "note": "Attachment comments surface with an anchored comment plus a pending anchor chip above the composer. Regression net for task #566: the Android tag's decoration modifiers silently no-opped on Kuikly Text, so the anchor text hugged its border; the fix (Box-wrapped tag, 10dp inset matching the field) is pinned by the android case (mobile #366) and this react reference."
     },
     {
       "id": "components.home.titlebar.states",
@@ -1110,6 +1956,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9871011733570976,
+          "rgbSimilarity": 0.9941394851779575,
+          "currentImage": "latest/ios/components.home.titlebar.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.titlebar.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9871011733570976,
+            "rgbSimilarity": 0.9941394851779575,
+            "pixelMismatchRatio": 0.012898826642902428,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "React now captures the real mobile Sidebar titlebar with the visual server and notification fixture. The previous hand-built titlebar markup was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -1145,6 +2014,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9035943344000216,
+          "rgbSimilarity": 0.9475684661283797,
+          "currentImage": "latest/ios/components.home.notification-center.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.notification-center.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9035943344000216,
+            "rgbSimilarity": 0.9475684661283797,
+            "pixelMismatchRatio": 0.09640566559997843,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "React and Android now render the same two-notification fixture: warning agent disconnect plus info release-gate review. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -1162,15 +2054,15 @@
       "category": "app/home",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7664648060382657,
-      "rgbSimilarity": 0.9012020518684979,
+      "similarity": 0.7664870849704973,
+      "rgbSimilarity": 0.90121364009029,
       "baselineImage": "latest/react/components.home.search.results.png",
       "currentImage": "latest/android/components.home.search.results.png",
       "sideBySideImage": "latest/diff/react__android/components.home.search.results.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7664648060382657,
-        "rgbSimilarity": 0.9012020518684979,
-        "pixelMismatchRatio": 0.23353519396173428,
+        "pixelPerfectSimilarity": 0.7664870849704973,
+        "rgbSimilarity": 0.90121364009029,
+        "pixelMismatchRatio": 0.23351291502950267,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -1178,6 +2070,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7622068295054077,
+          "rgbSimilarity": 0.8980327138038569,
+          "currentImage": "latest/ios/components.home.search.results.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.search.results.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7622068295054077,
+            "rgbSimilarity": 0.8980327138038569,
+            "pixelMismatchRatio": 0.23779317049459225,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MessageSearchPage filtered results vs Android rendering of shared Home Search panel. Covers query field, reusable filter primitives, entity results, grouped thread hits, and load-more affordance.",
       "variants": [
         {
@@ -1199,15 +2114,15 @@
       "category": "app/home",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7705813451074115,
-      "rgbSimilarity": 0.9016486846697755,
+      "similarity": 0.7643287290206722,
+      "rgbSimilarity": 0.8931576412943488,
       "baselineImage": "latest/react/components.home.search.channel-dropdown.png",
       "currentImage": "latest/android/components.home.search.channel-dropdown.png",
       "sideBySideImage": "latest/diff/react__android/components.home.search.channel-dropdown.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7705813451074115,
-        "rgbSimilarity": 0.9016486846697755,
-        "pixelMismatchRatio": 0.2294186548925885,
+        "pixelPerfectSimilarity": 0.7643287290206722,
+        "rgbSimilarity": 0.8931576412943488,
+        "pixelMismatchRatio": 0.23567127097932783,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -1215,6 +2130,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7598935337086996,
+          "rgbSimilarity": 0.8889713809484465,
+          "currentImage": "latest/ios/components.home.search.channel-dropdown.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.search.channel-dropdown.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7598935337086996,
+            "rgbSimilarity": 0.8889713809484465,
+            "pixelMismatchRatio": 0.2401064662913004,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Focused open-state canonical for the search channel filter. React opens the real MessageSearchPage SelectionPopover; Android opens SharedHomeSearchPanel's real SlockFilterPopover through initialOpenFilterId after the channel trigger anchor is measured. Covers trigger alignment, popover border/shadow, internal search input chrome, and channel option rows without DM leakage.",
       "variants": [
         {
@@ -1232,15 +2170,15 @@
       "category": "app/home",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.8624667253558029,
-      "rgbSimilarity": 0.9189015336304102,
+      "similarity": 0.8625841036282462,
+      "rgbSimilarity": 0.9189266614580613,
       "baselineImage": "latest/react/components.home.saved.results.png",
       "currentImage": "latest/android/components.home.saved.results.png",
       "sideBySideImage": "latest/diff/react__android/components.home.saved.results.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.8624667253558029,
-        "rgbSimilarity": 0.9189015336304102,
-        "pixelMismatchRatio": 0.13753327464419707,
+        "pixelPerfectSimilarity": 0.8625841036282462,
+        "rgbSimilarity": 0.9189266614580613,
+        "pixelMismatchRatio": 0.13741589637175378,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
         "baselineWidth": 1026,
@@ -1248,6 +2186,29 @@
         "currentWidth": 1026,
         "currentHeight": 1860
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9096653434331159,
+          "rgbSimilarity": 0.9258280645357481,
+          "currentImage": "latest/ios/components.home.saved.results.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.saved.results.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9096653434331159,
+            "rgbSimilarity": 0.9258280645357481,
+            "pixelMismatchRatio": 0.09033465656688411,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 1860,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React SavedPanel saved-message list vs Android rendering of shared Home Saved panel after Search/Saved parity. Covers panel header, saved channel/thread/DM rows, sender avatar/meta, remove affordance, and load-more action.",
       "variants": [
         {
@@ -1266,15 +2227,15 @@
       "category": "app/home",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.8587127166781949,
-      "rgbSimilarity": 0.9199188352809173,
+      "similarity": 0.8587750738854304,
+      "rgbSimilarity": 0.9199370187754333,
       "baselineImage": "latest/react/components.home.activity.results.png",
       "currentImage": "latest/android/components.home.activity.results.png",
       "sideBySideImage": "latest/diff/react__android/components.home.activity.results.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.8587127166781949,
-        "rgbSimilarity": 0.9199188352809173,
-        "pixelMismatchRatio": 0.14128728332180507,
+        "pixelPerfectSimilarity": 0.8587750738854304,
+        "rgbSimilarity": 0.9199370187754333,
+        "pixelMismatchRatio": 0.1412249261145696,
         "comparisonWidth": 1026,
         "comparisonHeight": 1860,
         "baselineWidth": 1026,
@@ -1282,6 +2243,29 @@
         "currentWidth": 1026,
         "currentHeight": 1860
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9117943316995449,
+          "rgbSimilarity": 0.9088428594412026,
+          "currentImage": "latest/ios/components.home.activity.results.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.activity.results.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9117943316995449,
+            "rgbSimilarity": 0.9088428594412026,
+            "pixelMismatchRatio": 0.08820566830045506,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 1860,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React ThreadsInbox activity page vs Android rendering of shared Home Activity panel. Covers PanelHeader/back affordance, segmented filters, mark-all-read action, ConversationPreviewCard-like rows, unread/mention/task footer badges, and scroll body spacing.",
       "variants": [
         {
@@ -1317,6 +2301,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.8163564494133214,
+          "rgbSimilarity": 0.8801019456405469,
+          "currentImage": "latest/ios/components.tasks.panel.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.tasks.panel.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.8163564494133214,
+            "rgbSimilarity": 0.8801019456405469,
+            "pixelMismatchRatio": 0.18364355058667858,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React TasksPanel (server mode, list view) with shared tasksFixture.json rows covering todo / in_progress / in_review / done status sections, task numbers, and per-status InlineBadgeEditor chips.",
       "variants": [
         {
@@ -1351,6 +2358,29 @@
         "currentWidth": 1026,
         "currentHeight": 780
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "basic-pass",
+          "similarity": 0.9832043855740539,
+          "rgbSimilarity": 0.9375952833616361,
+          "currentImage": "latest/ios/components.tasks.status-menu.png",
+          "sideBySideImage": "latest/diff/react__ios/components.tasks.status-menu.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9832043855740539,
+            "rgbSimilarity": 0.9375952833616361,
+            "pixelMismatchRatio": 0.016795614425946126,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1026,
+            "baselineHeight": 780,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React InlineBadgeEditor status menu rendered open with all five selectable statuses (Todo / In Progress / In Review / Done / Closed) and the current status check-marked.",
       "variants": [
         {
@@ -1384,6 +2414,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7428474500749382,
+          "rgbSimilarity": 0.8689412331277712,
+          "currentImage": "latest/ios/components.home.create-channel.dialog.png",
+          "sideBySideImage": "latest/diff/react__ios/components.home.create-channel.dialog.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7428474500749382,
+            "rgbSimilarity": 0.8689412331277712,
+            "pixelMismatchRatio": 0.25715254992506176,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React CreateChannelDialog vs Android rendering of the shared SharedCreateChannelDialog/SlockUnifiedDialog route.",
       "variants": [
         {
@@ -1419,6 +2472,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7589888740362674,
+          "rgbSimilarity": 0.851262187334647,
+          "currentImage": "latest/ios/components.members.create-agent.dialog.png",
+          "sideBySideImage": "latest/diff/react__ios/components.members.create-agent.dialog.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7589888740362674,
+            "rgbSimilarity": 0.851262187334647,
+            "pixelMismatchRatio": 0.24101112596373264,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Matrix covers Codex CLI default, Claude Code default, and Claude custom-provider/advanced configuration because each runtime exposes different selectable fields.",
       "variants": [
         {
@@ -1455,6 +2531,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7543970510795155,
+          "rgbSimilarity": 0.8487574528961189,
+          "currentImage": "latest/ios/components.members.create-agent.claude-dialog.png",
+          "sideBySideImage": "latest/diff/react__ios/components.members.create-agent.claude-dialog.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7543970510795155,
+            "rgbSimilarity": 0.8487574528961189,
+            "pixelMismatchRatio": 0.2456029489204845,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "variants": [
         {
           "name": "Create Agent Claude Runtime",
@@ -1479,6 +2578,18 @@
       "baselineImage": null,
       "currentImage": "latest/android/components.members.create-agent.claude-custom-provider-dialog.png",
       "sideBySideImage": null,
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": "latest/ios/components.members.create-agent.claude-custom-provider-dialog.png",
+          "sideBySideImage": null
+        }
+      ],
       "variants": [
         {
           "name": "Create Agent Claude Custom Provider",
@@ -1501,13 +2612,13 @@
       "captureType": "component-fixture",
       "status": "different",
       "similarity": 0.8183585152779466,
-      "rgbSimilarity": 0.8982081362361977,
+      "rgbSimilarity": 0.8982054128143366,
       "baselineImage": "latest/react/components.members.agent-detail.profile.png",
       "currentImage": "latest/android/components.members.agent-detail.profile.png",
       "sideBySideImage": "latest/diff/react__android/components.members.agent-detail.profile.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.8183585152779466,
-        "rgbSimilarity": 0.8982081362361977,
+        "rgbSimilarity": 0.8982054128143366,
         "pixelMismatchRatio": 0.18164148472205344,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
@@ -1516,6 +2627,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.8175814531264768,
+          "rgbSimilarity": 0.8971066784465411,
+          "currentImage": "latest/ios/components.members.agent-detail.profile.png",
+          "sideBySideImage": "latest/diff/react__ios/components.members.agent-detail.profile.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.8175814531264768,
+            "rgbSimilarity": 0.8971066784465411,
+            "pixelMismatchRatio": 0.1824185468735232,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React AgentDetailPanel profile tab vs Android rendering of the shared Members detail profile surface. Fixture pins a manageable Codex agent with machine, runtime config, skills, DMs, reminders, and activity summary data; additional private tabs can be split into separate cases.",
       "variants": [
         {
@@ -1552,6 +2686,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.8435944694238533,
+          "rgbSimilarity": 0.9015390197252843,
+          "currentImage": "latest/ios/components.channel.members.panel.png",
+          "sideBySideImage": "latest/diff/react__ios/components.channel.members.panel.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.8435944694238533,
+            "rgbSimilarity": 0.9015390197252843,
+            "pixelMismatchRatio": 0.1564055305761467,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React ChannelMembers modal opened from a channel header. Android/KMP provider uses the shared channel members modal route; Harmony capture remains pending.",
       "variants": [
         {
@@ -1585,6 +2742,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7910104508445741,
+          "rgbSimilarity": 0.8686161164800357,
+          "currentImage": "latest/ios/components.channel.settings.panel.png",
+          "sideBySideImage": "latest/diff/react__ios/components.channel.settings.panel.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7910104508445741,
+            "rgbSimilarity": 0.8686161164800357,
+            "pixelMismatchRatio": 0.2089895491554259,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React EditChannelDialog for the channel settings panel. Android/KMP provider uses the shared thread settings modal route; Harmony capture remains pending.",
       "variants": [
         {
@@ -1602,15 +2782,15 @@
       "category": "channel",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.8000145150619085,
-      "rgbSimilarity": 0.8687507220024339,
+      "similarity": 0.8495513833191558,
+      "rgbSimilarity": 0.9016435114032826,
       "baselineImage": "latest/react/components.channel.members.add-panel.png",
       "currentImage": "latest/android/components.channel.members.add-panel.png",
       "sideBySideImage": "latest/diff/react__android/components.channel.members.add-panel.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.8000145150619085,
-        "rgbSimilarity": 0.8687507220024339,
-        "pixelMismatchRatio": 0.19998548493809154,
+        "pixelPerfectSimilarity": 0.8495513833191558,
+        "rgbSimilarity": 0.9016435114032826,
+        "pixelMismatchRatio": 0.1504486166808442,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -1618,6 +2798,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.8447431846720946,
+          "rgbSimilarity": 0.8994598954068256,
+          "currentImage": "latest/ios/components.channel.members.add-panel.png",
+          "sideBySideImage": "latest/diff/react__ios/components.channel.members.add-panel.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.8447431846720946,
+            "rgbSimilarity": 0.8994598954068256,
+            "pixelMismatchRatio": 0.15525681532790536,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React ChannelMembers add-member modal opened from the channel members panel. Android/KMP provider uses the shared add-member modal route; Harmony capture remains pending.",
       "variants": [
         {
@@ -1651,6 +2854,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7956265780910331,
+          "rgbSimilarity": 0.8864611242116033,
+          "currentImage": "latest/ios/components.settings.page.states.png",
+          "sideBySideImage": "latest/diff/react__ios/components.settings.page.states.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7956265780910331,
+            "rgbSimilarity": 0.8864611242116033,
+            "pixelMismatchRatio": 0.2043734219089669,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.",
       "variants": [
         {
@@ -1684,6 +2910,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1717,6 +2955,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Account connected-provider state maps React AccountSection identities and provider connect affordances to shared KMP Settings.",
       "variants": [
         {
@@ -1751,6 +3001,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Account password disclosure state maps React current/new/confirm password form to shared KMP Settings without exposing password values in snapshot fixtures.",
       "variants": [
         {
@@ -1769,15 +3031,15 @@
       "category": "app/settings",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.6903755012759752,
-      "rgbSimilarity": 0.8862300940232675,
+      "similarity": 0.6887072818352439,
+      "rgbSimilarity": 0.8849219125409993,
       "baselineImage": "latest/react/components.settings.account.error-state.png",
       "currentImage": "latest/android/components.settings.account.error-state.png",
       "sideBySideImage": "latest/diff/react__android/components.settings.account.error-state.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.6903755012759752,
-        "rgbSimilarity": 0.8862300940232675,
-        "pixelMismatchRatio": 0.30962449872402475,
+        "pixelPerfectSimilarity": 0.6887072818352439,
+        "rgbSimilarity": 0.8849219125409993,
+        "pixelMismatchRatio": 0.3112927181647561,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -1785,6 +3047,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Account save/avatar/password/provider error messages are rendered from typed Store action state rather than raw API responses.",
       "variants": [
         {
@@ -1819,6 +3093,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1853,6 +3139,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1887,6 +3185,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1921,6 +3231,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1955,6 +3277,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -1989,6 +3323,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2023,6 +3369,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2057,6 +3415,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2091,6 +3461,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2124,6 +3506,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2141,15 +3535,15 @@
       "category": "app/settings",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.8147148971793522,
-      "rgbSimilarity": 0.9285157871541048,
+      "similarity": 0.8147037577132363,
+      "rgbSimilarity": 0.9285199234724003,
       "baselineImage": "latest/react/components.settings.appearance.page.png",
       "currentImage": "latest/android/components.settings.appearance.page.png",
       "sideBySideImage": "latest/diff/react__android/components.settings.appearance.page.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.8147148971793522,
-        "rgbSimilarity": 0.9285157871541048,
-        "pixelMismatchRatio": 0.1852851028206478,
+        "pixelPerfectSimilarity": 0.8147037577132363,
+        "rgbSimilarity": 0.9285199234724003,
+        "pixelMismatchRatio": 0.18529624228676367,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -2157,6 +3551,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React SettingsPanel AppearanceSection mapped to KMP SettingsAppearanceContent through the shared settings visual page; full Settings route coverage remains screens.settings.appearance pending.",
       "variants": [
         {
@@ -2190,6 +3596,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2223,6 +3641,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
       "variants": [
         {
@@ -2256,6 +3686,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7125717314105939,
+          "rgbSimilarity": 0.8307142359157811,
+          "currentImage": "latest/ios/screens.auth.login.signing.png",
+          "sideBySideImage": "latest/diff/react__ios/screens.auth.login.signing.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7125717314105939,
+            "rgbSimilarity": 0.8307142359157811,
+            "pixelMismatchRatio": 0.28742826858940607,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "In-flight sign-in state: email + password filled and Sign In clicked, auth request still pending, so the button reads 'Signing in…' at disabled:opacity-50 while the inputs stay enabled with normal white styling. Paired with screens.home.loading as the Android parity target for the sign-in transition (task #372)."
     },
     {
@@ -2266,13 +3719,13 @@
       "captureType": "real-screen",
       "status": "different",
       "similarity": 0.8177191774348173,
-      "rgbSimilarity": 0.8984524675959734,
+      "rgbSimilarity": 0.8984330771147309,
       "baselineImage": "latest/react/screens.members.agent-detail.profile.png",
       "currentImage": "latest/android/screens.members.agent-detail.profile.png",
       "sideBySideImage": "latest/diff/react__android/screens.members.agent-detail.profile.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.8177191774348173,
-        "rgbSimilarity": 0.8984524675959734,
+        "rgbSimilarity": 0.8984330771147309,
         "pixelMismatchRatio": 0.18228082256518274,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
@@ -2281,6 +3734,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2303,6 +3768,18 @@
       "baselineImage": null,
       "currentImage": null,
       "sideBySideImage": null,
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Permissions tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2320,15 +3797,15 @@
       "category": "members",
       "captureType": "real-screen",
       "status": "different",
-      "similarity": 0.9379889550505665,
-      "rgbSimilarity": 0.9661738005581492,
+      "similarity": 0.9379953686825725,
+      "rgbSimilarity": 0.9661793850732279,
       "baselineImage": "latest/react/screens.members.agent-detail.reminders.png",
       "currentImage": "latest/android/screens.members.agent-detail.reminders.png",
       "sideBySideImage": "latest/diff/react__android/screens.members.agent-detail.reminders.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.9379889550505665,
-        "rgbSimilarity": 0.9661738005581492,
-        "pixelMismatchRatio": 0.06201104494943355,
+        "pixelPerfectSimilarity": 0.9379953686825725,
+        "rgbSimilarity": 0.9661793850732279,
+        "pixelMismatchRatio": 0.062004631317427505,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -2336,6 +3813,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2369,6 +3858,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2402,6 +3903,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Apps tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2420,13 +3933,13 @@
       "captureType": "real-screen",
       "status": "different",
       "similarity": 0.9039281808239155,
-      "rgbSimilarity": 0.9472890779928391,
+      "rgbSimilarity": 0.9472880657553536,
       "baselineImage": "latest/react/screens.members.agent-detail.activity.png",
       "currentImage": "latest/android/screens.members.agent-detail.activity.png",
       "sideBySideImage": "latest/diff/react__android/screens.members.agent-detail.activity.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.9039281808239155,
-        "rgbSimilarity": 0.9472890779928391,
+        "rgbSimilarity": 0.9472880657553536,
         "pixelMismatchRatio": 0.09607181917608454,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
@@ -2435,6 +3948,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real Members route capture for the Activity tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2468,6 +3993,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9035116323031015,
+          "rgbSimilarity": 0.9522176212629223,
+          "currentImage": "latest/ios/screens.members.human.profile.png",
+          "sideBySideImage": "latest/diff/react__ios/screens.members.human.profile.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9035116323031015,
+            "rgbSimilarity": 0.9522176212629223,
+            "pixelMismatchRatio": 0.0964883676968985,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real Members route capture for human member detail profile. React uses MainLayout at /s/visual/human/visual-human-1; Android uses compose_member_detail pageData with memberId=visual-human-1 and memberKind=human. Harmony remains pending real-device/provider capture.",
       "variants": [
         {
@@ -2485,15 +4033,15 @@
       "category": "members",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7993485100120171,
-      "rgbSimilarity": 0.8920736430569705,
+      "similarity": 0.7950422624593241,
+      "rgbSimilarity": 0.8857918556449862,
       "baselineImage": "latest/react/components.members.agent-lifecycle-actions.png",
       "currentImage": "latest/android/components.members.agent-lifecycle-actions.png",
       "sideBySideImage": "latest/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7993485100120171,
-        "rgbSimilarity": 0.8920736430569705,
-        "pixelMismatchRatio": 0.20065148998798288,
+        "pixelPerfectSimilarity": 0.7950422624593241,
+        "rgbSimilarity": 0.8857918556449862,
+        "pixelMismatchRatio": 0.20495773754067592,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -2501,6 +4049,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7942338072669827,
+          "rgbSimilarity": 0.8851287112470598,
+          "currentImage": "latest/ios/components.members.agent-lifecycle-actions.png",
+          "sideBySideImage": "latest/diff/react__ios/components.members.agent-lifecycle-actions.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7942338072669827,
+            "rgbSimilarity": 0.8851287112470598,
+            "pixelMismatchRatio": 0.20576619273301733,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent management dropdown. The Android fixture opens the same lifecycle action menu state so Stop Agent and Restart / Reset are visible."
     },
     {
@@ -2511,13 +4082,13 @@
       "captureType": "component-fixture",
       "status": "different",
       "similarity": 0.7445588771418156,
-      "rgbSimilarity": 0.8564865228119548,
+      "rgbSimilarity": 0.8565238789641396,
       "baselineImage": "latest/react/components.members.avatar-management.png",
       "currentImage": "latest/android/components.members.avatar-management.png",
       "sideBySideImage": "latest/diff/react__android/components.members.avatar-management.side-by-side.png",
       "metrics": {
         "pixelPerfectSimilarity": 0.7445588771418156,
-        "rgbSimilarity": 0.8564865228119548,
+        "rgbSimilarity": 0.8565238789641396,
         "pixelMismatchRatio": 0.25544112285818443,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
@@ -2526,6 +4097,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7433612157545807,
+          "rgbSimilarity": 0.8551959954750769,
+          "currentImage": "latest/ios/components.members.avatar-management.png",
+          "sideBySideImage": "latest/diff/react__ios/components.members.avatar-management.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7433612157545807,
+            "rgbSimilarity": 0.8551959954750769,
+            "pixelMismatchRatio": 0.2566387842454193,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states."
     },
     {
@@ -2551,6 +4145,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.9270499993248809,
+          "rgbSimilarity": 0.9438296725548533,
+          "currentImage": "latest/ios/screens.settings.computers.png",
+          "sideBySideImage": "latest/diff/react__ios/screens.settings.computers.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.9270499993248809,
+            "rgbSimilarity": 0.9438296725548533,
+            "pixelMismatchRatio": 0.07295000067511914,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MobileComputersPanel route/provider and KMP SettingsComputersPage route capture with a seeded connected/offline computer list."
     },
     {
@@ -2560,15 +4177,15 @@
       "category": "app/settings",
       "captureType": "real-screen",
       "status": "different",
-      "similarity": 0.7545904727184348,
-      "rgbSimilarity": 0.9273117024275951,
+      "similarity": 0.7545651557499898,
+      "rgbSimilarity": 0.930456130801731,
       "baselineImage": "latest/react/screens.settings.computer-detail.png",
       "currentImage": "latest/android/screens.settings.computer-detail.png",
       "sideBySideImage": "latest/diff/react__android/screens.settings.computer-detail.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7545904727184348,
-        "rgbSimilarity": 0.9273117024275951,
-        "pixelMismatchRatio": 0.24540952728156518,
+        "pixelPerfectSimilarity": 0.7545651557499898,
+        "rgbSimilarity": 0.930456130801731,
+        "pixelMismatchRatio": 0.24543484425001016,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -2576,6 +4193,29 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "different",
+          "similarity": 0.7552942844412038,
+          "rgbSimilarity": 0.9325177081994116,
+          "currentImage": "latest/ios/screens.settings.computer-detail.png",
+          "sideBySideImage": "latest/diff/react__ios/screens.settings.computer-detail.side-by-side.png",
+          "metrics": {
+            "pixelPerfectSimilarity": 0.7552942844412038,
+            "rgbSimilarity": 0.9325177081994116,
+            "pixelMismatchRatio": 0.24470571555879617,
+            "comparisonWidth": 1170,
+            "comparisonHeight": 2532,
+            "baselineWidth": 1170,
+            "baselineHeight": 2532,
+            "currentWidth": 1170,
+            "currentHeight": 2532
+          }
+        }
+      ],
       "note": "Real React MachineDetailPanel route/provider and KMP SettingsComputerDetailPage route capture with seeded computer, workspace, and agent state."
     },
     {
@@ -2601,6 +4241,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked."
     },
     {
@@ -2626,6 +4278,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Post-sign-in loading transition: MainLayout mounted at the server home with channels/DMs/agents/computers still fetching, so the mobile home surface shows Sidebar skeleton rows. Parity target for replacing the Android app's gray home loading state (task #372)."
     },
     {
@@ -2635,22 +4299,34 @@
       "category": "app/thread",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.7723083088431739,
-      "rgbSimilarity": 0.8938864680597568,
+      "similarity": 0.7611599265130301,
+      "rgbSimilarity": 0.8884342216232464,
       "baselineImage": "latest/react/components.thread.message-row.rich-content.png",
       "currentImage": "latest/android/components.thread.message-row.rich-content.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.message-row.rich-content.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.7723083088431739,
-        "rgbSimilarity": 0.8938864680597568,
-        "pixelMismatchRatio": 0.22769169115682608,
+        "pixelPerfectSimilarity": 0.7611599265130301,
+        "rgbSimilarity": 0.8884342216232464,
+        "pixelMismatchRatio": 0.2388400734869699,
         "comparisonWidth": 1026,
         "comparisonHeight": 1182,
         "baselineWidth": 1026,
-        "baselineHeight": 1098,
+        "baselineHeight": 1176,
         "currentWidth": 1026,
         "currentHeight": 1182
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer."
     },
     {
@@ -2660,15 +4336,15 @@
       "category": "app/thread",
       "captureType": "component-fixture",
       "status": "different",
-      "similarity": 0.4984087441433413,
-      "rgbSimilarity": 0.8194302987143975,
+      "similarity": 0.4977606297511511,
+      "rgbSimilarity": 0.82182362172438,
       "baselineImage": "latest/react/components.thread.message-row.long-inline-code.png",
       "currentImage": "latest/android/components.thread.message-row.long-inline-code.png",
       "sideBySideImage": "latest/diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png",
       "metrics": {
-        "pixelPerfectSimilarity": 0.4984087441433413,
-        "rgbSimilarity": 0.8194302987143975,
-        "pixelMismatchRatio": 0.5015912558566586,
+        "pixelPerfectSimilarity": 0.4977606297511511,
+        "rgbSimilarity": 0.82182362172438,
+        "pixelMismatchRatio": 0.5022393702488489,
         "comparisonWidth": 1170,
         "comparisonHeight": 2532,
         "baselineWidth": 1170,
@@ -2676,6 +4352,18 @@
         "currentWidth": 1170,
         "currentHeight": 2532
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Inline-code cross-platform net (task #400): real React MessageItem vs Android shared long_inline_code thread fixture. Covers compact short inline-code chips, char-level wrapping of long paths/commands (#58), trailing-edge inline-code border (#228), and markdown flow around code spans. OHOS leg pending self-hosted capture harness."
     },
     {
@@ -2701,6 +4389,18 @@
         "currentWidth": 1170,
         "currentHeight": 7500
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Full-height (content-height, not viewport-clipped) Settings Administration route for react↔android parity (task #388). React renders all ADMINISTRATION_VISUAL_SECTIONS stacked, unclamped, captured fullPage (verified 1170x6648). Android eager full-height capture on main (#259, verified 1170x7382; density diff normalizes). First react↔android full-height pairing runs next full/nightly."
     },
     {
@@ -2726,6 +4426,18 @@
         "currentWidth": 1170,
         "currentHeight": 2604
       },
+      "comparisons": [
+        {
+          "current": "ios",
+          "label": "iOS",
+          "comparison": "react__ios",
+          "status": "missing",
+          "similarity": null,
+          "rgbSimilarity": null,
+          "currentImage": null,
+          "sideBySideImage": null
+        }
+      ],
       "note": "Full-height (content-height, not viewport-clipped) Settings Connected Apps route for react↔android parity (task #388). React renders IntegrationsSection unclamped, captured fullPage (harness stubs the connected-apps endpoints so it mirrors the canonical seed: Marketplace 3 / Installed 2 / My apps 1, no Storage Sync); short routes report true content height. Android capture (#259) + data alignment (#404/#405 via #262: server_local counts as Installed, Storage Sync placeholder removed) both on main. Validated by the first react↔android full-height pairing (run 28880036248) + fidelity/data alignment (#4103/#4110/#262); active as of 2026-07-07."
     }
   ]

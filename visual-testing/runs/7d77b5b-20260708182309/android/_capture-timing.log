@@ -1,0 +1,42 @@
+60619 START captureAuthLoginSigning
+78787 OK captureAuthLoginSigning durationMs=18167
+78933 START captureUiButtonStates
+89153 OK captureUiButtonStates durationMs=10220
+89202 START captureThreadMessageRowRichContent
+96655 OK captureThreadMessageRowRichContent durationMs=7453
+96779 START captureChannelSettingsPanel
+106617 OK captureChannelSettingsPanel durationMs=9837
+106746 START captureHomeTitlebarStates
+111973 OK captureHomeTitlebarStates durationMs=5227
+113272 START captureUiTextareaStates
+123814 OK captureUiTextareaStates durationMs=10542
+123936 START captureNavigationTabbarStates
+133059 OK captureNavigationTabbarStates durationMs=9124
+134547 START captureTokenPalette
+141329 OK captureTokenPalette durationMs=6781
+141637 START captureChannelMembersPanel
+149276 OK captureChannelMembersPanel durationMs=7643
+150244 START captureThreadMessageSharePreview
+156200 OK captureThreadMessageSharePreview durationMs=5954
+156436 START captureMembersCreateAgentClaudeCustomProviderDialog
+165933 OK captureMembersCreateAgentClaudeCustomProviderDialog durationMs=9504
+167155 START captureMembersHumanDetailProfileScreen
+174591 OK captureMembersHumanDetailProfileScreen durationMs=7434
+175644 START captureMembersAgentDetailRemindersScreen
+183752 OK captureMembersAgentDetailRemindersScreen durationMs=8111
+184670 START captureSettingsAdministrationOnboarding
+191207 OK captureSettingsAdministrationOnboarding durationMs=6540
+191642 START captureRaftUiWipOverlayShellsStates
+196564 OK captureRaftUiWipOverlayShellsStates durationMs=4933
+197207 START captureAuthForgotPasswordScreen
+212697 OK captureAuthForgotPasswordScreen durationMs=15489
+213069 START captureMembersAgentDetailProfile
+226196 OK captureMembersAgentDetailProfile durationMs=13132
+226609 START captureHomeSavedResults
+234362 OK captureHomeSavedResults durationMs=7754
+234782 START captureRaftUiControlledOpenOverlays
+240553 OK captureRaftUiControlledOpenOverlays durationMs=5771
+240740 START captureSettingsConnectedAppsFullHeight
+249401 OK captureSettingsConnectedAppsFullHeight durationMs=8653
+249798 START captureAuthChooseServerScreen
+257621 OK captureAuthChooseServerScreen durationMs=7831

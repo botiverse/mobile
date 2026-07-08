@@ -1,0 +1,19 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.ui.attention-dot.states",
+  "image": "components.ui.attention-dot.states.png",
+  "pageName": "compose_ui_attention_dot_visual",
+  "pageData": {
+    "pageName": "compose_ui_attention_dot_visual",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

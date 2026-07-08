@@ -1,37 +1,41 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-07T22:26:27.859Z",
-  "latestRunId": "b0f6a2f-20260707222554",
+  "generatedAt": "2026-07-08T18:24:10.048Z",
+  "latestRunId": "7d77b5b-20260708182309",
   "latest": {
-    "runId": "b0f6a2f-20260707222554",
-    "commit": "b0f6a2f-20260707222554",
-    "commitSubject": "fix(home): no dismiss-activation delay for click-opened popovers (task #436 follow-up) (#313)",
-    "generatedAt": "2026-07-07T22:26:27.859Z",
+    "runId": "7d77b5b-20260708182309",
+    "commit": "7d77b5b-20260708182309",
+    "commitSubject": "ci(visual-testing): report must wait for ios-capture (ordering race) (#385)",
+    "generatedAt": "2026-07-08T18:24:10.048Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 87,
+      "total": 89,
       "same": 0,
       "pass": 0,
       "basic-pass": 5,
-      "different": 80,
+      "different": 82,
       "missing": 2
     },
     "analysisSummary": {
-      "total": 87,
+      "total": 89,
       "ready": 0,
-      "pending": 87
+      "pending": 89
     },
+    "comparisons": [
+      "react__android",
+      "react__ios"
+    ],
     "componentMatrixSummary": {
-      "total": 107,
-      "active": 88,
+      "total": 109,
+      "active": 90,
       "pending": 16,
       "skipped": 3,
       "captureTypes": {
         "component-fixture": {
-          "total": 78,
-          "active": 74,
+          "total": 80,
+          "active": 76,
           "pending": 2,
           "skipped": 2
         },
@@ -63,19 +67,19 @@
         }
       }
     },
-    "href": "runs/b0f6a2f-20260707222554/",
-    "componentMatrix": "runs/b0f6a2f-20260707222554/component-matrix.json",
-    "llms": "runs/b0f6a2f-20260707222554/metadata.json"
+    "href": "runs/7d77b5b-20260708182309/",
+    "componentMatrix": "runs/7d77b5b-20260708182309/component-matrix.json",
+    "llms": "runs/7d77b5b-20260708182309/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 107,
-    "active": 88,
+    "total": 109,
+    "active": 90,
     "pending": 16,
     "skipped": 3,
     "captureTypes": {
       "component-fixture": {
-        "total": 78,
-        "active": 74,
+        "total": 80,
+        "active": 76,
         "pending": 2,
         "skipped": 2
       },
@@ -108,6 +112,74 @@
     }
   },
   "runs": [
+    {
+      "runId": "7d77b5b-20260708182309",
+      "commit": "7d77b5b-20260708182309",
+      "commitSubject": "ci(visual-testing): report must wait for ios-capture (ordering race) (#385)",
+      "generatedAt": "2026-07-08T18:24:10.048Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 89,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 5,
+        "different": 82,
+        "missing": 2
+      },
+      "analysisSummary": {
+        "total": 89,
+        "ready": 0,
+        "pending": 89
+      },
+      "comparisons": [
+        "react__android",
+        "react__ios"
+      ],
+      "componentMatrixSummary": {
+        "total": 109,
+        "active": 90,
+        "pending": 16,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 80,
+            "active": 76,
+            "pending": 2,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 29,
+            "active": 14,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 90,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 103
+          },
+          "android": {
+            "active": 84,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 103
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 83,
+            "unsupported": 0,
+            "total": 83
+          }
+        }
+      },
+      "href": "runs/7d77b5b-20260708182309/",
+      "componentMatrix": "runs/7d77b5b-20260708182309/component-matrix.json",
+      "llms": "runs/7d77b5b-20260708182309/metadata.json"
+    },
     {
       "runId": "b0f6a2f-20260707222554",
       "commit": "b0f6a2f-20260707222554",

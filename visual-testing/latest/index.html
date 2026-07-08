@@ -26,6 +26,10 @@
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
     .case { border: 2px solid #141111; background: #fff; padding: 12px; box-shadow: 4px 4px 0 #141111; scroll-margin-top: 16px; }
     .caseHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+    /* Long dotted case ids must wrap on narrow (phone) viewports instead of
+       pushing the status badge past the right edge of the document. */
+    .caseHeader > div { min-width: 0; }
+    .caseHeader code { overflow-wrap: anywhere; }
     .caseHeader span { display: block; margin-top: 4px; color: #6b625f; font-size: 13px; }
     .case img { width: 100%; display: block; border: 1px solid #141111; background: #fff; }
     .case img.sideBySide { width: 100%; height: auto; object-fit: contain; }
@@ -90,23 +94,24 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>b0f6a2f-20260707222554</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-07T22:26:27.859Z" data-timestamp="2026-07-07T22:26:27.859Z" title="2026-07-07T22:26:27.859Z">2026-07-07 22:26:27 UTC</time></p>
+    <p class="runMeta"><code>7d77b5b-20260708182309</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-08T18:24:10.048Z" data-timestamp="2026-07-08T18:24:10.048Z" title="2026-07-08T18:24:10.048Z">2026-07-08 18:24:10 UTC</time></p>
+    <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a></p>
     <div class="summary">
-      <span class="pill">Total 87</span>
+      <span class="pill">Total 89</span>
       <span class="pill">Same 0</span>
       <span class="pill">Pass 0</span>
       <span class="pill">Basic pass 5</span>
-      <span class="pill">Different 80</span>
+      <span class="pill">Different 82</span>
       <span class="pill">Missing 2</span>
-      <span class="pill">AI 0/87 ready</span>
-      <span class="pill">Matrix 88/107 active</span>
-      <span class="pill">Components Parity 74/78 active</span><span class="pill">Screens Parity 14/29 active</span>
+      <span class="pill">AI 0/89 ready</span>
+      <span class="pill">Matrix 90/109 active</span>
+      <span class="pill">Components Parity 76/80 active</span><span class="pill">Screens Parity 14/29 active</span>
     </div>
   </header>
   <div class="layout">
     <nav class="tree" aria-label="Visual case categories">
       <strong>Cases</strong>
-      <ul><li><strong>components</strong><ul><li><strong>library</strong><ul><li><strong>segmented-control</strong><ul><li><a href="#case-components-ui-segmented-control-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>button</strong><ul><li><a href="#case-components-ui-button-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>badge</strong><ul><li><a href="#case-components-ui-badge-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>form-field</strong><ul><li><a href="#case-components-ui-form-field-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>textarea</strong><ul><li><a href="#case-components-ui-textarea-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>checkbox</strong><ul><li><a href="#case-components-ui-checkbox-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>check-marker</strong><ul><li><a href="#case-components-ui-check-marker-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>attention-dot</strong><ul><li><a href="#case-components-ui-attention-dot-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>status-dot</strong><ul><li><a href="#case-components-ui-status-dot-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>progress-bar</strong><ul><li><a href="#case-components-ui-progress-bar-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>skeleton</strong><ul><li><a href="#case-components-ui-skeleton-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>spinner</strong><ul><li><a href="#case-components-ui-spinner-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>slug-input</strong><ul><li><a href="#case-components-ui-slug-input-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>section-eyebrow</strong><ul><li><a href="#case-components-ui-section-eyebrow-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>section-header</strong><ul><li><a href="#case-components-ui-section-header-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>selection-popover</strong><ul><li><a href="#case-components-ui-selection-popover-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>menu-item</strong><ul><li><a href="#case-components-ui-menu-item-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>select</strong><ul><li><a href="#case-components-ui-select-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>surface-list-item</strong><ul><li><a href="#case-components-ui-surface-list-item-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>avatar-list-row</strong><ul><li><a href="#case-components-ui-avatar-list-row-states"><span>states</span><code>different</code></a></li></ul></li></ul></li><li><strong>auth</strong><ul><li><strong>register</strong><ul><li><a href="#case-components-auth-register-inputs"><span>inputs</span><code>different</code></a></li></ul></li></ul></li><li><strong>app</strong><ul><li><strong>navigation</strong><ul><li><strong>tabbar</strong><ul><li><a href="#case-components-navigation-tabbar-states"><span>states</span><code>different</code></a></li></ul></li></ul></li><li><strong>thread</strong><ul><li><strong>composer</strong><ul><li><a href="#case-components-thread-composer-empty"><span>empty</span><code>different</code></a></li><li><a href="#case-components-thread-composer-states"><span>states</span><code>different</code></a></li><li><a href="#case-components-thread-composer-as-task-selected"><span>as-task-selected</span><code>different</code></a></li><li><a href="#case-components-thread-composer-member-suggestions"><span>member-suggestions</span><code>different</code></a></li><li><a href="#case-components-thread-composer-channel-suggestions"><span>channel-suggestions</span><code>different</code></a></li><li><a href="#case-components-thread-composer-image-preview"><span>image-preview</span><code>different</code></a></li></ul></li><li><strong>files</strong><ul><li><a href="#case-components-thread-files-list"><span>list</span><code>different</code></a></li></ul></li><li><strong>header</strong><ul><li><a href="#case-components-thread-header-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>message</strong><ul><li><a href="#case-components-thread-message-row"><span>row</span><code>different</code></a></li></ul></li><li><strong>message-row</strong><ul><li><a href="#case-components-thread-message-row-deleted-human"><span>deleted-human</span><code>different</code></a></li><li><a href="#case-components-thread-message-row-rich-content"><span>rich-content</span><code>different</code></a></li><li><a href="#case-components-thread-message-row-long-inline-code"><span>long-inline-code</span><code>different</code></a></li></ul></li><li><strong>message-menu</strong><ul><li><a href="#case-components-thread-message-menu-default"><span>default</span><code>different</code></a></li><li><a href="#case-components-thread-message-menu-task"><span>task</span><code>different</code></a></li></ul></li><li><strong>message-share</strong><ul><li><a href="#case-components-thread-message-share-selection"><span>selection</span><code>different</code></a></li></ul></li></ul></li><li><strong>home</strong><ul><li><strong>titlebar</strong><ul><li><a href="#case-components-home-titlebar-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>notification-center</strong><ul><li><a href="#case-components-home-notification-center-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>search</strong><ul><li><a href="#case-components-home-search-results"><span>results</span><code>different</code></a></li><li><a href="#case-components-home-search-channel-dropdown"><span>channel-dropdown</span><code>different</code></a></li></ul></li><li><strong>saved</strong><ul><li><a href="#case-components-home-saved-results"><span>results</span><code>different</code></a></li></ul></li><li><strong>activity</strong><ul><li><a href="#case-components-home-activity-results"><span>results</span><code>different</code></a></li></ul></li><li><strong>create-channel</strong><ul><li><a href="#case-components-home-create-channel-dialog"><span>dialog</span><code>different</code></a></li></ul></li></ul></li><li><strong>tasks</strong><ul><li><strong>panel</strong><ul><li><a href="#case-components-tasks-panel-states"><span>states</span><code>different</code></a></li></ul></li><li><a href="#case-components-tasks-status-menu"><span>status-menu</span><code>different</code></a></li></ul></li><li><strong>settings</strong><ul><li><strong>page</strong><ul><li><a href="#case-components-settings-page-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>account</strong><ul><li><a href="#case-components-settings-account-page"><span>page</span><code>different</code></a></li><li><a href="#case-components-settings-account-provider-linked"><span>provider-linked</span><code>different</code></a></li><li><a href="#case-components-settings-account-password-expanded"><span>password-expanded</span><code>different</code></a></li><li><a href="#case-components-settings-account-error-state"><span>error-state</span><code>different</code></a></li></ul></li><li><strong>server</strong><ul><li><a href="#case-components-settings-server-profile"><span>profile</span><code>different</code></a></li></ul></li><li><strong>administration</strong><ul><li><a href="#case-components-settings-administration-admins"><span>admins</span><code>different</code></a></li><li><a href="#case-components-settings-administration-invites"><span>invites</span><code>different</code></a></li><li><a href="#case-components-settings-administration-join-links"><span>join-links</span><code>different</code></a></li><li><a href="#case-components-settings-administration-pre-join-agreement"><span>pre-join-agreement</span><code>different</code></a></li><li><a href="#case-components-settings-administration-onboarding"><span>onboarding</span><code>different</code></a></li><li><a href="#case-components-settings-administration-member-permissions"><span>member-permissions</span><code>different</code></a></li><li><a href="#case-components-settings-administration-translation"><span>translation</span><code>different</code></a></li></ul></li><li><strong>billing</strong><ul><li><a href="#case-components-settings-billing-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>language-region</strong><ul><li><a href="#case-components-settings-language-region-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>appearance</strong><ul><li><a href="#case-components-settings-appearance-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>notifications</strong><ul><li><a href="#case-components-settings-notifications-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>connected-apps</strong><ul><li><a href="#case-components-settings-connected-apps-page"><span>page</span><code>different</code></a></li></ul></li></ul></li></ul></li><li><strong>members</strong><ul><li><strong>create-agent</strong><ul><li><a href="#case-components-members-create-agent-dialog"><span>dialog</span><code>different</code></a></li><li><a href="#case-components-members-create-agent-claude-dialog"><span>claude-dialog</span><code>different</code></a></li><li><a href="#case-components-members-create-agent-claude-custom-provider-dialog"><span>claude-custom-provider-dialog</span><code>missing</code></a></li></ul></li><li><strong>agent-detail</strong><ul><li><a href="#case-components-members-agent-detail-profile"><span>profile</span><code>different</code></a></li></ul></li><li><a href="#case-components-members-agent-lifecycle-actions"><span>agent-lifecycle-actions</span><code>different</code></a></li><li><a href="#case-components-members-avatar-management"><span>avatar-management</span><code>different</code></a></li></ul></li><li><strong>channel</strong><ul><li><strong>members</strong><ul><li><a href="#case-components-channel-members-panel"><span>panel</span><code>different</code></a></li><li><a href="#case-components-channel-members-add-panel"><span>add-panel</span><code>different</code></a></li></ul></li><li><strong>settings</strong><ul><li><a href="#case-components-channel-settings-panel"><span>panel</span><code>different</code></a></li></ul></li></ul></li></ul></li><li><strong>screens</strong><ul><li><strong>auth</strong><ul><li><strong>login</strong><ul><li><a href="#case-screens-auth-login-signing"><span>signing</span><code>different</code></a></li></ul></li></ul></li><li><strong>members</strong><ul><li><strong>agent-detail</strong><ul><li><a href="#case-screens-members-agent-detail-profile"><span>profile</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-permissions"><span>permissions</span><code>missing</code></a></li><li><a href="#case-screens-members-agent-detail-reminders"><span>reminders</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-workspace"><span>workspace</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-apps"><span>apps</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-activity"><span>activity</span><code>different</code></a></li></ul></li><li><strong>human</strong><ul><li><a href="#case-screens-members-human-profile"><span>profile</span><code>different</code></a></li></ul></li></ul></li><li><strong>app</strong><ul><li><strong>settings</strong><ul><li><strong>administration</strong><ul><li><a href="#case-screens-settings-administration-full-height"><span>full-height</span><code>different</code></a></li></ul></li><li><strong>connected-apps</strong><ul><li><a href="#case-screens-settings-connected-apps-full-height"><span>full-height</span><code>different</code></a></li></ul></li><li><a href="#case-screens-settings-computers"><span>computers</span><code>different</code></a></li><li><a href="#case-screens-settings-computer-detail"><span>computer-detail</span><code>different</code></a></li><li><a href="#case-screens-settings-server-danger-modal"><span>server-danger-modal</span><code>different</code></a></li></ul></li><li><strong>home</strong><ul><li><a href="#case-screens-home-loading"><span>loading</span><code>different</code></a></li></ul></li></ul></li></ul></li></ul>
+      <ul><li><strong>components</strong><ul><li><strong>library</strong><ul><li><strong>segmented-control</strong><ul><li><a href="#case-components-ui-segmented-control-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>button</strong><ul><li><a href="#case-components-ui-button-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>badge</strong><ul><li><a href="#case-components-ui-badge-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>form-field</strong><ul><li><a href="#case-components-ui-form-field-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>textarea</strong><ul><li><a href="#case-components-ui-textarea-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>checkbox</strong><ul><li><a href="#case-components-ui-checkbox-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>check-marker</strong><ul><li><a href="#case-components-ui-check-marker-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>attention-dot</strong><ul><li><a href="#case-components-ui-attention-dot-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>status-dot</strong><ul><li><a href="#case-components-ui-status-dot-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>progress-bar</strong><ul><li><a href="#case-components-ui-progress-bar-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>skeleton</strong><ul><li><a href="#case-components-ui-skeleton-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>spinner</strong><ul><li><a href="#case-components-ui-spinner-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>slug-input</strong><ul><li><a href="#case-components-ui-slug-input-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>section-eyebrow</strong><ul><li><a href="#case-components-ui-section-eyebrow-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>section-header</strong><ul><li><a href="#case-components-ui-section-header-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>selection-popover</strong><ul><li><a href="#case-components-ui-selection-popover-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>menu-item</strong><ul><li><a href="#case-components-ui-menu-item-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>select</strong><ul><li><a href="#case-components-ui-select-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>surface-list-item</strong><ul><li><a href="#case-components-ui-surface-list-item-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>avatar-list-row</strong><ul><li><a href="#case-components-ui-avatar-list-row-states"><span>states</span><code>different</code></a></li></ul></li></ul></li><li><strong>auth</strong><ul><li><strong>register</strong><ul><li><a href="#case-components-auth-register-inputs"><span>inputs</span><code>different</code></a></li></ul></li></ul></li><li><strong>app</strong><ul><li><strong>navigation</strong><ul><li><strong>tabbar</strong><ul><li><a href="#case-components-navigation-tabbar-states"><span>states</span><code>different</code></a></li></ul></li></ul></li><li><strong>thread</strong><ul><li><strong>composer</strong><ul><li><a href="#case-components-thread-composer-empty"><span>empty</span><code>different</code></a></li><li><a href="#case-components-thread-composer-states"><span>states</span><code>different</code></a></li><li><a href="#case-components-thread-composer-as-task-selected"><span>as-task-selected</span><code>different</code></a></li><li><a href="#case-components-thread-composer-member-suggestions"><span>member-suggestions</span><code>different</code></a></li><li><a href="#case-components-thread-composer-channel-suggestions"><span>channel-suggestions</span><code>different</code></a></li><li><a href="#case-components-thread-composer-image-preview"><span>image-preview</span><code>different</code></a></li></ul></li><li><strong>files</strong><ul><li><a href="#case-components-thread-files-list"><span>list</span><code>different</code></a></li></ul></li><li><strong>header</strong><ul><li><a href="#case-components-thread-header-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>message</strong><ul><li><a href="#case-components-thread-message-row"><span>row</span><code>different</code></a></li></ul></li><li><strong>message-row</strong><ul><li><a href="#case-components-thread-message-row-deleted-human"><span>deleted-human</span><code>different</code></a></li><li><a href="#case-components-thread-message-row-rich-content"><span>rich-content</span><code>different</code></a></li><li><a href="#case-components-thread-message-row-long-inline-code"><span>long-inline-code</span><code>different</code></a></li></ul></li><li><strong>message-menu</strong><ul><li><a href="#case-components-thread-message-menu-default"><span>default</span><code>different</code></a></li><li><a href="#case-components-thread-message-menu-task"><span>task</span><code>different</code></a></li></ul></li><li><strong>message-share</strong><ul><li><a href="#case-components-thread-message-share-selection"><span>selection</span><code>different</code></a></li></ul></li><li><a href="#case-components-thread-forward-modal"><span>forward-modal</span><code>different</code></a></li><li><a href="#case-components-thread-comment-anchor"><span>comment-anchor</span><code>different</code></a></li></ul></li><li><strong>home</strong><ul><li><strong>titlebar</strong><ul><li><a href="#case-components-home-titlebar-states"><span>states</span><code>basic-pass</code></a></li></ul></li><li><strong>notification-center</strong><ul><li><a href="#case-components-home-notification-center-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>search</strong><ul><li><a href="#case-components-home-search-results"><span>results</span><code>different</code></a></li><li><a href="#case-components-home-search-channel-dropdown"><span>channel-dropdown</span><code>different</code></a></li></ul></li><li><strong>saved</strong><ul><li><a href="#case-components-home-saved-results"><span>results</span><code>different</code></a></li></ul></li><li><strong>activity</strong><ul><li><a href="#case-components-home-activity-results"><span>results</span><code>different</code></a></li></ul></li><li><strong>create-channel</strong><ul><li><a href="#case-components-home-create-channel-dialog"><span>dialog</span><code>different</code></a></li></ul></li></ul></li><li><strong>tasks</strong><ul><li><strong>panel</strong><ul><li><a href="#case-components-tasks-panel-states"><span>states</span><code>different</code></a></li></ul></li><li><a href="#case-components-tasks-status-menu"><span>status-menu</span><code>different</code></a></li></ul></li><li><strong>settings</strong><ul><li><strong>page</strong><ul><li><a href="#case-components-settings-page-states"><span>states</span><code>different</code></a></li></ul></li><li><strong>account</strong><ul><li><a href="#case-components-settings-account-page"><span>page</span><code>different</code></a></li><li><a href="#case-components-settings-account-provider-linked"><span>provider-linked</span><code>different</code></a></li><li><a href="#case-components-settings-account-password-expanded"><span>password-expanded</span><code>different</code></a></li><li><a href="#case-components-settings-account-error-state"><span>error-state</span><code>different</code></a></li></ul></li><li><strong>server</strong><ul><li><a href="#case-components-settings-server-profile"><span>profile</span><code>different</code></a></li></ul></li><li><strong>administration</strong><ul><li><a href="#case-components-settings-administration-admins"><span>admins</span><code>different</code></a></li><li><a href="#case-components-settings-administration-invites"><span>invites</span><code>different</code></a></li><li><a href="#case-components-settings-administration-join-links"><span>join-links</span><code>different</code></a></li><li><a href="#case-components-settings-administration-pre-join-agreement"><span>pre-join-agreement</span><code>different</code></a></li><li><a href="#case-components-settings-administration-onboarding"><span>onboarding</span><code>different</code></a></li><li><a href="#case-components-settings-administration-member-permissions"><span>member-permissions</span><code>different</code></a></li><li><a href="#case-components-settings-administration-translation"><span>translation</span><code>different</code></a></li></ul></li><li><strong>billing</strong><ul><li><a href="#case-components-settings-billing-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>language-region</strong><ul><li><a href="#case-components-settings-language-region-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>appearance</strong><ul><li><a href="#case-components-settings-appearance-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>notifications</strong><ul><li><a href="#case-components-settings-notifications-page"><span>page</span><code>different</code></a></li></ul></li><li><strong>connected-apps</strong><ul><li><a href="#case-components-settings-connected-apps-page"><span>page</span><code>different</code></a></li></ul></li></ul></li></ul></li><li><strong>members</strong><ul><li><strong>create-agent</strong><ul><li><a href="#case-components-members-create-agent-dialog"><span>dialog</span><code>different</code></a></li><li><a href="#case-components-members-create-agent-claude-dialog"><span>claude-dialog</span><code>different</code></a></li><li><a href="#case-components-members-create-agent-claude-custom-provider-dialog"><span>claude-custom-provider-dialog</span><code>missing</code></a></li></ul></li><li><strong>agent-detail</strong><ul><li><a href="#case-components-members-agent-detail-profile"><span>profile</span><code>different</code></a></li></ul></li><li><a href="#case-components-members-agent-lifecycle-actions"><span>agent-lifecycle-actions</span><code>different</code></a></li><li><a href="#case-components-members-avatar-management"><span>avatar-management</span><code>different</code></a></li></ul></li><li><strong>channel</strong><ul><li><strong>members</strong><ul><li><a href="#case-components-channel-members-panel"><span>panel</span><code>different</code></a></li><li><a href="#case-components-channel-members-add-panel"><span>add-panel</span><code>different</code></a></li></ul></li><li><strong>settings</strong><ul><li><a href="#case-components-channel-settings-panel"><span>panel</span><code>different</code></a></li></ul></li></ul></li></ul></li><li><strong>screens</strong><ul><li><strong>auth</strong><ul><li><strong>login</strong><ul><li><a href="#case-screens-auth-login-signing"><span>signing</span><code>different</code></a></li></ul></li></ul></li><li><strong>members</strong><ul><li><strong>agent-detail</strong><ul><li><a href="#case-screens-members-agent-detail-profile"><span>profile</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-permissions"><span>permissions</span><code>missing</code></a></li><li><a href="#case-screens-members-agent-detail-reminders"><span>reminders</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-workspace"><span>workspace</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-apps"><span>apps</span><code>different</code></a></li><li><a href="#case-screens-members-agent-detail-activity"><span>activity</span><code>different</code></a></li></ul></li><li><strong>human</strong><ul><li><a href="#case-screens-members-human-profile"><span>profile</span><code>different</code></a></li></ul></li></ul></li><li><strong>app</strong><ul><li><strong>settings</strong><ul><li><strong>administration</strong><ul><li><a href="#case-screens-settings-administration-full-height"><span>full-height</span><code>different</code></a></li></ul></li><li><strong>connected-apps</strong><ul><li><a href="#case-screens-settings-connected-apps-full-height"><span>full-height</span><code>different</code></a></li></ul></li><li><a href="#case-screens-settings-computers"><span>computers</span><code>different</code></a></li><li><a href="#case-screens-settings-computer-detail"><span>computer-detail</span><code>different</code></a></li><li><a href="#case-screens-settings-server-danger-modal"><span>server-danger-modal</span><code>different</code></a></li></ul></li><li><strong>home</strong><ul><li><a href="#case-screens-home-loading"><span>loading</span><code>different</code></a></li></ul></li></ul></li></ul></li></ul>
     </nav>
     <main><section class="caseGroup" id="group-Components-Parity-library">
       <h2>Components Parity / library</h2>
@@ -117,8 +122,8 @@
       </div>
       <a href="diff/react__android/components.ui.segmented-control.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.segmented-control.states.side-by-side.png" alt="components.ui.segmented-control.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×96</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:21.692Z" data-timestamp="2026-07-07T21:59:21.692Z" title="2026-07-07T21:59:21.692Z">2026-07-07 21:59:21 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×96</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:52.800Z" data-timestamp="2026-07-07T22:17:52.800Z" title="1783462672800">2026-07-07 22:17:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×96</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:19.674Z" data-timestamp="2026-07-08T17:55:19.674Z" title="2026-07-08T17:55:19.674Z">2026-07-08 17:55:19 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×96</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:11.893Z" data-timestamp="2026-07-08T18:12:11.893Z" title="1783534331893">2026-07-08 18:12:11 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -176,8 +181,8 @@
       </div>
       <a href="diff/react__android/components.ui.button.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.button.states.side-by-side.png" alt="components.ui.button.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:24.437Z" data-timestamp="2026-07-07T21:59:24.437Z" title="2026-07-07T21:59:24.437Z">2026-07-07 21:59:24 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:08.741Z" data-timestamp="2026-07-07T22:17:08.741Z" title="1783462628741">2026-07-07 22:17:08 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:22.309Z" data-timestamp="2026-07-08T17:55:22.309Z" title="2026-07-08T17:55:22.309Z">2026-07-08 17:55:22 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:24.431Z" data-timestamp="2026-07-08T18:10:24.431Z" title="1783534224431">2026-07-08 18:10:24 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -235,8 +240,8 @@
       </div>
       <a href="diff/react__android/components.ui.badge.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.badge.states.side-by-side.png" alt="components.ui.badge.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:26.989Z" data-timestamp="2026-07-07T21:59:26.989Z" title="2026-07-07T21:59:26.989Z">2026-07-07 21:59:26 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:45.589Z" data-timestamp="2026-07-07T22:17:45.589Z" title="1783462665589">2026-07-07 22:17:45 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:24.869Z" data-timestamp="2026-07-08T17:55:24.869Z" title="2026-07-08T17:55:24.869Z">2026-07-08 17:55:24 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:13.627Z" data-timestamp="2026-07-08T18:12:13.627Z" title="1783534333627">2026-07-08 18:12:13 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -294,8 +299,8 @@
       </div>
       <a href="diff/react__android/components.ui.form-field.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.form-field.states.side-by-side.png" alt="components.ui.form-field.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×296</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:29.477Z" data-timestamp="2026-07-07T21:59:29.477Z" title="2026-07-07T21:59:29.477Z">2026-07-07 21:59:29 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×226</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:58.612Z" data-timestamp="2026-07-07T22:19:58.612Z" title="1783462798612">2026-07-07 22:19:58 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×296</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:27.423Z" data-timestamp="2026-07-08T17:55:27.423Z" title="2026-07-08T17:55:27.423Z">2026-07-08 17:55:27 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×226</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:07.380Z" data-timestamp="2026-07-08T18:12:07.380Z" title="1783534327380">2026-07-08 18:12:07 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -353,8 +358,8 @@
       </div>
       <a href="diff/react__android/components.ui.textarea.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.textarea.states.side-by-side.png" alt="components.ui.textarea.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×240</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:31.990Z" data-timestamp="2026-07-07T21:59:31.990Z" title="2026-07-07T21:59:31.990Z">2026-07-07 21:59:31 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×240</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:20.606Z" data-timestamp="2026-07-07T22:18:20.606Z" title="1783462700606">2026-07-07 22:18:20 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×240</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:29.934Z" data-timestamp="2026-07-08T17:55:29.934Z" title="2026-07-08T17:55:29.934Z">2026-07-08 17:55:29 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×240</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:59.195Z" data-timestamp="2026-07-08T18:10:59.195Z" title="1783534259195">2026-07-08 18:10:59 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -412,8 +417,8 @@
       </div>
       <a href="diff/react__android/components.ui.checkbox.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.checkbox.states.side-by-side.png" alt="components.ui.checkbox.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×132</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:34.443Z" data-timestamp="2026-07-07T21:59:34.443Z" title="2026-07-07T21:59:34.443Z">2026-07-07 21:59:34 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×132</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:30.677Z" data-timestamp="2026-07-07T22:20:30.677Z" title="1783462830677">2026-07-07 22:20:30 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×132</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:32.407Z" data-timestamp="2026-07-08T17:55:32.407Z" title="2026-07-08T17:55:32.407Z">2026-07-08 17:55:32 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×132</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:53.045Z" data-timestamp="2026-07-08T18:13:53.045Z" title="1783534433045">2026-07-08 18:13:53 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -471,8 +476,8 @@
       </div>
       <a href="diff/react__android/components.ui.check-marker.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.check-marker.states.side-by-side.png" alt="components.ui.check-marker.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×112</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:36.880Z" data-timestamp="2026-07-07T21:59:36.880Z" title="2026-07-07T21:59:36.880Z">2026-07-07 21:59:36 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×112</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:10.016Z" data-timestamp="2026-07-07T22:20:10.016Z" title="1783462810016">2026-07-07 22:20:10 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×112</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:34.890Z" data-timestamp="2026-07-08T17:55:34.890Z" title="2026-07-08T17:55:34.890Z">2026-07-08 17:55:34 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×112</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:13.985Z" data-timestamp="2026-07-08T18:12:13.985Z" title="1783534333985">2026-07-08 18:12:13 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -530,8 +535,8 @@
       </div>
       <a href="diff/react__android/components.ui.attention-dot.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.attention-dot.states.side-by-side.png" alt="components.ui.attention-dot.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×80</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:39.373Z" data-timestamp="2026-07-07T21:59:39.373Z" title="2026-07-07T21:59:39.373Z">2026-07-07 21:59:39 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×80</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:59.563Z" data-timestamp="2026-07-07T22:19:59.563Z" title="1783462799563">2026-07-07 22:19:59 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×80</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:37.389Z" data-timestamp="2026-07-08T17:55:37.389Z" title="2026-07-08T17:55:37.389Z">2026-07-08 17:55:37 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×80</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:43.318Z" data-timestamp="2026-07-08T18:12:43.318Z" title="1783534363318">2026-07-08 18:12:43 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -589,8 +594,8 @@
       </div>
       <a href="diff/react__android/components.ui.status-dot.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.status-dot.states.side-by-side.png" alt="components.ui.status-dot.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:41.907Z" data-timestamp="2026-07-07T21:59:41.907Z" title="2026-07-07T21:59:41.907Z">2026-07-07 21:59:41 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:39.249Z" data-timestamp="2026-07-07T22:17:39.249Z" title="1783462659249">2026-07-07 22:17:39 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:39.868Z" data-timestamp="2026-07-08T17:55:39.868Z" title="2026-07-08T17:55:39.868Z">2026-07-08 17:55:39 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:25.914Z" data-timestamp="2026-07-08T18:11:25.914Z" title="1783534285914">2026-07-08 18:11:25 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -648,8 +653,8 @@
       </div>
       <a href="diff/react__android/components.ui.progress-bar.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.progress-bar.states.side-by-side.png" alt="components.ui.progress-bar.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×124</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:44.377Z" data-timestamp="2026-07-07T21:59:44.377Z" title="2026-07-07T21:59:44.377Z">2026-07-07 21:59:44 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×124</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:21.748Z" data-timestamp="2026-07-07T22:20:21.748Z" title="1783462821748">2026-07-07 22:20:21 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×124</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:42.290Z" data-timestamp="2026-07-08T17:55:42.290Z" title="2026-07-08T17:55:42.290Z">2026-07-08 17:55:42 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×124</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:29.061Z" data-timestamp="2026-07-08T18:13:29.061Z" title="1783534409061">2026-07-08 18:13:29 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -707,8 +712,8 @@
       </div>
       <a href="diff/react__android/components.ui.skeleton.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.skeleton.states.side-by-side.png" alt="components.ui.skeleton.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:46.708Z" data-timestamp="2026-07-07T21:59:46.708Z" title="2026-07-07T21:59:46.708Z">2026-07-07 21:59:46 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:02.994Z" data-timestamp="2026-07-07T22:21:02.994Z" title="1783462862994">2026-07-07 22:21:02 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:44.607Z" data-timestamp="2026-07-08T17:55:44.607Z" title="2026-07-08T17:55:44.607Z">2026-07-08 17:55:44 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×150</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:13.897Z" data-timestamp="2026-07-08T18:13:13.897Z" title="1783534393897">2026-07-08 18:13:13 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -766,8 +771,8 @@
       </div>
       <a href="diff/react__android/components.ui.spinner.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.spinner.states.side-by-side.png" alt="components.ui.spinner.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:49.020Z" data-timestamp="2026-07-07T21:59:49.020Z" title="2026-07-07T21:59:49.020Z">2026-07-07 21:59:49 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:36.362Z" data-timestamp="2026-07-07T22:21:36.362Z" title="1783462896362">2026-07-07 22:21:36 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:47.101Z" data-timestamp="2026-07-08T17:55:47.101Z" title="2026-07-08T17:55:47.101Z">2026-07-08 17:55:47 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:25.084Z" data-timestamp="2026-07-08T18:13:25.084Z" title="1783534405084">2026-07-08 18:13:25 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -825,8 +830,8 @@
       </div>
       <a href="diff/react__android/components.ui.slug-input.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.slug-input.states.side-by-side.png" alt="components.ui.slug-input.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×122</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:51.391Z" data-timestamp="2026-07-07T21:59:51.391Z" title="2026-07-07T21:59:51.391Z">2026-07-07 21:59:51 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×122</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:43.699Z" data-timestamp="2026-07-07T22:20:43.699Z" title="1783462843699">2026-07-07 22:20:43 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×122</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:49.440Z" data-timestamp="2026-07-08T17:55:49.440Z" title="2026-07-08T17:55:49.440Z">2026-07-08 17:55:49 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×122</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:08.172Z" data-timestamp="2026-07-08T18:14:08.172Z" title="1783534448172">2026-07-08 18:14:08 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -884,8 +889,8 @@
       </div>
       <a href="diff/react__android/components.ui.section-eyebrow.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.section-eyebrow.states.side-by-side.png" alt="components.ui.section-eyebrow.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:53.704Z" data-timestamp="2026-07-07T21:59:53.704Z" title="2026-07-07T21:59:53.704Z">2026-07-07 21:59:53 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:04.707Z" data-timestamp="2026-07-07T22:18:04.707Z" title="1783462684707">2026-07-07 22:18:04 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:51.801Z" data-timestamp="2026-07-08T17:55:51.801Z" title="2026-07-08T17:55:51.801Z">2026-07-08 17:55:51 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×92</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:05.736Z" data-timestamp="2026-07-08T18:12:05.736Z" title="1783534325736">2026-07-08 18:12:05 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -943,8 +948,8 @@
       </div>
       <a href="diff/react__android/components.ui.section-header.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.section-header.states.side-by-side.png" alt="components.ui.section-header.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×88</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:56.036Z" data-timestamp="2026-07-07T21:59:56.036Z" title="2026-07-07T21:59:56.036Z">2026-07-07 21:59:56 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×88</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:40.110Z" data-timestamp="2026-07-07T22:21:40.110Z" title="1783462900110">2026-07-07 22:21:40 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×88</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:54.183Z" data-timestamp="2026-07-08T17:55:54.183Z" title="2026-07-08T17:55:54.183Z">2026-07-08 17:55:54 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×88</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:17.101Z" data-timestamp="2026-07-08T18:14:17.101Z" title="1783534457101">2026-07-08 18:14:17 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1002,8 +1007,8 @@
       </div>
       <a href="diff/react__android/components.ui.selection-popover.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.selection-popover.states.side-by-side.png" alt="components.ui.selection-popover.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×252</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T21:59:58.420Z" data-timestamp="2026-07-07T21:59:58.420Z" title="2026-07-07T21:59:58.420Z">2026-07-07 21:59:58 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×252</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:20.736Z" data-timestamp="2026-07-07T22:18:20.736Z" title="1783462700736">2026-07-07 22:18:20 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×252</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:56.635Z" data-timestamp="2026-07-08T17:55:56.635Z" title="2026-07-08T17:55:56.635Z">2026-07-08 17:55:56 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×252</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:33.411Z" data-timestamp="2026-07-08T18:12:33.411Z" title="1783534353411">2026-07-08 18:12:33 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1061,8 +1066,8 @@
       </div>
       <a href="diff/react__android/components.ui.menu-item.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.menu-item.states.side-by-side.png" alt="components.ui.menu-item.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×181</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:00.779Z" data-timestamp="2026-07-07T22:00:00.779Z" title="2026-07-07T22:00:00.779Z">2026-07-07 22:00:00 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×181</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:32.059Z" data-timestamp="2026-07-07T22:17:32.059Z" title="1783462652059">2026-07-07 22:17:32 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×181</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:55:59.010Z" data-timestamp="2026-07-08T17:55:59.010Z" title="2026-07-08T17:55:59.010Z">2026-07-08 17:55:59 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×181</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:46.617Z" data-timestamp="2026-07-08T18:11:46.617Z" title="1783534306617">2026-07-08 18:11:46 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1120,8 +1125,8 @@
       </div>
       <a href="diff/react__android/components.ui.select.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.select.states.side-by-side.png" alt="components.ui.select.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×194</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:03.210Z" data-timestamp="2026-07-07T22:00:03.210Z" title="2026-07-07T22:00:03.210Z">2026-07-07 22:00:03 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×194</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:52.325Z" data-timestamp="2026-07-07T22:18:52.325Z" title="1783462732325">2026-07-07 22:18:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×194</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:01.409Z" data-timestamp="2026-07-08T17:56:01.409Z" title="2026-07-08T17:56:01.409Z">2026-07-08 17:56:01 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×194</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:30.209Z" data-timestamp="2026-07-08T18:11:30.209Z" title="1783534290209">2026-07-08 18:11:30 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1179,8 +1184,8 @@
       </div>
       <a href="diff/react__android/components.ui.surface-list-item.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.surface-list-item.states.side-by-side.png" alt="components.ui.surface-list-item.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×182</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:05.644Z" data-timestamp="2026-07-07T22:00:05.644Z" title="2026-07-07T22:00:05.644Z">2026-07-07 22:00:05 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×182</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:15.011Z" data-timestamp="2026-07-07T22:19:15.011Z" title="1783462755011">2026-07-07 22:19:15 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×182</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:03.741Z" data-timestamp="2026-07-08T17:56:03.741Z" title="2026-07-08T17:56:03.741Z">2026-07-08 17:56:03 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×182</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:48.846Z" data-timestamp="2026-07-08T18:12:48.846Z" title="1783534368846">2026-07-08 18:12:48 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1238,8 +1243,8 @@
       </div>
       <a href="diff/react__android/components.ui.avatar-list-row.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.ui.avatar-list-row.states.side-by-side.png" alt="components.ui.avatar-list-row.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×168</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:08.047Z" data-timestamp="2026-07-07T22:00:08.047Z" title="2026-07-07T22:00:08.047Z">2026-07-07 22:00:08 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×168</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:06.452Z" data-timestamp="2026-07-07T22:17:06.452Z" title="1783462626452">2026-07-07 22:17:06 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×168</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:06.058Z" data-timestamp="2026-07-08T17:56:06.058Z" title="2026-07-08T17:56:06.058Z">2026-07-08 17:56:06 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×168</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:11.907Z" data-timestamp="2026-07-08T18:11:11.907Z" title="1783534271907">2026-07-08 18:11:11 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1300,8 +1305,8 @@
       </div>
       <a href="diff/react__android/components.auth.register.inputs.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.auth.register.inputs.side-by-side.png" alt="components.auth.register.inputs side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:10.572Z" data-timestamp="2026-07-07T22:00:10.572Z" title="2026-07-07T22:00:10.572Z">2026-07-07 22:00:10 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:06.910Z" data-timestamp="2026-07-07T22:22:06.910Z" title="1783462926910">2026-07-07 22:22:06 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:08.557Z" data-timestamp="2026-07-08T17:56:08.557Z" title="2026-07-08T17:56:08.557Z">2026-07-08 17:56:08 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:04.617Z" data-timestamp="2026-07-08T18:13:04.617Z" title="1783534384617">2026-07-08 18:13:04 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1362,8 +1367,8 @@
       </div>
       <a href="diff/react__android/components.navigation.tabbar.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.navigation.tabbar.states.side-by-side.png" alt="components.navigation.tabbar.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×53</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:13.184Z" data-timestamp="2026-07-07T22:00:13.184Z" title="2026-07-07T22:00:13.184Z">2026-07-07 22:00:13 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×53</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:33.922Z" data-timestamp="2026-07-07T22:18:33.922Z" title="1783462713922">2026-07-07 22:18:33 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×53</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:10.899Z" data-timestamp="2026-07-08T17:56:10.899Z" title="2026-07-08T17:56:10.899Z">2026-07-08 17:56:10 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×53</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:08.434Z" data-timestamp="2026-07-08T18:11:08.434Z" title="1783534268434">2026-07-08 18:11:08 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1424,8 +1429,8 @@
       </div>
       <a href="diff/react__android/components.thread.composer.empty.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.empty.side-by-side.png" alt="components.thread.composer.empty side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:15.705Z" data-timestamp="2026-07-07T22:00:15.705Z" title="2026-07-07T22:00:15.705Z">2026-07-07 22:00:15 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:16.456Z" data-timestamp="2026-07-07T22:21:16.456Z" title="1783462876456">2026-07-07 22:21:16 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:13.417Z" data-timestamp="2026-07-08T17:56:13.417Z" title="2026-07-08T17:56:13.417Z">2026-07-08 17:56:13 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:29.800Z" data-timestamp="2026-07-08T18:14:29.800Z" title="1783534469800">2026-07-08 18:14:29 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1483,8 +1488,8 @@
       </div>
       <a href="diff/react__android/components.thread.composer.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.states.side-by-side.png" alt="components.thread.composer.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:18.056Z" data-timestamp="2026-07-07T22:00:18.056Z" title="2026-07-07T22:00:18.056Z">2026-07-07 22:00:18 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:33.058Z" data-timestamp="2026-07-07T22:18:33.058Z" title="1783462713058">2026-07-07 22:18:33 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:15.871Z" data-timestamp="2026-07-08T17:56:15.871Z" title="2026-07-08T17:56:15.871Z">2026-07-08 17:56:15 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:20.951Z" data-timestamp="2026-07-08T18:11:20.951Z" title="1783534280951">2026-07-08 18:11:20 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1542,8 +1547,8 @@
       </div>
       <a href="diff/react__android/components.thread.composer.as-task-selected.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.as-task-selected.side-by-side.png" alt="components.thread.composer.as-task-selected side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:20.642Z" data-timestamp="2026-07-07T22:00:20.642Z" title="2026-07-07T22:00:20.642Z">2026-07-07 22:00:20 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:19.738Z" data-timestamp="2026-07-07T22:18:19.738Z" title="1783462699738">2026-07-07 22:18:19 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:18.456Z" data-timestamp="2026-07-08T17:56:18.456Z" title="2026-07-08T17:56:18.456Z">2026-07-08 17:56:18 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×100</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:13.512Z" data-timestamp="2026-07-08T18:12:13.512Z" title="1783534333512">2026-07-08 18:12:13 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1601,14 +1606,14 @@
       </div>
       <a href="diff/react__android/components.thread.composer.member-suggestions.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.member-suggestions.side-by-side.png" alt="components.thread.composer.member-suggestions side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:23.441Z" data-timestamp="2026-07-07T22:00:23.441Z" title="2026-07-07T22:00:23.441Z">2026-07-07 22:00:23 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:44.702Z" data-timestamp="2026-07-07T22:20:44.702Z" title="1783462844702">2026-07-07 22:20:44 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:21.157Z" data-timestamp="2026-07-08T17:56:21.157Z" title="2026-07-08T17:56:21.157Z">2026-07-08 17:56:21 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:58.304Z" data-timestamp="2026-07-08T18:13:58.304Z" title="1783534438304">2026-07-08 18:13:58 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 84.2%</code><br/><code>Pixel 77.24%</code><br/><code>Mismatch 22.76%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 83.4%</code><br/><code>Pixel 76.02%</code><br/><code>Mismatch 23.98%</code><br/><code>Raw 1026×960 / 1026×960</code><br/><code>Canvas 1026×960</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / component-bounds 342×320</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -1660,8 +1665,8 @@
       </div>
       <a href="diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.channel-suggestions.side-by-side.png" alt="components.thread.composer.channel-suggestions side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:26.106Z" data-timestamp="2026-07-07T22:00:26.106Z" title="2026-07-07T22:00:26.106Z">2026-07-07 22:00:26 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:18.710Z" data-timestamp="2026-07-07T22:23:18.710Z" title="1783462998710">2026-07-07 22:23:18 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:23.832Z" data-timestamp="2026-07-08T17:56:23.832Z" title="2026-07-08T17:56:23.832Z">2026-07-08 17:56:23 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×320</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:39.395Z" data-timestamp="2026-07-08T18:13:39.395Z" title="1783534419395">2026-07-08 18:13:39 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1719,8 +1724,8 @@
       </div>
       <a href="diff/react__android/components.thread.composer.image-preview.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.composer.image-preview.side-by-side.png" alt="components.thread.composer.image-preview side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×210</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:33.830Z" data-timestamp="2026-07-07T22:00:33.830Z" title="2026-07-07T22:00:33.830Z">2026-07-07 22:00:33 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×270</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:16:46.247Z" data-timestamp="2026-07-07T22:16:46.247Z" title="1783462606247">2026-07-07 22:16:46 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×210</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:31.527Z" data-timestamp="2026-07-08T17:56:31.527Z" title="2026-07-08T17:56:31.527Z">2026-07-08 17:56:31 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×270</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:47.204Z" data-timestamp="2026-07-08T18:11:47.204Z" title="1783534307204">2026-07-08 18:11:47 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1778,14 +1783,14 @@
       </div>
       <a href="diff/react__android/components.thread.files.list.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.files.list.side-by-side.png" alt="components.thread.files.list side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×360</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:36.346Z" data-timestamp="2026-07-07T22:00:36.346Z" title="2026-07-07T22:00:36.346Z">2026-07-07 22:00:36 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×360</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:25.560Z" data-timestamp="2026-07-07T22:18:25.560Z" title="1783462705560">2026-07-07 22:18:25 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×360</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:33.990Z" data-timestamp="2026-07-08T17:56:33.990Z" title="2026-07-08T17:56:33.990Z">2026-07-08 17:56:33 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×360</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:46.869Z" data-timestamp="2026-07-08T18:11:46.869Z" title="1783534306869">2026-07-08 18:11:46 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 89.3%</code><br/><code>Pixel 81.52%</code><br/><code>Mismatch 18.48%</code><br/><code>Raw 1170×1080 / 1170×1080</code><br/><code>Canvas 1170×1080</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 89.6%</code><br/><code>Pixel 82.67%</code><br/><code>Mismatch 17.33%</code><br/><code>Raw 1170×1080 / 1170×1080</code><br/><code>Canvas 1170×1080</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×360 / component-bounds 390×360</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -1837,8 +1842,8 @@
       </div>
       <a href="diff/react__android/components.thread.header.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.header.states.side-by-side.png" alt="components.thread.header.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×120</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:39.143Z" data-timestamp="2026-07-07T22:00:39.143Z" title="2026-07-07T22:00:39.143Z">2026-07-07 22:00:39 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×120</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:37.163Z" data-timestamp="2026-07-07T22:21:37.163Z" title="1783462897163">2026-07-07 22:21:37 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×120</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:36.555Z" data-timestamp="2026-07-08T17:56:36.555Z" title="2026-07-08T17:56:36.555Z">2026-07-08 17:56:36 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×120</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:23.903Z" data-timestamp="2026-07-08T18:14:23.903Z" title="1783534463903">2026-07-08 18:14:23 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -1896,14 +1901,14 @@
       </div>
       <a href="diff/react__android/components.thread.message.row.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message.row.side-by-side.png" alt="components.thread.message.row side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>374×108</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:41.701Z" data-timestamp="2026-07-07T22:00:41.701Z" title="2026-07-07T22:00:41.701Z">2026-07-07 22:00:41 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>374×108</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:49.063Z" data-timestamp="2026-07-07T22:19:49.063Z" title="1783462789063">2026-07-07 22:19:49 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>374×108</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:38.948Z" data-timestamp="2026-07-08T17:56:38.948Z" title="2026-07-08T17:56:38.948Z">2026-07-08 17:56:38 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>374×108</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:37.986Z" data-timestamp="2026-07-08T18:12:37.986Z" title="1783534357986">2026-07-08 18:12:37 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 85.9%</code><br/><code>Pixel 71.34%</code><br/><code>Mismatch 28.66%</code><br/><code>Raw 1122×324 / 1122×324</code><br/><code>Canvas 1122×324</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 85.3%</code><br/><code>Pixel 67.14%</code><br/><code>Mismatch 32.86%</code><br/><code>Raw 1122×324 / 1122×324</code><br/><code>Canvas 1122×324</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 374×108 / component-bounds 374×108</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -1955,8 +1960,8 @@
       </div>
       <a href="diff/react__android/components.thread.message-row.deleted-human.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-row.deleted-human.side-by-side.png" alt="components.thread.message-row.deleted-human side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>374×109</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:44.183Z" data-timestamp="2026-07-07T22:00:44.183Z" title="2026-07-07T22:00:44.183Z">2026-07-07 22:00:44 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>374×109</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:23.685Z" data-timestamp="2026-07-07T22:19:23.685Z" title="1783462763685">2026-07-07 22:19:23 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>374×109</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:41.380Z" data-timestamp="2026-07-08T17:56:41.380Z" title="2026-07-08T17:56:41.380Z">2026-07-08 17:56:41 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>374×109</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:10.939Z" data-timestamp="2026-07-08T18:13:10.939Z" title="1783534390939">2026-07-08 18:13:10 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2014,8 +2019,8 @@
       </div>
       <a href="diff/react__android/components.thread.message-menu.default.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-menu.default.side-by-side.png" alt="components.thread.message-menu.default side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:46.808Z" data-timestamp="2026-07-07T22:00:46.808Z" title="2026-07-07T22:00:46.808Z">2026-07-07 22:00:46 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:21.423Z" data-timestamp="2026-07-07T22:18:21.423Z" title="1783462701423">2026-07-07 22:18:21 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:43.894Z" data-timestamp="2026-07-08T17:56:43.894Z" title="2026-07-08T17:56:43.894Z">2026-07-08 17:56:43 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:39.092Z" data-timestamp="2026-07-08T18:12:39.092Z" title="1783534359092">2026-07-08 18:12:39 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2073,8 +2078,8 @@
       </div>
       <a href="diff/react__android/components.thread.message-menu.task.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-menu.task.side-by-side.png" alt="components.thread.message-menu.task side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:49.442Z" data-timestamp="2026-07-07T22:00:49.442Z" title="2026-07-07T22:00:49.442Z">2026-07-07 22:00:49 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:44.917Z" data-timestamp="2026-07-07T22:18:44.917Z" title="1783462724917">2026-07-07 22:18:44 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:46.412Z" data-timestamp="2026-07-08T17:56:46.412Z" title="2026-07-08T17:56:46.412Z">2026-07-08 17:56:46 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:57.086Z" data-timestamp="2026-07-08T18:11:57.086Z" title="1783534317086">2026-07-08 18:11:57 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2132,8 +2137,8 @@
       </div>
       <a href="diff/react__android/components.thread.message-share.selection.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-share.selection.side-by-side.png" alt="components.thread.message-share.selection side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:51.977Z" data-timestamp="2026-07-07T22:00:51.977Z" title="2026-07-07T22:00:51.977Z">2026-07-07 22:00:51 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:27.717Z" data-timestamp="2026-07-07T22:19:27.717Z" title="1783462767717">2026-07-07 22:19:27 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:48.895Z" data-timestamp="2026-07-08T17:56:48.895Z" title="2026-07-08T17:56:48.895Z">2026-07-08 17:56:48 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:54.997Z" data-timestamp="2026-07-08T18:12:54.997Z" title="1783534374997">2026-07-08 18:12:54 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2184,6 +2189,124 @@
         <a href="diff/react__android/components.thread.message-share.selection.side-by-side.png">Side-by-side PNG</a>
       </div>
     </article>
+<article class="case" id="case-components-thread-forward-modal">
+      <div class="caseHeader">
+        <div><code>components.thread.forward-modal</code><span>Components Parity · components/app/thread/forward-modal</span></div>
+        <strong class="different">different</strong>
+      </div>
+      <a href="diff/react__android/components.thread.forward-modal.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.forward-modal.side-by-side.png" alt="components.thread.forward-modal side by side"/></a>
+      <div class="caseMeta">
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:51.491Z" data-timestamp="2026-07-08T17:56:51.491Z" title="2026-07-08T17:56:51.491Z">2026-07-08 17:56:51 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:42.171Z" data-timestamp="2026-07-08T18:12:42.171Z" title="1783534362171">2026-07-08 18:12:42 UTC</time></span></div>
+      </div>
+      <details class="visualMetadata">
+      <summary>Component metadata</summary>
+      <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
+    </details>
+      <p><code>RGB 85.5%</code><br/><code>Pixel 76.35%</code><br/><code>Mismatch 23.65%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      
+      <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
+      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.forward-modal.png" data-current-src="android/components.thread.forward-modal.png" data-overlay-width="1170" data-overlay-height="2532">
+    <summary>Overlay comparison · React under Android</summary>
+    <div class="overlayControls">
+      <label>Mode
+        <select data-overlay-mode>
+          <option value="blend">Blend</option>
+          <option value="difference">Difference</option>
+          <option value="split">Split drag</option>
+          <option value="align">Align drag</option>
+        </select>
+      </label>
+      <label>React opacity
+        <input data-overlay-baseline-opacity type="range" min="0" max="100" value="100" />
+      </label>
+      <code data-overlay-baseline-opacity-value>100%</code>
+      <label>Android opacity
+        <input data-overlay-opacity type="range" min="0" max="100" value="50" />
+      </label>
+      <code data-overlay-opacity-value>50%</code>
+      <label>Snap
+        <input data-overlay-snap type="checkbox" checked />
+      </label>
+      <button type="button" data-overlay-reset>Reset</button>
+      <span class="cropInfo">Split <code data-overlay-split-value>50%</code></span>
+      <span class="cropInfo">Offset <code data-overlay-offset-value>0px, 0px</code></span>
+      <span class="cropInfo" data-overlay-status>Canvas 1170x2532</span>
+    </div>
+    <div class="overlayCanvasWrap">
+      <canvas data-overlay-canvas aria-label="components.thread.forward-modal overlay comparison"></canvas>
+    </div>
+  </details>
+      <details class="rawCaptures">
+    <summary>Raw captures · original provider size</summary>
+    <div class="rawGrid"><div class="rawPanel"><strong>React raw · 390×844</strong><a href="react/components.thread.forward-modal.png"><img src="react/components.thread.forward-modal.png" alt="components.thread.forward-modal React raw capture"/></a></div><div class="rawPanel"><strong>Android raw · 390×844</strong><a href="android/components.thread.forward-modal.png"><img src="android/components.thread.forward-modal.png" alt="components.thread.forward-modal Android raw capture"/></a></div></div>
+  </details>
+      <div class="caseLinks">
+        <a href="react/components.thread.forward-modal.png">React PNG</a>
+        <a href="android/components.thread.forward-modal.png">Android PNG</a>
+        <a href="diff/react__android/components.thread.forward-modal.side-by-side.png">Side-by-side PNG</a>
+      </div>
+    </article>
+<article class="case" id="case-components-thread-comment-anchor">
+      <div class="caseHeader">
+        <div><code>components.thread.comment-anchor</code><span>Components Parity · components/app/thread/comment-anchor</span></div>
+        <strong class="different">different</strong>
+      </div>
+      <a href="diff/react__android/components.thread.comment-anchor.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.comment-anchor.side-by-side.png" alt="components.thread.comment-anchor side by side"/></a>
+      <div class="caseMeta">
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:53.915Z" data-timestamp="2026-07-08T17:56:53.915Z" title="2026-07-08T17:56:53.915Z">2026-07-08 17:56:53 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:58.664Z" data-timestamp="2026-07-08T18:13:58.664Z" title="1783534438664">2026-07-08 18:13:58 UTC</time></span></div>
+      </div>
+      <details class="visualMetadata">
+      <summary>Component metadata</summary>
+      <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
+    </details>
+      <p><code>RGB 66.8%</code><br/><code>Pixel 36.93%</code><br/><code>Mismatch 63.07%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      
+      <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
+      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.comment-anchor.png" data-current-src="android/components.thread.comment-anchor.png" data-overlay-width="1170" data-overlay-height="2532">
+    <summary>Overlay comparison · React under Android</summary>
+    <div class="overlayControls">
+      <label>Mode
+        <select data-overlay-mode>
+          <option value="blend">Blend</option>
+          <option value="difference">Difference</option>
+          <option value="split">Split drag</option>
+          <option value="align">Align drag</option>
+        </select>
+      </label>
+      <label>React opacity
+        <input data-overlay-baseline-opacity type="range" min="0" max="100" value="100" />
+      </label>
+      <code data-overlay-baseline-opacity-value>100%</code>
+      <label>Android opacity
+        <input data-overlay-opacity type="range" min="0" max="100" value="50" />
+      </label>
+      <code data-overlay-opacity-value>50%</code>
+      <label>Snap
+        <input data-overlay-snap type="checkbox" checked />
+      </label>
+      <button type="button" data-overlay-reset>Reset</button>
+      <span class="cropInfo">Split <code data-overlay-split-value>50%</code></span>
+      <span class="cropInfo">Offset <code data-overlay-offset-value>0px, 0px</code></span>
+      <span class="cropInfo" data-overlay-status>Canvas 1170x2532</span>
+    </div>
+    <div class="overlayCanvasWrap">
+      <canvas data-overlay-canvas aria-label="components.thread.comment-anchor overlay comparison"></canvas>
+    </div>
+  </details>
+      <details class="rawCaptures">
+    <summary>Raw captures · original provider size</summary>
+    <div class="rawGrid"><div class="rawPanel"><strong>React raw · 390×844</strong><a href="react/components.thread.comment-anchor.png"><img src="react/components.thread.comment-anchor.png" alt="components.thread.comment-anchor React raw capture"/></a></div><div class="rawPanel"><strong>Android raw · 390×844</strong><a href="android/components.thread.comment-anchor.png"><img src="android/components.thread.comment-anchor.png" alt="components.thread.comment-anchor Android raw capture"/></a></div></div>
+  </details>
+      <div class="caseLinks">
+        <a href="react/components.thread.comment-anchor.png">React PNG</a>
+        <a href="android/components.thread.comment-anchor.png">Android PNG</a>
+        <a href="diff/react__android/components.thread.comment-anchor.side-by-side.png">Side-by-side PNG</a>
+      </div>
+    </article>
 <article class="case" id="case-components-thread-message-row-rich-content">
       <div class="caseHeader">
         <div><code>components.thread.message-row.rich-content</code><span>Components Parity · components/app/thread/message-row/rich-content</span></div>
@@ -2191,16 +2314,16 @@
       </div>
       <a href="diff/react__android/components.thread.message-row.rich-content.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-row.rich-content.side-by-side.png" alt="components.thread.message-row.rich-content side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×366</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:34.461Z" data-timestamp="2026-07-07T22:03:34.461Z" title="2026-07-07T22:03:34.461Z">2026-07-07 22:03:34 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×394</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:25.893Z" data-timestamp="2026-07-07T22:17:25.893Z" title="1783462645893">2026-07-07 22:17:25 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×392</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:35.858Z" data-timestamp="2026-07-08T17:59:35.858Z" title="2026-07-08T17:59:35.858Z">2026-07-08 17:59:35 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×394</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:34.506Z" data-timestamp="2026-07-08T18:10:34.506Z" title="1783534234506">2026-07-08 18:10:34 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 89.4%</code><br/><code>Pixel 77.23%</code><br/><code>Mismatch 22.77%</code><br/><code>Raw 1026×1098 / 1026×1182</code><br/><code>Canvas 1026×1182</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 88.8%</code><br/><code>Pixel 76.12%</code><br/><code>Mismatch 23.88%</code><br/><code>Raw 1026×1176 / 1026×1182</code><br/><code>Canvas 1026×1182</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
-      <p class="cropInfo"><code>Crop component-bounds 342×366 / component-bounds 342×394</code></p>
+      <p class="cropInfo"><code>Crop component-bounds 342×392 / component-bounds 342×394</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.message-row.rich-content.png" data-current-src="android/components.thread.message-row.rich-content.png" data-overlay-width="1026" data-overlay-height="1182">
     <summary>Overlay comparison · React under Android</summary>
@@ -2235,7 +2358,7 @@
   </details>
       <details class="rawCaptures">
     <summary>Raw captures · original provider size</summary>
-    <div class="rawGrid"><div class="rawPanel"><strong>React raw · 342×366</strong><a href="react/components.thread.message-row.rich-content.png"><img src="react/components.thread.message-row.rich-content.png" alt="components.thread.message-row.rich-content React raw capture"/></a></div><div class="rawPanel"><strong>Android raw · 342×394</strong><a href="android/components.thread.message-row.rich-content.png"><img src="android/components.thread.message-row.rich-content.png" alt="components.thread.message-row.rich-content Android raw capture"/></a></div></div>
+    <div class="rawGrid"><div class="rawPanel"><strong>React raw · 342×392</strong><a href="react/components.thread.message-row.rich-content.png"><img src="react/components.thread.message-row.rich-content.png" alt="components.thread.message-row.rich-content React raw capture"/></a></div><div class="rawPanel"><strong>Android raw · 342×394</strong><a href="android/components.thread.message-row.rich-content.png"><img src="android/components.thread.message-row.rich-content.png" alt="components.thread.message-row.rich-content Android raw capture"/></a></div></div>
   </details>
       <div class="caseLinks">
         <a href="react/components.thread.message-row.rich-content.png">React PNG</a>
@@ -2250,14 +2373,14 @@
       </div>
       <a href="diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.thread.message-row.long-inline-code.side-by-side.png" alt="components.thread.message-row.long-inline-code side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:37.076Z" data-timestamp="2026-07-07T22:03:37.076Z" title="2026-07-07T22:03:37.076Z">2026-07-07 22:03:37 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:47.391Z" data-timestamp="2026-07-07T22:18:47.391Z" title="1783462727391">2026-07-07 22:18:47 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:38.596Z" data-timestamp="2026-07-08T17:59:38.596Z" title="2026-07-08T17:59:38.596Z">2026-07-08 17:59:38 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:48.034Z" data-timestamp="2026-07-08T18:12:48.034Z" title="1783534368034">2026-07-08 18:12:48 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 81.9%</code><br/><code>Pixel 49.84%</code><br/><code>Mismatch 50.16%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 82.2%</code><br/><code>Pixel 49.78%</code><br/><code>Mismatch 50.22%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / component-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -2312,8 +2435,8 @@
       </div>
       <a href="diff/react__android/components.home.titlebar.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.titlebar.states.side-by-side.png" alt="components.home.titlebar.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:54.576Z" data-timestamp="2026-07-07T22:00:54.576Z" title="2026-07-07T22:00:54.576Z">2026-07-07 22:00:54 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:00.068Z" data-timestamp="2026-07-07T22:18:00.068Z" title="1783462680068">2026-07-07 22:18:00 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:56.374Z" data-timestamp="2026-07-08T17:56:56.374Z" title="2026-07-08T17:56:56.374Z">2026-07-08 17:56:56 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:51.525Z" data-timestamp="2026-07-08T18:10:51.525Z" title="1783534251525">2026-07-08 18:10:51 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2371,8 +2494,8 @@
       </div>
       <a href="diff/react__android/components.home.notification-center.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.notification-center.states.side-by-side.png" alt="components.home.notification-center.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:00:57.066Z" data-timestamp="2026-07-07T22:00:57.066Z" title="2026-07-07T22:00:57.066Z">2026-07-07 22:00:57 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:32.216Z" data-timestamp="2026-07-07T22:20:32.216Z" title="1783462832216">2026-07-07 22:20:32 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:56:58.748Z" data-timestamp="2026-07-08T17:56:58.748Z" title="2026-07-08T17:56:58.748Z">2026-07-08 17:56:58 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:03.917Z" data-timestamp="2026-07-08T18:14:03.917Z" title="1783534443917">2026-07-08 18:14:03 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2430,8 +2553,8 @@
       </div>
       <a href="diff/react__android/components.home.search.results.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.search.results.side-by-side.png" alt="components.home.search.results side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:00.473Z" data-timestamp="2026-07-07T22:01:00.473Z" title="2026-07-07T22:01:00.473Z">2026-07-07 22:01:00 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:07.647Z" data-timestamp="2026-07-07T22:18:07.647Z" title="1783462687647">2026-07-07 22:18:07 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:02.121Z" data-timestamp="2026-07-08T17:57:02.121Z" title="2026-07-08T17:57:02.121Z">2026-07-08 17:57:02 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:23.948Z" data-timestamp="2026-07-08T18:12:23.948Z" title="1783534343948">2026-07-08 18:12:23 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2489,14 +2612,14 @@
       </div>
       <a href="diff/react__android/components.home.search.channel-dropdown.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.search.channel-dropdown.side-by-side.png" alt="components.home.search.channel-dropdown side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:04.238Z" data-timestamp="2026-07-07T22:01:04.238Z" title="2026-07-07T22:01:04.238Z">2026-07-07 22:01:04 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:08.984Z" data-timestamp="2026-07-07T22:17:08.984Z" title="1783462628984">2026-07-07 22:17:08 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:05.958Z" data-timestamp="2026-07-08T17:57:05.958Z" title="2026-07-08T17:57:05.958Z">2026-07-08 17:57:05 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:59.554Z" data-timestamp="2026-07-08T18:11:59.554Z" title="1783534319554">2026-07-08 18:11:59 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 90.2%</code><br/><code>Pixel 77.06%</code><br/><code>Mismatch 22.94%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 89.3%</code><br/><code>Pixel 76.43%</code><br/><code>Mismatch 23.57%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -2548,14 +2671,14 @@
       </div>
       <a href="diff/react__android/components.home.saved.results.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.saved.results.side-by-side.png" alt="components.home.saved.results side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:07.750Z" data-timestamp="2026-07-07T22:01:07.750Z" title="2026-07-07T22:01:07.750Z">2026-07-07 22:01:07 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:53.966Z" data-timestamp="2026-07-07T22:21:53.966Z" title="1783462913966">2026-07-07 22:21:53 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:09.274Z" data-timestamp="2026-07-08T17:57:09.274Z" title="2026-07-08T17:57:09.274Z">2026-07-08 17:57:09 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:54.123Z" data-timestamp="2026-07-08T18:12:54.123Z" title="1783534374123">2026-07-08 18:12:54 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 91.9%</code><br/><code>Pixel 86.25%</code><br/><code>Mismatch 13.75%</code><br/><code>Raw 1026×1860 / 1026×1860</code><br/><code>Canvas 1026×1860</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 91.9%</code><br/><code>Pixel 86.26%</code><br/><code>Mismatch 13.74%</code><br/><code>Raw 1026×1860 / 1026×1860</code><br/><code>Canvas 1026×1860</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / component-bounds 342×620</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -2607,14 +2730,14 @@
       </div>
       <a href="diff/react__android/components.home.activity.results.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.activity.results.side-by-side.png" alt="components.home.activity.results side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:11.204Z" data-timestamp="2026-07-07T22:01:11.204Z" title="2026-07-07T22:01:11.204Z">2026-07-07 22:01:11 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:41.232Z" data-timestamp="2026-07-07T22:17:41.232Z" title="1783462661232">2026-07-07 22:17:41 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:12.676Z" data-timestamp="2026-07-08T17:57:12.676Z" title="2026-07-08T17:57:12.676Z">2026-07-08 17:57:12 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×620</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:53.632Z" data-timestamp="2026-07-08T18:10:53.632Z" title="1783534253632">2026-07-08 18:10:53 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 92.0%</code><br/><code>Pixel 85.87%</code><br/><code>Mismatch 14.13%</code><br/><code>Raw 1026×1860 / 1026×1860</code><br/><code>Canvas 1026×1860</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 92.0%</code><br/><code>Pixel 85.88%</code><br/><code>Mismatch 14.12%</code><br/><code>Raw 1026×1860 / 1026×1860</code><br/><code>Canvas 1026×1860</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / component-bounds 342×620</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -2666,8 +2789,8 @@
       </div>
       <a href="diff/react__android/components.home.create-channel.dialog.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.home.create-channel.dialog.side-by-side.png" alt="components.home.create-channel.dialog side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:19.420Z" data-timestamp="2026-07-07T22:01:19.420Z" title="2026-07-07T22:01:19.420Z">2026-07-07 22:01:19 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:47.449Z" data-timestamp="2026-07-07T22:20:47.449Z" title="1783462847449">2026-07-07 22:20:47 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:20.454Z" data-timestamp="2026-07-08T17:57:20.454Z" title="2026-07-08T17:57:20.454Z">2026-07-08 17:57:20 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:45.070Z" data-timestamp="2026-07-08T18:13:45.070Z" title="1783534425070">2026-07-08 18:13:45 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2728,8 +2851,8 @@
       </div>
       <a href="diff/react__android/components.tasks.panel.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.tasks.panel.states.side-by-side.png" alt="components.tasks.panel.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:14.150Z" data-timestamp="2026-07-07T22:01:14.150Z" title="2026-07-07T22:01:14.150Z">2026-07-07 22:01:14 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:09.856Z" data-timestamp="2026-07-07T22:19:09.856Z" title="1783462749856">2026-07-07 22:19:09 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:15.469Z" data-timestamp="2026-07-08T17:57:15.469Z" title="2026-07-08T17:57:15.469Z">2026-07-08 17:57:15 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:40.676Z" data-timestamp="2026-07-08T18:11:40.676Z" title="1783534300676">2026-07-08 18:11:40 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2787,8 +2910,8 @@
       </div>
       <a href="diff/react__android/components.tasks.status-menu.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.tasks.status-menu.side-by-side.png" alt="components.tasks.status-menu side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>342×260</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:16.799Z" data-timestamp="2026-07-07T22:01:16.799Z" title="2026-07-07T22:01:16.799Z">2026-07-07 22:01:16 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>342×260</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:48.764Z" data-timestamp="2026-07-07T22:20:48.764Z" title="1783462848764">2026-07-07 22:20:48 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>342×260</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:18.027Z" data-timestamp="2026-07-08T17:57:18.027Z" title="2026-07-08T17:57:18.027Z">2026-07-08 17:57:18 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>342×260</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:07.729Z" data-timestamp="2026-07-08T18:13:07.729Z" title="1783534387729">2026-07-08 18:13:07 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2849,8 +2972,8 @@
       </div>
       <a href="diff/react__android/components.members.create-agent.dialog.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.members.create-agent.dialog.side-by-side.png" alt="components.members.create-agent.dialog side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:22.172Z" data-timestamp="2026-07-07T22:01:22.172Z" title="2026-07-07T22:01:22.172Z">2026-07-07 22:01:22 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:12.675Z" data-timestamp="2026-07-07T22:21:12.675Z" title="1783462872675">2026-07-07 22:21:12 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:22.990Z" data-timestamp="2026-07-08T17:57:22.990Z" title="2026-07-08T17:57:22.990Z">2026-07-08 17:57:22 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:11.187Z" data-timestamp="2026-07-08T18:14:11.187Z" title="1783534451187">2026-07-08 18:14:11 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2908,8 +3031,8 @@
       </div>
       <a href="diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png" alt="components.members.create-agent.claude-dialog side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:24.957Z" data-timestamp="2026-07-07T22:01:24.957Z" title="2026-07-07T22:01:24.957Z">2026-07-07 22:01:24 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:21.262Z" data-timestamp="2026-07-07T22:22:21.262Z" title="1783462941262">2026-07-07 22:22:21 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:25.624Z" data-timestamp="2026-07-08T17:57:25.624Z" title="2026-07-08T17:57:25.624Z">2026-07-08 17:57:25 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:11.876Z" data-timestamp="2026-07-08T18:13:11.876Z" title="1783534391876">2026-07-08 18:13:11 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2968,7 +3091,7 @@
       
       <div class="caseMeta">
         <div><strong>React</strong><br/><code>n/a</code></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:31.007Z" data-timestamp="2026-07-07T22:19:31.007Z" title="1783462771007">2026-07-07 22:19:31 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:44.781Z" data-timestamp="2026-07-08T18:11:44.781Z" title="1783534304781">2026-07-08 18:11:44 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -2996,8 +3119,8 @@
       </div>
       <a href="diff/react__android/components.members.agent-detail.profile.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.members.agent-detail.profile.side-by-side.png" alt="components.members.agent-detail.profile side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:01:58.865Z" data-timestamp="2026-07-07T22:01:58.865Z" title="2026-07-07T22:01:58.865Z">2026-07-07 22:01:58 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:32.521Z" data-timestamp="2026-07-07T22:21:32.521Z" title="1783462892521">2026-07-07 22:21:32 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:57:59.367Z" data-timestamp="2026-07-08T17:57:59.367Z" title="2026-07-08T17:57:59.367Z">2026-07-08 17:57:59 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:45.346Z" data-timestamp="2026-07-08T18:12:45.346Z" title="1783534365346">2026-07-08 18:12:45 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3055,14 +3178,14 @@
       </div>
       <a href="diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png" alt="components.members.agent-lifecycle-actions side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:18.510Z" data-timestamp="2026-07-07T22:03:18.510Z" title="2026-07-07T22:03:18.510Z">2026-07-07 22:03:18 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:02.576Z" data-timestamp="2026-07-07T22:22:02.576Z" title="1783462922576">2026-07-07 22:22:02 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:19.614Z" data-timestamp="2026-07-08T17:59:19.614Z" title="2026-07-08T17:59:19.614Z">2026-07-08 17:59:19 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:43.635Z" data-timestamp="2026-07-08T18:13:43.635Z" title="1783534423635">2026-07-08 18:13:43 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 89.2%</code><br/><code>Pixel 79.93%</code><br/><code>Mismatch 20.07%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 88.6%</code><br/><code>Pixel 79.50%</code><br/><code>Mismatch 20.50%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -3114,14 +3237,14 @@
       </div>
       <a href="diff/react__android/components.members.avatar-management.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.members.avatar-management.side-by-side.png" alt="components.members.avatar-management side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:21.456Z" data-timestamp="2026-07-07T22:03:21.456Z" title="2026-07-07T22:03:21.456Z">2026-07-07 22:03:21 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:22.511Z" data-timestamp="2026-07-07T22:23:22.511Z" title="1783463002511">2026-07-07 22:23:22 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:22.766Z" data-timestamp="2026-07-08T17:59:22.766Z" title="2026-07-08T17:59:22.766Z">2026-07-08 17:59:22 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:19.898Z" data-timestamp="2026-07-08T18:14:19.898Z" title="1783534459898">2026-07-08 18:14:19 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 85.6%</code><br/><code>Pixel 74.46%</code><br/><code>Mismatch 25.54%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 85.7%</code><br/><code>Pixel 74.46%</code><br/><code>Mismatch 25.54%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -3176,8 +3299,8 @@
       </div>
       <a href="diff/react__android/components.channel.members.panel.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.channel.members.panel.side-by-side.png" alt="components.channel.members.panel side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:01.858Z" data-timestamp="2026-07-07T22:02:01.858Z" title="2026-07-07T22:02:01.858Z">2026-07-07 22:02:01 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:05.081Z" data-timestamp="2026-07-07T22:19:05.081Z" title="1783462745081">2026-07-07 22:19:05 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:02.245Z" data-timestamp="2026-07-08T17:58:02.245Z" title="2026-07-08T17:58:02.245Z">2026-07-08 17:58:02 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:28.398Z" data-timestamp="2026-07-08T18:11:28.398Z" title="1783534288398">2026-07-08 18:11:28 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3235,8 +3358,8 @@
       </div>
       <a href="diff/react__android/components.channel.settings.panel.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.channel.settings.panel.side-by-side.png" alt="components.channel.settings.panel side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:04.496Z" data-timestamp="2026-07-07T22:02:04.496Z" title="2026-07-07T22:02:04.496Z">2026-07-07 22:02:04 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:43.637Z" data-timestamp="2026-07-07T22:17:43.637Z" title="1783462663637">2026-07-07 22:17:43 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:04.798Z" data-timestamp="2026-07-08T17:58:04.798Z" title="2026-07-08T17:58:04.798Z">2026-07-08 17:58:04 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:44.760Z" data-timestamp="2026-07-08T18:10:44.760Z" title="1783534244760">2026-07-08 18:10:44 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3294,14 +3417,14 @@
       </div>
       <a href="diff/react__android/components.channel.members.add-panel.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.channel.members.add-panel.side-by-side.png" alt="components.channel.members.add-panel side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:07.410Z" data-timestamp="2026-07-07T22:02:07.410Z" title="2026-07-07T22:02:07.410Z">2026-07-07 22:02:07 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:14.174Z" data-timestamp="2026-07-07T22:21:14.174Z" title="1783462874174">2026-07-07 22:21:14 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:07.722Z" data-timestamp="2026-07-08T17:58:07.722Z" title="2026-07-08T17:58:07.722Z">2026-07-08 17:58:07 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:06.458Z" data-timestamp="2026-07-08T18:14:06.458Z" title="1783534446458">2026-07-08 18:14:06 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 86.9%</code><br/><code>Pixel 80.00%</code><br/><code>Mismatch 20.00%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 90.2%</code><br/><code>Pixel 84.96%</code><br/><code>Mismatch 15.04%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -3356,8 +3479,8 @@
       </div>
       <a href="diff/react__android/components.settings.page.states.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.page.states.side-by-side.png" alt="components.settings.page.states side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:10.019Z" data-timestamp="2026-07-07T22:02:10.019Z" title="2026-07-07T22:02:10.019Z">2026-07-07 22:02:10 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:28.980Z" data-timestamp="2026-07-07T22:21:28.980Z" title="1783462888980">2026-07-07 22:21:28 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:10.274Z" data-timestamp="2026-07-08T17:58:10.274Z" title="2026-07-08T17:58:10.274Z">2026-07-08 17:58:10 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:12.883Z" data-timestamp="2026-07-08T18:14:12.883Z" title="1783534452883">2026-07-08 18:14:12 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3415,8 +3538,8 @@
       </div>
       <a href="diff/react__android/components.settings.account.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.account.page.side-by-side.png" alt="components.settings.account.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:12.604Z" data-timestamp="2026-07-07T22:02:12.604Z" title="2026-07-07T22:02:12.604Z">2026-07-07 22:02:12 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:15.333Z" data-timestamp="2026-07-07T22:20:15.333Z" title="1783462815333">2026-07-07 22:20:15 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:12.791Z" data-timestamp="2026-07-08T17:58:12.791Z" title="2026-07-08T17:58:12.791Z">2026-07-08 17:58:12 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:42.128Z" data-timestamp="2026-07-08T18:13:42.128Z" title="1783534422128">2026-07-08 18:13:42 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3474,8 +3597,8 @@
       </div>
       <a href="diff/react__android/components.settings.account.provider-linked.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.account.provider-linked.side-by-side.png" alt="components.settings.account.provider-linked side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:15.191Z" data-timestamp="2026-07-07T22:02:15.191Z" title="2026-07-07T22:02:15.191Z">2026-07-07 22:02:15 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:52.899Z" data-timestamp="2026-07-07T22:23:52.899Z" title="1783463032899">2026-07-07 22:23:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:15.393Z" data-timestamp="2026-07-08T17:58:15.393Z" title="2026-07-08T17:58:15.393Z">2026-07-08 17:58:15 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:00.029Z" data-timestamp="2026-07-08T18:14:00.029Z" title="1783534440029">2026-07-08 18:14:00 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3533,8 +3656,8 @@
       </div>
       <a href="diff/react__android/components.settings.account.password-expanded.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.account.password-expanded.side-by-side.png" alt="components.settings.account.password-expanded side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:17.938Z" data-timestamp="2026-07-07T22:02:17.938Z" title="2026-07-07T22:02:17.938Z">2026-07-07 22:02:17 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:13.047Z" data-timestamp="2026-07-07T22:17:13.047Z" title="1783462633047">2026-07-07 22:17:13 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:18.089Z" data-timestamp="2026-07-08T17:58:18.089Z" title="2026-07-08T17:58:18.089Z">2026-07-08 17:58:18 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:36.164Z" data-timestamp="2026-07-08T18:11:36.164Z" title="1783534296164">2026-07-08 18:11:36 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3592,14 +3715,14 @@
       </div>
       <a href="diff/react__android/components.settings.account.error-state.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.account.error-state.side-by-side.png" alt="components.settings.account.error-state side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:20.452Z" data-timestamp="2026-07-07T22:02:20.452Z" title="2026-07-07T22:02:20.452Z">2026-07-07 22:02:20 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:38.358Z" data-timestamp="2026-07-07T22:17:38.358Z" title="1783462658358">2026-07-07 22:17:38 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:20.621Z" data-timestamp="2026-07-08T17:58:20.621Z" title="2026-07-08T17:58:20.621Z">2026-07-08 17:58:20 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:01.909Z" data-timestamp="2026-07-08T18:12:01.909Z" title="1783534321909">2026-07-08 18:12:01 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
       <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
     </details>
-      <p><code>RGB 88.6%</code><br/><code>Pixel 69.04%</code><br/><code>Mismatch 30.96%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 88.5%</code><br/><code>Pixel 68.87%</code><br/><code>Mismatch 31.13%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -3651,8 +3774,8 @@
       </div>
       <a href="diff/react__android/components.settings.server.profile.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.server.profile.side-by-side.png" alt="components.settings.server.profile side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:22.981Z" data-timestamp="2026-07-07T22:02:22.981Z" title="2026-07-07T22:02:22.981Z">2026-07-07 22:02:22 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:58.433Z" data-timestamp="2026-07-07T22:17:58.433Z" title="1783462678433">2026-07-07 22:17:58 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:23.137Z" data-timestamp="2026-07-08T17:58:23.137Z" title="2026-07-08T17:58:23.137Z">2026-07-08 17:58:23 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:34.397Z" data-timestamp="2026-07-08T18:11:34.397Z" title="1783534294397">2026-07-08 18:11:34 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3710,8 +3833,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.admins.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.admins.side-by-side.png" alt="components.settings.administration.admins side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:25.522Z" data-timestamp="2026-07-07T22:02:25.522Z" title="2026-07-07T22:02:25.522Z">2026-07-07 22:02:25 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:08.361Z" data-timestamp="2026-07-07T22:20:08.361Z" title="1783462808361">2026-07-07 22:20:08 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:25.676Z" data-timestamp="2026-07-08T17:58:25.676Z" title="2026-07-08T17:58:25.676Z">2026-07-08 17:58:25 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:44.275Z" data-timestamp="2026-07-08T18:13:44.275Z" title="1783534424275">2026-07-08 18:13:44 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3769,8 +3892,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.invites.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.invites.side-by-side.png" alt="components.settings.administration.invites side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:28.053Z" data-timestamp="2026-07-07T22:02:28.053Z" title="2026-07-07T22:02:28.053Z">2026-07-07 22:02:28 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:37.107Z" data-timestamp="2026-07-07T22:19:37.107Z" title="1783462777107">2026-07-07 22:19:37 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:28.138Z" data-timestamp="2026-07-08T17:58:28.138Z" title="2026-07-08T17:58:28.138Z">2026-07-08 17:58:28 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:29.668Z" data-timestamp="2026-07-08T18:12:29.668Z" title="1783534349668">2026-07-08 18:12:29 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3828,8 +3951,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.join-links.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.join-links.side-by-side.png" alt="components.settings.administration.join-links side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:30.554Z" data-timestamp="2026-07-07T22:02:30.554Z" title="2026-07-07T22:02:30.554Z">2026-07-07 22:02:30 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:16.717Z" data-timestamp="2026-07-07T22:18:16.717Z" title="1783462696717">2026-07-07 22:18:16 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:30.611Z" data-timestamp="2026-07-08T17:58:30.611Z" title="2026-07-08T17:58:30.611Z">2026-07-08 17:58:30 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:11.935Z" data-timestamp="2026-07-08T18:11:11.935Z" title="1783534271935">2026-07-08 18:11:11 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3887,8 +4010,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.pre-join-agreement.side-by-side.png" alt="components.settings.administration.pre-join-agreement side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:33.051Z" data-timestamp="2026-07-07T22:02:33.051Z" title="2026-07-07T22:02:33.051Z">2026-07-07 22:02:33 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:46.643Z" data-timestamp="2026-07-07T22:22:46.643Z" title="1783462966643">2026-07-07 22:22:46 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:33.039Z" data-timestamp="2026-07-08T17:58:33.039Z" title="2026-07-08T17:58:33.039Z">2026-07-08 17:58:33 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:22.341Z" data-timestamp="2026-07-08T18:13:22.341Z" title="1783534402341">2026-07-08 18:13:22 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -3946,8 +4069,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.onboarding.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.onboarding.side-by-side.png" alt="components.settings.administration.onboarding side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:35.544Z" data-timestamp="2026-07-07T22:02:35.544Z" title="2026-07-07T22:02:35.544Z">2026-07-07 22:02:35 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:19.481Z" data-timestamp="2026-07-07T22:20:19.481Z" title="1783462819481">2026-07-07 22:20:19 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:35.559Z" data-timestamp="2026-07-08T17:58:35.559Z" title="2026-07-08T17:58:35.559Z">2026-07-08 17:58:35 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:10.818Z" data-timestamp="2026-07-08T18:12:10.818Z" title="1783534330818">2026-07-08 18:12:10 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4005,8 +4128,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.member-permissions.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.member-permissions.side-by-side.png" alt="components.settings.administration.member-permissions side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:37.952Z" data-timestamp="2026-07-07T22:02:37.952Z" title="2026-07-07T22:02:37.952Z">2026-07-07 22:02:37 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:29.997Z" data-timestamp="2026-07-07T22:17:29.997Z" title="1783462649997">2026-07-07 22:17:29 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:37.889Z" data-timestamp="2026-07-08T17:58:37.889Z" title="2026-07-08T17:58:37.889Z">2026-07-08 17:58:37 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:07.850Z" data-timestamp="2026-07-08T18:12:07.850Z" title="1783534327850">2026-07-08 18:12:07 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4064,8 +4187,8 @@
       </div>
       <a href="diff/react__android/components.settings.administration.translation.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.administration.translation.side-by-side.png" alt="components.settings.administration.translation side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:40.335Z" data-timestamp="2026-07-07T22:02:40.335Z" title="2026-07-07T22:02:40.335Z">2026-07-07 22:02:40 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:28.114Z" data-timestamp="2026-07-07T22:21:28.114Z" title="1783462888114">2026-07-07 22:21:28 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:40.289Z" data-timestamp="2026-07-08T17:58:40.289Z" title="2026-07-08T17:58:40.289Z">2026-07-08 17:58:40 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:42.131Z" data-timestamp="2026-07-08T18:12:42.131Z" title="1783534362131">2026-07-08 18:12:42 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4123,8 +4246,8 @@
       </div>
       <a href="diff/react__android/components.settings.billing.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.billing.page.side-by-side.png" alt="components.settings.billing.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:42.852Z" data-timestamp="2026-07-07T22:02:42.852Z" title="2026-07-07T22:02:42.852Z">2026-07-07 22:02:42 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:52.974Z" data-timestamp="2026-07-07T22:18:52.974Z" title="1783462732974">2026-07-07 22:18:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:42.807Z" data-timestamp="2026-07-08T17:58:42.807Z" title="2026-07-08T17:58:42.807Z">2026-07-08 17:58:42 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:58.223Z" data-timestamp="2026-07-08T18:12:58.223Z" title="1783534378223">2026-07-08 18:12:58 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4182,8 +4305,8 @@
       </div>
       <a href="diff/react__android/components.settings.language-region.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.language-region.page.side-by-side.png" alt="components.settings.language-region.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:45.615Z" data-timestamp="2026-07-07T22:02:45.615Z" title="2026-07-07T22:02:45.615Z">2026-07-07 22:02:45 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:24.572Z" data-timestamp="2026-07-07T22:17:24.572Z" title="1783462644572">2026-07-07 22:17:24 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:45.449Z" data-timestamp="2026-07-08T17:58:45.449Z" title="2026-07-08T17:58:45.449Z">2026-07-08 17:58:45 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:40.890Z" data-timestamp="2026-07-08T18:10:40.890Z" title="1783534240890">2026-07-08 18:10:40 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4241,8 +4364,8 @@
       </div>
       <a href="diff/react__android/components.settings.appearance.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.appearance.page.side-by-side.png" alt="components.settings.appearance.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:48.164Z" data-timestamp="2026-07-07T22:02:48.164Z" title="2026-07-07T22:02:48.164Z">2026-07-07 22:02:48 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:06.380Z" data-timestamp="2026-07-07T22:23:06.380Z" title="1783462986380">2026-07-07 22:23:06 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:47.951Z" data-timestamp="2026-07-08T17:58:47.951Z" title="2026-07-08T17:58:47.951Z">2026-07-08 17:58:47 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:33.823Z" data-timestamp="2026-07-08T18:13:33.823Z" title="1783534413823">2026-07-08 18:13:33 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4300,8 +4423,8 @@
       </div>
       <a href="diff/react__android/components.settings.notifications.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.notifications.page.side-by-side.png" alt="components.settings.notifications.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:50.613Z" data-timestamp="2026-07-07T22:02:50.613Z" title="2026-07-07T22:02:50.613Z">2026-07-07 22:02:50 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:51.774Z" data-timestamp="2026-07-07T22:19:51.774Z" title="1783462791774">2026-07-07 22:19:51 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:50.365Z" data-timestamp="2026-07-08T17:58:50.365Z" title="2026-07-08T17:58:50.365Z">2026-07-08 17:58:50 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:08.772Z" data-timestamp="2026-07-08T18:13:08.772Z" title="1783534388772">2026-07-08 18:13:08 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4359,8 +4482,8 @@
       </div>
       <a href="diff/react__android/components.settings.connected-apps.page.side-by-side.png"><img class="sideBySide" src="diff/react__android/components.settings.connected-apps.page.side-by-side.png" alt="components.settings.connected-apps.page side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:53.242Z" data-timestamp="2026-07-07T22:02:53.242Z" title="2026-07-07T22:02:53.242Z">2026-07-07 22:02:53 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:33.744Z" data-timestamp="2026-07-07T22:22:33.744Z" title="1783462953744">2026-07-07 22:22:33 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:53.010Z" data-timestamp="2026-07-08T17:58:53.010Z" title="2026-07-08T17:58:53.010Z">2026-07-08 17:58:53 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:58.291Z" data-timestamp="2026-07-08T18:13:58.291Z" title="1783534438291">2026-07-08 18:13:58 UTC</time></span></div>
       </div>
       <details class="visualMetadata">
       <summary>Component metadata</summary>
@@ -4421,8 +4544,8 @@
       </div>
       <a href="diff/react__android/screens.auth.login.signing.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.auth.login.signing.side-by-side.png" alt="screens.auth.login.signing side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:55.804Z" data-timestamp="2026-07-07T22:02:55.804Z" title="2026-07-07T22:02:55.804Z">2026-07-07 22:02:55 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:16:48.265Z" data-timestamp="2026-07-07T22:16:48.265Z" title="1783462608265">2026-07-07 22:16:48 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:55.576Z" data-timestamp="2026-07-08T17:58:55.576Z" title="2026-07-08T17:58:55.576Z">2026-07-08 17:58:55 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:10:14.077Z" data-timestamp="2026-07-08T18:10:14.077Z" title="1783534214077">2026-07-08 18:10:14 UTC</time></span></div>
       </div>
       
       <p><code>RGB 82.9%</code><br/><code>Pixel 72.78%</code><br/><code>Mismatch 27.22%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4480,8 +4603,8 @@
       </div>
       <a href="diff/react__android/screens.members.agent-detail.profile.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.agent-detail.profile.side-by-side.png" alt="screens.members.agent-detail.profile side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:02:58.659Z" data-timestamp="2026-07-07T22:02:58.659Z" title="2026-07-07T22:02:58.659Z">2026-07-07 22:02:58 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:52.048Z" data-timestamp="2026-07-07T22:20:52.048Z" title="1783462852048">2026-07-07 22:20:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:58:58.446Z" data-timestamp="2026-07-08T17:58:58.446Z" title="2026-07-08T17:58:58.446Z">2026-07-08 17:58:58 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:28.057Z" data-timestamp="2026-07-08T18:12:28.057Z" title="1783534348057">2026-07-08 18:12:28 UTC</time></span></div>
       </div>
       
       <p><code>RGB 89.8%</code><br/><code>Pixel 81.77%</code><br/><code>Mismatch 18.23%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4559,8 +4682,8 @@
       </div>
       <a href="diff/react__android/screens.members.agent-detail.reminders.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.agent-detail.reminders.side-by-side.png" alt="screens.members.agent-detail.reminders side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:04.523Z" data-timestamp="2026-07-07T22:03:04.523Z" title="2026-07-07T22:03:04.523Z">2026-07-07 22:03:04 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:04.985Z" data-timestamp="2026-07-07T22:20:04.985Z" title="1783462804985">2026-07-07 22:20:04 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:04.576Z" data-timestamp="2026-07-08T17:59:04.576Z" title="2026-07-08T17:59:04.576Z">2026-07-08 17:59:04 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:02.334Z" data-timestamp="2026-07-08T18:12:02.334Z" title="1783534322334">2026-07-08 18:12:02 UTC</time></span></div>
       </div>
       
       <p><code>RGB 96.6%</code><br/><code>Pixel 93.80%</code><br/><code>Mismatch 6.20%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4615,8 +4738,8 @@
       </div>
       <a href="diff/react__android/screens.members.agent-detail.workspace.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.agent-detail.workspace.side-by-side.png" alt="screens.members.agent-detail.workspace side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:07.238Z" data-timestamp="2026-07-07T22:03:07.238Z" title="2026-07-07T22:03:07.238Z">2026-07-07 22:03:07 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:31.691Z" data-timestamp="2026-07-07T22:23:31.691Z" title="1783463011691">2026-07-07 22:23:31 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:07.478Z" data-timestamp="2026-07-08T17:59:07.478Z" title="2026-07-08T17:59:07.478Z">2026-07-08 17:59:07 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:46.279Z" data-timestamp="2026-07-08T18:13:46.279Z" title="1783534426279">2026-07-08 18:13:46 UTC</time></span></div>
       </div>
       
       <p><code>RGB 97.1%</code><br/><code>Pixel 94.94%</code><br/><code>Mismatch 5.06%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4671,8 +4794,8 @@
       </div>
       <a href="diff/react__android/screens.members.agent-detail.apps.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.agent-detail.apps.side-by-side.png" alt="screens.members.agent-detail.apps side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:09.904Z" data-timestamp="2026-07-07T22:03:09.904Z" title="2026-07-07T22:03:09.904Z">2026-07-07 22:03:09 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:24:03.928Z" data-timestamp="2026-07-07T22:24:03.928Z" title="1783463043928">2026-07-07 22:24:03 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:10.393Z" data-timestamp="2026-07-08T17:59:10.393Z" title="2026-07-08T17:59:10.393Z">2026-07-08 17:59:10 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:39.805Z" data-timestamp="2026-07-08T18:14:39.805Z" title="1783534479805">2026-07-08 18:14:39 UTC</time></span></div>
       </div>
       
       <p><code>RGB 90.9%</code><br/><code>Pixel 87.97%</code><br/><code>Mismatch 12.03%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4727,8 +4850,8 @@
       </div>
       <a href="diff/react__android/screens.members.agent-detail.activity.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.agent-detail.activity.side-by-side.png" alt="screens.members.agent-detail.activity side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:12.688Z" data-timestamp="2026-07-07T22:03:12.688Z" title="2026-07-07T22:03:12.688Z">2026-07-07 22:03:12 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:21:53.217Z" data-timestamp="2026-07-07T22:21:53.217Z" title="1783462913217">2026-07-07 22:21:53 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:13.290Z" data-timestamp="2026-07-08T17:59:13.290Z" title="2026-07-08T17:59:13.290Z">2026-07-08 17:59:13 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:54.931Z" data-timestamp="2026-07-08T18:12:54.931Z" title="1783534374931">2026-07-08 18:12:54 UTC</time></span></div>
       </div>
       
       <p><code>RGB 94.7%</code><br/><code>Pixel 90.39%</code><br/><code>Mismatch 9.61%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4783,8 +4906,8 @@
       </div>
       <a href="diff/react__android/screens.members.human.profile.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.members.human.profile.side-by-side.png" alt="screens.members.human.profile side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:15.613Z" data-timestamp="2026-07-07T22:03:15.613Z" title="2026-07-07T22:03:15.613Z">2026-07-07 22:03:15 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:46.091Z" data-timestamp="2026-07-07T22:19:46.091Z" title="1783462786091">2026-07-07 22:19:46 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:16.455Z" data-timestamp="2026-07-08T17:59:16.455Z" title="2026-07-08T17:59:16.455Z">2026-07-08 17:59:16 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:53.963Z" data-timestamp="2026-07-08T18:11:53.963Z" title="1783534313963">2026-07-08 18:11:53 UTC</time></span></div>
       </div>
       
       <p><code>RGB 94.8%</code><br/><code>Pixel 89.76%</code><br/><code>Mismatch 10.24%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4842,8 +4965,8 @@
       </div>
       <a href="diff/react__android/screens.settings.computers.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.settings.computers.side-by-side.png" alt="screens.settings.computers side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:24.021Z" data-timestamp="2026-07-07T22:03:24.021Z" title="2026-07-07T22:03:24.021Z">2026-07-07 22:03:24 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:18:59.603Z" data-timestamp="2026-07-07T22:18:59.603Z" title="1783462739603">2026-07-07 22:18:59 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:25.339Z" data-timestamp="2026-07-08T17:59:25.339Z" title="2026-07-08T17:59:25.339Z">2026-07-08 17:59:25 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:12:55.995Z" data-timestamp="2026-07-08T18:12:55.995Z" title="1783534375995">2026-07-08 18:12:55 UTC</time></span></div>
       </div>
       
       <p><code>RGB 94.7%</code><br/><code>Pixel 93.07%</code><br/><code>Mismatch 6.93%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -4898,11 +5021,11 @@
       </div>
       <a href="diff/react__android/screens.settings.computer-detail.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.settings.computer-detail.side-by-side.png" alt="screens.settings.computer-detail side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:26.740Z" data-timestamp="2026-07-07T22:03:26.740Z" title="2026-07-07T22:03:26.740Z">2026-07-07 22:03:26 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:23:52.315Z" data-timestamp="2026-07-07T22:23:52.315Z" title="1783463032315">2026-07-07 22:23:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:28.061Z" data-timestamp="2026-07-08T17:59:28.061Z" title="2026-07-08T17:59:28.061Z">2026-07-08 17:59:28 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:33.182Z" data-timestamp="2026-07-08T18:14:33.182Z" title="1783534473182">2026-07-08 18:14:33 UTC</time></span></div>
       </div>
       
-      <p><code>RGB 92.7%</code><br/><code>Pixel 75.46%</code><br/><code>Mismatch 24.54%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
+      <p><code>RGB 93.0%</code><br/><code>Pixel 75.46%</code><br/><code>Mismatch 24.54%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / viewport-bounds 390×844</code></p>
       <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
@@ -4954,8 +5077,8 @@
       </div>
       <a href="diff/react__android/screens.settings.server-danger-modal.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.settings.server-danger-modal.side-by-side.png" alt="screens.settings.server-danger-modal side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:29.395Z" data-timestamp="2026-07-07T22:03:29.395Z" title="2026-07-07T22:03:29.395Z">2026-07-07 22:03:29 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:17:50.221Z" data-timestamp="2026-07-07T22:17:50.221Z" title="1783462670221">2026-07-07 22:17:50 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:30.715Z" data-timestamp="2026-07-08T17:59:30.715Z" title="2026-07-08T17:59:30.715Z">2026-07-08 17:59:30 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:11:55.956Z" data-timestamp="2026-07-08T18:11:55.956Z" title="1783534315956">2026-07-08 18:11:55 UTC</time></span></div>
       </div>
       
       <p><code>RGB 83.9%</code><br/><code>Pixel 13.98%</code><br/><code>Mismatch 86.02%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -5010,8 +5133,8 @@
       </div>
       <a href="diff/react__android/screens.settings.administration.full-height.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.settings.administration.full-height.side-by-side.png" alt="screens.settings.administration.full-height side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×2564</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:40.040Z" data-timestamp="2026-07-07T22:03:40.040Z" title="2026-07-07T22:03:40.040Z">2026-07-07 22:03:40 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×2595</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:19:52.020Z" data-timestamp="2026-07-07T22:19:52.020Z" title="1783462792020">2026-07-07 22:19:52 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×2564</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:41.651Z" data-timestamp="2026-07-08T17:59:41.651Z" title="2026-07-08T17:59:41.651Z">2026-07-08 17:59:41 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×2595</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:37.747Z" data-timestamp="2026-07-08T18:13:37.747Z" title="1783534417747">2026-07-08 18:13:37 UTC</time></span></div>
       </div>
       
       <p><code>RGB 84.6%</code><br/><code>Pixel 69.35%</code><br/><code>Mismatch 30.65%</code><br/><code>Raw 1170×7692 / 1170×7500</code><br/><code>Canvas 1170×7692</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -5066,8 +5189,8 @@
       </div>
       <a href="diff/react__android/screens.settings.connected-apps.full-height.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.settings.connected-apps.full-height.side-by-side.png" alt="screens.settings.connected-apps.full-height side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×969</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:42.565Z" data-timestamp="2026-07-07T22:03:42.565Z" title="2026-07-07T22:03:42.565Z">2026-07-07 22:03:42 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×868</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:22:19.773Z" data-timestamp="2026-07-07T22:22:19.773Z" title="1783462939773">2026-07-07 22:22:19 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×969</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:44.326Z" data-timestamp="2026-07-08T17:59:44.326Z" title="2026-07-08T17:59:44.326Z">2026-07-08 17:59:44 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×868</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:13:08.110Z" data-timestamp="2026-07-08T18:13:08.110Z" title="1783534388110">2026-07-08 18:13:08 UTC</time></span></div>
       </div>
       
       <p><code>RGB 82.1%</code><br/><code>Pixel 72.31%</code><br/><code>Mismatch 27.69%</code><br/><code>Raw 1170×2907 / 1170×2604</code><br/><code>Canvas 1170×2907</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -5125,8 +5248,8 @@
       </div>
       <a href="diff/react__android/screens.home.loading.side-by-side.png"><img class="sideBySide" src="diff/react__android/screens.home.loading.side-by-side.png" alt="screens.home.loading side by side"/></a>
       <div class="caseMeta">
-        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:03:31.952Z" data-timestamp="2026-07-07T22:03:31.952Z" title="2026-07-07T22:03:31.952Z">2026-07-07 22:03:31 UTC</time></span></div>
-        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-07T22:20:55.359Z" data-timestamp="2026-07-07T22:20:55.359Z" title="1783462855359">2026-07-07 22:20:55 UTC</time></span></div>
+        <div><strong>React</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T17:59:33.290Z" data-timestamp="2026-07-08T17:59:33.290Z" title="2026-07-08T17:59:33.290Z">2026-07-08 17:59:33 UTC</time></span></div>
+        <div><strong>Android</strong><br/><code>390×844</code><span class="captureTime">Captured <time class="localizedTime" datetime="2026-07-08T18:14:17.041Z" data-timestamp="2026-07-08T18:14:17.041Z" title="1783534457041">2026-07-08 18:14:17 UTC</time></span></div>
       </div>
       
       <p><code>RGB 96.4%</code><br/><code>Pixel 83.76%</code><br/><code>Mismatch 16.24%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
@@ -5201,6 +5324,22 @@
       <td>pending</td>
     </tr>
 <tr>
+      <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
+      <td>app/thread</td>
+      <td><code>components.thread.comment-anchor</code><br/>Thread Attachment Comment Anchor</td>
+      <td class="active">active</td>
+      <td></td>
+      <td>different<br/><code>RGB 66.8%</code><br/><code>Pixel 36.93%</code></td>
+    </tr>
+<tr>
+      <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
+      <td>app/thread</td>
+      <td><code>components.thread.forward-modal</code><br/>Thread Forward Modal</td>
+      <td class="active">active</td>
+      <td></td>
+      <td>different<br/><code>RGB 85.5%</code><br/><code>Pixel 76.35%</code></td>
+    </tr>
+<tr>
       <td><strong>Screens Parity</strong><br/><code>real-screen</code></td>
       <td>auth</td>
       <td><code>screens.auth.choose-server</code><br/>Auth Choose Server Screen</td>
@@ -5214,7 +5353,7 @@
       <td><code>components.members.agent-lifecycle-actions</code><br/>Members Agent Lifecycle Actions</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready AgentDetailPanel, AgentDetailHeader, AgentStartStopButton</span><br/><span class="providerStatus ready"><strong>android</strong>: ready MembersDetailContent, MembersDetailHeader, SlockBrutalDropdownMenu</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending</span><br/><small>Needs Harmony provider capture after React and Android contracts are defined.</small></td>
-      <td>different<br/><code>RGB 89.2%</code><br/><code>Pixel 79.93%</code></td>
+      <td>different<br/><code>RGB 88.6%</code><br/><code>Pixel 79.50%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5222,7 +5361,7 @@
       <td><code>components.members.avatar-management</code><br/>Members Avatar Management</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready AgentDetailPanel, AvatarSlot, PixelAvatar</span><br/><span class="providerStatus ready"><strong>android</strong>: ready MembersDetailContent, MembersAgentProfileTab, MembersAvatar</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending</span><br/><small>Needs Harmony provider capture after React and Android contracts are defined.</small></td>
-      <td>different<br/><code>RGB 85.6%</code><br/><code>Pixel 74.46%</code></td>
+      <td>different<br/><code>RGB 85.7%</code><br/><code>Pixel 74.46%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5254,7 +5393,7 @@
       <td><code>components.thread.message-row.long-inline-code</code><br/>Thread Message Row Long Inline Code</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MessageItem</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadMessageCard</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending ThreadMessageCard</span><br/><small>OHOS visual capture requires a self-hosted runner with an HDC-attached device; blocked on infra approval.</small></td>
-      <td>different<br/><code>RGB 81.9%</code><br/><code>Pixel 49.84%</code></td>
+      <td>different<br/><code>RGB 82.2%</code><br/><code>Pixel 49.78%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5262,7 +5401,7 @@
       <td><code>components.thread.message-row.rich-content</code><br/>Thread Message Row Rich Content</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MessageItem</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadMessageCard</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending ThreadMessageCard</span><br/><small>Needs Harmony provider capture after React and Android contracts are defined.</small></td>
-      <td>different<br/><code>RGB 89.4%</code><br/><code>Pixel 77.23%</code></td>
+      <td>different<br/><code>RGB 88.8%</code><br/><code>Pixel 76.12%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5510,7 +5649,7 @@
       <td><code>components.thread.composer.member-suggestions</code><br/>Thread Composer Member Suggestions</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MessageInput, MentionCandidateBody, MentionCandidateAvatar</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadComposerContent visual-only page, ComposerMemberSuggestionPanel</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending ThreadComposerPage composer</span><br/><small>Depends on shared composer fixture route and OHOS capture.</small></td>
-      <td>different<br/><code>RGB 84.2%</code><br/><code>Pixel 77.24%</code></td>
+      <td>different<br/><code>RGB 83.4%</code><br/><code>Pixel 76.02%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5526,7 +5665,7 @@
       <td><code>components.thread.message.row</code><br/>Thread Message Row</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MessageItem</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadMessageCard</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending ThreadMessageCard</span><br/><small>Depends on shared thread fixture route and OHOS capture.</small></td>
-      <td>different<br/><code>RGB 85.9%</code><br/><code>Pixel 71.34%</code></td>
+      <td>different<br/><code>RGB 85.3%</code><br/><code>Pixel 67.14%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5550,7 +5689,7 @@
       <td><code>components.channel.members.add-panel</code><br/>Channel Add Member Panel</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready ChannelMembers, ChannelMemberListShell, ChannelMemberRow</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadAddMemberModal, Shared add-member panel</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending Shared add-member panel</span><br/><small>Needs Harmony real-device/provider capture.</small></td>
-      <td>different<br/><code>RGB 86.9%</code><br/><code>Pixel 80.00%</code></td>
+      <td>different<br/><code>RGB 90.2%</code><br/><code>Pixel 84.96%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5574,7 +5713,7 @@
       <td><code>components.home.activity.results</code><br/>Home Activity Results</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready ThreadsInbox, PanelHeader, SegmentedControl, ConversationPreviewCard</span><br/><span class="providerStatus ready"><strong>android</strong>: ready SharedHomeActivityScreen, SharedActivityHeader, SharedActivityRow, SegmentedControl</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending SharedHomeActivityScreen</span><br/><small>Needs Harmony real-device/provider capture.</small></td>
-      <td>different<br/><code>RGB 92.0%</code><br/><code>Pixel 85.87%</code></td>
+      <td>different<br/><code>RGB 92.0%</code><br/><code>Pixel 85.88%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5598,7 +5737,7 @@
       <td><code>components.home.saved.results</code><br/>Home Saved Results</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready SavedPanel, SavedItem, PanelHeader</span><br/><span class="providerStatus ready"><strong>android</strong>: ready SharedHomeSavedPanel, SharedHomeInboxResultRow, SharedHomeLoadMoreRow</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending SharedHomeSavedPanel, SharedHomeInboxResultRow, SharedHomeLoadMoreRow</span><br/><small>Needs Harmony real-device/provider capture.</small></td>
-      <td>different<br/><code>RGB 91.9%</code><br/><code>Pixel 86.25%</code></td>
+      <td>different<br/><code>RGB 91.9%</code><br/><code>Pixel 86.26%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5606,7 +5745,7 @@
       <td><code>components.home.search.channel-dropdown</code><br/>Home Search Channel Dropdown</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MessageSearchPage, SelectionPopover</span><br/><span class="providerStatus ready"><strong>android</strong>: ready SharedHomeSearchPanel, SlockFilterPopover</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending SharedHomeSearchPanel, SlockFilterPopover</span><br/><small>Needs Harmony real-device/provider capture.</small></td>
-      <td>different<br/><code>RGB 90.2%</code><br/><code>Pixel 77.06%</code></td>
+      <td>different<br/><code>RGB 89.3%</code><br/><code>Pixel 76.43%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5654,7 +5793,7 @@
       <td><code>components.settings.account.error-state</code><br/>Settings Account Error State</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready AccountSection</span><br/><span class="providerStatus ready"><strong>android</strong>: ready SettingsAccountPage, SettingsHomePage</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending SettingsAccountPage, SettingsHomePage</span><br/><small>Needs Harmony real-device/provider capture.</small></td>
-      <td>different<br/><code>RGB 88.6%</code><br/><code>Pixel 69.04%</code></td>
+      <td>different<br/><code>RGB 88.5%</code><br/><code>Pixel 68.87%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5814,7 +5953,7 @@
       <td><code>components.thread.files.list</code><br/>Thread Files List</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready ChannelFilesPanel, AvatarListRow</span><br/><span class="providerStatus ready"><strong>android</strong>: ready ThreadFilesContent, ThreadFileRow, ThreadFileThumbnail</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending ThreadFilesContent</span><br/><small>Depends on shared files fixture route and OHOS capture.</small></td>
-      <td>different<br/><code>RGB 89.3%</code><br/><code>Pixel 81.52%</code></td>
+      <td>different<br/><code>RGB 89.6%</code><br/><code>Pixel 82.67%</code></td>
     </tr>
 <tr>
       <td><strong>Components Parity</strong><br/><code>component-fixture</code></td>
@@ -5974,7 +6113,7 @@
       <td><code>screens.settings.computer-detail</code><br/>Settings Computer Detail Screen</td>
       <td class="baseline">baseline</td>
       <td><span class="providerStatus ready"><strong>react</strong>: ready MachineDetailPanel, MachineStore</span><br/><span class="providerStatus ready"><strong>android</strong>: ready SettingsComputerDetailScreen, SettingsComputerDetailContent</span><br/><span class="providerStatus pending"><strong>harmony</strong>: pending</span><br/><small>Needs Harmony provider capture after React and Android contracts are defined.</small></td>
-      <td>different<br/><code>RGB 92.7%</code><br/><code>Pixel 75.46%</code></td>
+      <td>different<br/><code>RGB 93.0%</code><br/><code>Pixel 75.46%</code></td>
     </tr>
 <tr>
       <td><strong>Screens Parity</strong><br/><code>real-screen</code></td>

@@ -1,18 +1,23 @@
 # Raft Visual Testing
 
-Generated: 2026-07-07 22:26:27 UTC
-Latest run: b0f6a2f-20260707222554
-Latest commit: b0f6a2f-20260707222554
-Commit subject: fix(home): no dismiss-activation delay for click-opened popovers (task #436 follow-up) (#313)
-Providers: react vs android
-Summary: total 87, same 0, pass 0, basic-pass 5, different 80, missing 2
-AI analysis: ready 0 / total 87, pending 87
-Visual coverage matrix: active 88 / total 107, pending 16, skipped 3
+Generated: 2026-07-08 18:24:10 UTC
+Latest run: 7d77b5b-20260708182309
+Latest commit: 7d77b5b-20260708182309
+Commit subject: ci(visual-testing): report must wait for ios-capture (ordering race) (#385)
+Providers: react vs android, react vs ios
+Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
+AI analysis: ready 0 / total 89, pending 89
+Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
+
+## Comparisons
+
+- react__android: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
+- react__ios: total 89, same 0, pass 9, basic-pass 12, different 33, missing 35
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 74, pending 2, total 78
+- Components Parity (component-fixture): active 76, pending 2, total 80
 - Screens Parity (real-screen): active 14, pending 14, total 29
 
 ## Provider Coverage
@@ -110,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 7d77b5b-20260708182309: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/7d77b5b-20260708182309/component-matrix.json, page runs/7d77b5b-20260708182309/
 - b0f6a2f-20260707222554: react vs android, total 87, pass 0, basic-pass 5, different 80, matrix runs/b0f6a2f-20260707222554/component-matrix.json, page runs/b0f6a2f-20260707222554/
 - 04bbe8e-20260707180439: react vs android, total 87, pass 0, basic-pass 5, different 78, matrix runs/04bbe8e-20260707180439/component-matrix.json, page runs/04bbe8e-20260707180439/
 - 1dcb122-20260706223444: react vs android, total 84, pass 0, basic-pass 4, different 75, matrix runs/1dcb122-20260706223444/component-matrix.json, page runs/1dcb122-20260706223444/
