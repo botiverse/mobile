@@ -804,9 +804,9 @@ internal fun SlockStructuralHomeShell(
         }
     var sortOverlaySection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var activeMenuSection by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
-    val allChannelId = remember(channels) { channels.firstOrNull { it.kind != "joint" && it.name == "all" }?.id }
+    val allChannelId = remember(channels) { channels.firstOrNull { it.kind != JointChannelKindWireValue && it.name == "all" }?.id }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState) {
-        val regularChannels = channels.filter { it.kind != "joint" }
+        val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
         regularChannels
             .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
             .sortedForSidebar(channelSortModeState, pinnedFirstId = allChannelId) { it.name }

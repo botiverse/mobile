@@ -25,6 +25,16 @@ import build.raft.app.model.ConversationKind
  * 5. The Kuikly surface projection is lossy (Joint/Inbox/System all render on
  *    the channel surface). Round-tripping a kind through a string is only
  *    guaranteed via [toWireChannelKindOrNull] for the kinds it covers.
+ * 6. Confinement (task #444 lesson): [toKuiklySurfaceKind] may be CALLED only
+ *    where a surface string is being assembled for the bridge — route/launch
+ *    payload builders and directory-projection `surfaceKind` fields. It must
+ *    never serialize a kind into a field that domain logic later parses back
+ *    (the #444 bug: home rows carried the lossy surface as their kind and the
+ *    Joint section's `kind == "joint"` filter went permanently false). When a
+ *    domain check compares against [KuiklyThreadSurfaceKind.Channel], be
+ *    explicit about intent: that value also matches Joint/Inbox/System per
+ *    rule 5 — if the check means "is a plain channel, not joint", it must use
+ *    [ConversationKind] (or the lossless wire kind), not the surface.
  *
  * The legacy converters (`threadSurfaceKind`, both `threadParentSurfaceKindOrNull`
  * overloads, `threadChannelKindWireValue`, ...) stay untouched until the t4-t6
