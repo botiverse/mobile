@@ -14,6 +14,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.zIndex
 
 internal data class SlockAppShellScope(
     val topSafeArea: Dp,
@@ -81,29 +82,37 @@ internal fun SlockAppShellSurface(
     showBottomTabs: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val modalHostState = rememberSlockUnifiedDialogHostState()
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
-        ) {
-            if (networkStatus == SlockAppShellNetworkStatus.Offline) {
-                SlockAppShellNetworkBanner()
-            }
-            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                content()
-            }
-        }
-        if (showBottomTabs) {
-            SlockAppBottomTabBarHost(
-                items = bottomTabs,
-                onSelect = onBottomTabSelected,
+        SlockUnifiedDialogHostProvider(modalHostState) {
+            Column(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter),
-                bottomSafeArea = shellScope.bottomSafeArea
+                        .zIndex(SlockAppContentHostZIndex)
+                        .fillMaxSize()
+                        .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
+            ) {
+                if (networkStatus == SlockAppShellNetworkStatus.Offline) {
+                    SlockAppShellNetworkBanner()
+                }
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    content()
+                }
+            }
+            if (showBottomTabs) {
+                SlockAppBottomTabBarHost(
+                    items = bottomTabs,
+                    onSelect = onBottomTabSelected,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter),
+                    bottomSafeArea = shellScope.bottomSafeArea
+                )
+            }
+            SlockUnifiedDialogHost(
+                state = modalHostState,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
