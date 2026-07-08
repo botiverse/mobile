@@ -193,7 +193,6 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.ImageBitmap
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
-import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -13612,7 +13611,7 @@ private fun ThreadReactionSpriteGlyph(
             emoji = sprite.value,
             detail = "sprite=${sprite.name} imageWidth=0 imageHeight=0"
         )
-        ThreadReactionSpritePlaceholderGlyph(sprite = sprite, modifier = modifier)
+        Canvas(modifier = modifier) {}
         return
     }
     ThreadReactionGlyphDiagnosticLog(
@@ -13628,41 +13627,6 @@ private fun ThreadReactionSpriteGlyph(
             srcSize = IntSize(rect.width, rect.height),
             dstOffset = IntOffset.Zero,
             dstSize = size.toIntSize()
-        )
-    }
-}
-
-@Composable
-private fun ThreadReactionSpritePlaceholderGlyph(
-    sprite: ThreadReactionSprite,
-    modifier: Modifier = Modifier
-) {
-    ThreadReactionGlyphDiagnosticLog(
-        path = "sprite_atlas_placeholder",
-        emoji = sprite.value,
-        detail = "sprite=${sprite.name}"
-    )
-    Canvas(modifier = modifier) {
-        val stroke = SlockStroke.Thin.toPx().coerceAtLeast(1f)
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = ((minOf(size.width, size.height) - stroke) / 2f).coerceAtLeast(0f)
-        drawCircle(
-            color = SlockColor.SurfaceCream,
-            radius = radius,
-            center = center,
-            style = Fill
-        )
-        drawCircle(
-            color = SlockColor.BorderBlack,
-            radius = radius,
-            center = center,
-            style = Stroke(width = stroke)
-        )
-        drawCircle(
-            color = SlockColor.BrandYellow,
-            radius = (radius * 0.36f).coerceAtLeast(0f),
-            center = center,
-            style = Fill
         )
     }
 }
