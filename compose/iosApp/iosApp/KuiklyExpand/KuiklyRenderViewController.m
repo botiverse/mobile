@@ -4,6 +4,9 @@
 #import <OpenKuiklyIOSRender/KuiklyRenderViewControllerBaseDelegator.h>
 #import <OpenKuiklyIOSRender/KuiklyRenderContextProtocol.h>
 
+static const NSInteger SlockKuiklyKeyEventTypeDown = 2;
+static const NSInteger SlockKuiklyKeyCodeTab = 9;
+
 #define HRWeakSelf __weak typeof(self) weakSelf = self;
 @interface KuiklyRenderViewController()<KuiklyRenderViewControllerBaseDelegatorDelegate>
 
@@ -62,6 +65,28 @@
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     [_delegator viewDidDisappear];
+}
+
+- (NSArray<UIKeyCommand *> *)keyCommands {
+    return @[
+        [UIKeyCommand keyCommandWithInput:@"\t"
+                            modifierFlags:0
+                                   action:@selector(handleTabKeyCommand:)],
+        [UIKeyCommand keyCommandWithInput:@"\t"
+                            modifierFlags:UIKeyModifierShift
+                                   action:@selector(handleTabKeyCommand:)]
+    ];
+}
+
+- (void)handleTabKeyCommand:(UIKeyCommand *)command {
+    BOOL shiftPressed = (command.modifierFlags & UIKeyModifierShift) == UIKeyModifierShift;
+    [_delegator sendKeyEventWithKeyCode:SlockKuiklyKeyCodeTab
+                                   type:SlockKuiklyKeyEventTypeDown
+                        utf16CodePoint:SlockKuiklyKeyCodeTab
+                             altPressed:NO
+                            ctrlPressed:NO
+                            metaPressed:NO
+                           shiftPressed:shiftPressed];
 }
 
 #pragma mark - private

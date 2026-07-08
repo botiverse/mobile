@@ -51,6 +51,9 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.input.key.Key
+import com.tencent.kuikly.compose.ui.input.key.KeyEventType
+import com.tencent.kuikly.compose.ui.input.key.onPreviewKeyEvent
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -982,6 +985,7 @@ internal fun LoginContent(
 ) {
     var emailDraft by remember { mutableStateOf(email) }
     var passwordDraft by remember { mutableStateOf(password) }
+    val emailFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
     val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
     LaunchedEffect(email) {
@@ -1030,8 +1034,18 @@ internal fun LoginContent(
                 // React parity: LoginPage.tsx labels are plain "Email"/"Password"
                 // (no pink required asterisk).
                 label = "Email",
+                modifier =
+                    Modifier.onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && !event.isShiftPressed) {
+                            passwordFocusRequester.requestFocus()
+                            true
+                        } else {
+                            false
+                        }
+                    },
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
+                focusRequester = emailFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
@@ -1042,6 +1056,15 @@ internal fun LoginContent(
                     onPasswordChange(it)
                 },
                 label = "Password",
+                modifier =
+                    Modifier.onPreviewKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && event.isShiftPressed) {
+                            emailFocusRequester.requestFocus()
+                            true
+                        } else {
+                            false
+                        }
+                    },
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
                 focusRequester = passwordFocusRequester,
