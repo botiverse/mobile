@@ -406,7 +406,7 @@ internal fun slockForegroundMessageBannerProjectionResult(
     val conversation =
         message.resolveForegroundBannerConversation(conversationDirectory)
             ?: return SlockForegroundMessageBannerProjectionResult(null, projection, "conversation_missing")
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity = null)) {
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
         return SlockForegroundMessageBannerProjectionResult(null, projection, "visible_conversation")
     }
     val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
@@ -810,7 +810,7 @@ internal fun slockNotificationPushBannerOrNull(
                 channelType = event.kind.toWireChannelKindOrNull()
             )
         }
-    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity)) {
+    if (conversation.matchesForegroundVisibleRoute(visibleConversationKey, visibleRouteIdentity = null)) {
         onSuppressed("visible_conversation")
         return null
     }
