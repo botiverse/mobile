@@ -816,9 +816,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(): SlockKuiklyPageData =
             SlockKuiklyPageData.fromJson(
                     JSONObject(text).apply {
-                        if (!has(KEY_HOST_EXCLUDES_NAVIGATION_BAR) && androidHostExcludesNavigationBar()) {
-                            put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, true)
-                        }
+                        put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
                     }
             )
 
@@ -1245,8 +1243,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private fun JSONObject.optTrimmedString(key: String): String? =
                 optString(key).trim().takeIf { it.isNotBlank() }
 
-        internal fun androidHostExcludesNavigationBarForMode(navigationMode: Int?): Boolean =
-                navigationMode != null && navigationMode != NAVIGATION_MODE_GESTURAL
+        @Suppress("UNUSED_PARAMETER")
+        internal fun androidHostExcludesNavigationBarForMode(navigationMode: Int?): Boolean {
+            // task #232: setupImmersiveMode renders edge-to-edge (API 30+
+            // setDecorFitsSystemWindows(false); older APIs use LAYOUT_HIDE_NAVIGATION),
+            // so the host no longer lays Kuikly out above the navigation bar in any
+            // navigation mode. Shared code must keep applying the bottom safe-area inset.
+            return false
+        }
     }
 }
 
