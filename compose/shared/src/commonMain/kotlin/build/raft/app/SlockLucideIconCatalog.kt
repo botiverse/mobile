@@ -120,6 +120,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Funnel("funnel"),
     GitBranch("git-branch"),
     Globe("globe"),
+    GripVertical("grip-vertical"),
     Hash("hash"),
     Heart("heart"),
     House("house"),

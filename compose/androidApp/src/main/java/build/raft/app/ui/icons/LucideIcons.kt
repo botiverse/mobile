@@ -5768,6 +5768,89 @@ object LucideIcons {
                 }.build()
     }
 
+    val GripVertical: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideGripVertical",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 12.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 5.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 19.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 12.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 5.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 19.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                }.build()
+    }
+
     val Hash: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideHash",
@@ -9415,7 +9498,7 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-off", "bell-ring", "blocks", "bookmark", "bookmark-minus", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-check", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "menu", "eraser", "external-link", "eye", "eye-off", "file", "file-archive", "file-axis-3d", "file-badge", "file-box", "file-braces", "file-braces-corner", "file-chart-column", "file-chart-column-increasing", "file-chart-line", "file-chart-pie", "file-check", "file-check-corner", "file-code", "file-code-corner", "file-cog", "file-diff", "file-digit", "file-down", "file-exclamation-point", "file-headphone", "file-heart", "file-image", "file-input", "file-key", "file-lock", "file-minus", "file-minus-corner", "file-music", "file-output", "file-pen", "file-pen-line", "file-play", "file-plus", "file-plus-corner", "file-question-mark", "file-scan", "file-search", "file-search-corner", "file-signal", "file-sliders", "file-spreadsheet", "file-stack", "file-symlink", "file-terminal", "file-text", "file-type", "file-type-corner", "file-up", "file-user", "file-video-camera", "file-volume", "file-x", "file-x-corner", "files", "flag", "film", "flame", "folder", "folder-open", "funnel", "git-branch", "globe", "hash", "heart", "house", "image", "image-plus", "inbox", "info", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-open", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pause", "pencil", "pin", "pin-off", "play", "plus", "presentation", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "sheet", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
+    val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-off", "bell-ring", "blocks", "bookmark", "bookmark-minus", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-check", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "menu", "eraser", "external-link", "eye", "eye-off", "file", "file-archive", "file-axis-3d", "file-badge", "file-box", "file-braces", "file-braces-corner", "file-chart-column", "file-chart-column-increasing", "file-chart-line", "file-chart-pie", "file-check", "file-check-corner", "file-code", "file-code-corner", "file-cog", "file-diff", "file-digit", "file-down", "file-exclamation-point", "file-headphone", "file-heart", "file-image", "file-input", "file-key", "file-lock", "file-minus", "file-minus-corner", "file-music", "file-output", "file-pen", "file-pen-line", "file-play", "file-plus", "file-plus-corner", "file-question-mark", "file-scan", "file-search", "file-search-corner", "file-signal", "file-sliders", "file-spreadsheet", "file-stack", "file-symlink", "file-terminal", "file-text", "file-type", "file-type-corner", "file-up", "file-user", "file-video-camera", "file-volume", "file-x", "file-x-corner", "files", "flag", "film", "flame", "folder", "folder-open", "funnel", "git-branch", "globe", "grip-vertical", "hash", "heart", "house", "image", "image-plus", "inbox", "info", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-open", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pause", "pencil", "pin", "pin-off", "play", "plus", "presentation", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "sheet", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
@@ -9528,6 +9611,7 @@ object LucideIcons {
             "funnel" -> Funnel
             "git-branch" -> GitBranch
             "globe" -> Globe
+            "grip-vertical" -> GripVertical
             "hash" -> Hash
             "heart" -> Heart
             "house" -> House
@@ -9619,5 +9703,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellOff, BellRing, Blocks, Bookmark, BookmarkMinus, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardCheck, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Menu, Eraser, ExternalLink, Eye, EyeOff, File, FileArchive, FileAxis3d, FileBadge, FileBox, FileBraces, FileBracesCorner, FileChartColumn, FileChartColumnIncreasing, FileChartLine, FileChartPie, FileCheck, FileCheckCorner, FileCode, FileCodeCorner, FileCog, FileDiff, FileDigit, FileDown, FileExclamationPoint, FileHeadphone, FileHeart, FileImage, FileInput, FileKey, FileLock, FileMinus, FileMinusCorner, FileMusic, FileOutput, FilePen, FilePenLine, FilePlay, FilePlus, FilePlusCorner, FileQuestionMark, FileScan, FileSearch, FileSearchCorner, FileSignal, FileSliders, FileSpreadsheet, FileStack, FileSymlink, FileTerminal, FileText, FileType, FileTypeCorner, FileUp, FileUser, FileVideoCamera, FileVolume, FileX, FileXCorner, Files, Flag, Film, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pause, Pencil, Pin, PinOff, Play, Plus, Presentation, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Sheet, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
+    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellOff, BellRing, Blocks, Bookmark, BookmarkMinus, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardCheck, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Menu, Eraser, ExternalLink, Eye, EyeOff, File, FileArchive, FileAxis3d, FileBadge, FileBox, FileBraces, FileBracesCorner, FileChartColumn, FileChartColumnIncreasing, FileChartLine, FileChartPie, FileCheck, FileCheckCorner, FileCode, FileCodeCorner, FileCog, FileDiff, FileDigit, FileDown, FileExclamationPoint, FileHeadphone, FileHeart, FileImage, FileInput, FileKey, FileLock, FileMinus, FileMinusCorner, FileMusic, FileOutput, FilePen, FilePenLine, FilePlay, FilePlus, FilePlusCorner, FileQuestionMark, FileScan, FileSearch, FileSearchCorner, FileSignal, FileSliders, FileSpreadsheet, FileStack, FileSymlink, FileTerminal, FileText, FileType, FileTypeCorner, FileUp, FileUser, FileVideoCamera, FileVolume, FileX, FileXCorner, Files, Flag, Film, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, GripVertical, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pause, Pencil, Pin, PinOff, Play, Plus, Presentation, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Sheet, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
 }

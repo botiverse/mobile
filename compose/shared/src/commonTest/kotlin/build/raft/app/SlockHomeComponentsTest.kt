@@ -141,6 +141,11 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerSwitcherDragHandleUsesWebGripIcon() {
+        assertEquals("grip-vertical", HomeServerSwitcherDragHandleIconName.wireName)
+    }
+
+    @Test
     fun homeServerSwitcherCommunityActionsFollowJoinedSlugsIndependently() {
         val labels = SlockHomeShellLabels()
 
