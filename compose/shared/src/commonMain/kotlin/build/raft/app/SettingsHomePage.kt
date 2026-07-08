@@ -6,7 +6,6 @@ import build.raft.app.components.SlockBrutalCard
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalListRow
-import build.raft.app.components.SlockBrutalTextarea
 import build.raft.app.components.SlockAnchoredToolbarChip
 import build.raft.app.components.SlockBrutalPanelShell
 import build.raft.app.components.SlockBrutalReadOnlyField
@@ -8322,6 +8321,7 @@ private fun SharedQuiverFeedbackContent(
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var composerSyncNonce by remember { mutableStateOf(0) }
     var nextEntryId by remember { mutableStateOf(1) }
     var entries by remember {
         mutableStateOf(
@@ -8404,6 +8404,8 @@ private fun SharedQuiverFeedbackContent(
         error = null
         val submittedMessage = normalizedMessage
         val submittedAttachments = attachments.take(attachmentLimit)
+        messageFieldValue = TextFieldValue("")
+        composerSyncNonce += 1
         entries =
             entries +
                 SettingsQuiverFeedbackEntry(
@@ -8529,69 +8531,52 @@ private fun SharedQuiverFeedbackContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .background(SlockColor.SurfaceWhite)
         ) {
-            if (attachments.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsFormDetailText("${attachments.size}/$attachmentLimit attachments · 10 MB each")
-                    attachments.forEach { file ->
-                        SharedQuiverFeedbackAttachmentRow(
-                            file = file,
-                            enabled = !busy,
-                            onRemove = { attachments = attachments.filterNot { it.id == file.id } }
-                        )
+            ThreadComposerContent(
+                surface =
+                    ThreadComposerSurface(
+                        kind = KuiklyThreadSurfaceKind.Channel,
+                        channelId = "settings-feedback",
+                        showTaskButton = false
+                    ),
+                state =
+                    ThreadComposerUiState(
+                        instanceId = "settings-quiver-feedback-composer",
+                        seedText = message,
+                        syncNonce = composerSyncNonce,
+                        placeholder = "Share feedback",
+                        enabled = !busy,
+                        attachmentActionsEnabled = remainingSlots > 0,
+                        composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
+                        statusLabel = error?.takeIf { it.isNotBlank() },
+                        pendingAttachments = attachments.toFeedbackComposerAttachmentItems()
+                    ),
+                onEvent = { action, value, _, attachmentId ->
+                    when (action) {
+                        "change" -> {
+                            messageFieldValue = TextFieldValue(value.orEmpty())
+                            error = null
+                        }
+                        "send" -> {
+                            settingsCapabilities.log("settings_quiver_feedback_composer_send")
+                            submitFeedback()
+                        }
+                        "attachImage" -> pickAttachment(imageOnly = true)
+                        "attachFile" -> pickAttachment(imageOnly = false)
+                        "removeAttachment" ->
+                            attachmentId?.let { id ->
+                                attachments =
+                                    attachments.filterNot { file ->
+                                        file.feedbackComposerAttachmentId() == id
+                                    }
+                            }
+                        "previewAttachment", "retryAttachments", "blur", "toggleAsTask" -> Unit
                     }
-                }
-            }
-            SlockBrutalTextarea(
-                value = messageFieldValue,
-                onValueChange = {
-                    messageFieldValue = it
-                    error = null
                 },
-                placeholder = "请反馈问题",
-                hint = "设备诊断会在有剩余附件位时自动附加。",
-                error = if (normalizedMessage.isBlank() && message.isNotEmpty()) "Message is required." else null,
-                enabled = !busy,
-                fieldHeight = 104.dp,
-                maxLines = 5,
-                showCounter = true,
-                limit = 2000
+                contentPaddingTop = 10.dp,
+                contentPaddingBottom = 8.dp
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                SlockBrutalActionButton(
-                    label = "Image",
-                    onClick = { pickAttachment(imageOnly = true) },
-                    enabled = !busy && remainingSlots > 0,
-                    leadingIcon = SlockLucideIconName.Image,
-                    modifier = Modifier.weight(1f),
-                    minWidth = 0.dp
-                )
-                SlockBrutalActionButton(
-                    label = "File",
-                    onClick = { pickAttachment(imageOnly = false) },
-                    enabled = !busy && remainingSlots > 0,
-                    leadingIcon = SlockLucideIconName.Paperclip,
-                    modifier = Modifier.weight(1f),
-                    minWidth = 0.dp
-                )
-                SlockBrutalActionButton(
-                    label = if (busy) "Sending" else "Send",
-                    onClick = {
-                        settingsCapabilities.log("settings_quiver_feedback_button_on_click")
-                        submitFeedback()
-                    },
-                    enabled = !busy,
-                    leadingIcon = if (busy) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Send,
-                    backgroundColor = SlockColor.BrandYellow,
-                    modifier = Modifier.weight(1f),
-                    minWidth = 0.dp
-                )
-            }
-            error?.takeIf { it.isNotBlank() }?.let { SettingsFormErrorText(it) }
             Spacer(Modifier.height(bottomContentPadding))
         }
     }
@@ -8627,6 +8612,21 @@ private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(id: Int): Set
         ticketId = ticketId,
         shareText = shareText
     )
+
+private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(): List<KuiklyPendingAttachmentItem> =
+    map { file ->
+        KuiklyPendingAttachmentItem(
+            id = file.feedbackComposerAttachmentId(),
+            fileName = file.fileName.ifBlank { "Attachment" },
+            sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            mimeType = file.mimeType,
+            previewUri = file.previewUri,
+            status = "ready"
+        )
+    }
+
+private fun PlatformFile.feedbackComposerAttachmentId(): String =
+    fileRef?.takeIf { it.isNotBlank() } ?: id
 
 @Composable
 private fun SettingsQuiverFeedbackConversationRow(
@@ -8684,57 +8684,6 @@ private fun SettingsQuiverFeedbackConversationRow(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun SharedQuiverFeedbackAttachmentRow(
-    file: PlatformFile,
-    enabled: Boolean,
-    onRemove: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        SlockLucideIcon(
-            name = if (file.mimeType.orEmpty().startsWith("image/")) SlockLucideIconName.Image else SlockLucideIconName.File,
-            modifier = Modifier.size(18.dp),
-            color = SlockColor.TextBlackArgb
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = file.fileName.ifBlank { "Attachment" },
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text =
-                    listOfNotNull(
-                        file.sizeBytes?.let(::formatAttachmentSizeLabel),
-                        file.mimeType?.takeIf { it.isNotBlank() }
-                    ).joinToString(" · ").ifBlank { "Selected file" },
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        SlockBrutalIconButton(
-            iconName = SlockLucideIconName.Trash2,
-            onClick = onRemove,
-            enabled = enabled,
-            size = 30.dp,
-            iconSize = 14.dp
-        )
     }
 }
 
