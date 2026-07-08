@@ -4,6 +4,9 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
+// No native controller on the iOS video host yet; shared controls stay.
+internal actual fun slockPlatformUsesNativeVideoController(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
 // task #401 A-bridge: core-render-ios has no slockInlineCode chip yet, so

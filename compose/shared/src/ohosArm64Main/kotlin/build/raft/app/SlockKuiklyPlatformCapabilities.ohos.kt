@@ -4,6 +4,9 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
+// No native controller on the OHOS video host yet; shared controls stay.
+internal actual fun slockPlatformUsesNativeVideoController(): Boolean = false
+
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 
 // task #401 A-bridge: core-render-ohos has no slockInlineCode chip yet, so

@@ -1837,6 +1837,7 @@ private fun SlockFilePreviewVideoPanel(
     var seekRequest by remember(source) { mutableStateOf<SlockFilePreviewVideoSeekRequest?>(null) }
     val canPlay = source.isNotBlank()
     val isPlaying = playState == PlayState.PLAYING
+    val nativeController = slockPlatformUsesNativeVideoController()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1880,40 +1881,50 @@ private fun SlockFilePreviewVideoPanel(
             } else if (audioOnly) {
                 // Audio sources render no frames — keep a persistent music
                 // visual over the surface instead of a black box (task #556).
+                // With the native controller its center play/seek cluster owns
+                // the middle of the surface, so the visual moves to the top.
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.FileMusic,
                     title = name.ifBlank { "Audio preview" },
-                    detail = meta
+                    detail = meta,
+                    modifier =
+                        if (nativeController) {
+                            Modifier.align(Alignment.TopCenter).padding(top = SlockSpacing.Md)
+                        } else {
+                            Modifier
+                        }
                 )
-            } else if (!firstFrameVisible && !isPlaying) {
+            } else if (!nativeController && !firstFrameVisible && !isPlaying) {
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.Play,
                     title = name.ifBlank { "Video preview" },
                     detail = meta
                 )
             }
-            SlockFilePreviewVideoControls(
-                isPlaying = isPlaying,
-                canPlay = canPlay,
-                currentTimeMs = currentTimeMs,
-                totalTimeMs = totalTimeMs,
-                playState = playState,
-                onTogglePlay = {
-                    playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
-                },
-                onSeek = { seekTimeMs ->
-                    val nextTime = seekTimeMs.coerceIn(0, totalTimeMs.coerceAtLeast(0))
-                    currentTimeMs = nextTime
-                    if (playState == PlayState.PLAY_END) {
-                        playState = PlayState.PAUSED
-                    }
-                    seekRequest = SlockFilePreviewVideoSeekRequest(
-                        id = (seekRequest?.id ?: 0) + 1,
-                        timeMs = nextTime
-                    )
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
+            if (!nativeController) {
+                SlockFilePreviewVideoControls(
+                    isPlaying = isPlaying,
+                    canPlay = canPlay,
+                    currentTimeMs = currentTimeMs,
+                    totalTimeMs = totalTimeMs,
+                    playState = playState,
+                    onTogglePlay = {
+                        playControl = if (isPlaying) VideoPlayControl.PAUSE else VideoPlayControl.PLAY
+                    },
+                    onSeek = { seekTimeMs ->
+                        val nextTime = seekTimeMs.coerceIn(0, totalTimeMs.coerceAtLeast(0))
+                        currentTimeMs = nextTime
+                        if (playState == PlayState.PLAY_END) {
+                            playState = PlayState.PAUSED
+                        }
+                        seekRequest = SlockFilePreviewVideoSeekRequest(
+                            id = (seekRequest?.id ?: 0) + 1,
+                            timeMs = nextTime
+                        )
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
     }
 }
@@ -2052,11 +2063,12 @@ private fun SlockFilePreviewVideoProgressBar(
 private fun SlockFilePreviewVideoOverlayText(
     iconName: SlockLucideIconName,
     title: String,
-    detail: String
+    detail: String,
+    modifier: Modifier = Modifier
 ) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .background(Color(0xCC000000))
                 .border(SlockStroke.Thin, SlockColor.SurfaceWhite)
                 .padding(SlockSpacing.Md),
