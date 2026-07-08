@@ -248,6 +248,65 @@ Defaults match the current production lane: `versionName=1.0.1`,
 `versionCode=1000100`, Quiver channel `main`, Android variant `release`,
 `publish_quiver=true`, and `create_share_page=true`.
 
+## Release Notes (Changelog) Format
+
+User-facing release notes follow one house format. CI/dispatch creates the draft
+with a raw commit-derived changelog; a release owner rewrites it into this
+format, writes it onto the Quiver draft, and only then publishes.
+
+**Sectioned, emoji-headed, bilingual.** Up to three sections, each a bold header
+followed by bullets. Keep this order; omit a section if it has nothing.
+
+| Section | zh-CN header | en header |
+| --- | --- | --- |
+| New features | `✨ **新功能**` | `✨ **New**` |
+| Improvements | `🔧 **改进**` | `🔧 **Improved**` |
+| Fixes | `🐛 **修复**` | `🐛 **Fixed**` |
+
+**Bilingual storage.** The changelog is a JSON object keyed by locale:
+
+```json
+{ "zh-CN": "✨ **新功能**\n- …", "en": "✨ **New**\n- …" }
+```
+
+Clients receive the note matching their system locale; keys are normalized
+(`zh` / `cn` / `zh-cn` → `zh-CN`, `en` → `en`) and fall back to English, then to
+the first entry. Write it with the Quiver CLI
+(`quiver releases update <app> <releaseId> --changelog-file zh-CN=zh.md --changelog-file en=en.md`)
+or `PATCH /api/apps/:appId/releases/:id` with a `release_notes` object.
+
+**User-facing only.** Describe what changed for a user, not how. Exclude
+internal / CI / build / refactor items, PR and commit numbers, and
+platform-internal detail; fold many small related fixes into one line. Soften
+partial or not-yet-open capabilities (e.g. a Billing page that only lists plans
+→ "套餐与账单 / Plans & Billing", not "订阅 / subscriptions").
+
+**Content source.** Diff the commits since the last *released* `versionCode` and
+translate them into user language — never ship the raw commit list.
+
+**Draft-first, publish on explicit word.** The version's `versionCode` must be
+strictly greater than the live one (see [Versioning Rule](#versioning-rule)) or
+existing devices never receive it. Sequence: dispatch draft → rewrite the
+changelog in this format → `PATCH` it onto the draft → hold for smoke → publish
+(`POST /api/apps/:appId/releases/:id/publish`) only on the owner's explicit go,
+then verify `latest?channel=main` returns the new `versionCode`.
+
+**Example — 1.0.4 / versionCode 1000400 (zh-CN, abbreviated):**
+
+```text
+✨ **新功能**
+- 设置新增「更新说明」「开源许可」「套餐与账单」独立页面，方便查看版本更新、开源协议与套餐信息
+- 新增全局公告弹窗；前台消息提醒支持轻扫收起
+
+🔧 **改进**
+- 统一 Home、话题、动态与通知的会话身份解析，减少打开跳错会话或标签显示错误
+- 优化 Markdown 行内代码显示：更接近网页端样式，长代码按字符换行
+
+🐛 **修复**
+- 修复取消表情回应后，移动端未及时同步消失的问题
+- 修复「更新说明」页加载顺序导致的闪烁或底部白条问题
+```
+
 ## Validation Scope
 
 Server-side validation already passed for the current `raft-android` release
