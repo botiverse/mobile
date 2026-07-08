@@ -31,6 +31,7 @@ import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MessageReactionSummary
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.PendingMentionActionExecuteResult
+import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.SlockAgentsApiClient
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
@@ -2313,13 +2314,30 @@ internal class SharedThreadDataSource(
     }
 }
 
-private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult.Error =
-    DataResult.Error(
-        ScreenError(
-            code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
-            retryable = contractCode == null
-        )
-    )
+private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult<Nothing> =
+    when (code) {
+        // Permission loss must surface as NoPermission, not a transient error:
+        // downstream treats NoPermission as unrecoverable (e.g. task #562 drops
+        // the first-frame cache candidate) while plain errors keep warm state.
+        401 ->
+            DataResult.NoPermission(
+                PermissionBlocker(code = "auth_required", requiredCapability = "auth_session")
+            )
+        403 ->
+            DataResult.NoPermission(
+                PermissionBlocker(
+                    code = contractCode ?: "thread_forbidden",
+                    requiredCapability = "thread_access"
+                )
+            )
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = contractCode ?: errorBodyText?.takeIf { it.isNotBlank() } ?: fallbackCode,
+                    retryable = contractCode == null
+                )
+            )
+    }
 
 private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataResult<Unit> =
     when (this) {
