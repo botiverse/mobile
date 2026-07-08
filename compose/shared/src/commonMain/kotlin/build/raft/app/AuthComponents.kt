@@ -7,6 +7,7 @@ import build.raft.app.components.SlockDisabledActionBorder
 import build.raft.app.components.SlockDisabledActionContent
 import build.raft.app.components.SlockDisabledActionShadow
 import build.raft.app.components.slockDisabledActionBackgroundFor
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.sp
 
 internal enum class AuthProvider {
@@ -734,8 +736,8 @@ private fun AuthComponentPreview() {
             style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
-        AuthTextField(value = "", onValueChange = {}, label = "Email", required = true, forceFocused = true)
-        AuthTextField(value = "not-an-email", onValueChange = {}, label = "Email", required = true, isError = true, errorText = "Enter a valid email.")
+        AuthTextField(value = "", onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, forceFocused = true)
+        AuthTextField(value = "not-an-email", onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
         AuthActionButton(text = "Sign In", onClick = {}, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
         AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")

@@ -1485,7 +1485,7 @@ private fun TasksCreateDialog(
                     .padding(SlockSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                Text(text = "New tasks", style = SlockType.PageTitle, color = SlockColor.TextBlack)
+                Text(text = stringResource(MR.strings.tasks_label_new_tasks), style = SlockType.PageTitle, color = SlockColor.TextBlack)
                 Text(
                     text = "Add one or more task titles. Empty rows are ignored.",
                     style = SlockType.Caption,

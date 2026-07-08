@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.AnnouncementItem
 import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.ui.unit.dp
 
 // task #226: global announcement modal, aligned with web. Shows the latest
@@ -61,7 +63,7 @@ internal fun SharedAnnouncementModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SlockBrutalActionButton(
-                    label = "上一页 / Prev",
+                    label = stringResource(MR.strings.pagination_prev_bilingual),
                     onClick = { if (pageIndex > 0) pageIndex -= 1 },
                     leadingIcon = SlockLucideIconName.ChevronLeft,
                     backgroundColor = SlockColor.SurfaceWhite,
@@ -73,7 +75,7 @@ internal fun SharedAnnouncementModal(
                     color = SlockColor.TextMutedGray
                 )
                 SlockBrutalActionButton(
-                    label = "下一页 / Next",
+                    label = stringResource(MR.strings.pagination_next_bilingual),
                     onClick = { if (pageIndex < pages.lastIndex) pageIndex += 1 },
                     leadingIcon = SlockLucideIconName.ChevronRight,
                     backgroundColor = SlockColor.SurfaceWhite,

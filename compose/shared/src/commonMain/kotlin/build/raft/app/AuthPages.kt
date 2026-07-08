@@ -1366,7 +1366,7 @@ private fun AuthLegalNotice(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "Terms of Service",
+                stringResource(MR.strings.auth_link_terms_of_service),
                 style = AuthLegalNoticeLinkStyle,
                 color = SlockColor.TextBlack,
                 modifier = Modifier.clickable { onOpenTerms() }
@@ -1378,7 +1378,7 @@ private fun AuthLegalNotice(
                 modifier = Modifier.authPageStaticTextFocus()
             )
             Text(
-                "Privacy Policy",
+                stringResource(MR.strings.auth_link_privacy_policy),
                 style = AuthLegalNoticeLinkStyle,
                 color = SlockColor.TextBlack,
                 modifier = Modifier.clickable { onOpenPrivacy() }
@@ -1418,7 +1418,7 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
-                Text("Terms of Service", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+                Text(stringResource(MR.strings.auth_link_terms_of_service), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
                 Text(
                     " and",
                     style = AuthTermsTextStyle,
@@ -1433,7 +1433,7 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
-                Text("Privacy Policy", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+                Text(stringResource(MR.strings.auth_link_privacy_policy), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
                 Text(".", style = AuthTermsTextStyle, color = AuthTermsTextColor)
             }
         }
