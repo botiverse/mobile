@@ -130,6 +130,8 @@ import java.io.IOException
 import java.net.URL
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
@@ -3411,11 +3413,7 @@ internal class SlockKuiklyBridgeModule(
                     attachments = attachments,
             )
             // Shareable reference the user can paste into the community channel.
-            val shareText = buildString {
-                append("Quiver feedback ").append(ticketId.take(8))
-                appendLine()
-                append(description)
-            }
+            val shareText = buildQuiverFeedbackShareText(ticketId, description)
             withContext(Dispatchers.Main) {
                 copyText("Quiver feedback", shareText)
                 Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
@@ -3435,6 +3433,58 @@ internal class SlockKuiklyBridgeModule(
                     "code" to quiverFeedbackSubmitErrorCode(it),
                     "message" to (it.message ?: "feedback submission failed"),
             )
+        }
+    }
+
+    private fun buildQuiverFeedbackShareText(ticketId: String, description: String): String {
+        val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        val session =
+                runBlocking {
+                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
+                }
+        val selectedServer =
+                session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
+                        ?: session?.servers?.firstOrNull()
+        val utcTime =
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+                        .apply { timeZone = TimeZone.getTimeZone("UTC") }
+                        .format(Date())
+        val localTime =
+                SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US)
+                        .format(Date())
+        return buildString {
+            append("Quiver feedback ").append(ticketId.take(8))
+            appendLine()
+            append("Ticket: ").append(ticketId)
+            appendLine()
+            append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
+            appendLine()
+            append("App: Raft ")
+                .append(packageInfo.versionName ?: "unknown")
+                .append(" (")
+                .append(packageInfo.versionCodeCompat())
+                .append(")")
+            appendLine()
+            append("Quiver: slug=").append(BuildConfig.QUIVER_APP_SLUG)
+                .append(", channel=").append(BuildConfig.QUIVER_CHANNEL)
+            appendLine()
+            append("Server: ")
+                .append(selectedServer?.name?.takeIf { it.isNotBlank() } ?: "No selected server")
+                .append(selectedServer?.slug?.takeIf { it.isNotBlank() }?.let { " /$it" } ?: "")
+            appendLine()
+            append("Device: ")
+                .append("${Build.MANUFACTURER} ${Build.MODEL}".trim())
+                .append(", Android ")
+                .append(Build.VERSION.RELEASE)
+                .append(" / SDK ")
+                .append(Build.VERSION.SDK_INT)
+            appendLine()
+            append("Package: ").append(appContext.packageName)
+            appendLine()
+            appendLine()
+            append("Feedback:")
+            appendLine()
+            append(description)
         }
     }
 
