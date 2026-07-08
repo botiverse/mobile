@@ -317,6 +317,28 @@ internal class SharedThreadDataSource(
         payloadCache.remove(threadId)
     }
 
+    suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return basePayload
+        if (basePayload.originMessage != null || basePayload.originPreview?.isNotBlank() == true) return basePayload
+        val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() } ?: return basePayload
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: return basePayload
+        val parent =
+            getCachedReplyParentMessage(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId
+            ) ?: return basePayload
+        val currentUserId = readSession()?.user?.id
+        return basePayload.copy(
+            originMessage = parent.toKuiklyThreadMessageItem(currentUserId),
+            originParentMessageId = parentMessageId,
+            originStatus = "loading",
+            originErrorCode = null
+        )
+    }
+
     suspend fun withConversationAccessFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return basePayload
         return basePayload.withConversationAccessFallback(resolveConversationAccessFallback(basePayload, session))
@@ -2606,7 +2628,10 @@ internal class SharedThreadStore(
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
-        val routeContextPayload = routeCandidatePayload.withoutTransientLocalSendingMessages()
+        val routeContextPayload =
+            dataSource
+                .withCachedReplyParentCandidate(routeCandidatePayload)
+                .withoutTransientLocalSendingMessages()
         val staleToken = advanceRouteStaleToken()
         lastRoutePayload = routeContextPayload
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()

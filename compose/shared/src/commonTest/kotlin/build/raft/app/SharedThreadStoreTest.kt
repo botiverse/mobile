@@ -401,6 +401,63 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startRendersChannelShellWhenRealtimeInvalidatedFirstFrameCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val route = basePayload()
+        dataSource.cachePayload(contentPayload("stale cached body"))
+        dataSource.invalidateCachedPayload(route)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+
+        val firstFrame = store.state.value.payload
+        assertEquals("loading", firstFrame.status)
+        assertEquals("channel-1", firstFrame.sourceThreadId)
+        assertTrue(firstFrame.messages.isEmpty())
+        assertFalse(firstFrame.shouldRenderThreadEarlyLoadingShell())
+        assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun startRendersCachedReplyParentBeforeReplyNetworkFetch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val messageStore = SharedThreadMessageStore()
+        messageStore.upsert(
+            ChannelId("channel-1"),
+            message(threadId = "channel-1", id = "m1", seq = 1, body = "stored parent body")
+        )
+        val api = FakeThreadApi(bodyText = messagesResponse("reply body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                messageStore = messageStore
+            )
+        val route = unresolvedReplyPayload(parentMessageId = "m1")
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(route))
+
+        val firstFrame = store.state.value.payload
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, firstFrame.surfaceKind)
+        assertEquals("loading", firstFrame.status)
+        assertEquals("loading", firstFrame.originStatus)
+        assertEquals("stored parent body", firstFrame.originMessage?.body)
+        assertEquals("m1", firstFrame.originParentMessageId)
+        assertTrue(firstFrame.messages.isEmpty())
+        assertFalse(firstFrame.shouldRenderThreadEarlyLoadingShell())
+        assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun startDoesNotRenderOrCacheContentFromRoutePayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))

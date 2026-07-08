@@ -22,6 +22,25 @@ class ThreadFirstContentStagingTest {
 
         assertFalse(
             KuiklyThreadScreenPayload(
+                status = "loading",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                originStatus = "none"
+            ).shouldRenderThreadEarlyLoadingShell()
+        )
+        assertFalse(
+            KuiklyThreadScreenPayload(
+                status = "loading",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                originStatus = "none"
+            ).shouldRenderThreadEarlyLoadingShell()
+        )
+
+        assertFalse(
+            KuiklyThreadScreenPayload(
                 status = "content",
                 originStatus = "none"
             ).shouldRenderThreadEarlyLoadingShell()
