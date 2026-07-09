@@ -128,6 +128,21 @@ git submodule update --init --recursive third_party/slock-source
   modal/popover first, then nested temporary state, then page navigation.
   Add a focused policy test when that priority is not obvious from structure.
 
+## Kuikly Text Decoration Rule
+
+- In shared Kuikly Compose, do not put visual container modifiers such as
+  `padding`, `border`, or `background` directly on `Text`. Kuikly text nodes do
+  not consume those modifiers reliably across renderers, so padding may not
+  affect drawing or measurement and bordered/background text can visually press
+  against its frame.
+- Put those modifiers on a wrapper container instead:
+  `Box(Modifier.border(...).background(...).padding(...)) { Text(...) }`.
+  Keep text-only concerns such as `style`, `color`, `maxLines`, `overflow`, and
+  `textAlign` on the `Text` itself.
+- The same wrapper rule applies when `padding` is meant to expand a clickable
+  text tap target: put `clickable` and `padding` on the wrapper, then render a
+  bare `Text` inside.
+
 ## Task / Commit / Thread Discipline
 
 Workflow rules for how every agent (human-supervised or autonomous) should move

@@ -355,17 +355,20 @@ internal fun SlockRaftUiTextMono(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 internal fun SlockRaftUiInlineCode(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
+    Box(
         modifier =
             modifier
                 .background(SlockColor.BrandYellow.copy(alpha = 0.40f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 4.dp),
-        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 18.sp),
-        color = SlockColor.TextBlack,
-        maxLines = 1
-    )
+                .padding(horizontal = 4.dp)
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 1
+        )
+    }
 }
 
 @Composable
@@ -651,14 +654,21 @@ internal fun SlockRaftUiPopupSurface(
 
 @Composable
 internal fun SlockRaftUiSurfaceLabel(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        modifier = modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 12.dp, vertical = 8.dp),
-        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack.copy(alpha = 0.60f),
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis
-    )
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack.copy(alpha = 0.60f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable

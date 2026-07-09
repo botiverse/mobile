@@ -566,16 +566,19 @@ internal fun SharedCreateAgentDialog(
             ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
-                        Text(
-                            text = hint,
-                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                            color = SlockColor.TextMutedGray,
+                        Box(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
                                     .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
                                     .padding(SlockSpacing.Xs)
-                        )
+                        ) {
+                            Text(
+                                text = hint,
+                                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                                color = SlockColor.TextMutedGray
+                            )
+                        }
                     }
                 }
                 if (atLimit) {
@@ -1237,23 +1240,31 @@ private fun EnvVarsEditor(
                     modifier = Modifier.weight(1.5f)
                 )
                 Spacer(Modifier.width(4.dp))
-                Text(
-                    text = "×",
-                    style = SlockType.Caption,
-                    color = if (enabled) SlockColor.AccentRed else SlockColor.TextMutedGray,
-                    modifier = Modifier
-                        .let { if (enabled) it.clickable { onChange(entries.toMutableList().also { it.removeAt(idx) }) } else it }
-                        .padding(horizontal = 8.dp)
-                )
+                Box(
+                    modifier =
+                        Modifier
+                            .let { if (enabled) it.clickable { onChange(entries.toMutableList().also { it.removeAt(idx) }) } else it }
+                            .padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "×",
+                        style = SlockType.Caption,
+                        color = if (enabled) SlockColor.AccentRed else SlockColor.TextMutedGray
+                    )
+                }
             }
         }
-        Text(
-            text = "+ Add env var",
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-            modifier = Modifier
-                .let { if (enabled) it.clickable { onChange(entries + ("" to "")) } else it }
-                .padding(vertical = 4.dp)
-        )
+        Box(
+            modifier =
+                Modifier
+                    .let { if (enabled) it.clickable { onChange(entries + ("" to "")) } else it }
+                    .padding(vertical = 4.dp)
+        ) {
+            Text(
+                text = "+ Add env var",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+            )
+        }
     }
 }
