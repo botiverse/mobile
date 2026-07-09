@@ -42,3 +42,19 @@ GRADLE_ROOT="$SRCROOT/.."
   -Ptmm.resources.ARCHS="$ARCHS"
 CMD
 end
+
+post_install do |installer|
+  # The release archive lane signs the app target manually via xcodebuild
+  # build settings. Those settings are global, so without this guard CocoaPods
+  # framework targets also receive the app provisioning profile and fail with
+  # "does not support provisioning profiles". Pods are embedded/signed by the
+  # app copy-frameworks phase; their own build targets should not sign.
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+      config.build_settings['CODE_SIGN_IDENTITY'] = ''
+      config.build_settings['EXPANDED_CODE_SIGN_IDENTITY'] = ''
+    end
+  end
+end
