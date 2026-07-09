@@ -182,6 +182,9 @@ internal data class MarkdownInlineTokenPlan(
 
     fun inlineCodeMatchCount(): Int =
         inlineCodeMatches.size
+
+    internal fun inlineCodeMatchesForRichText(): List<ThreadInlineCodeMatch> =
+        inlineCodeMatches
 }
 
 internal object SlockMarkdownInlineTokenRegistry {
