@@ -1,0 +1,193 @@
+package build.raft.app.data
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+internal data class AuthLossSignal(
+    val source: String,
+    val requestId: String? = null,
+    val tokenFingerprint: String,
+    val pendingOpenRequest: AuthPendingOpenRequest? = null
+)
+
+internal sealed interface AuthPendingOpenRequest {
+    val serverId: String
+
+    data class Thread(
+        override val serverId: String,
+        val surfaceKind: String,
+        val channelKind: String?,
+        val threadId: String?,
+        val sourceThreadId: String?,
+        val streamChannelId: String?,
+        val parentChannelId: String?,
+        val parentMessageId: String?,
+        val parentSurfaceKind: String?,
+        val parentChannelKind: String?,
+        val parentNavigationHint: String?,
+        val originParentMessageId: String?,
+        val focusedMessageId: String?,
+        val selectedTab: String
+    ) : AuthPendingOpenRequest
+}
+
+internal sealed interface AuthLossDecision {
+    data class SessionPreserved(val reason: String) : AuthLossDecision
+    data class AuthRequired(val reason: String) : AuthLossDecision
+}
+
+internal data class AuthLossResolution(
+    val signal: AuthLossSignal,
+    val decision: AuthLossDecision
+)
+
+internal class SharedAuthLossFunnel(
+    private val restoreSession: suspend () -> SharedAuthResult<StoredAuthSession>,
+    private val clearSession: suspend (reason: String, source: String) -> Unit,
+    private val scope: CoroutineScope,
+    private val diagnosticsLogger: (String) -> Unit = {}
+) {
+    private data class InFlight(
+        val signal: AuthLossSignal,
+        val decision: Deferred<AuthLossDecision>
+    )
+
+    private val mutex = Mutex()
+    private val inFlightByToken = mutableMapOf<String, InFlight>()
+    private val pendingCandidatesByToken = mutableMapOf<String, AuthPendingOpenRequest>()
+    private var pendingOpenRequest: AuthPendingOpenRequest? = null
+    private val _resolutions = MutableSharedFlow<AuthLossResolution>(extraBufferCapacity = 8)
+    val resolutions: SharedFlow<AuthLossResolution> = _resolutions.asSharedFlow()
+
+    fun report(signal: AuthLossSignal): Deferred<AuthLossDecision> =
+        scope.async {
+            resolve(signal.normalized())
+        }
+
+    suspend fun consumePendingOpenRequest(serverId: String): AuthPendingOpenRequest? =
+        mutex.withLock {
+            pendingOpenRequest
+                ?.takeIf { it.serverId == serverId.trim() }
+                ?.also { pendingOpenRequest = null }
+        }
+
+    internal suspend fun peekPendingOpenRequest(): AuthPendingOpenRequest? =
+        mutex.withLock { pendingOpenRequest }
+
+    private suspend fun resolve(signal: AuthLossSignal): AuthLossDecision {
+        val tokenKey = signal.tokenFingerprint
+        val (inFlight, owner) =
+            mutex.withLock {
+                signal.pendingOpenRequest?.let { pendingCandidatesByToken.putIfAbsent(tokenKey, it) }
+                val existing = inFlightByToken[tokenKey]
+                if (existing != null) {
+                    existing to false
+                } else {
+                    val created =
+                        InFlight(
+                            signal = signal,
+                            decision = scope.async { resolveOnce(signal) }
+                        )
+                    inFlightByToken[tokenKey] = created
+                    created to true
+                }
+            }
+        if (!owner) {
+            diagnosticsLogger(
+                "auth_loss_join source=${signal.source} token=$tokenKey " +
+                    "ownerSource=${inFlight.signal.source}"
+            )
+        }
+        val decision = inFlight.decision.await()
+        if (owner) {
+            mutex.withLock {
+                if (inFlightByToken[tokenKey] === inFlight) {
+                    inFlightByToken.remove(tokenKey)
+                }
+                val candidate = pendingCandidatesByToken.remove(tokenKey)
+                if (decision is AuthLossDecision.AuthRequired && candidate != null) {
+                    pendingOpenRequest = candidate
+                }
+            }
+            _resolutions.emit(AuthLossResolution(signal = inFlight.signal, decision = decision))
+        }
+        return decision
+    }
+
+    private suspend fun resolveOnce(signal: AuthLossSignal): AuthLossDecision {
+        diagnosticsLogger(
+            "auth_loss_restore_start source=${signal.source} " +
+                "requestId=${signal.requestId ?: "none"} token=${signal.tokenFingerprint}"
+        )
+        val result =
+            runCatchingPreservingCancellation { restoreSession() }
+                .getOrElse { throwable ->
+                    diagnosticsLogger(
+                        "auth_loss_restore_exception source=${signal.source} " +
+                            "error=${throwable::class.simpleName.orEmpty()} decision=session_preserved"
+                    )
+                    return AuthLossDecision.SessionPreserved("restore_exception")
+                }
+        return when (result) {
+            is SharedAuthResult.Success ->
+                AuthLossDecision.SessionPreserved("restore_success")
+            is SharedAuthResult.Failure -> {
+                diagnosticsLogger(
+                    "auth_loss_restore_failure source=${signal.source} code=${result.code} " +
+                        "decision=session_preserved"
+                )
+                AuthLossDecision.SessionPreserved("restore_failure_${result.code.name.lowercase()}")
+            }
+            SharedAuthResult.Unauthenticated -> {
+                runCatchingPreservingCancellation {
+                    clearSession(
+                        "auth_loss_unavailable",
+                        "auth_loss_funnel:${signal.source}"
+                    )
+                }.onFailure { throwable ->
+                    diagnosticsLogger(
+                        "auth_loss_clear_exception source=${signal.source} " +
+                            "error=${throwable::class.simpleName.orEmpty()}"
+                    )
+                }
+                AuthLossDecision.AuthRequired("restore_unauthenticated")
+            }
+        }.also { decision ->
+            diagnosticsLogger(
+                "auth_loss_restore_result source=${signal.source} " +
+                    "decision=${decision.diagnosticsName()}"
+            )
+        }
+    }
+}
+
+internal fun String?.authLossTokenFingerprint(): String {
+    val token = this?.takeIf { it.isNotBlank() } ?: return "missing"
+    val hash = (token.hashCode().toLong() and 0xffffffffL).toString(16)
+    return "len=${token.length}:hash=$hash"
+}
+
+private fun AuthLossSignal.normalized(): AuthLossSignal =
+    copy(
+        source = source.diagnosticsToken(),
+        requestId = requestId?.diagnosticsToken()?.takeIf { it != "unknown" },
+        tokenFingerprint = tokenFingerprint.diagnosticsToken()
+    )
+
+private fun String.diagnosticsToken(): String =
+    trim()
+        .ifBlank { "unknown" }
+        .replace(Regex("[^A-Za-z0-9_.:=/-]"), "_")
+        .take(128)
+
+private fun AuthLossDecision.diagnosticsName(): String =
+    when (this) {
+        is AuthLossDecision.SessionPreserved -> "session_preserved:$reason"
+        is AuthLossDecision.AuthRequired -> "auth_required:$reason"
+    }

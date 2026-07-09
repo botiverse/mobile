@@ -101,8 +101,10 @@ import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.AuthApiResult
 import build.raft.app.data.AuthLoginResponse
+import build.raft.app.data.AuthLossDecision
 import build.raft.app.data.AuthMobileOAuthLinkCompleteResponse
 import build.raft.app.data.AuthMobileOAuthStartResponse
+import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.AuthRefreshResponse
 import build.raft.app.data.AuthSocialCompleteResponse
 import build.raft.app.data.ChannelRepository
@@ -2476,6 +2478,34 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
     }
 
+    LaunchedEffect(sharedStores.authLossFunnel, pager.pagerId) {
+        sharedStores.authLossFunnel.resolutions.collect { resolution ->
+            if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                bridge.logWarn(
+                    "app_shell_auth_loss_effect_skip reason=inactive_pager " +
+                        "source=${resolution.signal.source} pagerId=${pager.pagerId}"
+                )
+                return@collect
+            }
+            when (val decision = resolution.decision) {
+                is AuthLossDecision.SessionPreserved ->
+                    bridge.logWarn(
+                        "app_shell_auth_loss_effect decision=session_preserved " +
+                            "reason=${decision.reason} source=${resolution.signal.source}"
+                    )
+                is AuthLossDecision.AuthRequired -> {
+                    bridge.logWarn(
+                        "app_shell_auth_loss_effect decision=auth_required " +
+                            "reason=${decision.reason} source=${resolution.signal.source}"
+                    )
+                    authGateMessage = "Session expired"
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                    resetAppShellSessionState()
+                }
+            }
+        }
+    }
+
     LaunchedEffect(homeState.content, authGateState) {
         val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
         if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
@@ -2605,6 +2635,24 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return
         }
         is SharedAuthGateState.Ready -> Unit
+    }
+
+    LaunchedEffect(readyServerId, authGateState) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        when (val request = sharedStores.authLossFunnel.consumePendingOpenRequest(serverId)) {
+            is AuthPendingOpenRequest.Thread -> {
+                bridge.log(
+                    "app_shell_auth_pending_open_consume type=thread serverId=$serverId " +
+                        "threadId=${request.sourceThreadId.orEmpty()} parentMessageId=${request.parentMessageId.orEmpty()}"
+                )
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                    .openPage(
+                        THREAD_PAGE,
+                        request.toWireThreadLaunchPayload().toThreadPageData()
+                    )
+            }
+            null -> Unit
+        }
     }
 
     fun openHomeConversation(

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.SlockTimeFormat24Hour
@@ -174,6 +175,48 @@ internal data class WireThreadLaunchPayload(
         }
     }
 }
+
+internal fun WireThreadLaunchPayload.toAuthPendingOpenRequest(
+    serverId: String
+): AuthPendingOpenRequest.Thread? {
+    val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    if (!hasRouteIdentity()) return null
+    return AuthPendingOpenRequest.Thread(
+        serverId = resolvedServerId,
+        surfaceKind = surfaceKind,
+        channelKind = channelKind,
+        threadId = threadId,
+        sourceThreadId = sourceThreadId,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        parentSurfaceKind = parentSurfaceKind,
+        parentChannelKind = parentChannelKind,
+        parentNavigationHint = parentNavigationHint,
+        originParentMessageId = originParentMessageId,
+        focusedMessageId = focusedMessageId,
+        selectedTab = selectedTab
+    )
+}
+
+internal fun AuthPendingOpenRequest.Thread.toWireThreadLaunchPayload(): WireThreadLaunchPayload =
+    WireThreadLaunchPayload(
+        instanceId = "auth-resume-${sourceThreadId ?: streamChannelId ?: threadId ?: parentMessageId.orEmpty()}",
+        surfaceKind = surfaceKind,
+        channelKind = channelKind,
+        threadId = threadId,
+        sourceThreadId = sourceThreadId,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        parentSurfaceKind = parentSurfaceKind,
+        parentChannelKind = parentChannelKind,
+        parentNavigationHint = parentNavigationHint,
+        originParentMessageId = originParentMessageId,
+        focusedMessageId = focusedMessageId,
+        selectedTab = selectedTab,
+        focusedMessageRequestNonce = if (focusedMessageId.isNullOrBlank()) 0 else nextThreadFocusedMessageRequestNonce()
+    )
 
 private data class ThreadLaunchRouteKinds(
     val kind: ConversationKind,

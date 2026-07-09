@@ -30,6 +30,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.AuthPendingOpenRequest
 import build.raft.app.data.InboxItem
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeNetworkResponse
@@ -1088,26 +1089,37 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun standaloneThreadAuthRequiredPreservesExistingSession() {
-        val session =
-            StoredAuthSession(
-                user =
-                    StoredAuthUser(
-                        id = "user-artin",
-                        email = "artin@example.com"
-                    ),
-                accessToken = "access-token",
-                refreshToken = "refresh-token"
-            )
+    fun authPendingThreadRouteKeepsIdentityAndDropsDisplayFallback() {
+        val pending =
+            WireThreadLaunchPayload(
+                instanceId = "thread-original",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                threadId = "reply-stream",
+                sourceThreadId = "reply-stream",
+                streamChannelId = "reply-stream",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-parent",
+                originParentMessageId = "message-parent",
+                focusedMessageId = "message-reply",
+                selectedTab = "chat",
+                originFallbackPreview = "display content must not survive",
+                originFallbackSenderId = "member-1",
+                originFallbackSenderKind = MemberKind.Human
+            ).toAuthPendingOpenRequest("server-1")
 
-        assertEquals(
-            StandaloneThreadAuthRequiredAction.PreserveSession,
-            standaloneThreadAuthRequiredAction(session)
-        )
-        assertEquals(
-            StandaloneThreadAuthRequiredAction.OpenLogin,
-            standaloneThreadAuthRequiredAction(null)
-        )
+        val threadPending = assertIs<AuthPendingOpenRequest.Thread>(pending)
+        assertEquals("server-1", threadPending.serverId)
+        assertEquals("reply-stream", threadPending.sourceThreadId)
+        assertEquals("message-parent", threadPending.parentMessageId)
+        assertEquals("message-reply", threadPending.focusedMessageId)
+
+        val resumed = threadPending.toWireThreadLaunchPayload()
+        assertEquals("reply-stream", resumed.sourceThreadId)
+        assertEquals("message-parent", resumed.parentMessageId)
+        assertEquals("message-reply", resumed.focusedMessageId)
+        assertEquals(null, resumed.originFallbackPreview)
+        assertEquals(null, resumed.originFallbackSenderId)
+        assertEquals(null, resumed.originFallbackSenderKind)
     }
 
     @Test
