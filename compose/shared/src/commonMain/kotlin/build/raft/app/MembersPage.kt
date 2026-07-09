@@ -7475,7 +7475,7 @@ private fun MembersAgentActivityRow(
     ) {
         Text(
             text = activity.timestamp.membersActivityDisplayTime(timeContext),
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
             textAlign = TextAlign.End,

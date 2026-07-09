@@ -206,7 +206,6 @@ import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -12737,7 +12736,7 @@ private fun ThreadIntegrationScopeCard(scope: String) {
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
                     color = SlockColor.TextMutedGray,
-                    fontFamily = FontFamily.Monospace
+                    fontFamily = slockMonoFamilyForWeight(FontWeight.Bold)
                 ),
             color = SlockColor.TextMutedGray
         )
@@ -15683,7 +15682,7 @@ private fun ThreadForwardBundleModal(
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = "${bundle.displayCount()} messages",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
             )
@@ -15748,7 +15747,7 @@ private fun ThreadForwardBundleMessageRow(
                 item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
                     Text(
                         text = timestamp,
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
+                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -15765,7 +15764,7 @@ private fun ThreadForwardBundleMessageRow(
             if (item.attachmentCount > 0) {
                 Text(
                     text = item.forwardAttachmentLabel(),
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray
                 )
             }

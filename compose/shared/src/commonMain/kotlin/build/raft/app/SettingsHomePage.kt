@@ -14098,6 +14098,14 @@ private fun SharedHomeSearchSectionLabel(label: String) {
     )
 }
 
+internal fun sharedHomeSearchTimestampTextStyle(compact: Boolean) =
+    SlockType.Caption.copy(
+        fontFamily = SlockMonoFamily,
+        fontSize = if (compact) 9.sp else 10.sp,
+        lineHeight = if (compact) 11.sp else 12.sp,
+        letterSpacing = 0.sp
+    )
+
 @Composable
 private fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
@@ -14211,7 +14219,7 @@ private fun SharedHomeThreadResultGroup(
                 if (!latestTime.isNullOrBlank()) {
                     Text(
                         text = latestTime.formatSavedTimestamp(timeContext),
-                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
+                        style = sharedHomeSearchTimestampTextStyle(compact = false),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1
                     )
@@ -14318,7 +14326,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!time.isNullOrBlank()) {
                 Text(
                     text = time.formatSavedTimestamp(timeContext),
-                    style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp, letterSpacing = 0.sp),
+                    style = sharedHomeSearchTimestampTextStyle(compact = compactMeta),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
                 )
