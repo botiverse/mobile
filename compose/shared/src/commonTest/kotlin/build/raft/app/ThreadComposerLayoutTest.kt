@@ -73,6 +73,42 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun directMentionInsertUsesCursorInsteadOfAppending() {
+        val edit = applyKuiklyComposerDirectMentionInsert(
+            text = "hello  world",
+            selectionStart = 6,
+            selectionEnd = 6,
+            handle = "@artin"
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @artin world", cursor = 12), edit)
+    }
+
+    @Test
+    fun directMentionInsertReplacesSelectionAtCursor() {
+        val edit = applyKuiklyComposerDirectMentionInsert(
+            text = "hello middle world",
+            selectionStart = 6,
+            selectionEnd = 12,
+            handle = "Android Developer"
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @android-developer world", cursor = 24), edit)
+    }
+
+    @Test
+    fun directMentionInsertAddsSeparatingSpacesWhenNeeded() {
+        val edit = applyKuiklyComposerDirectMentionInsert(
+            text = "helloworld",
+            selectionStart = 5,
+            selectionEnd = 5,
+            handle = "artin"
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "hello @artin world", cursor = 13), edit)
+    }
+
+    @Test
     fun memberSuggestionTriggerShowsLoadingPanelBeforeItemsArrive() {
         assertEquals(
             ThreadComposerSuggestionPanelState.MemberLoading,
