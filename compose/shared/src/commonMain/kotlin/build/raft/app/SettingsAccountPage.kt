@@ -854,10 +854,14 @@ private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean
 // React parity (SettingsPanel SocialProviderIcon): google gets the Google
 // logo, every other social provider falls back to the GitHub mark — never
 // the Google logo.
+// task #436: iOS uses the MR-bundled SVG asset (SVG coder decodes it); other
+// platforms keep the inline SVG data URI they already render.
 private fun providerIconDataUri(provider: String): String =
     when {
-        provider.lowercase().contains("google") -> GoogleIconDataUri
-        else -> GitHubIconDataUri
+        provider.lowercase().contains("google") ->
+            providerIconIosSvgSource(ProviderIconKey.GoogleColor) ?: GoogleIconDataUri
+        else ->
+            providerIconIosSvgSource(ProviderIconKey.GitHubBlack) ?: GitHubIconDataUri
     }
 
 @Composable

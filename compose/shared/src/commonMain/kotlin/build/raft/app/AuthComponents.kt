@@ -582,10 +582,14 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
 
 @Composable
 internal fun AuthProviderIcon(provider: AuthProvider) {
+    // task #436: on iOS use the MR-bundled SVG asset (rendered via the SVG coder);
+    // other platforms fall back to the inline SVG data URI they already render.
     val source =
         when (provider) {
-            AuthProvider.Google -> GoogleIconDataUri
-            AuthProvider.GitHub -> GitHubIconWhiteDataUri
+            AuthProvider.Google ->
+                providerIconIosSvgSource(ProviderIconKey.GoogleColor) ?: GoogleIconDataUri
+            AuthProvider.GitHub ->
+                providerIconIosSvgSource(ProviderIconKey.GitHubWhite) ?: GitHubIconWhiteDataUri
         }
     SlockCachedImage(
         source = source,

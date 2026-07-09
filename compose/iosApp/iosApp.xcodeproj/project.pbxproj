@@ -293,6 +293,7 @@
 				412082966DD7AFE0B53032CB /* Frameworks */,
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				70E4183CF2B3FF25AA2B7C8F /* [CP] Copy Pods Resources */,
+				037D30FF99587FF5BDE98C71 /* [CP-User] Copy kmmresource MR bundle to app */,
 			);
 			buildRules = (
 			);
@@ -381,6 +382,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		037D30FF99587FF5BDE98C71 /* [CP-User] Copy kmmresource MR bundle to app */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			name = "[CP-User] Copy kmmresource MR bundle to app";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n";
+		};
 		6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
