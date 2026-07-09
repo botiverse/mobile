@@ -104,7 +104,7 @@ class SharedAuthGateStoreTest {
 
     @Test
     fun coldRestoreWithValidCachedSessionBecomesReadyBeforeNetworkRestoreCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
+        val scope = authGateDispatchTestScope()
         val cachedSession = storedSession(selectedServerId = "server-1")
         val restoredSession = cachedSession.copy(accessToken = "access-token-2")
         val restoreStarted = CompletableDeferred<Unit>()
@@ -142,7 +142,7 @@ class SharedAuthGateStoreTest {
 
     @Test
     fun signedOutCancelsInFlightCachedReadyBackgroundRestoreResult() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
+        val scope = authGateDispatchTestScope()
         val cachedSession = storedSession(selectedServerId = "server-1")
         val restoreStarted = CompletableDeferred<Unit>()
         val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
@@ -252,7 +252,7 @@ class SharedAuthGateStoreTest {
 
     @Test
     fun coldRestoreWithoutSelectedServerDoesNotUseCachedReady() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
+        val scope = authGateDispatchTestScope()
         val cachedSession = storedSession(selectedServerId = null)
         val restoreStarted = CompletableDeferred<Unit>()
         val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
@@ -342,7 +342,7 @@ class SharedAuthGateStoreTest {
 
     @Test
     fun signedOutCancelsInFlightRestoreResult() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob())
+        val scope = authGateDispatchTestScope()
         val restoreStarted = CompletableDeferred<Unit>()
         val restoreResult = CompletableDeferred<SharedAuthResult<StoredAuthSession>>()
         val store =
@@ -503,4 +503,7 @@ class SharedAuthGateStoreTest {
         withTimeout(1_000) {
             state.first(predicate)
         }
+
+    private fun CoroutineScope.authGateDispatchTestScope(): CoroutineScope =
+        CoroutineScope(coroutineContext + SupervisorJob())
 }
