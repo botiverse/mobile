@@ -68,7 +68,10 @@ on:
         default: false
 
 env:
-  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process -Xmx10g -XX:MaxMetaspaceSize=1g"
+  # Heap/JVM args live in compose/gradle.properties (org.gradle.jvmargs +
+  # kotlin.daemon.jvm.options), which take precedence over any -Xmx here — so
+  # set the heap there, not in GRADLE_OPTS (a -Xmx here is silently overridden).
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
   GRADLE_MAX_WORKERS: "1"
 
 permissions:
