@@ -220,6 +220,22 @@ ios-use open-url buildraft://diagnostics --pretty
 ios-use screenshot --out /tmp/ios-use --pretty
 ```
 
+Drive UI interactions through the checked-in `iosAppUITests` XCUITest harness:
+
+```bash
+ios-use tap-text Home --workspace compose/iosApp/iosApp.xcworkspace --pretty
+ios-use tap 0.5 0.9 --workspace compose/iosApp/iosApp.xcworkspace --pretty
+ios-use swipe --direction up --workspace compose/iosApp/iosApp.xcworkspace --pretty
+ios-use interact --workspace compose/iosApp/iosApp.xcworkspace --actions '[{"type":"tapText","text":"Tasks"},{"type":"tapText","text":"Home","waitAfter":1}]' --pretty
+```
+
+`tap` uses normalized XCTest coordinates (`0.0` to `1.0`). `interact` accepts
+an action array with `tapText`, `tap`, `swipe`, and `wait` entries; pass
+`--actions-file` for longer sequences. The command builds the UI-test bundle
+for testing, patches the generated `.xctestrun` with the action JSON, then runs
+`test-without-building` so each invocation can pass different actions without
+editing the scheme.
+
 Capture/analyze logs:
 
 ```bash
