@@ -15,6 +15,7 @@ import com.tencent.kmm.network.service.NetworkClientConfig
 import com.tencent.kmm.network.service.VBTransportInitHelper
 import kotlinx.coroutines.CancellationException
 import kotlin.concurrent.Volatile
+import kotlin.time.TimeSource
 
 /**
  * All platforms route HTTP through the KuiklyBase NetworkKMM client
@@ -39,9 +40,19 @@ internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
                 logImpl =
                     object : IVBPBLog {
                         override fun d(tag: String?, content: String?) = Unit
-                        override fun i(tag: String?, content: String?) = Unit
+                        override fun i(tag: String?, content: String?) {
+                            warningLogger(
+                                "slock_networkkmm_info tag=${tag.orEmpty()} " +
+                                    content.orEmpty().toSafeNetworkKmmLogMessage()
+                            )
+                        }
+
                         override fun e(tag: String?, content: String?, throwable: Throwable?) {
-                            warningLogger("slock_networkkmm tag=${tag.orEmpty()} ${content.orEmpty().take(160)}")
+                            warningLogger(
+                                "slock_networkkmm_error tag=${tag.orEmpty()} " +
+                                    content.orEmpty().toSafeNetworkKmmLogMessage() +
+                                    throwable?.let { " ${it.safeDiagnosticsSummary()}" }.orEmpty()
+                            )
                         }
                     }
             )
@@ -72,8 +83,16 @@ internal class NetworkKmmSlockHttpExecutor(
         headers: Map<String, String>,
         bodyText: String?,
         jsonBody: Boolean
-    ): SlockHttpExecutorResponse =
-        try {
+    ): SlockHttpExecutorResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val path = url.substringBefore('?')
+        val requestBytes = bodyText?.encodeToByteArray()?.size ?: 0
+        warningLogger(
+            "slock_networkkmm_execute_start path=$path method=${method.uppercase()} " +
+                "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
+                "headers=${headers.toSafeHeaderDiagnostics()}"
+        )
+        return try {
             val request =
                 NetworkRequest(
                     method = method.toTransportMethod(),
@@ -91,16 +110,27 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             headers.forEach { (name, value) -> request.setHeader(name, value) }
-            client.execute(request).toExecutorResponse()
+            val response = client.execute(request).toExecutorResponse()
+            warningLogger(
+                "slock_networkkmm_execute_finish path=$path method=${method.uppercase()} " +
+                    "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
+            )
+            response
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
             warningLogger(
-                "slock_networkkmm_failed path=${url.substringBefore('?')} " +
-                    "method=$method ${error.safeDiagnosticsSummary()}"
+                "slock_networkkmm_execute_failed path=$path method=${method.uppercase()} " +
+                    "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
         }
+    }
 
     override suspend fun executeMultipart(
         priority: SlockRequestPriority,
@@ -108,8 +138,16 @@ internal class NetworkKmmSlockHttpExecutor(
         fields: Map<String, String>,
         files: List<MultipartFile>,
         headers: Map<String, String>
-    ): SlockHttpExecutorResponse =
-        try {
+    ): SlockHttpExecutorResponse {
+        val startedAt = TimeSource.Monotonic.markNow()
+        val path = url.substringBefore('?')
+        val requestBytes = files.sumOf { it.bytes.size }
+        warningLogger(
+            "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
+                "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
+                "headers=${headers.toSafeHeaderDiagnostics()}"
+        )
+        return try {
             val request =
                 NetworkRequest(
                     method = VBTransportMethod.POST,
@@ -136,16 +174,71 @@ internal class NetworkKmmSlockHttpExecutor(
                         )
                 )
             headers.forEach { (name, value) -> request.setHeader(name, value) }
-            client.execute(request).toExecutorResponse()
+            val response = client.execute(request).toExecutorResponse()
+            warningLogger(
+                "slock_networkkmm_multipart_finish path=$path method=POST priority=$priority " +
+                    "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
+            )
+            response
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (error: Exception) {
             warningLogger(
-                "slock_networkkmm_failed path=${url.substringBefore('?')} " +
-                    "method=multipart ${error.safeDiagnosticsSummary()}"
+                "slock_networkkmm_multipart_failed path=$path method=POST priority=$priority " +
+                    "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} ${error.safeDiagnosticsSummary()}"
             )
             SlockHttpExecutorResponse(code = 0, bodyText = null, errorBodyText = error.message)
+        }
     }
+}
+
+private fun String.toSafeNetworkKmmLogMessage(): String {
+    if (isBlank()) return "blank"
+    return SensitiveNetworkKmmLogPatterns.fold(this) { current, pattern ->
+        current.replace(pattern, "$1[redacted]")
+    }.replace(Regex("""\s+"""), " ")
+}
+
+private val SensitiveNetworkKmmLogPatterns =
+    listOf(
+        Regex("""(\bauthorization\s*[:=]\s*bearer\s+)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bbearer\s+)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bcookie\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bset-cookie\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bx-api-key\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bx-auth-token\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\baccess[_-]?token\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\brefresh[_-]?token\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""(\bpassword\s*[:=]\s*)[^\s,;}]+""", RegexOption.IGNORE_CASE),
+        Regex("""((?:"|')?(?:access[_-]?token|refresh[_-]?token|password)(?:"|')?\s*:\s*(?:"|'))[^"',}]+""", RegexOption.IGNORE_CASE),
+        Regex("""\b((?:eyJ)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.)[A-Za-z0-9_-]+\b"""),
+        Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
+    )
+
+private fun Map<String, String>.toSafeHeaderDiagnostics(): String {
+    if (isEmpty()) return "none"
+    return entries
+        .sortedBy { it.key.lowercase() }
+        .joinToString(",") { (name, value) ->
+            val normalized = name.lowercase()
+            when (normalized) {
+                "authorization",
+                "cookie",
+                "set-cookie",
+                "x-api-key",
+                "x-auth-token" -> "$name=present"
+                "content-type",
+                "user-agent",
+                "accept",
+                "x-server-id" -> "$name=${value.toSafeDiagnosticsToken()}"
+                else -> "$name=present"
+            }
+        }
 }
 
 private fun String.toTransportMethod(): VBTransportMethod =

@@ -70,6 +70,79 @@ class SharedSlockNetworkClientTest {
         SlockHttpExecutorResponse(code = code, bodyText = body, errorBodyText = null)
 
     @Test
+    fun authTransportLogsSanitizedStartAndFinishForCompletedRequest() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                SlockHttpExecutorResponse(
+                    code = 401,
+                    bodyText = null,
+                    errorBodyText = """{"error":"invalid_credentials"}""",
+                    transportDiagnostics = "engine=networkkmm status=401 kind=none rawCode=OK detail=none"
+                )
+            }
+        val transport =
+            SharedSlockAuthTransport(
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                warningLogger = logs::add
+            )
+
+        val response = transport.login("""{"email":"a@example.com","password":"secret-password"}""")
+
+        assertEquals(401, response.code)
+        val startLog = logs.single { it.startsWith("slock_auth_transport_start") }
+        assertContains(startLog, "path=auth/login")
+        assertContains(startLog, "method=POST")
+        assertContains(startLog, "authorizationPresent=false")
+        assertContains(startLog, "requestBytes=")
+        val finishLog = logs.single { it.startsWith("slock_auth_transport_finish") }
+        assertContains(finishLog, "path=auth/login")
+        assertContains(finishLog, "code=401")
+        assertContains(finishLog, "status=401")
+        logs.forEach { log ->
+            assertEquals(false, log.contains("secret-password"), "auth transport diagnostics must not log request bodies")
+            assertEquals(false, log.contains("a@example.com"), "auth transport diagnostics must not log request bodies")
+        }
+    }
+
+    @Test
+    fun authTransportTimeoutReturnsNetworkFailureAndLogsPath() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                delay(200)
+                ok()
+            }
+        val transport =
+            SharedSlockAuthTransport(
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                warningLogger = logs::add,
+                requestScheduler = SlockRequestScheduler(requestTimeoutMillis = 10)
+            )
+
+        val response = transport.login("""{"email":"a@example.com","password":"password"}""")
+
+        assertEquals(0, response.code)
+        assertContains(response.errorBodyText.orEmpty(), "network_timeout")
+        val request = executor.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals(SlockRequestPriority.Foreground, request.priority)
+        assertEquals("https://api.slock.test/api/auth/login", request.url)
+        val startLog = logs.single { it.contains("slock_auth_transport_start") }
+        assertContains(startLog, "path=auth/login")
+        val timeoutLog = logs.single { it.contains("slock_auth_transport_failed") }
+        assertContains(timeoutLog, "path=auth/login")
+        assertContains(timeoutLog, "kind=timeout")
+        assertEquals(
+            emptyList(),
+            logs.filter { it.contains("slock_auth_transport_finish") },
+            "timed out auth requests must log the timeout failure instead of a finish marker"
+        )
+    }
+
+    @Test
     fun requestUsesExecutorWithAuthHeadersAndServerOverride() = runBlocking {
         val executor = RecordingExecutor { ok() }
         val client =
