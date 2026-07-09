@@ -82,6 +82,33 @@ data class SlockRichTextContext(
     val inlineContentScope: String? = null
 )
 
+/**
+ * Visual-test metadata key for renderer capability declarations.
+ *
+ * Capability booleans are nullable on purpose: a missing value means unknown,
+ * not unsupported. Declared divergences are documentation for review and visual
+ * reports; they do not auto-accept or suppress visual diffs.
+ */
+const val SLOCK_RICHTEXT_CAPS = "SLOCK_RICHTEXT_CAPS"
+
+data class SlockRichTextCapabilities(
+    val consumesDocument: Boolean? = null,
+    val consumesChromeTokens: Boolean? = null,
+    val consumesActions: Boolean? = null,
+    val consumesStyleTokens: Boolean? = null,
+    val hasMeasurementAdapter: Boolean? = null,
+    val hasDrawAdapter: Boolean? = null,
+    val hasHitTestAdapter: Boolean? = null,
+    val declaredDivergences: List<SlockRichTextDeclaredDivergence> = emptyList()
+)
+
+data class SlockRichTextDeclaredDivergence(
+    val id: String,
+    val description: String
+)
+
+val richTextCapabilities: SlockRichTextCapabilities = SlockRichTextCapabilities()
+
 fun buildSlockRichTextDocument(
     body: String,
     context: SlockRichTextContext = SlockRichTextContext()
@@ -96,35 +123,49 @@ fun buildSlockRichTextDocument(
             isTagValid = validator,
             inlineContentScope = context.inlineContentScope
         )
+    return buildSlockRichTextDocumentFromMarkdownPlan(
+        source = body,
+        content = parserContent,
+        tokenPlan = plan,
+        activeTagKey = context.activeTagKey
+    )
+}
+
+internal fun buildSlockRichTextDocumentFromMarkdownPlan(
+    source: String,
+    content: String,
+    tokenPlan: MarkdownInlineTokenPlan,
+    activeTagKey: String? = null
+): SlockRichTextDocument {
     val richTokenSources =
         buildList {
-            addAll(plan.tagTokens().map { SlockRichTextTokenSource.Ref(it) })
-            addAll(plan.inlineCodeMatches().map { SlockRichTextTokenSource.InlineCode(it) })
+            addAll(tokenPlan.tagTokens().map { SlockRichTextTokenSource.Ref(it) })
+            addAll(tokenPlan.inlineCodeMatches().map { SlockRichTextTokenSource.InlineCode(it) })
         }.sortedWith(compareBy<SlockRichTextTokenSource> { it.start }.thenBy { it.endExclusive })
 
     val tokens = mutableListOf<SlockRichTextInlineToken>()
     val actions = mutableListOf<SlockRichTextAction>()
     var cursor = 0
-    richTokenSources.forEach { source ->
-        if (source.start < cursor) return@forEach
-        if (source.start > cursor) {
-            tokens += parserContent.textToken(cursor, source.start)
+    richTokenSources.forEach { tokenSource ->
+        if (tokenSource.start < cursor) return@forEach
+        if (tokenSource.start > cursor) {
+            tokens += content.textToken(cursor, tokenSource.start)
         }
-        when (source) {
+        when (tokenSource) {
             is SlockRichTextTokenSource.InlineCode -> {
-                val match = source.match
+                val match = tokenSource.match
                 tokens +=
                     SlockRichTextInlineToken(
                         id = match.id,
                         kind = SlockRichTextInlineKind.InlineCode,
                         range = match.range.toRichTextRange(),
                         text = match.code,
-                        sourceText = parserContent.substring(match.range),
+                        sourceText = content.substring(match.range),
                         chrome = SlockRichTextChromeKind.InlineCode
                     )
             }
             is SlockRichTextTokenSource.Ref -> {
-                val token = source.token
+                val token = tokenSource.token
                 val tag = token.tag ?: return@forEach
                 val action = tag.toRichTextAction(token.id)
                 actions += action
@@ -134,33 +175,33 @@ fun buildSlockRichTextDocument(
                         kind = SlockRichTextInlineKind.SlockRef,
                         range = token.range.toRichTextRange(),
                         text = threadMarkdownTagDisplayLabel(tag.label),
-                        sourceText = parserContent.substring(token.range),
+                        sourceText = content.substring(token.range),
                         chrome =
                             tag.toRichTextChromeKind(
                                 highlighted = token.highlighted,
-                                active = context.activeTagKey == threadMarkdownTagActivationKey(tag)
+                                active = activeTagKey == threadMarkdownTagActivationKey(tag)
                             ),
                         actionId = action.id,
                         refKind = tag.kind.toRichTextRefKind()
                     )
             }
         }
-        cursor = source.endExclusive
+        cursor = tokenSource.endExclusive
     }
-    if (cursor < parserContent.length) {
-        tokens += parserContent.textToken(cursor, parserContent.length)
+    if (cursor < content.length) {
+        tokens += content.textToken(cursor, content.length)
     }
 
     val block =
         SlockRichTextBlock(
             id = "block:0",
             kind = SlockRichTextBlockKind.Paragraph,
-            range = SlockRichTextRange(0, parserContent.length),
+            range = SlockRichTextRange(0, content.length),
             inlineTokenIds = tokens.map { it.id }
         )
     return SlockRichTextDocument(
-        source = body,
-        content = parserContent,
+        source = source,
+        content = content,
         blocks = listOf(block),
         inlineTokens = tokens,
         actions = actions
