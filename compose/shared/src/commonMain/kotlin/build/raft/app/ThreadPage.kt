@@ -8341,7 +8341,7 @@ private fun ThreadPageContent(
                 },
                 onToggleActivityMute = onToggleActivityMute,
                 onTitleClick =
-                    if (threadHeaderScrollToTopEnabled(selectedTab.wireValue)) {
+                    if (threadHeaderScrollToTopEnabled(payload.surfaceKind, selectedTab.wireValue)) {
                         { threadHeaderScrollToTopRequest += 1 }
                     } else {
                         null
@@ -9166,8 +9166,9 @@ private fun ThreadPageTabs(
     )
 }
 
-internal fun threadHeaderScrollToTopEnabled(selectedTab: String?): Boolean =
-    selectedTab?.trim()?.lowercase() == "chat"
+internal fun threadHeaderScrollToTopEnabled(surfaceKind: String?, selectedTab: String?): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        selectedTab?.trim()?.lowercase() == "chat"
 
 internal fun threadHeaderScrollToTopTargetIndex(lazyItemCount: Int): Int? =
     if (lazyItemCount > 0) 0 else null
