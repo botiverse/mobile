@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.base.putIfAbsent
 import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.resources.DrawableResource
 import com.tencent.kuikly.compose.resources.InternalResourceApi
@@ -63,11 +64,8 @@ internal data class ThreadReactionSpriteCatalog(
         buildMap {
             reactions.forEach { sprite ->
                 put(sprite.value, sprite)
-                // No putIfAbsent: it is JVM-only and breaks iOS/OHOS Kotlin/Native.
                 sprite.aliases.forEach { alias ->
-                    if (alias !in this) {
-                        put(alias, sprite)
-                    }
+                    putIfAbsent(alias, sprite)
                 }
             }
         }
