@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
@@ -2092,14 +2093,30 @@ internal fun resolveSortAutoScrollDelta(
     viewportStart: Float,
     viewportEnd: Float,
     edgeScrollZone: Float,
-    edgeScrollStep: Float
+    edgeScrollStep: Float,
+    canScrollBackward: Boolean,
+    canScrollForward: Boolean
 ): Float {
     if (viewportEnd <= viewportStart || edgeScrollZone <= 0f || edgeScrollStep <= 0f) return 0f
     return when {
-        pointerY < viewportStart + edgeScrollZone -> -edgeScrollStep
-        pointerY > viewportEnd - edgeScrollZone -> edgeScrollStep
+        pointerY < viewportStart + edgeScrollZone && canScrollBackward -> -edgeScrollStep
+        pointerY > viewportEnd - edgeScrollZone && canScrollForward -> edgeScrollStep
         else -> 0f
     }
+}
+
+internal fun resolveSortDraggedRowTop(
+    pointerY: Float,
+    viewportStart: Float,
+    viewportEnd: Float,
+    rowSize: Float
+): Float {
+    // The raw pointer remains unbounded for edge auto-scroll; only the floating
+    // copy is clamped so it cannot stretch a Kuikly host past the list viewport.
+    if (viewportEnd <= viewportStart || rowSize <= 0f) return viewportStart
+    val maxTop = viewportEnd - rowSize
+    if (maxTop <= viewportStart) return viewportStart
+    return (pointerY - rowSize / 2f).coerceIn(viewportStart, maxTop)
 }
 
 private suspend fun runSlockSortAutoScrollLoop(
@@ -2118,7 +2135,9 @@ private suspend fun runSlockSortAutoScrollLoop(
                 viewportStart = info.viewportStartOffset.toFloat(),
                 viewportEnd = info.viewportEndOffset.toFloat(),
                 edgeScrollZone = edgeScrollZonePx,
-                edgeScrollStep = edgeScrollStepPx
+                edgeScrollStep = edgeScrollStepPx,
+                canScrollBackward = listState.canScrollBackward,
+                canScrollForward = listState.canScrollForward
             )
         if (delta != 0f) {
             val consumed = listState.dispatchRawDelta(delta)
@@ -2739,7 +2758,7 @@ private fun ServerSwitcherPanel(
                 } else {
                     Modifier.fillMaxSize()
                 }
-            Box(modifier = serverListModifier) {
+            Box(modifier = serverListModifier.clipToBounds()) {
                 LazyColumn(
                     state = listState,
                     modifier =
@@ -2833,7 +2852,18 @@ private fun ServerSwitcherPanel(
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .offset { IntOffset(0, (pointerViewportY - rowStepPx / 2f).roundToInt()) }
+                                    .offset {
+                                        val info = listState.layoutInfo
+                                        IntOffset(
+                                            0,
+                                            resolveSortDraggedRowTop(
+                                                pointerY = pointerViewportY,
+                                                viewportStart = info.viewportStartOffset.toFloat(),
+                                                viewportEnd = info.viewportEndOffset.toFloat(),
+                                                rowSize = rowStepPx
+                                            ).roundToInt()
+                                        )
+                                    }
                         )
                     }
                 }
@@ -3475,7 +3505,7 @@ private fun SlockSidebarSortOverlay(
         dismissEnabled = draggedId == null,
         contentSpacing = 12.dp
     ) {
-        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clipToBounds()) {
             // Container-level long-press drag: identify the row under the finger
             // at long-press, then track the finger. Because the gesture is on
             // the container it survives list scrolling and preview reordering.
@@ -3612,7 +3642,18 @@ private fun SlockSidebarSortOverlay(
                             Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = HomeListHorizontalPadding)
-                                .offset { IntOffset(0, (pointerViewportY - rowStepPx / 2f).roundToInt()) }
+                                .offset {
+                                    val info = listState.layoutInfo
+                                    IntOffset(
+                                        0,
+                                        resolveSortDraggedRowTop(
+                                            pointerY = pointerViewportY,
+                                            viewportStart = info.viewportStartOffset.toFloat(),
+                                            viewportEnd = info.viewportEndOffset.toFloat(),
+                                            rowSize = rowStepPx
+                                        ).roundToInt()
+                                    )
+                                }
                     )
                 }
             }
