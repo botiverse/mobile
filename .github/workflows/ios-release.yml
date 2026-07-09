@@ -126,7 +126,7 @@ jobs:
 
   build_ios_release:
     name: Build + sign IPA
-    runs-on: macos-latest
+    runs-on: macos-14-xlarge
     timeout-minutes: 60
     needs: resolve
     outputs:
