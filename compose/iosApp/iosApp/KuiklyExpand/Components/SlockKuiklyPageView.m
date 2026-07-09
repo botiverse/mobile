@@ -4,6 +4,7 @@
 #import <OpenKuiklyIOSRender/KuiklyBaseView.h>
 #import <OpenKuiklyIOSRender/KuiklyRenderView.h>
 #import <QuartzCore/QuartzCore.h>
+#import <math.h>
 
 static NSString *const SlockKuiklyPageViewPageNameProp = @"pageName";
 static NSString *const SlockKuiklyPageViewPageDataProp = @"pageData";
@@ -16,6 +17,25 @@ static NSString *const SlockKuiklyPageViewFrameworkName = @"shared";
 static NSString *const SlockKuiklyPageViewLiquidGlassStyle = @"liquid";
 static NSInteger const SlockKuiklyAppId = 1;
 static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
+static NSTimeInterval const SlockKuiklyPageViewMillisPerDay = 86400000.0;
+static NSTimeInterval const SlockKuiklyPageViewMillisPerMinute = 60000.0;
+
+static void SlockKuiklyPageViewPutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
+    NSDate *now = [NSDate date];
+    NSTimeInterval nowMillis = [now timeIntervalSince1970] * 1000.0;
+    NSInteger offsetMinutes = [[NSTimeZone localTimeZone] secondsFromGMTForDate:now] / 60;
+    if (pageData[@"localOffsetMinutes"] == nil) {
+        pageData[@"localOffsetMinutes"] = @(offsetMinutes);
+    }
+    if (pageData[@"todayEpochDay"] == nil) {
+        long long todayEpochDay =
+            (long long)floor((nowMillis + offsetMinutes * SlockKuiklyPageViewMillisPerMinute) / SlockKuiklyPageViewMillisPerDay);
+        pageData[@"todayEpochDay"] = @(todayEpochDay);
+    }
+    if (pageData[@"nowEpochMillis"] == nil) {
+        pageData[@"nowEpochMillis"] = @((long long)nowMillis);
+    }
+}
 
 @interface SlockKuiklyPageView () <KuiklyViewBaseDelegate>
 
@@ -287,6 +307,7 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
         }
     }
     pageData[@"appId"] = @(SlockKuiklyAppId);
+    SlockKuiklyPageViewPutHostTimeContextIfMissing(pageData);
     return pageData;
 }
 

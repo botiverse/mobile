@@ -3,9 +3,29 @@
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import <OpenKuiklyIOSRender/KuiklyRenderViewControllerBaseDelegator.h>
 #import <OpenKuiklyIOSRender/KuiklyRenderContextProtocol.h>
+#import <math.h>
 
 static const NSInteger SlockKuiklyKeyEventTypeDown = 2;
 static const NSInteger SlockKuiklyKeyCodeTab = 9;
+static const NSTimeInterval SlockKuiklyMillisPerDay = 86400000.0;
+static const NSTimeInterval SlockKuiklyMillisPerMinute = 60000.0;
+
+static void SlockKuiklyPutHostTimeContextIfMissing(NSMutableDictionary *pageData) {
+    NSDate *now = [NSDate date];
+    NSTimeInterval nowMillis = [now timeIntervalSince1970] * 1000.0;
+    NSInteger offsetMinutes = [[NSTimeZone localTimeZone] secondsFromGMTForDate:now] / 60;
+    if (pageData[@"localOffsetMinutes"] == nil) {
+        pageData[@"localOffsetMinutes"] = @(offsetMinutes);
+    }
+    if (pageData[@"todayEpochDay"] == nil) {
+        long long todayEpochDay =
+            (long long)floor((nowMillis + offsetMinutes * SlockKuiklyMillisPerMinute) / SlockKuiklyMillisPerDay);
+        pageData[@"todayEpochDay"] = @(todayEpochDay);
+    }
+    if (pageData[@"nowEpochMillis"] == nil) {
+        pageData[@"nowEpochMillis"] = @((long long)nowMillis);
+    }
+}
 
 #define HRWeakSelf __weak typeof(self) weakSelf = self;
 @interface KuiklyRenderViewController()<KuiklyRenderViewControllerBaseDelegatorDelegate>
@@ -93,6 +113,7 @@ static const NSInteger SlockKuiklyKeyCodeTab = 9;
 
 - (NSDictionary *)p_mergeExtParamsWithOriditalParam:(NSDictionary *)pageParam {
     NSMutableDictionary *mParam = [(pageParam ?: @{}) mutableCopy];
+    SlockKuiklyPutHostTimeContextIfMissing(mParam);
     // iOS Kuikly pageData safeAreaInsets are reported in native pixels, while
     // shared Compose layout uses dp. Mark the unit so shared safe-area helpers
     // convert through LocalDensity instead of treating 102px as 102dp.
