@@ -375,6 +375,7 @@ sealed interface SharedSettingsIntent {
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
+    data class SetComposerSendKey(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadRowAffordance(val affordance: String, val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -901,6 +902,14 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
+    suspend fun setComposerSendKey(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
+        val repository =
+            chatLayoutPreferenceRepository
+                ?: return DataResult.Error(ScreenError("settings_composer_send_key_unavailable", retryable = false))
+        repository.setComposerSendKeyEnabled(enabled)
+        return loadMobilePreferences()
+    }
+
     suspend fun setThreadRowAffordance(
         affordanceKey: String,
         enabled: Boolean
@@ -1139,6 +1148,13 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Activity task status badge preference is not available on this platform."
+                    ),
+            composerSendKey =
+                chatLayout?.toSettingsMobileComposerSendKeySnapshot()
+                    ?: composerSendKey.copy(
+                        available = false,
+                        statusLabel = "Unsupported",
+                        detail = "Composer keyboard action preference is not available on this platform."
                     ),
             threadRowAffordances =
                 chatLayout?.toSettingsMobileThreadRowAffordancesSnapshot()
@@ -1786,6 +1802,14 @@ class SharedSettingsStore(
                     )
                 dataSource.setActivityTaskStatusBadges(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES)
+            }
+            is SharedSettingsIntent.SetComposerSendKey -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(MOBILE_ACTION_COMPOSER_SEND_KEY, inProgress = true)
+                    )
+                dataSource.setComposerSendKey(intent.enabled)
+                    .applyMobileActionResult(MOBILE_ACTION_COMPOSER_SEND_KEY)
             }
             is SharedSettingsIntent.SetThreadRowAffordance -> {
                 _state.value =
@@ -2627,6 +2651,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
+            is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetThreadRowAffordance,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -2791,6 +2816,7 @@ internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
+internal const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 internal const val MOBILE_ACTION_THREAD_ROW_AFFORDANCES = "threadRowAffordances"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
@@ -2948,6 +2974,14 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileActivityTaskStatusBadge
         available = true,
         statusLabel = if (activityTaskStatusBadgesEnabled) "Enabled" else "Off",
         detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
+    )
+
+private fun ChatLayoutPreferenceSnapshot.toSettingsMobileComposerSendKeySnapshot(): SettingsMobileToggleSnapshot =
+    SettingsMobileToggleSnapshot(
+        enabled = composerSendKeyEnabled,
+        available = true,
+        statusLabel = if (composerSendKeyEnabled) "Send" else "New line",
+        detail = "Choose what the keyboard action key does in the message composer. Long-pressing the input still offers Insert newline."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileThreadRowAffordancesSnapshot(): SettingsMobileMultiSelectionSnapshot =

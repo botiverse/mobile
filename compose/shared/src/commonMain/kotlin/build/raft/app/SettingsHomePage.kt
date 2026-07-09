@@ -42,6 +42,7 @@ import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
+import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
@@ -4510,6 +4511,9 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
                         onActivityTaskStatusBadgesSelected(enabled)
                     },
+                    onComposerSendKeyChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
+                    },
                     onThreadRowAffordanceChange = { affordance, enabled ->
                         onSettingsIntent(
                             SharedSettingsIntent.SetThreadRowAffordance(
@@ -5536,6 +5540,7 @@ private fun SettingsMobileContent(
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
+    onComposerSendKeyChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
@@ -5574,6 +5579,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
+                )
+            }
+            item {
+                SettingsComposerSendKeyCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onComposerSendKeyChange = onComposerSendKeyChange
                 )
             }
             item {
@@ -5760,6 +5772,54 @@ private fun SettingsActivityTaskStatusBadgesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsComposerSendKeyCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onComposerSendKeyChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
+    val preference = snapshot.composerSendKey
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = "Composer keyboard key") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onComposerSendKeyChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Keyboard action sends messages" else "Keyboard action inserts a new line",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -8340,6 +8400,11 @@ private fun SharedQuiverFeedbackContent(
 ) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val chatLayoutPreferenceStore =
+        remember {
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        }
+    val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val message = messageFieldValue.text
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
@@ -8576,6 +8641,7 @@ private fun SharedQuiverFeedbackContent(
                         statusLabel = error?.takeIf { it.isNotBlank() },
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems()
                     ),
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 onEvent = { action, value, _, attachmentId ->
                     when (action) {
                         "change" -> {
