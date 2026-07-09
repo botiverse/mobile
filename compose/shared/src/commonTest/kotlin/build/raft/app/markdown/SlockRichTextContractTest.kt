@@ -34,6 +34,11 @@ class SlockRichTextContractTest {
         assertEquals("#not-task", inlineCode.text)
         assertEquals("`#not-task`", inlineCode.sourceText)
         assertEquals(SlockRichTextChromeKind.InlineCode, inlineCode.chrome)
+        assertEquals("inlineCode", inlineCode.styleTokenId)
+        assertEquals(
+            listOf("selfMention", "thread", "task"),
+            refs.map { it.styleTokenId }
+        )
         assertNull(inlineCode.actionId)
         assertEquals(refs.map { it.id }, document.actions.map { it.id })
     }
@@ -76,7 +81,7 @@ class SlockRichTextContractTest {
 
         assertEquals(
             """
-            {"source":"Ping @artin in #markdown专修 for #42 and `code #99`","content":"Ping @artin in #markdown专修 for #42 and `code #99`","blocks":[{"id":"block:0","kind":"paragraph","range":[0,49],"inlineTokenIds":["text:0-5","slock:5","text:11-15","slock:15","text:26-31","slock:31","text:34-39","slock-code:39"]}],"inlineTokens":[{"id":"text:0-5","kind":"text","range":[0,5],"text":"Ping ","sourceText":"Ping "},{"id":"slock:5","kind":"slockRef","range":[5,11],"text":"@artin","sourceText":"@artin","chrome":"selfMention","actionId":"slock:5","refKind":"userMention"},{"id":"text:11-15","kind":"text","range":[11,15],"text":" in ","sourceText":" in "},{"id":"slock:15","kind":"slockRef","range":[15,26],"text":"#markdown专修","sourceText":"#markdown专修","chrome":"channel","actionId":"slock:15","refKind":"channel"},{"id":"text:26-31","kind":"text","range":[26,31],"text":" for ","sourceText":" for "},{"id":"slock:31","kind":"slockRef","range":[31,34],"text":"#42","sourceText":"#42","chrome":"task","actionId":"slock:31","refKind":"task"},{"id":"text:34-39","kind":"text","range":[34,39],"text":" and ","sourceText":" and "},{"id":"slock-code:39","kind":"inlineCode","range":[39,49],"text":"code #99","sourceText":"`code #99`","chrome":"inlineCode"}],"actions":[{"id":"slock:5","kind":"openSlockRef","refKind":"userMention","label":"@artin"},{"id":"slock:15","kind":"openSlockRef","refKind":"channel","label":"#markdown专修","channelName":"markdown专修"},{"id":"slock:31","kind":"openSlockRef","refKind":"task","label":"#42"}]}
+            {"source":"Ping @artin in #markdown专修 for #42 and `code #99`","content":"Ping @artin in #markdown专修 for #42 and `code #99`","blocks":[{"id":"block:0","kind":"paragraph","range":[0,49],"inlineTokenIds":["text:0-5","slock:5","text:11-15","slock:15","text:26-31","slock:31","text:34-39","slock-code:39"]}],"inlineTokens":[{"id":"text:0-5","kind":"text","range":[0,5],"text":"Ping ","sourceText":"Ping "},{"id":"slock:5","kind":"slockRef","range":[5,11],"text":"@artin","sourceText":"@artin","chrome":"selfMention","styleTokenId":"selfMention","actionId":"slock:5","refKind":"userMention"},{"id":"text:11-15","kind":"text","range":[11,15],"text":" in ","sourceText":" in "},{"id":"slock:15","kind":"slockRef","range":[15,26],"text":"#markdown专修","sourceText":"#markdown专修","chrome":"channel","styleTokenId":"channel","actionId":"slock:15","refKind":"channel"},{"id":"text:26-31","kind":"text","range":[26,31],"text":" for ","sourceText":" for "},{"id":"slock:31","kind":"slockRef","range":[31,34],"text":"#42","sourceText":"#42","chrome":"task","styleTokenId":"task","actionId":"slock:31","refKind":"task"},{"id":"text:34-39","kind":"text","range":[34,39],"text":" and ","sourceText":" and "},{"id":"slock-code:39","kind":"inlineCode","range":[39,49],"text":"code #99","sourceText":"`code #99`","chrome":"inlineCode","styleTokenId":"inlineCode"}],"actions":[{"id":"slock:5","kind":"openSlockRef","refKind":"userMention","label":"@artin"},{"id":"slock:15","kind":"openSlockRef","refKind":"channel","label":"#markdown专修","channelName":"markdown专修"},{"id":"slock:31","kind":"openSlockRef","refKind":"task","label":"#42"}]}
             """.trimIndent(),
             document.toGoldenJson()
         )
