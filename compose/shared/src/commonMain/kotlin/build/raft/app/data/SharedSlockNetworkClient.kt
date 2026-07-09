@@ -308,7 +308,8 @@ internal class SharedSlockNetworkClient(
 class SharedSlockAuthTransport internal constructor(
     private val baseUrl: String,
     private val executor: SlockHttpExecutor,
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
 ) : SlockAuthTransport {
     constructor(
         baseUrl: String = SLOCK_API_BASE_URL,
@@ -389,19 +390,49 @@ class SharedSlockAuthTransport internal constructor(
         bodyText: String? = null
     ): AuthNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
+        val normalizedMethod = method.uppercase()
+        val requestBytes = (bodyText?.encodeToByteArray()?.size ?: 0).toLong()
+        warningLogger(
+            "slock_auth_transport_start path=$path method=$normalizedMethod " +
+                "authorizationPresent=${authorization != null} requestBytes=$requestBytes"
+        )
         val response =
-            executor.execute(
-                priority = SlockRequestPriority.Foreground,
-                url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}",
-                method = method,
-                headers = authorization?.let { mapOf(HEADER_AUTHORIZATION to it) } ?: emptyMap(),
-                bodyText = bodyText,
-                jsonBody = bodyText != null
-            )
+            try {
+                requestScheduler.run(
+                    priority = SlockRequestPriority.Foreground,
+                    key = path,
+                    reason = normalizedMethod
+                ) {
+                    executor.execute(
+                        priority = SlockRequestPriority.Foreground,
+                        url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}",
+                        method = normalizedMethod,
+                        headers = authorization?.let { mapOf(HEADER_AUTHORIZATION to it) } ?: emptyMap(),
+                        bodyText = bodyText,
+                        jsonBody = bodyText != null
+                    )
+                }
+            } catch (timeout: SlockRequestTimeoutException) {
+                return timeout.toTimeoutAuthNetworkResponse(
+                    path = path,
+                    method = normalizedMethod,
+                    requestBytes = requestBytes,
+                    durationMs = startedAt.elapsedNow().inWholeMilliseconds,
+                    warningLogger = warningLogger
+                )
+            }
+        warningLogger(
+            "slock_auth_transport_finish path=$path method=$normalizedMethod " +
+                "authorizationPresent=${authorization != null} requestBytes=$requestBytes " +
+                "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none")
+        )
         if (response.code == 0) {
             warningLogger(
-                "slock_auth_transport_failed path=$path method=$method " +
-                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                "slock_auth_transport_failed path=$path method=$normalizedMethod " +
+                    "requestBytes=$requestBytes " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
@@ -410,6 +441,24 @@ class SharedSlockAuthTransport internal constructor(
         }
         return response.toAuthNetworkResponse()
     }
+}
+
+private fun SlockRequestTimeoutException.toTimeoutAuthNetworkResponse(
+    path: String,
+    method: String,
+    requestBytes: Long,
+    durationMs: Long,
+    warningLogger: (String) -> Unit
+): AuthNetworkResponse {
+    val errorBody =
+        """{"error":"network_timeout","message":"${message.orEmpty().jsonString()}"}"""
+    warningLogger(
+        "slock_auth_transport_failed path=$path method=${method.uppercase()} " +
+            "requestBytes=$requestBytes responseBytes=0 " +
+            "errorBytes=${errorBody.encodeToByteArray().size} " +
+            "durationMs=$durationMs engine=networkkmm status=none kind=timeout rawCode=FORCE_TIMEOUT detail=request_timeout"
+    )
+    return AuthNetworkResponse(code = 0, bodyText = null, errorBodyText = errorBody)
 }
 
 private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkResponse =
