@@ -1,8 +1,10 @@
 package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.core.views.PlayState
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -80,7 +82,7 @@ class SlockFilePreviewDownloadStatusTest {
             )
 
         assertEquals("missing_preview", trace.result)
-        assertEquals("Preview unavailable", trace.payload.title)
+        assertEquals(MR.strings.file_preview_unavailable.desc(), trace.payload.titleDesc)
         assertEquals("preview_not_found", trace.payload.error)
     }
 
@@ -242,12 +244,12 @@ class SlockFilePreviewDownloadStatusTest {
                 SlockFilePreviewPayload(
                     kind = "unsupported",
                     externalFileName = "archive.zip",
-                    message = "No preview is available for this file type."
+                    messageDesc = MR.strings.file_preview_no_preview.desc()
                 ),
                 downloadable = true
             )
 
-        assertEquals("Download this file to open it with another app.", label)
+        assertEquals(MR.strings.file_preview_download_to_open.desc(), label)
     }
 
     @Test
@@ -257,12 +259,13 @@ class SlockFilePreviewDownloadStatusTest {
                 SlockFilePreviewPayload(
                     kind = "unsupported",
                     externalFileName = "archive.zip",
-                    message = "Preview unavailable from workspace"
+                    message = "Preview unavailable from workspace",
+                    messageDesc = null
                 ),
                 downloadable = false
             )
 
-        assertEquals("Preview unavailable from workspace", label)
+        assertEquals("Preview unavailable from workspace".desc(), label)
     }
 
     @Test
@@ -432,7 +435,7 @@ class SlockFilePreviewDownloadStatusTest {
             ).toThreadAttachmentLazyPreviewPayload(kind = "image")
 
         assertEquals("loading", payload.kind)
-        assertEquals("Image preview", payload.title)
+        assertEquals(MR.strings.file_preview_image.desc(), payload.titleDesc)
         assertEquals("https://cdn.slock.test/thumb.jpg", payload.imageUrl)
         assertEquals("att-1", payload.attachmentId)
     }

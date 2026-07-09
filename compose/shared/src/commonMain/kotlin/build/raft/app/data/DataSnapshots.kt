@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.*
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -986,7 +987,7 @@ data class SettingsServerProfileSnapshot(
 
 data class SettingsServerSectionSnapshot(
     val key: String,
-    val title: String,
+    val title: StringDesc,
     val detail: String,
     val state: SettingsSectionAvailability = SettingsSectionAvailability.Unavailable
 )

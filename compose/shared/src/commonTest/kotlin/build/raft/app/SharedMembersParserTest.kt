@@ -9,8 +9,10 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SlockTimeFormat12Hour
+import build.raft.app.resources.MR
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -500,7 +502,10 @@ class SharedMembersParserTest {
             )
 
         assertEquals(listOf("stop", "restart"), onlineItems.map { it.id })
-        assertEquals(listOf("Stop Agent", "Restart / Reset"), onlineItems.map { it.label })
+        assertEquals(
+            listOf(MR.strings.member_action_stop_agent.desc(), MR.strings.member_label_restart_reset.desc()),
+            onlineItems.map { it.label }
+        )
         assertEquals(SlockLucideIconName.Square, onlineItems[0].icon)
         assertEquals(SlockLucideIconName.RotateCcw, onlineItems[1].icon)
 
@@ -513,7 +518,10 @@ class SharedMembersParserTest {
             )
 
         assertEquals(listOf("start", "restart"), offlineItems.map { it.id })
-        assertEquals(listOf("Start Agent", "Restart / Reset"), offlineItems.map { it.label })
+        assertEquals(
+            listOf(MR.strings.member_action_start_agent.desc(), MR.strings.member_label_restart_reset.desc()),
+            offlineItems.map { it.label }
+        )
     }
 
     @Test

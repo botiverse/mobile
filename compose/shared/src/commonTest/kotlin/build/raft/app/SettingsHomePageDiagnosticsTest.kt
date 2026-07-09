@@ -72,17 +72,17 @@ class SettingsHomePageDiagnosticsTest {
     fun administrationSectionsMatchReactOrder() {
         assertEquals(
             listOf(
-                "Admins",
-                "System Channels",
-                "Pending Invites",
-                "Join Links",
-                "Pre-join Agreement",
-                "Onboarding",
-                "Translation",
-                "Member Permissions",
-                "Sidebar Order"
+                "admins",
+                "system_channels",
+                "pending_invites",
+                "join_links",
+                "pre_join_agreement",
+                "onboarding_agent",
+                "translation",
+                "member_permissions",
+                "sidebar_order"
             ),
-            settingsAdministrationSectionTitles()
+            settingsAdministrationSectionSpecs().map { it.key }
         )
     }
 
@@ -169,6 +169,7 @@ class SettingsHomePageDiagnosticsTest {
                         SettingsServerAdminSnapshot(id = "member-1", name = "Member", role = "member")
                     ),
                 section = null,
+                sectionTitle = "Admins",
                 actorRole = "admin",
                 actionState = null
             )
@@ -189,6 +190,7 @@ class SettingsHomePageDiagnosticsTest {
                         SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
                     ),
                 section = null,
+                sectionTitle = "Admins",
                 actorRole = "owner",
                 actionState = null
             )
@@ -205,6 +207,7 @@ class SettingsHomePageDiagnosticsTest {
                         SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
                     ),
                 section = null,
+                sectionTitle = "Admins",
                 actorRole = "owner",
                 actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, "admin-1", inProgress = true)
             )

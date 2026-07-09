@@ -173,7 +173,10 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
+import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -3427,12 +3430,20 @@ private fun MembersDetailContent(
             val menuSummary = detail?.summary
             val menuStatus = member.membersAgentStatusDisplayState(menuSummary?.status, menuSummary?.activity).status
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
-            val menuItems = buildMembersManagementMenuItems(
-                primaryAction = menuPrimary,
-                canManage = canManage,
-                deleted = deleted,
-                inProgress = lifecycleInFlight != null
-            )
+            val menuItems =
+                buildMembersManagementMenuItems(
+                    primaryAction = menuPrimary,
+                    canManage = canManage,
+                    deleted = deleted,
+                    inProgress = lifecycleInFlight != null
+                ).map { item ->
+                    SlockRaftUiMenuItem(
+                        id = item.id,
+                        label = item.label.localized(),
+                        icon = item.icon,
+                        enabled = item.enabled
+                    )
+                }
             SlockRaftUiControlledMenu(
                 expanded = managementMenuOpen,
                 anchor = dropdownAnchor,
@@ -3531,29 +3542,36 @@ private fun DataResult<AgentLifecycleActionResult>.membersLifecycleErrorCode(act
         is DataResult.NoPermission -> blocker.code
     }
 
+internal data class MembersManagementMenuItemSpec(
+    val id: String,
+    val label: StringDesc,
+    val icon: SlockLucideIconName,
+    val enabled: Boolean
+)
+
 internal fun buildMembersManagementMenuItems(
     primaryAction: MembersAgentLifecycleAction?,
     canManage: Boolean,
     deleted: Boolean,
     inProgress: Boolean
-): List<SlockRaftUiMenuItem> {
+): List<MembersManagementMenuItemSpec> {
     if (deleted || !canManage) return emptyList()
-    val items = mutableListOf<SlockRaftUiMenuItem>()
+    val items = mutableListOf<MembersManagementMenuItemSpec>()
     if (primaryAction != null) {
-        items += SlockRaftUiMenuItem(
+        items += MembersManagementMenuItemSpec(
             id = primaryAction.actionKey,
             label = when (primaryAction) {
-                MembersAgentLifecycleAction.Start -> "Start Agent"
-                MembersAgentLifecycleAction.Stop -> "Stop Agent"
-                else -> primaryAction.label
+                MembersAgentLifecycleAction.Start -> MR.strings.member_action_start_agent.desc()
+                MembersAgentLifecycleAction.Stop -> MR.strings.member_action_stop_agent.desc()
+                else -> primaryAction.label.desc()
             },
             icon = primaryAction.iconName,
             enabled = !inProgress
         )
     }
-    items += SlockRaftUiMenuItem(
+    items += MembersManagementMenuItemSpec(
         id = MembersAgentLifecycleAction.Restart.actionKey,
-        label = "Restart / Reset",
+        label = MR.strings.member_label_restart_reset.desc(),
         icon = SlockLucideIconName.RotateCcw,
         enabled = !inProgress
     )
@@ -6388,9 +6406,9 @@ private fun MembersAgentRuntimeConfigDialog(
 }
 
 internal data class MembersRuntimeConfigSwitchConfirmation(
-    val title: String,
+    val title: StringDesc,
     val message: String,
-    val confirmLabel: String
+    val confirmLabel: StringDesc
 )
 
 internal fun membersRuntimeConfigResetMode(
@@ -6436,9 +6454,14 @@ internal fun membersRuntimeConfigSwitchConfirmation(
                 "The agent will launch with model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
         }
     return MembersRuntimeConfigSwitchConfirmation(
-        title = "Switch Runtime Config",
+        title = MR.strings.member_action_switch_runtime_config.desc(),
         message = message,
-        confirmLabel = if (activeAgent) "Reset Runtime Session" else "Save Runtime Change"
+        confirmLabel =
+            if (activeAgent) {
+                MR.strings.member_action_reset_runtime_session.desc()
+            } else {
+                MR.strings.member_action_save_runtime_change.desc()
+            }
     )
 }
 
@@ -6449,7 +6472,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
     onCancel: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = confirmation.title,
+        title = confirmation.title.localized(),
         maxWidth = 420.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -6491,7 +6514,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
                     onClick = onCancel
                 )
                 SlockBrutalActionButton(
-                    label = confirmation.confirmLabel,
+                    label = confirmation.confirmLabel.localized(),
                     backgroundColor = SlockColor.AccentOrange,
                     onClick = onConfirm
                 )

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -10,7 +12,7 @@ class ThreadNewerMessagesActionSpecTest {
     fun newerDefaultState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("idle")
 
-        assertEquals("Load new messages", spec.label)
+        assertEquals(MR.strings.thread_load_new.desc(), spec.label)
         assertEquals("loadNewer", spec.event)
         assertNull(spec.leadingIcon)
     }
@@ -19,7 +21,7 @@ class ThreadNewerMessagesActionSpecTest {
     fun newerLoadingState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("loading")
 
-        assertEquals("Loading new messages…", spec.label)
+        assertEquals(MR.strings.thread_state_loading_new.desc(), spec.label)
         assertEquals("loadNewer", spec.event)
         assertNull(spec.leadingIcon)
     }
@@ -28,7 +30,7 @@ class ThreadNewerMessagesActionSpecTest {
     fun newerErrorState_hasNoLeadingIcon() {
         val spec = threadNewerMessagesActionSpec("error")
 
-        assertEquals("Retry new messages", spec.label)
+        assertEquals(MR.strings.thread_retry_new.desc(), spec.label)
         assertEquals("retryLoadNewer", spec.event)
         assertNull(spec.leadingIcon)
     }
@@ -37,7 +39,7 @@ class ThreadNewerMessagesActionSpecTest {
     fun olderLoadingState_hasNoLeadingIcon() {
         val spec = threadOlderMessagesStatusSpec(canLoadMoreBefore = true)
 
-        assertEquals("Loading older messages…", spec.label)
+        assertEquals(MR.strings.thread_state_loading_older.desc(), spec.label)
         assertNull(spec.leadingIcon)
         assertNull(spec.secondaryLabel)
     }
@@ -49,7 +51,7 @@ class ThreadNewerMessagesActionSpecTest {
             secondaryLabel = "1 reply"
         )
 
-        assertEquals("Beginning of conversation", spec.label)
+        assertEquals(MR.strings.thread_state_beginning_conversation.desc(), spec.label)
         assertNull(spec.leadingIcon)
         assertEquals("1 reply", spec.secondaryLabel)
     }
