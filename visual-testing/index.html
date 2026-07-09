@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Raft Visual Testing</title>
   <style>
-:root { --bg: #ffffff; --canvas: #F6F9FC; --border: #ededed; --hairline: #e6e6e6; --text: #2E3438; --muted: #798186; --faint: #B0B7BD; --hover: #f6f7f8; --accent: #029CFD; --sel-bg: #E3F3FF; --green: #16a34a; --amber: #d97706; --red: #dc2626; }
+:root { --bg: #ffffff; --canvas: #F6F9FC; --border: #ededed; --hairline: #e6e6e6; --text: #2E3438; --muted: #798186; --faint: #B0B7BD; --hover: #f6f7f8; --accent: #029CFD; --sel-bg: #E3F3FF; --green: #16a34a; --amber: #d97706; --red: #dc2626; --provider-react: #23282d; --provider-android: #16a34a; --provider-ios: #007aff; --provider-ohos: #ea580c; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -83,14 +83,18 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
 .sb-story-title .t { font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-story-title .i { font-size: 11px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-pairswitch { display: flex; align-items: center; gap: 2px; margin-left: 10px; padding: 2px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--canvas); flex: none; max-width: 46%; overflow-x: auto; }
-.sb-pairtab { height: 26px; padding: 0 9px; border: 0; border-radius: 4px; background: none; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap; flex: none; }
+.sb-pairtab { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 0; border-radius: 4px; background: none; font: inherit; font-size: 12px; font-weight: 700; color: var(--muted); cursor: pointer; white-space: nowrap; flex: none; }
 .sb-pairtab:hover { color: var(--text); }
 .sb-pairtab.active { background: var(--bg); color: var(--accent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+/* Provider accent dot: fixed per-provider identity color (--provider-<id>),
+   used on pair-switcher end dots, matrix column headers and raw-image tabs. */
+.sb-provdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--faint); }
 .sb-comptabs { display: flex; align-items: stretch; height: 40px; margin-left: 6px; }
-.sb-comptab { height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.sb-comptab { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .sb-comptab:hover:not(:disabled) { color: var(--text); }
 .sb-comptab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .sb-comptab:disabled { color: #cdd2d6; cursor: not-allowed; }
+.sb-comptab:disabled .sb-provdot { opacity: 0.35; }
 .sb-spacer { flex: 1; }
 .sb-tools { display: flex; align-items: center; gap: 1px; }
 .sb-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 5px; background: none; color: #5c6870; cursor: pointer; }
@@ -126,6 +130,26 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
 .sb-wcard .noimg { display: flex; align-items: center; justify-content: center; height: 72px; color: var(--faint); font-size: 12px; border-top: 1px solid var(--hairline); background: var(--canvas); }
 .sb-wcard .meta { display: flex; align-items: center; gap: 7px; padding: 8px 11px; }
 .sb-wcard .meta .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 700; }
+/* ---- matrix overview: cases x providers (spec PR-2) ---- */
+.sb-viewswitch { display: flex; align-items: center; gap: 2px; margin-left: 8px; padding: 2px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--canvas); flex: none; }
+.sb-matrixwrap { margin-top: 22px; max-width: 100%; overflow-x: auto; background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; }
+.sb-matrix { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 12.5px; }
+.sb-matrix th, .sb-matrix td { border-bottom: 1px solid var(--hairline); padding: 6px 10px; text-align: left; vertical-align: middle; }
+.sb-matrix tbody tr:last-child th, .sb-matrix tbody tr:last-child td { border-bottom: 0; }
+.sb-matrix thead th { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: var(--canvas); white-space: nowrap; }
+.sb-provhead { display: inline-flex; align-items: center; gap: 6px; }
+.sb-matrix .rowhead { position: sticky; left: 0; z-index: 2; background: var(--bg); min-width: 200px; max-width: 280px; border-right: 1px solid var(--hairline); }
+.sb-matrix thead .rowhead { background: var(--canvas); z-index: 3; }
+.sb-matrix .rowheadin { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+.sb-matrix .rowheadin .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-mdiff { flex: none; border: 1px solid var(--hairline); border-radius: 4px; background: var(--bg); padding: 2px 8px; font: inherit; font-size: 11px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.sb-mdiff:hover { border-color: var(--accent); color: var(--accent); }
+.sb-mcell { display: inline-flex; align-items: center; gap: 7px; padding: 3px; border: 0; border-radius: 6px; background: none; font: inherit; color: var(--muted); cursor: pointer; text-align: left; }
+.sb-mcell:hover { background: var(--hover); }
+.sb-mcell img { display: block; max-width: 72px; max-height: 54px; width: auto; height: auto; border: 1px solid var(--hairline); border-radius: 4px; background: #fff; }
+.sb-mcell.miss { cursor: default; }
+.sb-mcell.miss:hover { background: none; }
+.sb-mcell.miss .lbl { font-size: 11px; color: var(--faint); }
 .sb-stage-wrap { min-height: 100%; display: flex; align-items: flex-start; justify-content: center; padding: 34px 28px; }
 .sb-stage { transform-origin: top center; transition: transform 0.1s ease; }
 .sb-card { background: var(--bg); border: 1px solid var(--hairline); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(0,0,0,0.04); padding: 16px; }
@@ -148,11 +172,21 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
 .overlayComparison[data-overlay-mode="align"] .overlayCanvasWrap canvas { cursor: move; }
 .cropInfo { color: var(--muted); font-size: 12px; }
 /* ---- addons panel ---- */
-.sb-addons { flex: none; background: var(--bg); border-top: 1px solid var(--hairline); display: flex; flex-direction: column; height: 34%; min-height: 150px; }
+.sb-addon-resizer { height: 6px; margin-top: -6px; cursor: row-resize; flex: none; touch-action: none; z-index: 5; }
+.sb-addon-resizer:hover, .sb-addon-resizer.dragging { background: var(--accent); opacity: 0.4; }
+body.sb-addon-resizing { cursor: row-resize; user-select: none; }
+.sb-addons { flex: none; background: var(--bg); border-top: 1px solid var(--hairline); display: flex; flex-direction: column; height: var(--sbah, 34%); min-height: 150px; max-height: 72vh; }
+.sb-addons.collapsed { height: 37px; min-height: 37px; }
+.sb-addons.collapsed .sb-addon-body { display: none; }
 .sb-addon-tabbar { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--hairline); flex: none; }
 .sb-addon-tab { height: 36px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .sb-addon-tab:hover { color: var(--text); }
 .sb-addon-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.sb-addon-tabspacer { flex: 1; min-width: 8px; }
+.sb-addon-toggle { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 36px; margin-left: auto; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; flex: none; }
+.sb-addon-toggle:hover { color: var(--text); background: var(--hover); }
+.sb-addon-toggle svg { transition: transform 0.12s ease; }
+.sb-addons.collapsed .sb-addon-toggle svg { transform: rotate(180deg); }
 .sb-addon-body { overflow: auto; padding: 14px 16px; font-size: 13px; }
 .sb-mtable, .sb-props { border-collapse: collapse; font-size: 12.5px; }
 .sb-mtable-title { font-weight: 700; margin: 12px 0 6px; }
@@ -194,12 +228,18 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   .sb-overview { padding: 14px; }
   .sb-stats { gap: 10px; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
   .sb-waterfall { columns: 1; }
+  .sb-viewswitch { order: 8; margin-left: auto; }
+  .sb-viewswitch .sb-pairtab { height: 24px; padding: 0 7px; }
+  .sb-matrixwrap { margin-top: 14px; }
+  .sb-matrix .rowhead { min-width: 140px; max-width: 170px; }
   .sb-stage-wrap { padding: 16px 10px; }
   .sb-card { padding: 10px; max-width: 100%; }
   .sb-card img { max-width: 100%; }
   .sb-stage { max-width: 100%; }
   .sb-stage .overlayComparison { width: 100%; }
-  .sb-addons { height: 44%; }
+  .sb-addon-resizer { height: 8px; margin-top: -8px; }
+  .sb-addons { height: var(--sbah, 44%); max-height: 72vh; }
+  .sb-addons.collapsed { height: 37px; min-height: 37px; }
   .sb-addon-tabbar { overflow-x: auto; }
   .sb-addon-tab { white-space: nowrap; }
   .sb-kv { grid-template-columns: 1fr; gap: 2px 0; }
@@ -266,6 +306,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
           <div class="sb-stage" id="vt-stage"></div>
         </div>
       </div>
+      <div class="sb-addon-resizer" id="vt-addon-resizer" title="Drag to resize details panel · double-click to reset" aria-hidden="true" hidden></div>
       <div class="sb-addons" id="vt-addons" hidden>
         <div class="sb-addon-tabbar" id="vt-addon-tabbar"></div>
         <div class="sb-addon-body" id="vt-addon-body"></div>
@@ -513,6 +554,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   var toolsBox = document.getElementById("vt-tools");
   var toolsSep = document.getElementById("vt-tools-sep");
   var addons = document.getElementById("vt-addons");
+  var addonResizer = document.getElementById("vt-addon-resizer");
   var addonTabbar = document.getElementById("vt-addon-tabbar");
   var addonBody = document.getElementById("vt-addon-body");
   var runsBox = document.getElementById("vt-runs");
@@ -524,6 +566,9 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   var rowById = {};
   var selectedId = null;
   var compTab = null;
+  // One-shot tab request consumed by the next renderCase (matrix cell click
+  // preselects a provider's raw tab instead of the side-by-side default).
+  var pendingCompTab = null;
   var addonTab = "metrics";
   var zoom = 1;
   var bgIndex = 0;
@@ -563,6 +608,15 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     if (value.toLowerCase() === "ios") return "iOS";
     if (value.toLowerCase() === "ohos") return "OHOS";
     return tc(value);
+  }
+  // Provider accent identity (spec: provider-pair-first, Goal 5): a small dot
+  // in the provider's fixed accent (--provider-<id> in home.css; unknown
+  // providers fall back to --faint). Corner badges on side-by-side images are
+  // baked in by the CLI compositor, so accents live on site chrome only.
+  function providerDot(provider) {
+    var dot = el("span", "sb-provdot");
+    dot.style.background = "var(--provider-" + String(provider || "").toLowerCase() + ", var(--faint))";
+    return dot;
   }
   function anchorId(id) {
     return String(id).replace(/[^a-zA-Z0-9]+/g, "-");
@@ -935,14 +989,16 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   });
 
   // ----- search filter -----
+  function caseMatchesQuery(item, query) {
+    if (!query) return true;
+    return (item.id + " " + item.title + " " + item.category + " " + item.surface).toLowerCase().indexOf(query) !== -1;
+  }
   searchInput.addEventListener("input", function () {
     var query = searchInput.value.trim().toLowerCase();
     Array.prototype.forEach.call(tree.querySelectorAll(".sb-group"), function (group) {
       var groupVisible = 0;
       Array.prototype.forEach.call(group.querySelectorAll(".sb-row"), function (row) {
-        var item = caseById[row.dataset.caseId];
-        var haystack = (item.id + " " + item.title + " " + item.category + " " + item.surface).toLowerCase();
-        var match = !query || haystack.indexOf(query) !== -1;
+        var match = caseMatchesQuery(caseById[row.dataset.caseId], query);
         row.style.display = match ? "" : "none";
         if (match) groupVisible += 1;
       });
@@ -957,6 +1013,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       group.style.display = groupVisible ? "" : "none";
       if (query) group.classList.remove("closed");
     });
+    applyMatrixFilter();
   });
   document.addEventListener("keydown", function (event) {
     if (event.key === "/" && document.activeElement !== searchInput) {
@@ -1058,6 +1115,93 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     });
   })();
 
+  // ----- resizable / collapsible selected-case bottom inspector -----
+  (function () {
+    if (!addonResizer || !addons) return;
+    var DEFAULT_H = 260, MIN_H = 120, MAX_H = 760;
+    var HEIGHT_KEY = "vtAddonHeight";
+    var COLLAPSED_KEY = "vtAddonCollapsed";
+    function maxHeight() {
+      return Math.max(MIN_H, Math.min(MAX_H, Math.round(window.innerHeight * 0.72)));
+    }
+    function clampHeight(height) {
+      return Math.max(MIN_H, Math.min(maxHeight(), Math.round(height)));
+    }
+    function applyHeight(height) {
+      document.documentElement.style.setProperty("--sbah", clampHeight(height) + "px");
+    }
+    function currentHeight() {
+      var stored = NaN;
+      try { stored = Number(localStorage.getItem(HEIGHT_KEY)); } catch (error) { /* storage disabled */ }
+      return addons.classList.contains("collapsed")
+        ? (Number.isFinite(stored) && stored >= MIN_H ? stored : DEFAULT_H)
+        : (addons.getBoundingClientRect().height || DEFAULT_H);
+    }
+    function setCollapsed(collapsed) {
+      addons.classList.toggle("collapsed", Boolean(collapsed));
+      addonResizer.title = collapsed
+        ? "Double-click to expand details panel"
+        : "Drag to resize details panel · double-click to reset";
+      try { localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0"); } catch (error) { /* storage disabled */ }
+      var toggle = addonTabbar && addonTabbar.querySelector("[data-addon-toggle]");
+      if (toggle) {
+        toggle.title = collapsed ? "Expand details panel" : "Collapse details panel";
+        toggle.setAttribute("aria-label", toggle.title);
+        toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
+    }
+    var stored = NaN;
+    try { stored = Number(localStorage.getItem(HEIGHT_KEY)); } catch (error) { /* storage disabled */ }
+    if (Number.isFinite(stored) && stored >= MIN_H && stored <= maxHeight()) applyHeight(stored);
+    var storedCollapsed = false;
+    try { storedCollapsed = localStorage.getItem(COLLAPSED_KEY) === "1"; } catch (error) { /* storage disabled */ }
+    setCollapsed(storedCollapsed);
+    var startY = 0;
+    var startH = DEFAULT_H;
+    addonResizer.addEventListener("pointerdown", function (event) {
+      event.preventDefault();
+      addonResizer.setPointerCapture(event.pointerId);
+      if (addons.classList.contains("collapsed")) setCollapsed(false);
+      startY = event.clientY;
+      startH = currentHeight();
+      addonResizer.classList.add("dragging");
+      document.body.classList.add("sb-addon-resizing");
+    });
+    addonResizer.addEventListener("pointermove", function (event) {
+      if (!addonResizer.hasPointerCapture(event.pointerId)) return;
+      applyHeight(startH - (event.clientY - startY));
+    });
+    function endDrag(event) {
+      if (!addonResizer.hasPointerCapture(event.pointerId)) return;
+      addonResizer.releasePointerCapture(event.pointerId);
+      addonResizer.classList.remove("dragging");
+      document.body.classList.remove("sb-addon-resizing");
+      var height = Math.round(addons.getBoundingClientRect().height);
+      if (!addons.classList.contains("collapsed")) {
+        try { localStorage.setItem(HEIGHT_KEY, String(clampHeight(height))); } catch (error) { /* storage disabled */ }
+      }
+    }
+    addonResizer.addEventListener("pointerup", endDrag);
+    addonResizer.addEventListener("pointercancel", endDrag);
+    addonResizer.addEventListener("dblclick", function () {
+      if (addons.classList.contains("collapsed")) {
+        setCollapsed(false);
+        return;
+      }
+      applyHeight(DEFAULT_H);
+      try {
+        localStorage.removeItem(HEIGHT_KEY);
+        localStorage.setItem(COLLAPSED_KEY, "0");
+      } catch (error) { /* storage disabled */ }
+    });
+    window.addEventListener("resize", function () {
+      if (addons.classList.contains("collapsed")) return;
+      var height = Math.round(addons.getBoundingClientRect().height);
+      if (height > maxHeight()) applyHeight(height);
+    });
+    window.__slockSetAddonCollapsed = setCollapsed;
+  })();
+
   // ----- waterfall overview grid -----
   function renderOverviewWaterfall() {
     var waterfall = document.getElementById("vt-waterfall");
@@ -1112,6 +1256,162 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     setStatValue("ai", Number(analysis.ready || 0) + "/" + Number(analysis.total || 0));
   }
 
+  // ----- overview mode: Grid | Matrix (spec PR-2, task #430) -----
+  var viewSwitch = document.getElementById("vt-viewswitch");
+  var matrixWrap = document.getElementById("vt-matrixwrap");
+  var waterfallBox = document.getElementById("vt-waterfall");
+  var matrixRowById = {};
+  var MODE_STORE_KEY = "vtOverviewMode";
+  // Matrix columns come from the top-level providers def; cells read the
+  // per-case providers{} index — never derived from pairs, so a capture
+  // shows up even when every pair diff touching it failed.
+  var providerDefs = (DATA.providers && DATA.providers.length) ? DATA.providers : (function () {
+    var ids = [];
+    pairDefs.forEach(function (def) {
+      [def.leftProvider, def.rightProvider].forEach(function (id) {
+        if (id && ids.indexOf(id) === -1) ids.push(id);
+      });
+    });
+    return ids.map(function (id) { return { id: id, label: providerTitle(id) }; });
+  })();
+  var overviewMode = (function () {
+    if (queryParam((location.search || "").replace(/^\?/, ""), "view") === "matrix") return "matrix";
+    try { if (sessionStorage.getItem(MODE_STORE_KEY) === "matrix") return "matrix"; } catch (error) { /* storage disabled */ }
+    return "grid";
+  })();
+  function buildViewSwitch() {
+    if (!viewSwitch) return;
+    viewSwitch.innerHTML = "";
+    [["grid", "Grid"], ["matrix", "Matrix"]].forEach(function (mode) {
+      var button = el("button", "sb-pairtab", mode[1]);
+      button.type = "button";
+      button.dataset.mode = mode[0];
+      button.title = mode[0] === "matrix" ? "Matrix overview: cases x providers" : "Grid overview";
+      if (mode[0] === overviewMode) button.classList.add("active");
+      button.addEventListener("click", function () { setOverviewMode(mode[0]); });
+      viewSwitch.appendChild(button);
+    });
+  }
+  function setOverviewMode(mode) {
+    if (mode === overviewMode) return;
+    overviewMode = mode;
+    try { sessionStorage.setItem(MODE_STORE_KEY, mode); } catch (error) { /* storage disabled */ }
+    Array.prototype.forEach.call(viewSwitch.children, function (child) {
+      child.classList.toggle("active", child.dataset.mode === mode);
+    });
+    renderOverviewBody();
+    syncLocation(true);
+  }
+  function renderOverviewBody() {
+    var matrix = overviewMode === "matrix";
+    if (matrixWrap) matrixWrap.hidden = !matrix;
+    if (waterfallBox) waterfallBox.hidden = matrix;
+    if (matrix) renderOverviewMatrix();
+    else renderOverviewWaterfall();
+  }
+  // Provider capture dot: green = raw capture exists, red = missing/error.
+  // Pair status coloring stays on the row header dot (grid semantics).
+  function providerDotKind(entry) {
+    return entry && entry.status === "captured" && entry.image ? "pass" : "missing";
+  }
+  // Opens a case on one provider's RAW image tab. When the selected pair
+  // lacks that provider, switch to its react__<provider> pair (else the
+  // first pair containing it) so a left/right tab can host the image.
+  function openCaseForProvider(id, provider) {
+    var pair = selectedPair() || {};
+    if (pair.leftProvider !== provider && pair.rightProvider !== provider) {
+      var candidates = pairDefs.filter(function (def) {
+        return def.leftProvider === provider || def.rightProvider === provider;
+      });
+      var target = candidates.filter(function (def) {
+        return def.leftProvider === "react" || def.rightProvider === "react";
+      })[0] || candidates[0];
+      if (target) {
+        selectedPairKey = target.key;
+        updatePairSwitcher();
+        updateTreeRows();
+        pair = target;
+      }
+    }
+    pendingCompTab = pair.leftProvider === provider ? "left" : (pair.rightProvider === provider ? "right" : null);
+    selectCase(id, true);
+  }
+  function renderOverviewMatrix() {
+    if (!matrixWrap) return;
+    matrixWrap.innerHTML = "";
+    matrixRowById = {};
+    var table = el("table", "sb-matrix");
+    var thead = document.createElement("thead");
+    var headRow = document.createElement("tr");
+    headRow.appendChild(el("th", "rowhead", "Case"));
+    providerDefs.forEach(function (def) {
+      var th = document.createElement("th");
+      var head = el("span", "sb-provhead");
+      head.appendChild(providerDot(def.id));
+      head.appendChild(el("span", null, def.label || providerTitle(def.id)));
+      th.appendChild(head);
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    var tbody = document.createElement("tbody");
+    var pair = selectedPair() || {};
+    var items = orderedCases.length ? orderedCases : (DATA.cases || []);
+    items.forEach(function (item) {
+      var tr = document.createElement("tr");
+      tr.dataset.caseId = item.id;
+      var head = el("th", "rowhead");
+      var inner = el("div", "rowheadin");
+      var name = el("span", "name", caseLabel(item));
+      name.title = caseLabel(item) + " · " + item.id;
+      inner.appendChild(name);
+      inner.appendChild(copyIdButton(item.id, "span"));
+      inner.appendChild(el("span", "sb-dot " + statusKind((casePairEntry(item) || {}).status)));
+      var diffBtn = el("button", "sb-mdiff", "Diff");
+      diffBtn.type = "button";
+      diffBtn.title = "Open " + (pair.label || "pair") + " side-by-side";
+      diffBtn.addEventListener("click", function () { selectCase(item.id, true); });
+      inner.appendChild(diffBtn);
+      head.appendChild(inner);
+      tr.appendChild(head);
+      providerDefs.forEach(function (def) {
+        var td = document.createElement("td");
+        var entry = caseProviderEntry(item, def.id);
+        if (entry && entry.image) {
+          var cell = el("button", "sb-mcell");
+          cell.type = "button";
+          cell.title = (def.label || providerTitle(def.id)) + " capture · " + caseLabel(item);
+          cell.appendChild(el("span", "sb-dot " + providerDotKind(entry)));
+          var img = document.createElement("img");
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.alt = caseLabel(item) + " (" + (def.label || providerTitle(def.id)) + ")";
+          img.src = encodeURI(entry.image);
+          cell.appendChild(img);
+          cell.addEventListener("click", function () { openCaseForProvider(item.id, def.id); });
+          td.appendChild(cell);
+        } else {
+          var miss = el("div", "sb-mcell miss");
+          miss.appendChild(el("span", "sb-dot " + providerDotKind(entry)));
+          miss.appendChild(el("span", "lbl", "No capture"));
+          td.appendChild(miss);
+        }
+        tr.appendChild(td);
+      });
+      matrixRowById[item.id] = tr;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    matrixWrap.appendChild(table);
+    applyMatrixFilter();
+  }
+  function applyMatrixFilter() {
+    var query = searchInput.value.trim().toLowerCase();
+    Object.keys(matrixRowById).forEach(function (id) {
+      matrixRowById[id].style.display = caseMatchesQuery(caseById[id], query) ? "" : "none";
+    });
+  }
+
   // ----- global pair switcher (toolbar, persistent) -----
   var pairSwitch = document.getElementById("vt-pairswitch");
   function buildPairSwitcher() {
@@ -1120,7 +1420,12 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     if (pairDefs.length < 2) { pairSwitch.hidden = true; return; }
     pairSwitch.hidden = false;
     pairDefs.forEach(function (def) {
-      var button = el("button", "sb-pairtab", def.label);
+      // End dots carry each end's provider accent so a pair reads at a
+      // glance (e.g. black·React ↔ Android·green).
+      var button = el("button", "sb-pairtab");
+      button.appendChild(providerDot(def.leftProvider));
+      button.appendChild(el("span", null, def.label));
+      button.appendChild(providerDot(def.rightProvider));
       button.type = "button";
       button.dataset.pairKey = def.key;
       button.title = def.label + " (" + def.key + ")";
@@ -1144,7 +1449,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       buildAddons(caseById[selectedId]);
     } else {
       renderOverviewStats(selectedPair());
-      renderOverviewWaterfall();
+      renderOverviewBody();
     }
   }
   function setPair(key) {
@@ -1190,8 +1495,8 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     var left = caseProviderEntry(item, pair.leftProvider) || {};
     var right = caseProviderEntry(item, pair.rightProvider) || {};
     return [
-      { key: "left", label: pair.leftLabel || "Left", src: left.image },
-      { key: "right", label: pair.rightLabel || "Right", src: right.image },
+      { key: "left", label: pair.leftLabel || "Left", src: left.image, provider: pair.leftProvider },
+      { key: "right", label: pair.rightLabel || "Right", src: right.image, provider: pair.rightProvider },
       { key: "side", label: "Side-by-side", src: entry.sideBySideImage },
       {
         key: "overlay",
@@ -1278,7 +1583,11 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       || available[0];
     compTab = preferred ? preferred.key : null;
     defs.forEach(function (def) {
-      var button = el("button", "sb-comptab", def.label);
+      // Raw provider tabs carry the provider's accent dot; the pair-level
+      // Side-by-side/Overlay tabs stay plain.
+      var button = el("button", "sb-comptab");
+      if (def.provider) button.appendChild(providerDot(def.provider));
+      button.appendChild(el("span", null, def.label));
       button.type = "button";
       if (!tabAvailable(def)) { button.disabled = true; }
       else {
@@ -1434,6 +1743,16 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       });
       addonTabbar.appendChild(button);
     });
+    addonTabbar.appendChild(el("span", "sb-addon-tabspacer"));
+    var toggle = el("button", "sb-addon-toggle");
+    toggle.type = "button";
+    toggle.dataset.addonToggle = "1";
+    toggle.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5l3.5 3.5L10 5"/></svg>';
+    toggle.addEventListener("click", function () {
+      if (window.__slockSetAddonCollapsed) window.__slockSetAddonCollapsed(!addons.classList.contains("collapsed"));
+    });
+    addonTabbar.appendChild(toggle);
+    if (window.__slockSetAddonCollapsed) window.__slockSetAddonCollapsed(addons.classList.contains("collapsed"));
     renderAddonBody(item);
   }
 
@@ -1445,9 +1764,11 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     storyTitle.appendChild(copyIdButton(item.id, "button"));
     zoom = 1; actualSize = false; bgIndex = 0;
     applyZoom(); applyFit(); applyBg();
-    // Fresh case entry always lands on the selected pair's side-by-side;
-    // pair switches inside a case keep the tab (buildCompTabs directly).
-    compTab = null;
+    // Fresh case entry lands on the selected pair's side-by-side unless a
+    // matrix cell requested a specific raw tab; pair switches inside a case
+    // keep the tab (buildCompTabs directly).
+    compTab = pendingCompTab;
+    pendingCompTab = null;
     buildCompTabs(item);
     buildAddons(item);
   }
@@ -1455,12 +1776,15 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   // ----- URL state -----
   // The comparison key lives in exactly ONE place per the spec: top-level
   // ?comparison= on the overview, hash-internal #case/<id>?comparison= on a
-  // case. Other (non-comparison) query params are preserved either way.
+  // case. The overview mode (?view=matrix) always lives in the top-level
+  // search. Other query params are preserved either way.
   function comparisonSearch(includeComparison) {
     var params = (location.search || "").replace(/^\?/, "").split("&").filter(function (kv) {
-      return kv && kv.split("=")[0] !== "comparison";
+      var name = kv.split("=")[0];
+      return kv && name !== "comparison" && name !== "view";
     });
     if (includeComparison && pairDefs.length > 1 && selectedPairKey) params.push("comparison=" + encodeURIComponent(selectedPairKey));
+    if (overviewMode === "matrix") params.push("view=matrix");
     return params.length ? "?" + params.join("&") : "";
   }
   function routeForCase(id) {
@@ -1513,7 +1837,9 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     stageWrap.hidden = false;
     toolsBox.hidden = false;
     toolsSep.hidden = false;
+    if (addonResizer) addonResizer.hidden = false;
     addons.hidden = false;
+    if (viewSwitch) viewSwitch.hidden = true;
     renderCase(item);
     if (mobileQuery.matches) closeDrawer();
     if (updateHash) updateRoute(routeForCase(id), false);
@@ -1524,12 +1850,14 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     stageWrap.hidden = true;
     toolsBox.hidden = true;
     toolsSep.hidden = true;
+    if (addonResizer) addonResizer.hidden = true;
     addons.hidden = true;
     storyTitle.innerHTML = "";
     storyTitle.appendChild(el("span", "t", "Overview"));
     compTabsBox.innerHTML = "";
+    if (viewSwitch) viewSwitch.hidden = false;
     renderOverviewStats(selectedPair());
-    renderOverviewWaterfall();
+    renderOverviewBody();
     if (selectedId && rowById[selectedId]) rowById[selectedId].classList.remove("active");
     selectedId = null;
     // Restore the saved overview scroll position (e.g. after browser Back).
@@ -1562,6 +1890,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     navigateOverview(false);
   });
   buildPairSwitcher();
+  buildViewSwitch();
   window.addEventListener("hashchange", applyLocation);
   window.addEventListener("popstate", applyLocation);
   applyLocation();
