@@ -26,6 +26,20 @@
     return YES;
 }
 
+/*
+ * task #421 tail: Kuikly resolves `assets://` image loads — both the native
+ * KRImageView and the Compose image cache (KRMemoryCacheModule →
+ * KuiklyContextParam.urlForFileName) ask this hook first. moko/kmmresource
+ * bundles MR assets (e.g. the reaction sprite atlas) into
+ * `build.raft.app.resources.MR.bundle` (task #423), NOT the main bundle — and
+ * Kuikly's default resolution only looks in the main bundle, so the atlas was
+ * never found and the reaction glyphs fell back to emoji. Point MR asset lookups
+ * at the MR bundle so they decode into real sprites.
+ */
+- (NSURL *)hr_customBundleUrlForFileName:(NSString *)fileName extension:(NSString *)fileExtension {
+    return [self slock_mrBundleURLForRelativePath:fileName extension:fileExtension];
+}
+
 - (UIImage *)slock_bundledImageForAssetURLString:(NSString *)url {
     NSString *relativePath = [self slock_relativeAssetPathForURLString:url];
     if (relativePath.length == 0) {
@@ -41,6 +55,13 @@
     NSString *resourcePath = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:relativePath];
     if ([NSFileManager.defaultManager fileExistsAtPath:resourcePath]) {
         return [UIImage imageWithContentsOfFile:resourcePath];
+    }
+
+    // MR bundle fallback (kmmresource assets live in build.raft.app.resources.MR.bundle).
+    NSURL *mrURL = [self slock_mrBundleURLForRelativePath:[relativePath stringByDeletingPathExtension]
+                                                extension:[relativePath pathExtension]];
+    if (mrURL != nil) {
+        return [UIImage imageWithContentsOfFile:mrURL.path];
     }
     return nil;
 }
@@ -64,6 +85,13 @@
         return [NSURL fileURLWithPath:resourcePath];
     }
 
+    // MR bundle fallback.
+    NSURL *mrURL = [self slock_mrBundleURLForRelativePath:[relativePath stringByDeletingPathExtension]
+                                                extension:[relativePath pathExtension]];
+    if (mrURL != nil) {
+        return mrURL;
+    }
+
     return nil;
 }
 
@@ -79,6 +107,63 @@
     }
     return relativePath;
 }
+
+// Locate build.raft.app.resources.MR.bundle (kmmresource copies it into the
+// .app; see task #423). Cached — the bundle location is stable per launch.
+- (NSBundle *)slock_mrResourceBundle {
+    static NSBundle *mrBundle = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSURL *url = [[NSBundle mainBundle] URLForResource:@"build.raft.app.resources.MR" withExtension:@"bundle"];
+        if (url != nil) {
+            mrBundle = [NSBundle bundleWithURL:url];
+        }
+    });
+    return mrBundle;
+}
+
+// Resolve an MR asset (relativePath is WITHOUT extension, e.g.
+// "reactions/reaction_atlas_v1") to a file URL inside the MR bundle. moko
+// flattens the originalPath's "/" to "+" on disk (reactions/reaction_atlas_v1 ->
+// reactions+reaction_atlas_v1) and writes a macOS-style Contents/Resources
+// layout, so try several name/layout candidates.
+- (NSURL *)slock_mrBundleURLForRelativePath:(NSString *)relativePath extension:(NSString *)fileExtension {
+    NSBundle *mrBundle = [self slock_mrResourceBundle];
+    if (mrBundle == nil || relativePath.length == 0) {
+        return nil;
+    }
+    NSString *ext = fileExtension.length > 0 ? fileExtension : nil;
+
+    NSArray<NSString *> *candidateNames = @[
+        [relativePath stringByReplacingOccurrencesOfString:@"/" withString:@"+"],
+        relativePath,
+        [relativePath lastPathComponent],
+    ];
+    NSArray<NSString *> *searchDirs = @[
+        [mrBundle.bundlePath stringByAppendingPathComponent:@"Contents/Resources"],
+        mrBundle.resourcePath ?: mrBundle.bundlePath,
+        mrBundle.bundlePath,
+    ];
+
+    for (NSString *name in candidateNames) {
+        NSURL *url = [mrBundle URLForResource:name withExtension:ext];
+        if (url != nil) {
+            return url;
+        }
+        NSString *fileName = ext.length > 0 ? [name stringByAppendingPathExtension:ext] : name;
+        for (NSString *dir in searchDirs) {
+            if (dir.length == 0) {
+                continue;
+            }
+            NSString *candidate = [dir stringByAppendingPathComponent:fileName];
+            if ([NSFileManager.defaultManager fileExistsAtPath:candidate]) {
+                return [NSURL fileURLWithPath:candidate];
+            }
+        }
+    }
+    return nil;
+}
+
 /*
  * 自定义实现设置颜值
  * @param value 设置的颜色值
