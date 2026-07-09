@@ -541,7 +541,7 @@ jobs:
     # KuiklyBase-components CI instead of the previous 6.0 pin.
     runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     env:
@@ -637,7 +637,7 @@ jobs:
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
