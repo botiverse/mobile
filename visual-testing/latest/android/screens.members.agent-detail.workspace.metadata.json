@@ -17,7 +17,7 @@
                 "systemBars": "hidden",
                 "validation": {
                   "uniqueColors": 233,
-                  "dominantRatio": 0.97177666
+                  "dominantRatio": 0.971728
                 }
               },
               "diagnostics": {
@@ -27,10 +27,10 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 118,
-    "laidOutViews": 112,
+    "totalViews": 120,
+    "laidOutViews": 114,
     "visibleContentLeafViews": 0
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783606959424"
+              "capturedAt": "1783634888590"
             }

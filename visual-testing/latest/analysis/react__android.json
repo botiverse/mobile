@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-09T14:43:54.968Z",
+  "generatedAt": "2026-07-09T22:18:57.513Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 85,
-    "pending": 4
+    "ready": 81,
+    "pending": 8
   },
   "cases": [
     {
@@ -275,7 +275,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe5ffe01fe03fe01fe03fef7fee7fefffe7ffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fee7fefffe7ffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-09T07:30:24.592Z",
       "severity": "low",
       "summary": [
@@ -367,7 +367,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4497444227853584
+      "metricMismatch": 0.44974009096816114
     },
     {
       "id": "components.ui.spinner.states",
@@ -808,7 +808,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:43:44.711Z",
+      "generatedAt": "2026-07-09T22:18:56.169Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -892,7 +892,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:43:44.808Z",
+      "generatedAt": "2026-07-09T22:18:56.184Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -931,7 +931,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1732644824311491
+      "metricMismatch": 0.17326685660018992
     },
     {
       "id": "components.thread.header.states",
@@ -1110,7 +1110,7 @@
     {
       "id": "components.thread.message-share.selection",
       "status": "ready",
-      "imageHash": "p1:07fc07fcfffe7ffe801e017ac0024002f0fe7002f1fe7e7e83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe00007ffe00000000fffe1fff",
+      "imageHash": "p1:07fc07fcfffe7ffe801e017ac0024002f0fe7002f1fe7e7e83fe03fe80024002f8fe7002fffe4006fffe0001fffe0001fffe0002fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7dfe7ffe00007ffe00000000fffe1fff",
       "generatedAt": "2026-07-09T07:31:08.878Z",
       "severity": "medium",
       "summary": [
@@ -1307,7 +1307,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23351561550613686
+      "metricMismatch": 0.2335419451533196
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1344,7 +1344,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23567329633680345
+      "metricMismatch": 0.2356996259839862
     },
     {
       "id": "components.home.saved.results",
@@ -1377,7 +1377,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1375337986543419
+      "metricMismatch": 0.13760349200360522
     },
     {
       "id": "components.home.activity.results",
@@ -1412,7 +1412,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.14126527489572194
+      "metricMismatch": 0.14133287220440582
     },
     {
       "id": "components.tasks.panel.states",
@@ -1515,7 +1515,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25225321019159885
+      "metricMismatch": 0.2523936349765734
     },
     {
       "id": "components.members.create-agent.dialog",
@@ -1591,7 +1591,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:43:47.332Z",
+      "generatedAt": "2026-07-09T22:18:56.486Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1632,7 +1632,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18164148472205344
+      "metricMismatch": 0.18172249902107718
     },
     {
       "id": "components.channel.members.panel",
@@ -2280,7 +2280,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18260926803580835
+      "metricMismatch": 0.1826156816678144
     },
     {
       "id": "components.settings.notifications.page",
@@ -2392,7 +2392,7 @@
     {
       "id": "screens.members.agent-detail.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe37fe80400050800008010000000000120ff881ff0fff8fff001f8fff0bffffffdfff83ffc7ffffffffff81fbffff803f01ffffffffffffffffff8fff0fff8fff0fffe7ffd87fc3fff1fffffff1ffd47ffffffffff7ffd3ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "imageHash": "p1:1ffe3ffe80400050800008010000000000120ff8817f0fff8fff001f8fff0bffffffdfff83ffc7ffffffffff81fbffff803f01ffffffffffffffffff8fff0fff8fff0fffe7ffd87fc3fff1fffffff1ffd47ffffffffff7ffd3ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
       "generatedAt": "2026-07-09T07:32:27.596Z",
       "severity": "medium",
       "summary": [
@@ -2424,13 +2424,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18228082256518274
+      "metricMismatch": 0.18236183686420648
     },
     {
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:43:51.572Z",
+      "generatedAt": "2026-07-09T22:18:56.975Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2472,7 +2472,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.06204412578820162
+      "metricMismatch": 0.06212514008722536
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2509,12 +2509,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05058802878708091
+      "metricMismatch": 0.05066904308610465
     },
     {
       "id": "screens.members.agent-detail.apps",
       "status": "ready",
-      "imageHash": "p1:07fe37fc8040004080000801000000008090400083ffffffffff03feffff0004ffff1efcffff03e0ffff03e1ffff001dffff203dffff3c7dffff007dffff0011ffff0000ffff0001ffff07e1ffff03f1ffff07fdffff03fdffff0031ffff0001ffff0000fffffffeffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
+      "imageHash": "p1:07fe37fc8040004080000001000000008090400083ffffffffff03feffff0004ffff1efcffff03e0ffff03e1ffff001dffff203dffff3c7dffff007dffff0011ffff0000ffff0001ffff07e1ffff03f1ffff07fdffff03fdffff0031ffff0001ffff0000fffffffeffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
       "generatedAt": "2026-07-09T07:32:30.351Z",
       "severity": "high",
       "summary": [
@@ -2543,12 +2543,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1203318885783341
+      "metricMismatch": 0.12041290287735784
     },
     {
       "id": "screens.members.agent-detail.activity",
       "status": "ready",
-      "imageHash": "p1:07fe07fc80400000800008000000000000000000010053f0000271fef87e71fef00671def8fe783ef0fe707ef84e780ef03e703ef0127002f9827cfef8be7ffef01e7ffef8467ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:07fe17fc80400000800000000000000000000000010053f0000271fef87e71fef00671def8fe783ef0fe707ef84e780ef03e703ef0127002f9827cfef8be7ffef01e7ffef8467ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-07-09T07:32:30.391Z",
       "severity": "medium",
       "summary": [
@@ -2577,46 +2577,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09606135482912737
+      "metricMismatch": 0.0961423691281511
     },
     {
       "id": "screens.members.human.profile",
-      "status": "ready",
-      "imageHash": "p1:17fe17fc87e003e083e003e000007c0083ff0bfe8fff03fe8fff0ffeeffe0ffe9fff7ffefffe1ffefffe3ffe8ffefffe8fff0ffeffff1ffecfff7ffed7ff47fef7fe7ffedffe07feffff47fefffe7ffedfff00038000000080000000c3c2fffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-09T07:32:34.186Z",
-      "severity": "medium",
-      "summary": [
-        "Top header avatar and username are smaller/lower on Android; '@artin' subtitle present on Android but missing on React",
-        "React header shows full 'Message' button; Android truncates it to 'Mess…' (clipping/cropping)",
-        "React shows a help (?) icon and edit (pencil) icon next to Role; Android omits both icons",
-        "Info section typography on Android appears lighter/grayer for labels (Role, Email, Joined) compared to React",
-        "'CREATED AGENTS' header on React uses wide letter-spacing with parenthetical count; Android uses tighter spacing and no parenthetical"
-      ],
-      "likelyCauses": [
-        "Android Compose theme does not map the same header avatar/subtitle slot as React header component",
-        "Top app bar Message button lacks text-overflow/auto-shrink handling, causing label truncation",
-        "Role row decorative icons (help, pencil) were dropped in the Android implementation",
-        "Typography theme tokens differ between platforms: font family, weight, and label color not aligned",
-        "Section title style for 'CREATED AGENTS' (letter-spacing, parentheses count) was not translated 1:1 to Android"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Match header avatar size and add the '@artin' subtitle on React; align vertical centering between avatar and name",
-        "Add TextOverflow handling (e.g., TextOverflow.Visible or weight priority) so 'Message' never truncates to 'Mess…'",
-        "Restore the help (?) and edit (pencil) icons in the Role row on Android",
-        "Align label text style (color, weight) for Role/Email/Joined between React and Android typography tokens",
-        "Unify the 'CREATED AGENTS' title style: add letter-spacing and the '(N)' count on both platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.10242165242165246
+      "status": "pending",
+      "imageHash": "p1:07fe07fc87e003e083c003e00000340083fe0bfe8ffe03fe8ffe0ffec7fe0ffe9ffe4ffefffe1ffefffe3ffe8ffe7ffe8ffe0ffee7fe1ffe8ffe1ffe97fe07fef7fe5ffec3fe07fec7fe03fefffe7ffedffe7ffe8000fffe8000fffec0027ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-07-09T22:18:57.178Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1060787729034175
     },
     {
       "id": "components.members.agent-lifecycle-actions",
       "status": "ready",
-      "imageHash": "p1:1ffe3ffe804000d180000001000c238000843fbc8000803f8fff001f8fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff9fff8fff0ffffffff87fc3fff1fffffff3ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0027807f0003807fffffffff97ffdfff87ff80781ffeffffffff",
+      "imageHash": "p1:1ffe3ffe8040005180000001000c238000843fbc8000803f8fff001f8fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff9fff8fff0ffffffff87fc3fff1fffffff3ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0027807f0003807fffffffff97ffdfff87ff80781ffeffffffff",
       "generatedAt": "2026-07-09T07:32:37.761Z",
       "severity": "high",
       "summary": [
@@ -2645,12 +2624,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.20495773754067592
+      "metricMismatch": 0.20500634612009017
     },
     {
       "id": "components.members.avatar-management",
       "status": "ready",
-      "imageHash": "p1:bffe7ffec07b8ad386c10881000000008ffe001f81ff0b3f8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffffc1ffc03bffffffffffffffffdfffffff0fff8ffffffffffff9ffe7fff3fffffffffffefffffffeff8c3fffff8c3f88939c7f800188ffffffffff",
+      "imageHash": "p1:bffe7ffec07b82f386c10a81000000008ffe001f81ff0b3f8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffffc1ffc03bffffffffffffffffdfffffff0fff8ffffffffffff9ffe7fff3fffffffffffefffffffeff8c3fffff8c3f88939c7f800188ffffffffff",
       "generatedAt": "2026-07-09T07:32:38.796Z",
       "severity": "medium",
       "summary": [
@@ -2681,7 +2660,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.25544112285818443
+      "metricMismatch": 0.25552078691889113
     },
     {
       "id": "screens.settings.computers",
@@ -2788,7 +2767,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000400cffe4ffecffe4ffecffe4ffe8ffe4ffecffe47fe87fe9ffebffe9ffebffe9ffebffe9ffebffe3ffe83fe41fe81fe9fdebffe9ffebffe9fdebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe01007ffe00004000fffe3fff",
+      "imageHash": "p1:3ffc3ffc000000000000000000000400cffe4ffecffe4ffecffe4ffe8ffe4ffecffe47fe87fe9ffebffe9ffebffe9ffebffe9ffebffe3ffe81fe41fe81fe9fdebffe9ffebffe9fdebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe01007ffe00004000fffe3fff",
       "generatedAt": "2026-07-09T07:33:48.005Z",
       "severity": "medium",
       "summary": [
@@ -2816,113 +2795,46 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.16242826858940607
+      "metricMismatch": 0.16242286763613778
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "ready",
-      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe000287e6e0028000e002f000e003e000e002e006e002e006e003f000e03ee000fffef3f2e03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03ef7fef2fefffefffef01efffefffefffefffee002f3fee002fffeeffee000fffee00200000e00fff81fffffffffff",
-      "generatedAt": "2026-07-09T14:36:37.940Z",
-      "severity": "high",
-      "summary": [
-        "Message row text and attachments are clipped at the right edge on Android (timestamp '23', file names '…visual-testing', 'ta…', 'body', 'sta…' all cut off)",
-        "Android attachment cards lack padding/spacing; the 'Document preview' / 'Text preview' labels sit flush against the card edges with no inner gutter",
-        "'thread-screen-preview…' filename on React is rendered as 'thread-screen-preview.h…' on Android with a different truncation point and a smaller avatar indicator dot",
-        "The '7 replies · 2 new' and thumbs-up '3' pills on Android appear smaller and the '+' add button is repositioned to the far right instead of below",
-        "Avatar online-status dot on React is yellow/orange; Android renders it green, and the avatar tile alignment relative to the name row is offset slightly lower on Android"
-      ],
-      "likelyCauses": [
-        "Android Compose/RecyclerView not honoring the same horizontal padding/inset tokens as the React baseline (missing start/end content insets on the message bubble and attachment cards)",
-        "Text composable not applying maxLines/ellipsize correctly, or the parent constraint width is too narrow, causing right-side cropping of timestamp and URLs",
-        "Attachment card implementation uses no internal padding (different surface variant or missing 16dp content padding)",
-        "Color token for online status indicator maps to a different accent on Android (yellow on web vs green on Android)",
-        "Bottom action row uses different chip sizing/typography scale between platforms"
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Add the same 16dp horizontal content padding to the message body container so timestamps and URLs are not clipped",
-        "Apply consistent 16dp internal padding to attachment/file preview cards to match React's gutter",
-        "Align maxLines + ellipsize behavior on the timestamp, URL, and filename text so truncation points match React",
-        "Update online-status dot color token on Android to the yellow/amber accent used by the web baseline",
-        "Standardize bottom action pill sizes (replies, reactions, plus button) with the React typography/spacing scale"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.23209662151241994
+      "status": "pending",
+      "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe00028702e0028000e002f000e003e000e002e006e002e006e003f000e03ee000fffef3f2e03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03ef7fef2fefffefffef01efffefffefffefffee002f3fee002fffeeffee000fffee00200000e00fff81fffffffffff",
+      "generatedAt": "2026-07-09T22:18:57.277Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2388400734869699
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "ready",
-      "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039ffc7e1ffe00febffe03fe07fe663efffe10fe3ffe7ffe163ffffe007e003e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe003e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
-      "generatedAt": "2026-07-09T07:32:57.567Z",
-      "severity": "low",
-      "summary": [
-        "Avatar and timestamp row layout differs: React shows avatar at far left with a clear gap before 'Cindy' name and a truncated 'Keeps vis… 06/25 05:55 AM' subtitle; Android shows the avatar inline at left with a single-line subtitle 'Keeps visual testing … 06/25 05:55' that extends further right.",
-        "Body text wraps to different column widths: React renders at a wider body width so long inline-code paths wrap on fewer, longer lines; Android renders at a noticeably narrower effective text width, causing more frequent line breaks in the long path and the gradlew command blocks.",
-        "Long inline-code spans break at different points: React keeps the path and command as a single continuous yellow box wrapping at the container edge; Android splits the yellow fill into separate adjacent boxes (visible gap/border between segments such as 'raft.build.markdown' and '.inlineCode', and between 'owner-key' and '-consumes-thread-route'), producing a visually segmented wrap.",
-        "The bottom gradlew command block is clipped/cropped on Android — the final line 'visual.KmpVisualScreenshotCapture' is cut off at the canvas bottom (390×844), whereas on React the same content fits within bounds (final visible line is '.captureThreadMessageRowLongInlineCode.').",
-        "Right-side metadata badge uses different casing/label: 'REACT' (green) on the left vs 'ANDROID' (yellow) on the right — expected but worth noting for test screenshot consistency."
-      ],
-      "likelyCauses": [
-        "Android markdown/inline-code renderer treats each visual line of a wrapped code span as a separate background-painted box rather than a single rounded background that flows across line breaks.",
-        "Android text container width is smaller (different horizontal padding or avatar/text-column geometry) causing the long code blocks to wrap at shorter line lengths.",
-        "Canvas height (844pt) is insufficient for the Android layout's taller line count, resulting in bottom-edge clipping of the last gradlew command line."
-      ],
-      "suggestedOwner": "android-message-rendering",
-      "suggestedFixes": [
-        "Make Android paint a single continuous yellow code-span background across wrapped lines (or merge adjacent code-span backgrounds) so wrapped paths look like one chip like React.",
-        "Reconcile avatar/text-column padding on Android to match React's body width, or reduce body horizontal insets so long inline code has more room before wrapping.",
-        "Extend test canvas height or shorten fixture content so the final gradlew command line is not clipped on Android; alternatively cap content to fit 844pt on both platforms.",
-        "Verify the metadata badge color/label scheme (REACT green / ANDROID yellow) is intentional and consistent across visual-test baselines."
-      ],
-      "intentional": [
-        "@KMP-专家 is rendered as an underlined @mention chip on Android but as plain text on React — intentional platform difference (Android tags all @mentions regardless of resolution).",
-        "Bare #520 is rendered as a yellow task chip on Android and as plain text on React — intentional platform difference (Android tags all bare #number task refs).",
-        "Mention @artin and the #markdown专修 channel chip are tagged on both sides since they resolve to known entities — this is the intended shared behavior."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.5056274557459391
+      "status": "pending",
+      "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039ffc7e1ffe00febffe03fe07fe67fefffe01fe3ffffffe163ffffe007e003e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe003e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
+      "generatedAt": "2026-07-09T22:18:57.350Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.49988185414725694
     },
     {
       "id": "screens.settings.administration.full-height",
-      "status": "ready",
-      "imageHash": "p1:ffff97ff83f8bffd80008080c00487ff8bff97fd9ffeffc087fc8781ffffaffcfff08204c7ff80fc8ff880e480f88181c0e486fcffe1801c80fe83fcfffcbffc8008bffcbffc80fcbffc80fde7fcbffccffc800087ff8000d0fc83fc81fc80fc8ffc85fd87f89fff87ff807ceffc80fc87ff80fd82fe87ff87fc8781ffffffff",
-      "generatedAt": "2026-07-09T07:32:58.079Z",
-      "severity": "high",
-      "summary": [
-        "Android renders the Administration settings screen in a single scrollable form whereas React presents settings as discrete card-based sections, causing large vertical/structural differences (~31px taller on Android).",
-        "Header pattern differs: Android shows a back arrow + 'Administration' page title; React uses a small caption 'Settings: Administration Full-Height Screen' at the top of each card with no global title.",
-        "Owners & Admins control differs: React uses an 'Add owner/admin' select + 'Admin' select + 'Update Role' button + member list card; Android uses a single 'Control who can manage this workspace' card listing one owner with a 'Last owner' pill and no role-update UI.",
-        "System Channels differs: React has an interactive 'Hide #all channel' toggle with Save button and descriptive copy; Android shows a read-only 'System Channels' card with an 'Unavailable' status and eye icon.",
-        "Pending Invites differs: React displays invites as compact rows with a date and small X icon; Android expands each invite into a full card showing inviter email and a large 'Revoke' button."
-      ],
-      "likelyCauses": [
-        "Android implementation reimplemented the Administration form as a new card-based layout instead of reusing the React component contract (different component library / native form widgets).",
-        "Different form patterns: Android uses radio groups, segmented controls, and inline cards; React uses selects, checkboxes, and inline label/input rows.",
-        "Save-button semantics differ: React uses per-section Save buttons with default disabled state; Android uses always-enabled filled buttons with leading icons.",
-        "Additional sections (Sidebar Order, Danger Zone) were added on Android but not part of the React baseline contract used for this snapshot.",
-        "Toggle/pill style: Android uses yellow-filled 'Required' pill and radio highlight; React uses simple checkbox toggles."
-      ],
-      "suggestedOwner": "android-settings-admin",
-      "suggestedFixes": [
-        "Reuse the React baseline contract for section structure and labels (e.g., 'Hide #all channel' toggle, 'Enable message translation', 'Hide human directory'), or update the baseline to match the new Android design and re-baseline.",
-        "Normalize Save/Update buttons: same color, same enabled-by-default behavior, same iconography, and same placement across both platforms.",
-        "Unify Onboarding control: pick either a select (React) or a radio list (Android) and apply consistently; align New Agent Greeting control (select vs segmented Yes/No).",
-        "Unify Pre-Join Agreement: choose inline title/body/preview (React) or stacked cards with character counter (Android) and apply on both.",
-        "Remove or include 'Sidebar Order' and 'Danger Zone' consistently across platforms; if platform-specific, exclude from full-height visual contract."
-      ],
-      "intentional": [
-        "Sidebar Order card showing 'Unavailable' status on Android.",
-        "Danger Zone with 'Delete Server' being Android-only."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3065119271437524
+      "status": "pending",
+      "imageHash": "p1:ffff97ff83f89fff80008fffc00481fd8bff87ff9ffebffd87fcc7c0ffff8081fff08ffcc7ff80fc8ff880fc80f881c0c0e48005ffe180fc80fe8004fffcbffc8008bffcbffc801cbffc80fce7fca7fccffca2fc87ff8000d0fc81fc81fc83fc8ffc80b487f89fff87ff80fdeffc807c87ff80fc82fe83fd87fc87ffffffffff",
+      "generatedAt": "2026-07-09T22:18:57.511Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3027890004489069
     },
     {
       "id": "screens.settings.connected-apps.full-height",

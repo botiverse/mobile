@@ -1,0 +1,1454 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-09T22:19:04.332Z",
+  "baseline": "android",
+  "current": "ios",
+  "comparison": "android__ios",
+  "analysisProvider": "minimax",
+  "analysisModel": "MiniMax-M3",
+  "summary": {
+    "total": 89,
+    "ready": 15,
+    "pending": 74
+  },
+  "cases": [
+    {
+      "id": "components.ui.segmented-control.states",
+      "status": "pending",
+      "imageHash": "p1:06801d00001c003e001c003e7ffcfffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.622Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0024304289707133275
+    },
+    {
+      "id": "components.ui.button.states",
+      "status": "pending",
+      "imageHash": "p1:1fd83fbc003c007e003c007e001c003e001c003e7ffcfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:02.611Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0053108248605878705
+    },
+    {
+      "id": "components.ui.badge.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83fe4000c001e000c001e01fc03fe2000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:02.619Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.00381746128191629
+    },
+    {
+      "id": "components.ui.form-field.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc1ffc3ffe80000012000000028005000600f803f28000000287fd0dfe07fd0ffefbfdfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe1ff0fffe0000fffe0008fffe0008fffe0000fffe0008fffe0000fffe0000fffe0000fffe0860fffe0000fffe0000fffe1fff",
+      "generatedAt": "2026-07-09T22:19:02.616Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.41266793589068473
+    },
+    {
+      "id": "components.ui.textarea.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc8001000780090013bff87ff38000000387f501e7800100178001000380010007137dfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
+      "generatedAt": "2026-07-09T22:19:02.698Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2948717948717948
+    },
+    {
+      "id": "components.ui.checkbox.states",
+      "status": "pending",
+      "imageHash": "p1:0000200001fc03fe003c007e003c007e01fc03fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.712Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.006318440204696074
+    },
+    {
+      "id": "components.ui.check-marker.states",
+      "status": "pending",
+      "imageHash": "p1:0800100001fc03fe00fc01fe00fc01fe020007fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.707Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.004831827817609824
+    },
+    {
+      "id": "components.ui.attention-dot.states",
+      "status": "pending",
+      "imageHash": "p1:00000480000c001e080c101e1220fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.709Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0020277203926493126
+    },
+    {
+      "id": "components.ui.status-dot.states",
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-07-09T22:19:02.785Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.001551086266726065
+    },
+    {
+      "id": "components.ui.progress-bar.states",
+      "status": "pending",
+      "imageHash": "p1:0fe81ffc03f803f60000000200000006000000020001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:02.802Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.007775347348807027
+    },
+    {
+      "id": "components.ui.skeleton.states",
+      "status": "pending",
+      "imageHash": "p1:0000200000fc01fe01fc03fe0000000600000006007c007e0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:02.800Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0018845951310406672
+    },
+    {
+      "id": "components.ui.spinner.states",
+      "status": "pending",
+      "imageHash": "p1:00800100123c24fe023c847e7ffcfffe0000fffefe7cfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.793Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0007990035241219884
+    },
+    {
+      "id": "components.ui.slug-input.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc000000060000000280010006807900160001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffe0000fffe0000fffe0000fffe0000fffe0000fffe0000fffe0000fffe0c60fffe0000fffe0000fffe0000fffe1fff",
+      "generatedAt": "2026-07-09T22:19:02.873Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2727207977207977
+    },
+    {
+      "id": "components.ui.section-eyebrow.states",
+      "status": "pending",
+      "imageHash": "p1:0000000003fc07fe03fc07fe03fc07fe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.879Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.004128016094840703
+    },
+    {
+      "id": "components.ui.section-header.states",
+      "status": "pending",
+      "imageHash": "p1:0008001003e007c2000000020000f0060000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-09T22:19:02.890Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0025097554718407356
+    },
+    {
+      "id": "components.ui.selection-popover.states",
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc87f01fc7800000038001000380010003aff8dff3a3f847f3bff87ff38000000380010007fffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
+      "generatedAt": "2026-07-09T22:19:02.884Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2940660401560875
+    },
+    {
+      "id": "components.ui.menu-item.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc0000000203f807f203f807f201f803f203f807f20000000200010006fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:02.958Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.013767704999932517
+    },
+    {
+      "id": "components.ui.select.states",
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc00000002000000020000000200000002000000067ffcfffe0000fffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:02.962Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.005974129433845121
+    },
+    {
+      "id": "components.ui.surface-list-item.states",
+      "status": "pending",
+      "imageHash": "p1:0808100406000c0607f80ff6000000060000000200000002000000020000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:02.971Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.014627131688743078
+    },
+    {
+      "id": "components.ui.avatar-list-row.states",
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc1ffc3ffe806100c6800000060000000200000002000000063ffdfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:02.967Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.009957332469180846
+    },
+    {
+      "id": "components.auth.register.inputs",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ff81ffe7ffffff81fcfffdfffc07bc8ffc003c003c3ffc003c003c3ffcfffc003c0fbcfffc003c00bdc0fc003e00fd41fc0030000f00f0000ffff0b90ffff0000ffff2236ffff0000ffff3180ffff0660ffff0e60ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.048Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.37132802689674727
+    },
+    {
+      "id": "components.navigation.tabbar.states",
+      "status": "pending",
+      "imageHash": "p1:00000000000000000000000000006666fffefffefffe7ffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffeffff0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:03.056Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.006165863274868011
+    },
+    {
+      "id": "components.thread.composer.empty",
+      "status": "pending",
+      "imageHash": "p1:000000004000000240fd03b24201000200010002fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:03.054Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.012399238465589213
+    },
+    {
+      "id": "components.thread.composer.states",
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc00010003000100030f010f0200010003fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0020fffe0ce0fffe0000fffe0000fffe0000fffe7fff",
+      "generatedAt": "2026-07-09T22:19:03.052Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.28946172749490284
+    },
+    {
+      "id": "components.thread.composer.as-task-selected",
+      "status": "pending",
+      "imageHash": "p1:07f80ffc00010003000100030f010f0200010003fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0020fffe0ce0fffe0000fffe0000fffe0000fffe7fff",
+      "generatedAt": "2026-07-09T22:19:03.127Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.289935661144192
+    },
+    {
+      "id": "components.thread.composer.member-suggestions",
+      "status": "pending",
+      "imageHash": "p1:03f807fe00010003000100030001000307f907fb01f901fb3ff93ffb00010003200900030fb10fb300030003fffdfffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe0000ffff0f30fffe0000fffe0424fffe0000fffe2100fffe0ce0fffe0ee0fffe0000fffe0000fffe0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.136Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.32673438111826736
+    },
+    {
+      "id": "components.thread.composer.channel-suggestions",
+      "status": "pending",
+      "imageHash": "p1:07f80ffc00010003000100033ff93ffb00010003000100031ff11ff308030903804d8007fffdfffffffdfffffffdfffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe0000ffff0d30fffe0000fffe0004fffe0000fffe2100fffe0c60fffe0ce0fffe0000fffe0000fffe0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.139Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.31286709604245144
+    },
+    {
+      "id": "components.thread.composer.image-preview",
+      "status": "pending",
+      "imageHash": "p1:07f80ffc080108030ffd4fff0ffd0fff000100030fb10fa300010003fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0810fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
+      "generatedAt": "2026-07-09T22:19:03.145Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3081871700355112
+    },
+    {
+      "id": "components.thread.files.list",
+      "status": "ready",
+      "imageHash": "p1:1ffc1ffc003e083e802000208fe00fe0200e000e0070006000e000e00fce0fce00200020006008600ff20ff0f81e781ef81e781e00027c3e87e0fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "generatedAt": "2026-07-09T14:38:17.318Z",
+      "severity": "low",
+      "summary": [
+        "First file thumbnail: Android (left) renders a yellow placeholder with a pink/magenta circle and black mountain glyph; iOS (right) renders only a plain beige/cream placeholder box with no inner glyph.",
+        "Typography weight on filenames, metadata, and 'Downloading 44%' line appears slightly lighter/thinner on iOS.",
+        "Action icon buttons (open-out, download, cancel) show a slightly heavier black border on Android versus iOS, where borders look thinner and icons slightly smaller.",
+        "Overall layout, spacing, list structure, and 'Load more' button placement are visually isomorphic."
+      ],
+      "likelyCauses": [
+        "Platform-specific image placeholder fallback: Android uses a colored default with a picture glyph (yellow background, magenta dot, black mountain) while iOS falls back to a neutral cream/beige solid swatch.",
+        "Slight font weight rendering differences between Android (Roboto) and iOS (San Francisco) system fonts, or absent explicit font-weight override on iOS.",
+        "Border/stroke width on icon button containers may use dp vs pt that render marginally differently across engines."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Unify file-thumbnail placeholder across platforms by supplying a cross-platform placeholder asset or theme color (e.g., neutral gray or brand color) instead of platform-specific defaults.",
+        "Explicitly set font-weight on filenames, metadata, and progress labels to match design spec on both ends.",
+        "Normalize icon-button stroke/border width to a platform-agnostic dp value; verify with Slock tolerance.",
+        "Confirm 'Load more' and list item spacing uses consistent dp not dependent on safe-area insets — iOS extra bottom space is expected (home indicator) but inner padding should match."
+      ],
+      "intentional": [
+        "iOS canvas is taller (1170x2532 vs 390x360 scaled) so extra bottom whitespace below the 'Load more' button is expected safe-area/home-indicator space, not a bug."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.05086989103576778
+    },
+    {
+      "id": "components.thread.header.states",
+      "status": "pending",
+      "imageHash": "p1:0e1c1e1c01e001e000200000000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:03.231Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.011538461538461497
+    },
+    {
+      "id": "components.thread.message.row",
+      "status": "pending",
+      "imageHash": "p1:0804000407f81ffe00020002400200024000c0020000c03efffee07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:03.220Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03942898421571406
+    },
+    {
+      "id": "components.thread.message-row.deleted-human",
+      "status": "pending",
+      "imageHash": "p1:02000000003e05fe00020006400200024000c0020000c3fefffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-09T22:19:03.225Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03141531980394541
+    },
+    {
+      "id": "components.thread.message-menu.default",
+      "status": "ready",
+      "imageHash": "p1:01fc01fcfffe7ffe87fe07fe80020002e0066006e07e607e803e001e801f001e809f009ea7df0fde81df019e87df07de87df07de81df01de801f001e83df03de839f039e819f009e801f001e801e001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fffa3fff",
+      "generatedAt": "2026-07-09T14:38:23.909Z",
+      "severity": "medium",
+      "summary": [
+        "'Convert to Task' menu item icon differs: Android (left) shows a clipboard/checklist icon, iOS (right) shows an information/info (i) icon",
+        "Menu item row separators differ: Android renders only horizontal divider lines between item groups, iOS adds extra horizontal dividers under 'Copy Link' and above 'Convert to Task'",
+        "Date/subtitle line is truncated on Android (ellipsis '...' after 'Keeps visual testing') while iOS renders the full text 'Keeps visual testing 06/22 10:30' with no truncation",
+        "Body message text is truncated on Android ('react' is cut to 'Rea' wrapped, and trailing ellipsis indicates clipping) whereas iOS wraps and shows 'React' in full across two lines without ellipsis",
+        "iOS shows a home indicator bar at the bottom of the viewport; Android has none (platform convention, but contributes to divergence)"
+      ],
+      "likelyCauses": [
+        "iOS and Android render text-ellipsis/wrapping thresholds differently due to differing default font metrics and container widths",
+        "Platform-specific icon set / SF Symbols vs Material-like icon mapping for the 'Convert to Task' action",
+        "Inconsistent use of divider rules between menu sections across platforms — likely a per-platform style override rather than a shared spec",
+        "Layout proportions differ because baseline is 390×844 (Android) and current is 1170×2532 (iOS), exercising different density buckets"
+      ],
+      "suggestedOwner": "mobile-platform / design-system",
+      "suggestedFixes": [
+        "Reconcile the 'Convert to Task' icon: pick one glyph (clipboard or info) in the shared icon registry so both platforms render identically",
+        "Audit the message context-menu divider styles per platform and unify to a single sectioning spec (either separators between groups only, or between every item)",
+        "Normalize date/subtitle truncation: ensure either both truncate or both wrap to two lines based on a shared maxLines rule",
+        "Adjust body text container width/measure so 'queued React' wraps fully on Android as it does on iOS, or apply consistent ellipsis policy on both ends",
+        "Update tolerance settings or add home-indicator exclusion so the iOS home indicator doesn't inflate pixelMismatchRatio"
+      ],
+      "intentional": [
+        "iOS home indicator bar at bottom is a platform convention and may be accepted as intentional",
+        "Slight font weight/spacing drift between Roboto and SF Pro is expected platform behavior and may be tolerated"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.047023737189613946
+    },
+    {
+      "id": "components.thread.message-menu.task",
+      "status": "ready",
+      "imageHash": "p1:01fc01fefffe7ffe87ff07fe80020006e0166006e0066006c01e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e839f019e801f001e801e001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
+      "generatedAt": "2026-07-09T14:38:25.221Z",
+      "severity": "low",
+      "summary": [
+        "iOS context menu panel appears slightly wider relative to the message width than the Android variant, causing a small horizontal offset of the menu's right edge.",
+        "iOS context menu panel is shifted ~4-6px to the right (or narrower right margin) compared to Android; left edge alignment is preserved but right edge overshoots slightly.",
+        "Emoji picker row (#246 @Cindy reaction bar) on iOS shows tighter internal padding between the + button and the like-reaction chip.",
+        "iOS side shows a bottom home-indicator bar that is absent on the Android crop (expected platform artifact, low concern)."
+      ],
+      "likelyCauses": [
+        "Independent scaling of the popup/menu container on iOS render path (different dp-to-px handling at 3x density).",
+        "Minor padding/spacing token drift between Android and iOS Kuikly renderers for the reaction row and action menu.",
+        "Comparison canvas normalized to 1170×2532 vs native 390×844 may amplify sub-pixel rounding differences in menu bounds."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize the context menu max-width/padding tokens in the shared Kuikly component so both Android and iOS render with identical dp bounds.",
+        "Audit the reaction-row container to use the same horizontal padding on both platforms (verify the + button gutter vs. reaction chip).",
+        "If the bottom home indicator is iOS-only by design, add it to the visual-test ignore list or crop it out before diffing.",
+        "Re-run the visual diff after fixes with tolerance.layoutDp=1 to confirm the menu panel edges and reaction row align within 1dp."
+      ],
+      "intentional": [
+        "iOS home-indicator pill at the bottom of the screen is a platform affordance and should not be flagged as a regression.",
+        "Denser emoji glyph rendering on iOS (Apple Color Emoji) vs Android (Noto) is expected platform behavior."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.04985856253628762
+    },
+    {
+      "id": "components.thread.message-share.selection",
+      "status": "pending",
+      "imageHash": "p1:07fc07fcfffe7ffe81fa01f2c0024002f0027002ff7e7ffe83fe03fec0024002f8027002c0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "generatedAt": "2026-07-09T22:19:03.315Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04899407245378806
+    },
+    {
+      "id": "components.thread.forward-modal",
+      "status": "ready",
+      "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc1ffe1ffc7ffe7ffc7ffe7ffc3ffc7ffc7ffc7ffc7ffc7ffc7fc07fc07f007f000000000000000000000000000000000000000000ffffffff",
+      "generatedAt": "2026-07-09T14:38:31.753Z",
+      "severity": "low",
+      "summary": [
+        "Typography appears subtly different: iOS headings like 'Forward' and channel names ('design', 'artin', 'android-artifacts', 'Cindy') render slightly larger/heavier than Android.",
+        "Search input placeholder text 'Search' appears marginally larger and with different spacing on iOS.",
+        "Bottom action buttons 'Cancel' and 'Send' are slightly wider and more spaced on iOS; gap between them is a few px larger.",
+        "NOTE label and 'FORWARDED 2 MESSAGES' placeholder text appear slightly bolder/larger on iOS.",
+        "iOS shows a dark home-indicator bar at the bottom of the viewport that is absent on the Android viewport (iOS platform chrome)."
+      ],
+      "likelyCauses": [
+        "Platform-default font metrics differ between Android (Roboto) and iOS (San Francisco) leading to small size/weight perception differences even when the same DP size is requested.",
+        "Spacing/padding tokens may not be uniformly applied across the Kuikly renderers, causing minor dp drift in button group and list rows.",
+        "iOS viewport chrome (home indicator) is rendered by the platform shell on iOS but not on Android, which is expected but contributes to pixel mismatch."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Use the same fontFamily mapping for the Forward modal on both platforms, or pin to a shared webfont to neutralize system-font differences.",
+        "Audit Kuikly Button and TextInput spacing tokens on iOS to match Android dp values for horizontal padding and inter-button gap.",
+        "If the home indicator is intentional iOS chrome, exclude it from the comparison canvas or mask it in the Slock crop config.",
+        "Verify NOTE label and message-count placeholder share the same font size/weight token across renderers.",
+        "Re-run the comparison after fixes with tolerance.layoutDp bumped slightly (e.g., 1–2) to confirm remaining diffs are within platform conventions."
+      ],
+      "intentional": [
+        "iOS home-indicator bar at bottom of viewport is platform shell, not part of the modal.",
+        "Minor font metric variation between Roboto and San Francisco at the same logical size may be considered acceptable platform behavior."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.03627482750705502
+    },
+    {
+      "id": "components.thread.comment-anchor",
+      "status": "ready",
+      "imageHash": "p1:ffffffff0000000000000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7bfe7afc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc00000000000000000000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-09T14:38:32.708Z",
+      "severity": "low",
+      "summary": [
+        "Comments panel (heading, close X button, attachment card with file name and 675.8 KB video/mp4 metadata) renders identically on both Android and iOS.",
+        "Filter tabs (All/Unresolved), comment card header (Artea / 18:32), anchor line, body text, and Quote/Resolve buttons align and match in size and color across both ends.",
+        "Comment input area (COMMENT label, ADD COMMENT placeholder text field, SEND COMMENT button with paper-plane icon) is visually consistent between Android and iOS.",
+        "Slight spacing/centering deltas: SEND COMMENT button label is horizontally centered on both, but iOS appears very subtly offset relative to Android — likely sub-pixel/antialiasing at the 1170×2532 vs 390×844 scale ratio.",
+        "iOS shows the bottom safe-area home indicator bar; Android lacks one — this is a platform-specific chrome difference, not a component defect."
+      ],
+      "likelyCauses": [
+        "Native chrome difference: iOS renders a home indicator overlay at the bottom of the viewport; Android does not.",
+        "Minor font hinting / sub-pixel rendering differences between Kuikly Android and Kuikly iOS text rasterizers at different device pixel ratios (1170×2532 @3x vs 390×844 viewport).",
+        "Small layout padding or icon-glyph metric variance in the platform-specific Kuikly rendering bridge for the Quote/Resolve and Send buttons."
+      ],
+      "suggestedOwner": "kuikly-rendering",
+      "suggestedFixes": [
+        "If the home-indicator overlap is undesired, add safe-area-inset-bottom padding to the comments sheet on iOS so SEND COMMENT sits above the indicator.",
+        "Normalize text-rendering (font-smoothing, sub-pixel positioning) and icon metrics across Android and iOS Kuikly render bridges for the Comment Anchor component.",
+        "Verify Quote/Resolve and SEND COMMENT button internal padding tokens are shared (not platform-overridden) so they remain pixel-aligned at the same dp values on both ends.",
+        "Audit the comments sheet's bottom sheet / modal padding against platform safe-area guidelines to ensure no clipping on iOS with home indicator."
+      ],
+      "intentional": [
+        "iOS home indicator bar at the bottom of the screen is a platform standard and should remain as native chrome.",
+        "Platform-specific font hinting/antialiasing differences within the documented tolerance are acceptable."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.04954935796168025
+    },
+    {
+      "id": "components.home.titlebar.states",
+      "status": "ready",
+      "imageHash": "p1:0ffc0ffc7ffe7ffe7002700200020002000200027ffe7fdefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-09T14:38:33.283Z",
+      "severity": "low",
+      "summary": [
+        "Top-right platform badge text differs: 'ANDROID' on the left vs 'iOS' on the right (expected labeling, not a real UI divergence).",
+        "Raft Design title bar is visually isomorphic between Android and iOS: same yellow background, same black title pill, same warning icon placement, same pink marker dots.",
+        "iOS viewport (1170×2532) is taller than Android (390×844) but titlebar content scales proportionally with no clipping or missing elements.",
+        "No typography weight, color, alignment, or component-bound differences are observable in the titlebar region."
+      ],
+      "likelyCauses": [
+        "Pixel mismatch (~0.86%) is attributable to the 3x scale ratio between the two canvases and minor antialiasing differences, not to layout or style regressions.",
+        "High RGB similarity (99.54%) and pixel-perfect similarity (99.14%) confirm no structural divergence in the titlebar component."
+      ],
+      "suggestedOwner": "qa-visual",
+      "suggestedFixes": [
+        "No fix required: titlebar renders isomorphic across Android and iOS under Kuikly.",
+        "If desired, normalize the comparison crop on iOS to the same dp rect as Android to reduce scale-induced pixel noise in future runs.",
+        "Optionally suppress platform badge text from the diff region so cross-platform screenshots only compare the actual UI surface."
+      ],
+      "intentional": [
+        "Platform badge label difference ('ANDROID' vs 'iOS') is an intentional harness overlay.",
+        "Viewport size difference (390×844 vs 1170×2532) is expected per device native resolution and is not a UI bug."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.0065128745223531626
+    },
+    {
+      "id": "components.home.notification-center.states",
+      "status": "ready",
+      "imageHash": "p1:07fc07fefffe7ffefffe7ffe80020006800200028002000280020002207340728013001280120012a0120012a07340728002000280060006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
+      "generatedAt": "2026-07-09T14:38:34.698Z",
+      "severity": "low",
+      "summary": [
+        "Notification cards, headers, icons, buttons, and text are visually isomorphic across Android and iOS renders.",
+        "Both containers (header + 2 notification items) render at the same relative position and width on each side.",
+        "Minor sub-pixel/scale differences consistent with 390×844 vs 1170×2532 canvas dimensions and standard font-rendering antialiasing — accounted for by the ignoreAntialiasing tolerance."
+      ],
+      "likelyCauses": [
+        "Canvas resolution scaling (390 vs 1170 logical width) producing small stroke/text antialias variance.",
+        "Default system font hinting differences between Android and iOS Kuikly renderers."
+      ],
+      "suggestedOwner": "kuikly-rendering",
+      "suggestedFixes": [
+        "No action required; similarity (98.8% RGB, 98.0% pixel-perfect) and mismatch ratio (1.99%) are within tolerance.",
+        "If stricter parity is desired, unify text-rendering scale and stroke width across Android/iOS Kuikly backends."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.017791415184780113
+    },
+    {
+      "id": "components.home.search.results",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffe81f601f680030003000700078007000700070007dfff5fffffff7fff80ff80ef9fff9fff80ff40f780ff80ffdfff5fff9fff5fff80ff00f78007000f8387038f83ff83ffc8ff40ff9fff1fff807f007f81ff41ffc83f683fffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
+      "generatedAt": "2026-07-09T22:19:03.402Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06224969957197446
+    },
+    {
+      "id": "components.home.search.channel-dropdown",
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe85f701f780030007800700078007000790031023f1f3f1f3f003f00384f3805394f394fbc7b3c6bb80038003f807d803ffffffff80ff81f78007800f83af839f87ff87ffc9ffccff9fff9fff807fc07fd9ffd9fff83ff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-09T22:19:03.459Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07721742887619665
+    },
+    {
+      "id": "components.home.saved.results",
+      "status": "ready",
+      "imageHash": "p1:1ff83ffc07fc0ffe03fc07fe0000000683e007c680310066803d007efffdfffef9e5f3ce80a1014680310066843d087efffdfffee021d84681e003c680110026803d007efffdfffef83df07ef83df07efffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-07-09T14:38:39.074Z",
+      "severity": "medium",
+      "summary": [
+        "Action icon in top-right of each saved card differs: Android shows a bookmark/save glyph, iOS shows an info/info-circle (ⓘ) glyph — semantic/icon mismatch.",
+        "iOS canvas is significantly taller than Android (1170×2532 vs 342×620), producing large empty whitespace below the 'Load More' button on iOS; the iOS layout is not vertically constrained to the component bounds.",
+        "Card chrome, typography, spacing, and divider are visually isomorphic between the two sides aside from the action icon swap.",
+        "Metadata badge top-right: Android label 'ANDROID' vs iOS label 'IOS' — expected/intentional platform label, not a defect.",
+        "Pixel mismatch ratio 5.71% concentrated in the action-icon region and the empty iOS lower canvas."
+      ],
+      "likelyCauses": [
+        "Platform-specific icon resource mapping: the saved-card trailing action is being resolved from different icon sets per platform (bookmark vs info).",
+        "Missing component-bounds crop on iOS side (crop.current is null) so iOS is compared against its full 2532px canvas instead of a clipped component region equal to the Android crop.",
+        "No fixed vertical container height on the page on iOS, so content sits at the top and leaves large empty space; Android was cropped to component bounds which masks this."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Unify the trailing action icon across Android and iOS: pin to a single semantic icon (e.g., bookmark) via a shared Kuikly asset, or branch the icon by intent (save vs info) explicitly and keep parity.",
+        "Crop the iOS canvas to the same component-bounds rect used on Android before running the pixel-perfect diff so whitespace is not counted as mismatch.",
+        "Constrain the page content area to a fixed height (or center vertically) so both platforms render an equal-sized component footprint.",
+        "Add a Slock tolerance rule to ignore the platform badge label ('ANDROID'/'IOS') when comparing.",
+        "Re-run the visual test after fixes; target pixelMismatchRatio < 1% and pixelPerfectSimilarity > 0.99."
+      ],
+      "intentional": [
+        "Platform label badge in top-right of the canvas reads 'ANDROID' on the left and 'IOS' on the right by design."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.0549877803432306
+    },
+    {
+      "id": "components.home.activity.results",
+      "status": "ready",
+      "imageHash": "p1:1ff83ffc03fc07fe81fc03ff0000000380400003000000079ff13fe7c0118027c01d003f80fd01fffbf1ffe7803100078015000f87fd0fff8ffd3fff99f103e781f103e7fffdfffffffdfffffffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe3fff",
+      "generatedAt": "2026-07-09T14:38:40.445Z",
+      "severity": "low",
+      "summary": [
+        "Card 1 (#design) on iOS shows full text '#product:f8e569cb' while Android truncates with ellipsis ('#product:f8e569cb…').",
+        "Card 1 secondary line on iOS shows full text 'Review the Android composer crop' while Android truncates with ellipsis ('Review the Android composer cro…').",
+        "Card 1 content area on iOS occupies more vertical space (no ellipsis) versus Android's compressed/truncated layout, causing the card body to be taller.",
+        "iOS rendering has more available horizontal width inside cards, allowing two extra words before truncation, while Android's narrower effective width forces earlier ellipsis.",
+        "Layout density differs: Android packs cards tighter vertically due to truncation, iOS cards are slightly taller with full text rendering."
+      ],
+      "likelyCauses": [
+        "Different default text container widths between Android and iOS Kuikly renderers (likely DP-to-pt conversion or padding discrepancies).",
+        "Missing or inconsistent `maxLines`/ellipsize behavior in the card title and body Text components — iOS may be ignoring overflow constraints while Android enforces them, or vice versa with different available width.",
+        "Inconsistent horizontal padding or margin values applied to card content on the two platforms.",
+        "Different font metrics (system font on iOS vs Roboto on Android) causing line-break thresholds to differ even at the same nominal DP size."
+      ],
+      "suggestedOwner": "Kuikly cross-platform UI / Activity Results component owner",
+      "suggestedFixes": [
+        "Normalize card content padding and ensure identical horizontal insets on Android and iOS.",
+        "Verify `maxLines` and `overflow` (ellipsis) are explicitly set on both card title and body Text components so truncation matches across platforms.",
+        "Use `numberOfLines` consistently and test with the widest expected content to guarantee single-platform truncation parity.",
+        "Audit the Kuikly text layout bridge to confirm measured width and font metrics are equivalent between Android (DP) and iOS (pt).",
+        "Add a visual regression check for the truncated vs full-text card states on both platforms."
+      ],
+      "intentional": [
+        "Platform system font rendering differences (iOS SF vs Android Roboto) at the glyph level",
+        "iOS home indicator bar visible at bottom is an expected platform chrome element",
+        "Top breadcrumb/metadata bar differences are part of Slock's comparison harness, not the app under test"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.045719744534910456
+    },
+    {
+      "id": "components.tasks.panel.states",
+      "status": "ready",
+      "imageHash": "p1:bffe7ffe000000000000000080070006ffffffefffc1ffc1dfc1ffc19fff9fff9ffd9ffd9ffc9ffc87f487f4bffdfffcffe1ffe08001800187ff87ff87ff87ffbffdbffc80348014bfe1bfe18001800187ff87ff8fff8fff9ffdbffc80c5808cbfe1ffe1800180019fff9fff9ffd9ffd887c807cbfe1ffe180010000ffffffff",
+      "generatedAt": "2026-07-09T14:38:40.730Z",
+      "severity": "low",
+      "summary": [
+        "Both Android and iOS renders appear visually equivalent in layout, typography, color, and component structure across the Tasks panel states (TODO, IN PROGRESS, IN REVIEW, DONE).",
+        "Minor perceptual differences are attributable to native font rendering and antialiasing rather than substantive divergence."
+      ],
+      "likelyCauses": [
+        "Native font rendering differences between Android and iOS (San Francisco vs Roboto) account for the small pixel mismatch.",
+        "Subpixel positioning and antialiasing produce minor color similarity differences."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "No corrective action needed; the platform-difference filter chip row layout is intentional and both renders align to the React reference for shared tokens.",
+        "If parity drift increases, re-check the status pill border weights and chip stroke widths against the shared design tokens."
+      ],
+      "intentional": [
+        "Filter chip row (Channel/Creator/Assignee) uses a single-row layout on Android matching the React reference, while iOS renders wrap; this is an accepted platform-difference."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.08590249929112492
+    },
+    {
+      "id": "components.tasks.status-menu",
+      "status": "pending",
+      "imageHash": "p1:1ce83bfc03fc07fe00fc01fe1cfc39fe04fc09fe04fc09fe04fc09fe1cfc39fe00fc01fe01fc01fe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:03.542Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.008691146487355028
+    },
+    {
+      "id": "components.home.create-channel.dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000000000000000007ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc2ffc4ffc3ffc7ffc7ffc7ffc3ffc7ffc2ffc6ffc3ffc7ffc0ffcfe773ffcffff3ffcffff3ffcffff0ffcffff7ffcfffd7f00bffd3c008ff100008ff10000ffff00009ff90000ffffffffffff",
+      "generatedAt": "2026-07-09T22:19:03.548Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3670865907832732
+    },
+    {
+      "id": "components.members.create-agent.dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc29f82df83ffc3ffc2dfc09fc3ffc3ffc39fc3ffc3ffc3ffc3ffc000423fc07fc00f43ffc07fc3ffc3ffc3ff43ffc7ffc3ff43ffc3ffc07fc3ffc3ffc2ffc3ffc3ffc80003ffcffff2ffcffff3ffcffff2ffcffff2ffcfff83ffcbff83ffc8ff03ffc0ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.566Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3927026370154332
+    },
+    {
+      "id": "components.members.create-agent.claude-dialog",
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc3ffc3ffc3ffc0004000407fc07fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff27fcfff82ffcbff83ffc8ff03f800ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.583Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3147695818311932
+    },
+    {
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
+      "status": "pending",
+      "imageHash": "p1:efffffff000000003ffc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc3ffc3ffc3ffc0004000407fc07fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff003cfff83ffcbff83ffc8ff03f840ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.628Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.31491439489069817
+    },
+    {
+      "id": "components.members.agent-detail.profile",
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe404100c100010801000000000ffc0ffc8fff8fff801f001f8fff0fff9fff9fffe7ffe7ffffffffffffffffff81ff81ffffffffffffffffff8fff0fff8fff0fffd87ff8fff1fff1fff3fff3fffffffffff7ffffff8c3f0c3f8c3f0c3f8c7f0c7f8007002780030003fffff7ff97ff97ff87fe97ff9ffe5c02ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.637Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0869182160651355
+    },
+    {
+      "id": "components.channel.members.panel",
+      "status": "ready",
+      "imageHash": "p1:ffffffff800180018001000180018001800100018001000180010001800100018001800180010001bffc7ffd3ffc7ffdbffc7ffd3ffc7ffd2ffc6ffdbffc7ffd3ffc7ffd3ffc7ffd3ffc7ffd3ffc7ffd6c3c6c35bffd3ffd800100018001000180010001800100018001000180010001800180018001000180018001ffffffff",
+      "generatedAt": "2026-07-09T14:38:52.343Z",
+      "severity": "low",
+      "summary": [
+        "Text truncation behavior differs: Android truncates the Cindy's status with ellipsis ('Capturing visual testing baseli…'), iOS renders the full string without ellipsis.",
+        "iOS shows a home indicator bar at the bottom of the viewport; Android does not render one.",
+        "iOS uses a system-like back-gesture inset (home indicator) consuming bottom safe-area, slightly shifting the panel up relative to viewport center."
+      ],
+      "likelyCauses": [
+        "Text container width or numberOfLines/ellipsize differs between Android and iOS Kuikly bindings.",
+        "iOS-only safe-area / home indicator rendered by the platform shell but not mirrored on Android.",
+        "Native iOS chrome (home indicator) is not suppressed or normalized in the Slock capture baseline."
+      ],
+      "suggestedOwner": "kuikly-runtime / cross-platform UI engineer",
+      "suggestedFixes": [
+        "Normalize text overflow: apply consistent maxLines=1 + ellipsize on both ends for the member subtitle.",
+        "Strip or normalize iOS home indicator in the capture viewport so both renders are comparable.",
+        "Ensure safe-area insets are applied symmetrically across platforms for the panel positioning."
+      ],
+      "intentional": [
+        "iOS home indicator is platform-native and intentional; only its absence from the Android baseline is the divergence."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.037527511105710176
+    },
+    {
+      "id": "components.channel.settings.panel",
+      "status": "pending",
+      "imageHash": "p1:ffffffff0000000000000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7f807f807fc47fc47ffc7ffc0000ffff7ffcffff4000ffff4000ffff4000ffff0000fffd0000fffd0000dff900008ff10000ffff0000ffff8000ffffffffffff",
+      "generatedAt": "2026-07-09T22:19:03.673Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4031686717705675
+    },
+    {
+      "id": "components.channel.members.add-panel",
+      "status": "ready",
+      "imageHash": "p1:ffffffff800000010000000000000000000000000000000000000000000000003ffc7ffc7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffc7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffc7ffe7ffe0000000000000000000000000000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-09T14:38:53.948Z",
+      "severity": "low",
+      "summary": [
+        "Layout, typography, and component structure are visually isomorphic between Android (390×844) and iOS (1170×2532) renders at 3× scale.",
+        "Search input, Agents/Humans list sections, avatar placeholders, item rows, selection highlight (Designer row), and close (×) icon match in position, size, color, and weight after density normalization.",
+        "RGB similarity 98.2% and pixel-perfect 96.89% confirm only minor sub-pixel/antialiasing deltas; no functional or visual divergence observed."
+      ],
+      "likelyCauses": [
+        "Native font hinting/anti-aliasing differences between Android (Skia) and iOS (CoreGraphics) text renderers.",
+        "Border/edge rasterization differences at higher pixel density on iOS (3× vs baseline 2–3×)."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "No action required — visual parity is within tolerance (RGB 98.2%, pixel-perfect 96.89%, mismatch 3.11%).",
+        "If a stricter pass is desired, consider forcing a shared font-rendering mode or adding a tolerance bump to ignoreAntialiasing for the panel border and avatar glyphs."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.02898961666734179
+    },
+    {
+      "id": "components.settings.page.states",
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.720Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3134109045246486
+    },
+    {
+      "id": "components.settings.account.page",
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.754Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3134109045246486
+    },
+    {
+      "id": "components.settings.account.provider-linked",
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff970000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.761Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3127908075775374
+    },
+    {
+      "id": "components.settings.account.password-expanded",
+      "status": "pending",
+      "imageHash": "p1:2ffe2ffe9fff9fff83ff83ffffffffffcfffffff8ff70ff783f783f78ff70ff79ff75ff7fff77ff787f747f79fe78ff780070007fe377e378337837783f783f780f740f7b1f761f7f3077307ff077f07fff77ff6c3070290bf070000fff72236e1f7000081f73100bfe7066080070e6097f700008007000081d70000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.802Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2637754688702556
+    },
+    {
+      "id": "components.settings.account.error-state",
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff7a01740178ff79ff7fff77ff7f7f77ff787f787f78fa780078ff74007fe377e3783f783f783f783f7bc075c178007400781f740f7f7e70b90f7070000ff972236c3070000cf073580a0f706e080270e60c0070000e1f70000a1f70000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.812Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.29114311175922547
+    },
+    {
+      "id": "components.settings.server.profile",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.842Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.304196878249011
+    },
+    {
+      "id": "components.settings.administration.admins",
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8fff0ff79ff31ff783f3000780030007bff33ff7bff37ff7bbf33bf7800300078007800787f307f786030e07ba037e07bf030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.852Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.29006393378431294
+    },
+    {
+      "id": "components.settings.administration.invites",
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.891Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.administration.join-links",
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.901Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.administration.pre-join-agreement",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.938Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.administration.onboarding",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.947Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.administration.member-permissions",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.981Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.administration.translation",
+      "status": "pending",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:03.997Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.30416312229108433
+    },
+    {
+      "id": "components.settings.billing.page",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffe9bfe1bfe80ff80ff1fff1fff800700079ff31ff790f304f7800300078ff30ff7a7f367f7aff34ff7a8134017abf36bf7a1f341f7a0f340f7a0334077a5f365f787f307f7a0f340f7a0736077a3f363f780534057aff34ff7bff33ff787e30fe7bff37ff7c00360078003000781ff01ff81f70bf60ff21ff2ffffffff",
+      "generatedAt": "2026-07-09T22:19:04.036Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0640080474203697
+    },
+    {
+      "id": "components.settings.language-region.page",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff803f803fbfff3fff83f703f783f303f3a81328178633067780030007801300178bf30bf782d302f78ff30ff78003000787f307f380030007800f000f8ff30ff7bff37ff78ff31ff783e303e780030007bff31ff7807300f780f300f787f307f380078007fffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-09T22:19:04.044Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.07897915232038455
+    },
+    {
+      "id": "components.settings.appearance.page",
+      "status": "ready",
+      "imageHash": "p1:0ffc0ffc87fe07fe80fe01fe04060a068016001600120012805200128012001280020002800200028032003280020002a00220028002000280064006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "generatedAt": "2026-07-09T14:39:16.520Z",
+      "severity": "low",
+      "summary": [
+        "Layout structure, content, and component arrangement are visually isomorphic between Android and iOS renders.",
+        "Selected state on 'Medium' button uses identical yellow fill on both platforms; no missing elements detected.",
+        "Card container bounds, preview text, and avatar placement match proportionally after scaling 1170×2532 → 390×844.",
+        "The header 'Appearance' title, back-arrow, font-size segmented control, description, and Preview block are all present on both sides with consistent typography weight.",
+        "Only minor sub-pixel/antialiasing differences expected; the 3.51% mismatch is consistent with platform font-rendering variance rather than a structural divergence."
+      ],
+      "likelyCauses": [
+        "Platform-specific font hinting and antialiasing on iOS (different glyph metrics for '@', '#', and em-dash).",
+        "Native iOS home-indicator bar overlay visible at bottom of iOS render (decorative chrome, not part of the Appearance page content).",
+        "Slight canvas-resize rounding differences when downscaling the 1170×2532 iOS capture to 390×844 for comparison."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "No structural fixes required; this appears to be a basic-pass scenario with only antialiasing-level noise.",
+        "If desired, add the iOS home-indicator element to the ignore-region crop contract so it does not contribute to the pixel-mismatch ratio.",
+        "Confirm tolerance.layoutDp=1 is appropriate; current differences are well within the 1dp layout tolerance.",
+        "Consider enabling ignoreAntialiasing (already true) at full coverage to further reduce noise from font rendering.",
+        "Re-run with the iOS canvas explicitly cropped to the viewport-bounds rect (currently null) for a more apples-to-apples comparison."
+      ],
+      "intentional": [
+        "iOS home indicator bar at bottom of right panel is expected platform chrome.",
+        "Platform font-rendering differences (e.g., 'Onboarding Assistant' weight, em-dash spacing) are acceptable rendering variations."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.03304607013137817
+    },
+    {
+      "id": "components.settings.notifications.page",
+      "status": "pending",
+      "imageHash": "p1:1ffe1ffe9fff9fff81ff81ffbfff3fff8037007780030c078c030c07bff37ff78ff35ff79ff35ff7bff37ff7bff37ff780f300f780730077bff37ff7bfd37ff783f300f78073007780730077807300778073007783030307bf037f07af932ff780078007bfff7ff780f300f780f300f780078007ffffffffffffffffffffffff",
+      "generatedAt": "2026-07-09T22:19:04.092Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.12197850420599232
+    },
+    {
+      "id": "components.settings.connected-apps.page",
+      "status": "pending",
+      "imageHash": "p1:fffe7ffebfffdfff807f807fffffffffbbf7b3f7820382078603ce07fff37ff7bff3fff7bff3fff787f387f79333b3379333bb378007800780070007bfffbfff881780178ff39ff79f03ff07bf07ff07bf037f1780078007b7ff801783e33ff78003800783a327f78003800787f387d7ff03ff07bff3dff787230307ffffffff",
+      "generatedAt": "2026-07-09T22:19:04.127Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14029178650031726
+    },
+    {
+      "id": "screens.auth.login.signing",
+      "status": "pending",
+      "imageHash": "p1:bffefffe800000008000000000000000ffff0000fe7ffffffe7ffe7ffefffe7ffffffe7fdfffffffc1ffdfffc403c003dfffc603c003ffffc003c003c003c003dfbbc003ff9fffffc003f81bc001c003c0038003ffffffffffff3794ffff7ffeffff1ff8ffff1ff8ffff0fe0ffff0fe0ffff0000ffff0000ffff0000ffffffff",
+      "generatedAt": "2026-07-09T22:19:04.131Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.39204135779965166
+    },
+    {
+      "id": "screens.members.agent-detail.profile",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.permissions",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.reminders",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.workspace",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.apps",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.agent-detail.activity",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.039Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.members.human.profile",
+      "status": "pending",
+      "imageHash": "p1:021c000403e003fe004002020000000003fe7ffe01fe7ffe0ffe7ffe0ffe7ffe07fe7ffe1ffe7ffe1ffe7ffe7ffe7ffe0ffe7ffe0ffe7ffe07fe7ffe03fe7e7e1ffe7e7e07fe700e03fe7c3e03fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-09T22:19:04.157Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04936167483560849
+    },
+    {
+      "id": "components.members.agent-lifecycle-actions",
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe404100c100010001238023803f9e3fbc803f803f801f001f8fff0fff9fff9fffe7ffe7ffffffffffffffffff81ff81ffffffffffffffffff8fff0fff8fff0fffd87ff8fff1fff1fff3fff3ffffffffffffffffff8c3f0c3f8c3f0c3f8c7f0c7f8007002780030003fffff7ff97ff97ff87fe97ff9ffe5c02ffffffff",
+      "generatedAt": "2026-07-09T22:19:04.182Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08957008411984713
+    },
+    {
+      "id": "components.members.avatar-management",
+      "status": "pending",
+      "imageHash": "p1:bffe7ffecafb82fb8a810a8100000000001f001e8bbf0bbf8fff8fffffffffff8001c0018001400180010001800100019fff1fffffffffffffffffffffffffffffffffffc1ffc1ffffffffffffffffffdfffffff8fff0ffffffffffffbfff9fff3fff3ffffffffffffffffff8c3f8c3f8c3f8c3f9c7f9c7f88ff89ffffffffff",
+      "generatedAt": "2026-07-09T22:19:04.218Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08943202225192748
+    },
+    {
+      "id": "screens.settings.computers",
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9ff80ff881f801f800000000801c001c800000008000000080fc00fc800000008000000080fc00fc80000000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
+      "generatedAt": "2026-07-09T22:19:04.216Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.02595023021563303
+    },
+    {
+      "id": "screens.settings.computer-detail",
+      "status": "ready",
+      "imageHash": "p1:1ffc1ffe87ff47ff800700068f660f268007000787ff0dff8fff4fffffffffff81ff81ffffffffffdfffdfffffffffffffffffffffffffff9fffbfffdfffdfff9fff9fffdfffdfff80ff00ff80030003800180018003800380078003d00fc00f8fff8fffefffefffffffffff80ff00ff80ff00ff807e807e80720070ffffffff",
+      "generatedAt": "2026-07-09T14:39:29.280Z",
+      "severity": "low",
+      "summary": [
+        "iOS (right) shows a horizontal scrollbar/cursor over the 'Codex CLI' subtitle in the bottom agent card; Android (left) has no scrollbar visible.",
+        "iOS end has slightly tighter horizontal spacing inside the Detected Runtimes chips (e.g., 'Kimi Code (not installe…' truncation appears slightly later on iOS, but chips visually sit closer together on Android).",
+        "Header label typography weight on iOS appears marginally heavier/condensed versus Android for 'NAME', 'DESCRIPTION', and 'INFO' section headers."
+      ],
+      "likelyCauses": [
+        "Kuikly scroll container on iOS surfaces an iOS-native horizontal scroll indicator that the Android renderer does not draw for the same scroll state.",
+        "Platform-default text rendering (SF Pro on iOS vs Roboto on Android) leading to subtle font-weight perception differences at the same declared weight.",
+        "Possible 1dp layout rounding differences between iOS and Android Kuikly layout passes for the chip row."
+      ],
+      "suggestedOwner": "kuikly-ui",
+      "suggestedFixes": [
+        "Hide the iOS scroll indicator on the agent card scroll row, or use a platform-agnostic indicator so both ends match.",
+        "Normalize the Detected Runtimes chip spacing via explicit gap/padding tokens rather than relying on per-platform defaults.",
+        "Pin section header font-weight and letter-spacing to the same design-token values so iOS and Android render identically."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.0688699180405341
+    },
+    {
+      "id": "screens.settings.server-danger-modal",
+      "status": "ready",
+      "imageHash": "p1:ffffffff80018001800100018000000180010001800100018001000180010001a000fe05fffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffcfffd80010001800100018001000180010001800100018001000180010001800100018000000180018001ffffffff",
+      "generatedAt": "2026-07-09T14:39:32.326Z",
+      "severity": "medium",
+      "summary": [
+        "Dialog/modal is positioned lower on iOS (shifted ~120–140px down) compared to Android, exposing more background above and clipping/concealing the bottom area off-screen",
+        "Server Profile background content (input field 'Visual Server', PROFILE section) is visible above the modal on Android but pushed nearly entirely off the top on iOS due to modal vertical placement",
+        "All other on-screen elements (typography weight, button colors, warning callout color/text, input field with '/' icon, Cancel/Delete Server button states) appear visually isomorphic between the two renders"
+      ],
+      "likelyCauses": [
+        "Modal vertical anchoring uses default platform behavior (centered on Android, lower-third/bottom-anchored on iOS) without explicit cross-platform override in Kuikly component",
+        "Safe-area / status-bar inset handling differs between Android and iOS implementations in the modal layout container",
+        "Possible absence of an explicit offsetDp/align property for the danger dialog to pin it relative to the screen center rather than the natural platform default"
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly component owner (Settings screens modal layer)",
+      "suggestedFixes": [
+        "Force the danger modal container to use an explicit vertical alignment (e.g., centered or fixed top offset) on both platforms so iOS no longer shifts it downward",
+        "Verify that the modal layer respects a unified safe-area / inset policy; on iOS apply status-bar + home-indicator padding consistently",
+        "Add a visual-regression snapshot threshold tightening around dialog position; current pixelMismatch 64% is dominated by this single Y-offset shift",
+        "Confirm the modal's height fits within iOS viewport with home indicator visible (current render shows modal bottom near viewport edge)",
+        "If the offset is intentional platform styling, document it in the design spec and lower the severity since structural UI is otherwise identical"
+      ],
+      "intentional": [
+        "Typography, colors, warning callout, input field, and button states are intentionally identical across platforms"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
+      "metricMismatch": 0.6431482156600641
+    },
+    {
+      "id": "screens.home.loading",
+      "status": "pending",
+      "imageHash": "p1:3ffc3ffc000000000000000004000400cffe4ffecffe4ffe8ffe4ffecffe4ffec7fe47fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe3ffec1fe41fc9fde9f7e9ffe9ffe9fde9f7ebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe0000fffe0000fffe000000027ffefff81fff",
+      "generatedAt": "2026-07-09T22:19:04.303Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04422773119455581
+    },
+    {
+      "id": "components.thread.message-row.rich-content",
+      "status": "pending",
+      "imageHash": "p1:03f807fc7ffcfffe8201000280010002e001c002e001c006e001c006e07dc0fee07dc0fef1fdfbfef1fdc17ee03dc07efffdfffee005c0064001c006fffdfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-09T22:19:04.300Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.04566944815759977
+    },
+    {
+      "id": "components.thread.message-row.long-inline-code",
+      "status": "pending",
+      "imageHash": "p1:fffe7ffeffffffff9fff9fff9d7f9d5ffbfff3ffe36fe0efe3ffe3ffe01fe01fefffefffffc7fc07e00fe00fe03fe03fe67fe6ffe29fe01ff7ffffffefffe7ffe003e003e02fe07fe0ffe0ffe003e003e007e001e003e001e003e001e003e001e003e003e001e1ffe1ffe001e003e001e001e001e003e001e003e00fffffffff",
+      "generatedAt": "2026-07-09T22:19:04.330Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4073338194191275
+    },
+    {
+      "id": "screens.settings.administration.full-height",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.220Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    },
+    {
+      "id": "screens.settings.connected-apps.full-height",
+      "status": "pending",
+      "imageHash": null,
+      "generatedAt": "2026-07-09T22:19:04.220Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "missing side-by-side image",
+      "metricMismatch": null
+    }
+  ]
+}

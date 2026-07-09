@@ -1,20 +1,20 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 14:45:00 UTC
-Latest run: b7cbd7d-20260709142821
-Latest commit: b7cbd7d-20260709142821
-Commit subject: feat(ios): bump kuikly gitlink to staging2 w/ rich-text chip chrome (task #439) (#445)
+Generated: 2026-07-09 22:19:06 UTC
+Latest run: 4890633-20260709221654
+Latest commit: 4890633-20260709221654
+Commit subject: fix(diagnostics): isolate auth critical journal (#484)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-AI analysis: ready 85 / total 89, pending 4
+AI analysis: ready 81 / total 89, pending 8
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
 - react__android: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-- react__ios: total 89, same 0, pass 9, basic-pass 12, different 57, missing 11
-- android__ios: total 89, same 0, pass 16, basic-pass 28, different 37, missing 8
+- react__ios: total 89, same 0, pass 11, basic-pass 8, different 59, missing 11
+- android__ios: total 89, same 0, pass 17, basic-pass 12, different 52, missing 8
 
 ## Capture Type Coverage
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 4890633-20260709221654: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/4890633-20260709221654/component-matrix.json, page runs/4890633-20260709221654/
 - b7cbd7d-20260709142821: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/b7cbd7d-20260709142821/component-matrix.json, page runs/b7cbd7d-20260709142821/
 - 3748ea5-20260709083602: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/3748ea5-20260709083602/component-matrix.json, page runs/3748ea5-20260709083602/
 - f00de08-20260709073651: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/f00de08-20260709073651/component-matrix.json, page runs/f00de08-20260709073651/

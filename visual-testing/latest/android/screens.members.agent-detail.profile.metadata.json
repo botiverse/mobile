@@ -16,8 +16,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 527,
-                  "dominantRatio": 0.8905699
+                  "uniqueColors": 530,
+                  "dominantRatio": 0.89052135
                 }
               },
               "diagnostics": {
@@ -27,10 +27,10 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 266,
-    "laidOutViews": 260,
+    "totalViews": 267,
+    "laidOutViews": 261,
     "visibleContentLeafViews": 2
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783606881173"
+              "capturedAt": "1783634845255"
             }
