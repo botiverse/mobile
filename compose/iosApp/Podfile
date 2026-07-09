@@ -12,4 +12,28 @@ target 'iosApp' do
   pod 'SDWebImage'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.0'
+
+  # task #423: the moko/TMM kmmresource plugin packs the `MR` resource bundle
+  # (strings + the reaction sprite atlas) into the shared klib/framework. Because
+  # `shared` is a *static* framework, that `.bundle` is not auto-copied into the
+  # .app, so the plugin's `copyFrameworkResourcesToApp` task copies it out of the
+  # built framework (resource-core >= 0.1.0-raft.2 lands the bundle at the
+  # framework root and reads the Xcode destination from these gradle -P props).
+  # Without this build phase, any `MR.*` access throws
+  # FileFailedToInitializeException on iOS.
+  script_phase :name => 'Copy kmmresource MR bundle to app',
+    :execution_position => :after_compile,
+    :shell_path => '/bin/sh',
+    :script => <<-CMD
+set -e
+# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),
+# one level up from this target's $SRCROOT (compose/iosApp).
+GRADLE_ROOT="$SRCROOT/.."
+"$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
+  -Ptmm.resources.BUILT_PRODUCTS_DIR="$BUILT_PRODUCTS_DIR" \\
+  -Ptmm.resources.CONTENTS_FOLDER_PATH="$CONTENTS_FOLDER_PATH" \\
+  -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\
+  -Ptmm.resources.PLATFORM_NAME="$PLATFORM_NAME" \\
+  -Ptmm.resources.ARCHS="$ARCHS"
+CMD
 end

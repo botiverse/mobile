@@ -82,7 +82,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the SlockHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.12")
@@ -91,7 +91,7 @@ kotlin {
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.1")
+                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
             }
         }
         val androidMain by getting {
