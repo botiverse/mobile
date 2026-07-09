@@ -596,7 +596,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       run_id: ${{ steps.pairs.outputs.run_id }}
-      current: ${{ steps.pairs.outputs.current }}
+      pairs: ${{ steps.pairs.outputs.pairs }}
       published: ${{ steps.pairs.outputs.published }}
     steps:
       - name: Checkout mobile
@@ -711,26 +711,27 @@ jobs:
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: |
-          # ios joins the pair list only when its captures are present, so a
-          # red/absent ios leg degrades to the classic react__android site.
-          CURRENT="android"
+          # Pair list per the provider-pair-first spec (task #430): cross-platform
+          # android__ios is a default pair. ios legs are additive — a red/absent
+          # ios leg degrades to the classic react__android-only site.
+          PAIRS="react__android"
           if [ -d visual-testing-results/ios ] && [ -n "$(ls visual-testing-results/ios/*.png 2>/dev/null)" ]; then
-            CURRENT="android,ios"
+            PAIRS="react__android,react__ios,android__ios"
           fi
-          echo "diff pairs: baseline=react current=$CURRENT"
-          node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
+          echo "diff pairs: $PAIRS"
+          node scripts/slock-visual-testing.mjs diff --pairs "$PAIRS"
           # AI analysis runs in the ai-analysis job AFTER this site publishes
           # (images first — artin 2026-07-09); seeded prior notes render as
           # cached/stale meanwhile.
-          node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
-          node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
-          echo "CURRENT=$CURRENT" >> "$GITHUB_ENV"
+          node scripts/slock-visual-testing.mjs report --pairs "$PAIRS"
+          node scripts/slock-visual-testing.mjs site --pairs "$PAIRS"
+          echo "PAIRS=$PAIRS" >> "$GITHUB_ENV"
           # Stable run id shared by this job's publish and the ai-analysis
           # republish so both write the same runs/<id> + latest generation.
           RUN_ID="$(git rev-parse --short HEAD)-$(date -u +%Y%m%d%H%M%S)"
           echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "pairs=$PAIRS" >> "$GITHUB_OUTPUT"
           echo "published=${{ inputs.publish || inputs.site_only || github.event_name == 'schedule' }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload site artifact
@@ -749,8 +750,8 @@ jobs:
           git config user.name "raft-visual-bot"
           git config user.email "visual-testing@raft.build"
           git fetch origin gh-pages:refs/remotes/origin/gh-pages || echo "no existing gh-pages branch"
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --run-id "$RUN_ID" --dry-run
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --run-id "$RUN_ID"
+          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID" --dry-run
+          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "${PAIRS:-react__android}" --repo-dir . --run-id "$RUN_ID"
 
   # AI diff analysis, decoupled from the image publish (artin 2026-07-09:
   # "图先出来，AI 并行异步"). Runs after the site is live, re-analyzes only
@@ -832,15 +833,15 @@ jobs:
             exit 0
           fi
           export MINIMAX_API_KEY="$PI_API_KEY"
-          CURRENT="android"
+          PAIRS="react__android"
           if [ -d visual-testing-results/ios ] && [ -n "$(ls visual-testing-results/ios/*.png 2>/dev/null)" ]; then
-            CURRENT="android,ios"
+            PAIRS="react__android,react__ios,android__ios"
           fi
-          node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
-          node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" \
+          node scripts/slock-visual-testing.mjs diff --pairs "$PAIRS"
+          node scripts/slock-visual-testing.mjs analyze --pairs "$PAIRS" \
             || { echo "::warning::AI diff analysis failed; site keeps previous notes"; exit 0; }
-          node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
-          node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
+          node scripts/slock-visual-testing.mjs report --pairs "$PAIRS"
+          node scripts/slock-visual-testing.mjs site --pairs "$PAIRS"
           # Generation guard (write-back protection): only republish if the
           # live site still shows OUR run id. A newer publish supersedes this
           # analysis — drop the write, never overwrite newer images.
@@ -852,4 +853,4 @@ jobs:
           fi
           git config user.name "raft-visual-bot"
           git config user.email "visual-testing@raft.build"
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "$CURRENT" --repo-dir . --run-id "$RUN_ID"
+          node scripts/slock-visual-testing.mjs publish-gh-pages --pairs "$PAIRS" --repo-dir . --run-id "$RUN_ID"
