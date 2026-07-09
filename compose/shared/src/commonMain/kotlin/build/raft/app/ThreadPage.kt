@@ -1973,19 +1973,9 @@ private fun ThreadMessageVisualScreenContent() {
         remember(visualFixture, instanceId) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
         }
-    val visualAuthStore =
-        remember {
-            SlockSharedStoreRegistry.get(Utils.currentBridgeModule()).authStore
-        }
-    var currentVisualSession by remember(visualAuthStore) { mutableStateOf<StoredAuthSession?>(null) }
-    LaunchedEffect(visualAuthStore) {
-        currentVisualSession =
-            runCatchingPreservingCancellation { visualAuthStore.readSession() }
-                .getOrNull()
-    }
     val highlightedMentions =
-        remember(visualFixture, currentVisualSession) {
-            threadVisualFixtureHighlightedMentions(visualFixture, currentVisualSession)
+        remember(visualFixture) {
+            threadVisualFixtureHighlightedMentions(visualFixture)
         }
     val knownMarkdownChannelNames =
         remember(payload.knownMarkdownChannelNames) {
@@ -7745,11 +7735,13 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
     }.orEmpty()
 
 internal fun threadVisualFixtureHighlightedMentions(
-    visualFixture: String,
-    session: StoredAuthSession?
+    visualFixture: String
 ): Set<String> =
     if (visualFixture.requiresViewerSelfMentionContext()) {
-        session.threadSelfMentionNames()
+        // Visual fixtures must be deterministic and match the React fixture's
+        // declared viewer. Do not let a runner's persisted login (or the lack
+        // of one) change self-mention chrome between captures.
+        setOf("artin")
     } else {
         emptySet()
     }
