@@ -199,6 +199,25 @@ done
 [ -f "${IPA_PATH}" ] || die "IPA not found: ${IPA_PATH}"
 [ -f "${DSYM_PATH}" ] || die "dSYM zip not found: ${DSYM_PATH}"
 
+# CFBundleIdentifier straight from the signed IPA (Payload/*.app/Info.plist is
+# a binary plist; python3 plistlib reads it natively). The TestFlight upload
+# lane uses this to locate the App Store Connect app record, so it must be
+# what the IPA actually carries — not a passed-in guess.
+BUNDLE_ID="$(python3 - "${IPA_PATH}" <<'PY'
+import plistlib, re, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    names = [n for n in z.namelist() if re.fullmatch(r"Payload/[^/]+\.app/Info\.plist", n)]
+    if not names:
+        raise SystemExit("no Payload/*.app/Info.plist in IPA")
+    with z.open(names[0]) as f:
+        print(plistlib.load(f).get("CFBundleIdentifier", ""))
+PY
+)" || BUNDLE_ID=""
+if [ -z "${BUNDLE_ID}" ]; then
+  BUNDLE_ID="${SLOCK_IOS_BUNDLE_ID:-}"
+fi
+[ -n "${BUNDLE_ID}" ] || die "could not read CFBundleIdentifier from IPA (set SLOCK_IOS_BUNDLE_ID to override)"
+
 GIT_COMMIT="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 GIT_SHORT="$(git -C "${ROOT_DIR}" rev-parse --short=8 HEAD)"
 GIT_BRANCH="$(git -C "${ROOT_DIR}" rev-parse --abbrev-ref HEAD)"
@@ -220,6 +239,7 @@ mkdir -p "${ARTIFACT_DIR}"
   printf '  "channel": %s,\n' "$(json_string "${CHANNEL}")"
   printf '  "product_type": "ios-ipa",\n'
   printf '  "platform": "ios",\n'
+  printf '  "bundle_id": %s,\n' "$(json_string "${BUNDLE_ID}")"
   printf '  "version_name": %s,\n' "$(json_string "${VERSION_NAME}")"
   printf '  "version_code": %s,\n' "$(json_string "${VERSION_CODE}")"
   printf '  "release_type": %s,\n' "$(json_string "${RELEASE_TYPE}")"
@@ -254,6 +274,7 @@ mkdir -p "${ARTIFACT_DIR}"
 echo "Prepared Hands iOS release artifacts:"
 echo "  IPA:      ${IPA_PATH}"
 echo "  dSYM:     ${DSYM_PATH}"
+echo "  Bundle:   ${BUNDLE_ID}"
 echo "  Metadata: ${METADATA_PATH}"
 
 if [ "${DRY_RUN}" = "1" ]; then
