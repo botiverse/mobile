@@ -591,6 +591,9 @@ internal class Border(
 internal fun Modifier.border(border: Border) =
     this.border(width = border.lineWidth, color = border.color).slockSquareCorners()
 
+internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
+    textStyle.withResolvedSlockFontFamily()
+
 @Composable
 internal fun TextField(
     modifier: Modifier = Modifier,
@@ -645,11 +648,12 @@ internal fun TextField(
                 lastFocus = false
             }
         }
+    val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
     BasicTextField(
         modifier = updatedModifier,
         value = value,
         onValueChange = currentOnValueChange,
-        textStyle = textStyle,
+        textStyle = resolvedTextStyle,
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,
@@ -663,8 +667,8 @@ internal fun TextField(
                 if (value.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
-                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
-                        color = placeholderColor ?: textStyle.color,
+                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                        color = placeholderColor ?: resolvedTextStyle.color,
                         maxLines = maxLines,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -730,11 +734,12 @@ internal fun TextField(
                 lastFocus = false
             }
         }
+    val resolvedTextStyle = slockTextFieldResolvedTextStyle(textStyle)
     BasicTextField(
         modifier = updatedModifier,
         value = value,
         onValueChange = currentOnValueChange,
-        textStyle = textStyle,
+        textStyle = resolvedTextStyle,
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,
@@ -748,8 +753,8 @@ internal fun TextField(
                 if (value.text.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
-                        style = textStyle.copy(color = placeholderColor ?: textStyle.color),
-                        color = placeholderColor ?: textStyle.color,
+                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                        color = placeholderColor ?: resolvedTextStyle.color,
                         maxLines = maxLines,
                         overflow = TextOverflow.Ellipsis
                     )

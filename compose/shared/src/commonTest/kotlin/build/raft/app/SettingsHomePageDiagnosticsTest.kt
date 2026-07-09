@@ -17,6 +17,7 @@ import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsRecompositionProfilerSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SettingsServerAdminSnapshot
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,6 +25,31 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
+    @Test
+    fun settingsVisualDetailHeadersDoNotRenderSubtitle() {
+        assertEquals("", settingsVisualHeaderSubtitle("account-provider-linked"))
+        assertEquals("", settingsVisualHeaderSubtitle("administration"))
+        assertEquals("", settingsVisualHeaderSubtitle("connected-apps"))
+    }
+
+    @Test
+    fun textFieldsResolveSlockInputFontFamily() {
+        assertEquals(
+            SlockType.Input.fontFamily,
+            slockTextFieldResolvedTextStyle(TextStyle.Default).fontFamily
+        )
+        assertEquals(
+            SlockType.Input.fontFamily,
+            slockTextFieldResolvedTextStyle(SlockType.Input.copy(fontFamily = null)).fontFamily
+        )
+    }
+
+    @Test
+    fun settingsAccountInputForegroundUsesSpaceMono() {
+        assertEquals(SlockMonoFamily, settingsAccountInputTextStyle().fontFamily)
+        assertEquals(SlockMonoFamily, settingsAccountInputTextStyle(SlockColor.TextMutedGray).fontFamily)
+    }
+
     @Test
     fun feedbackComposerBottomPaddingLiftsAboveKeyboard() {
         assertEquals(
