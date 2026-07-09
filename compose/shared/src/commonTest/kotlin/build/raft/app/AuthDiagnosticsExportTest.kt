@@ -51,4 +51,23 @@ class AuthDiagnosticsExportTest {
         assertFalse(text.contains("secret"))
         assertFalse(text.contains("artin@slock.ai"))
     }
+
+    @Test
+    fun signedOutFeedbackMessageIdentifiesTheSourceWithoutCredentials() {
+        val text =
+            buildSignedOutAuthDiagnosticsFeedbackMessage(
+                SharedSettingsAboutSnapshot(
+                    versionLabel = "1.2.0",
+                    buildLabel = "1020000",
+                    sourceLabel = "source-123",
+                    signedInUserLabel = "artin@raft.build"
+                )
+            )
+
+        assertContains(text, "Signed-out auth diagnostics report")
+        assertContains(text, "Version: 1.2.0")
+        assertContains(text, "Build: 1020000")
+        assertContains(text, "Source: source-123")
+        assertFalse(text.contains("artin@raft.build"))
+    }
 }
