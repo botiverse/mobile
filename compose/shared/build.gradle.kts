@@ -63,7 +63,7 @@ kotlin {
             license = "MIT"
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
-        extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
+        extraSpecAttributes["resources"] = "['src/commonMain/assets/**', 'src/commonMain/resources/MR/assets/**']"
     }
 
     sourceSets {

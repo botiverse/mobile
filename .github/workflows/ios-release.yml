@@ -351,6 +351,8 @@ jobs:
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
           [ -d "${APP_PATH}/build.raft.app.resources.MR.bundle" ] || { echo "MR bundle missing from app" >&2; exit 1; }
           find "${APP_PATH}/build.raft.app.resources.MR.bundle" -name 'Localizable.strings' -type f | grep -q . || { echo "MR Localizable.strings missing" >&2; exit 1; }
+          echo "DEBUG: reaction_atlas_v1.png locations anywhere in the IPA payload:"
+          find "${TMP_DIR}/ipa/Payload" -name 'reaction_atlas_v1.png' || echo "  (not found anywhere in IPA)"
           find "${APP_PATH}/build.raft.app.resources.MR.bundle" -name 'reaction_atlas_v1.png' -type f | grep -q . || { echo "reaction atlas missing" >&2; exit 1; }
           find "${APP_PATH}" -name 'SDWebImageSVGCoder.framework' -type d | grep -q . || { echo "SDWebImageSVGCoder.framework missing" >&2; exit 1; }
 
