@@ -674,6 +674,14 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun sidebarSectionChevronAlignsWithTopActionIconColumn() {
+        assertEquals(
+            HomeSidebarTopActionIconStartInset,
+            HomeSidebarSectionChevronStartInset
+        )
+    }
+
+    @Test
     fun homeSidebarSelectionPrefersPinnedSectionForPinnedIdEvenWhenInChannelOrDm() {
         // #211: a pinned id that is still listed in `channels` /
         // `directMessages` (the server returns the full set; the visual

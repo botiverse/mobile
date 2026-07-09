@@ -147,6 +147,8 @@ private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
+internal val HomeSidebarTopActionIconStartInset = HomeListHorizontalPadding + SidebarRowHorizontalPadding
+internal val HomeSidebarSectionChevronStartInset = HomeSidebarTopActionIconStartInset
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -1155,7 +1157,7 @@ internal fun SlockStructuralHomeShell(
                                                 sortMenuAnchor = anchor
                                             }
                                         },
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        modifier = Modifier.homeSidebarSectionHeaderPadding()
                                     )
                                 }
                                 if (pinnedExpanded) {
@@ -1257,7 +1259,7 @@ internal fun SlockStructuralHomeShell(
                                         sortMenuAnchor = anchor
                                     }
                                 },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                modifier = Modifier.homeSidebarSectionHeaderPadding()
                             ) {
                                 SlockSectionHeaderIconAction(SlockLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
                             }
@@ -1310,7 +1312,7 @@ internal fun SlockStructuralHomeShell(
                                     expanded = jointChannelsExpanded,
                                     onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                     showCollapsedUnreadDot = jointChannelSectionHasUnread,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                    modifier = Modifier.homeSidebarSectionHeaderPadding()
                                 )
                             }
                             if (jointChannelsExpanded) {
@@ -1362,7 +1364,7 @@ internal fun SlockStructuralHomeShell(
                                         sortMenuAnchor = anchor
                                     }
                                 },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                modifier = Modifier.homeSidebarSectionHeaderPadding(),
                                 trailingContent = null
                             )
                         }
@@ -2962,6 +2964,9 @@ private fun SidebarActivityRow(
         onClick = onClick
     )
 }
+
+private fun Modifier.homeSidebarSectionHeaderPadding(): Modifier =
+    padding(start = HomeSidebarSectionChevronStartInset, end = HomeListHorizontalPadding)
 
 @Composable
 private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
