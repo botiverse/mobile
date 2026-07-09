@@ -130,6 +130,13 @@ class AndroidAppScopeRealtimeOwnerTest {
         assertFalse(backgroundRuntime.isAppInForeground)
     }
 
+    @Test
+    fun apiEnvironmentChangeDisposesAppScopeRealtimeRuntime() {
+        assertTrue(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("api_environment_changed"))
+        assertFalse(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("logout"))
+        assertFalse(AndroidAppScopeRealtimeOwner.shouldDisposeRuntimeForSessionEnd("server_switch"))
+    }
+
     private fun message(
         channelId: String? = null,
         threadChannelId: String? = null,

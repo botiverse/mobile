@@ -24,11 +24,12 @@ enum GeneratedRealtimeContract {
         static let authInvalid = "auth_invalid"
         static let logout = "logout"
         static let processTeardown = "process_teardown"
+        static let apiEnvironmentChanged = "api_environment_changed"
         static let serverDeleted = "server_deleted"
         static let serverMembershipRemoved = "server_membership_removed"
         static let serverRemoved = "server_removed"
         static let serverSwitch = "server_switch"
-        static let sessionEnd: Set<String> = [DisconnectReason.authInvalid, DisconnectReason.logout, DisconnectReason.processTeardown, DisconnectReason.serverDeleted, DisconnectReason.serverMembershipRemoved, DisconnectReason.serverRemoved, DisconnectReason.serverSwitch]
+        static let sessionEnd: Set<String> = [DisconnectReason.authInvalid, DisconnectReason.logout, DisconnectReason.processTeardown, DisconnectReason.apiEnvironmentChanged, DisconnectReason.serverDeleted, DisconnectReason.serverMembershipRemoved, DisconnectReason.serverRemoved, DisconnectReason.serverSwitch]
     }
 
     enum SocketEvent {

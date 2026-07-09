@@ -68,6 +68,7 @@ class SlockRealtimeAppScopePolicyTest {
     @Test
     fun sessionEndReasonsAreExplicit() {
         assertTrue(SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason("logout"))
+        assertTrue(SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason("api_environment_changed"))
         assertTrue(SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason("server_switch"))
         assertFalse(SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason("temporary_background"))
     }

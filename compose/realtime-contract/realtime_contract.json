@@ -20,6 +20,7 @@
       "auth_invalid",
       "logout",
       "process_teardown",
+      "api_environment_changed",
       "server_deleted",
       "server_membership_removed",
       "server_removed",

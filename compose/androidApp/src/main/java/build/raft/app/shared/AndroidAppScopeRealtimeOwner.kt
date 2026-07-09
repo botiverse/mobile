@@ -401,6 +401,10 @@ internal object AndroidAppScopeRealtimeOwner {
             true
         }
         if (!disconnected) return
+        if (shouldDisposeRuntimeForSessionEnd(cleanReason)) {
+            realtimeClient = null
+            realtimeRuntime = null
+        }
         backgroundKeepAliveEnabled = false
     }
 
@@ -514,6 +518,9 @@ internal object AndroidAppScopeRealtimeOwner {
             AppVisibility.Background -> runtime.onAppHidden()
         }
     }
+
+    internal fun shouldDisposeRuntimeForSessionEnd(reason: String): Boolean =
+        reason == GeneratedRealtimeContract.DisconnectReason.ApiEnvironmentChanged
 
     internal enum class AppVisibility {
         Foreground,
