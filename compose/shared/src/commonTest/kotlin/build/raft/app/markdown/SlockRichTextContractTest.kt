@@ -44,6 +44,29 @@ class SlockRichTextContractTest {
     }
 
     @Test
+    fun inlineCodeShieldsMentionsChannelsThreadsAndTasksFromSlockRefs() {
+        val body = "Plain @artin #markdown专修 then `@artin #markdown专修:692d9e88 task #42 #99`"
+        val document =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(
+                    knownChannels = setOf("markdown专修"),
+                    knownMentions = setOf("artin"),
+                    viewerUserId = "artin",
+                    knownTaskNumbers = setOf(42, 99)
+                )
+            )
+
+        val refs = document.inlineTokens.filter { it.kind == SlockRichTextInlineKind.SlockRef }
+        val inlineCode = document.inlineTokens.single { it.kind == SlockRichTextInlineKind.InlineCode }
+
+        assertEquals(listOf("@artin", "#markdown专修"), refs.map { it.text })
+        assertEquals("`@artin #markdown专修:692d9e88 task #42 #99`", inlineCode.sourceText)
+        assertEquals("@artin #markdown专修:692d9e88 task #42 #99", inlineCode.text)
+        assertEquals(listOf("@artin", "#markdown专修"), document.actions.map { it.label })
+    }
+
+    @Test
     fun viewerContextDeterminesSelfMentionChrome() {
         val body = "Ping @artin"
         val selfView =

@@ -1980,17 +1980,19 @@ private fun ThreadMessageVisualScreenContent() {
         remember(visualFixture, instanceId) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
         }
+    val visualAuthStore =
+        remember {
+            SlockSharedStoreRegistry.get(Utils.currentBridgeModule()).authStore
+        }
+    var currentVisualSession by remember(visualAuthStore) { mutableStateOf<StoredAuthSession?>(null) }
+    LaunchedEffect(visualAuthStore) {
+        currentVisualSession =
+            runCatchingPreservingCancellation { visualAuthStore.readSession() }
+                .getOrNull()
+    }
     val highlightedMentions =
-        remember(visualFixture) {
-            if (
-                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
-                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
-                visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP
-            ) {
-                setOf("artin")
-            } else {
-                emptySet()
-            }
+        remember(visualFixture, currentVisualSession) {
+            threadVisualFixtureHighlightedMentions(visualFixture, currentVisualSession)
         }
     val knownMarkdownChannelNames =
         remember(payload.knownMarkdownChannelNames) {
@@ -7699,6 +7701,21 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
             .filter { it.isNotBlank() }
             .toSet()
     }.orEmpty()
+
+internal fun threadVisualFixtureHighlightedMentions(
+    visualFixture: String,
+    session: StoredAuthSession?
+): Set<String> =
+    if (visualFixture.requiresViewerSelfMentionContext()) {
+        session.threadSelfMentionNames()
+    } else {
+        emptySet()
+    }
+
+private fun String.requiresViewerSelfMentionContext(): Boolean =
+    this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP
 
 internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
     KuiklyPendingMentionActionItem(

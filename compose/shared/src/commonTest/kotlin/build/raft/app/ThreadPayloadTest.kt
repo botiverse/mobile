@@ -1059,6 +1059,35 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun visualRichTextFixturesUseViewerSessionForSelfMentionContext() {
+        val session =
+            StoredAuthSession(
+                user =
+                    StoredAuthUser(
+                        id = "user-cindy",
+                        email = "cindy@example.com",
+                        name = "@cindy",
+                        displayName = "Cindy"
+                    ),
+                accessToken = "token",
+                refreshToken = "refresh"
+            )
+
+        assertEquals(
+            setOf("cindy"),
+            threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE, session)
+        )
+        assertEquals(
+            emptySet(),
+            threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, session)
+        )
+        assertEquals(
+            emptySet(),
+            threadVisualFixtureHighlightedMentions(THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE, null)
+        )
+    }
+
+    @Test
     fun standaloneThreadAuthRequiredPreservesExistingSession() {
         val session =
             StoredAuthSession(
