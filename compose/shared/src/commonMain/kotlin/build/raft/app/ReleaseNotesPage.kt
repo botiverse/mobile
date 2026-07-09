@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
-import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
@@ -95,15 +94,13 @@ private fun ReleaseNotesScreen() {
             iconName = SlockLucideIconName.FileText,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
+                SlockTopPageHeaderAction(
+                    icon = SlockLucideIconName.ArrowLeft,
                     onClick = {
                         pager.acquireModule<com.tencent.kuikly.core.module.RouterModule>(
                             com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
                         ).closePage()
-                    },
-                    size = 30.dp,
-                    shadowOffset = 2.dp
+                    }
                 )
             }
         )

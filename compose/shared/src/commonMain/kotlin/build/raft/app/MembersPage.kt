@@ -2129,12 +2129,7 @@ private fun MemberDetailRoutePageShell(
             iconName = SlockLucideIconName.Users,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onBack,
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
+                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -3556,11 +3551,7 @@ private fun MembersDetailHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockBrutalIconButton(
-                iconName = SlockLucideIconName.ArrowLeft,
-                onClick = onBack,
-                size = MembersActionSize
-            )
+            SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
             MembersAvatar(
                 member = member,
                 avatarSize = 36.dp,
@@ -8163,12 +8154,7 @@ private fun MembersPageHeader(
         refreshing = refreshing,
         leadingContent = if (onBack != null) {
             {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onBack,
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
+                SlockTopPageHeaderAction(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
             }
         } else {
             null
