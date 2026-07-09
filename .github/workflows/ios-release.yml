@@ -68,9 +68,10 @@ on:
         default: false
 
 env:
-  # Heap/JVM args live in compose/gradle.properties (org.gradle.jvmargs +
-  # kotlin.daemon.jvm.options), which take precedence over any -Xmx here — so
-  # set the heap there, not in GRADLE_OPTS (a -Xmx here is silently overridden).
+  # Do NOT set -Xmx here: gradle.properties (project + $GRADLE_USER_HOME) takes
+  # precedence over GRADLE_OPTS, so a -Xmx here is silently overridden. The iOS
+  # archive heap is raised per-runner in the "Raise Gradle/Kotlin heap" step via
+  # $GRADLE_USER_HOME/gradle.properties (keeps the shared project file at 4g).
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
   GRADLE_MAX_WORKERS: "1"
 
@@ -162,6 +163,21 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
+
+      - name: Raise Gradle/Kotlin heap for the iOS archive (this runner only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # compose/gradle.properties caps the build JVM and Kotlin daemon at
+          # 4g, which OOMs Kotlin/Native ObjC-framework generation for the shared
+          # module during archive. Override it via $GRADLE_USER_HOME/gradle.properties
+          # (higher precedence than the project file), scoped to THIS macOS
+          # runner only — so Android CI (ubuntu) and local dev keep their 4g.
+          # macos-14-xlarge has ~30GB RAM, so 8g leaves ample room for Xcode/clang.
+          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+          mkdir -p "$GUH"
+          printf '%s\n' 'org.gradle.jvmargs=-Xmx8g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx8g,-Xss4m"' >> "$GUH/gradle.properties"
+          echo "Wrote iOS-scoped 8g heap to $GUH/gradle.properties"
 
       - name: Write GitHub Packages credentials
         shell: bash
