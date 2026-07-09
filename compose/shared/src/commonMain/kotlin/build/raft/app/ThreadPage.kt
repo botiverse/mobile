@@ -14244,22 +14244,27 @@ private fun ThreadQuickReactionGlyph(
     modifier: Modifier = Modifier,
     reactionAtlasImage: ImageBitmap? = null
 ) {
-    // task #421: on platforms where the sprite atlas can't load (iOS — asset not
-    // bundled), skip sprite rendering entirely and fall through to the emoji
-    // glyph, rather than drawing a blank atlas rect.
-    val sprite = if (spriteAtlasAvailable) ThreadReactionSpriteCatalogV1.resolve(emoji) else null
+    // task #421 / #423: use the sprite path only when the atlas bitmap has
+    // actually decoded. Since task #423 the MR bundle resolves on iOS too (so
+    // `spriteAtlasAvailable` is now true there), but the atlas ImageBitmap may
+    // still fail to decode in some environments — gating on mere bundle
+    // availability then drew a *blank* atlas rect instead of falling back to the
+    // emoji glyph. Gate on the decoded image (the same value the sprite glyph
+    // draws), so an undecoded atlas falls through to the emoji, never blank.
+    val atlasImage = reactionAtlasImage ?: LocalThreadReactionAtlasImage.current
+    val sprite = if (atlasImage != null) ThreadReactionSpriteCatalogV1.resolve(emoji) else null
     if (sprite != null) {
         ThreadReactionSpriteGlyph(
             sprite = sprite,
             modifier = modifier,
-            reactionAtlasImage = reactionAtlasImage
+            reactionAtlasImage = atlasImage
         )
         return
     }
     ThreadReactionGlyphDiagnosticLog(
         path = "legacy_no_sprite",
         emoji = emoji,
-        detail = "reason=no_manifest_match"
+        detail = if (atlasImage == null) "reason=atlas_not_decoded" else "reason=no_manifest_match"
     )
     ThreadTextReactionGlyph(emoji = emoji, modifier = modifier)
 }
