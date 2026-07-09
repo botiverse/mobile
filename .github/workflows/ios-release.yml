@@ -78,7 +78,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve release parameters
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
       version_major: ${{ steps.p.outputs.version_major }}
       version_minor: ${{ steps.p.outputs.version_minor }}
@@ -126,7 +126,7 @@ jobs:
 
   build_ios_release:
     name: Build + sign IPA
-    runs-on: macos-14-xlarge
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 60
     needs: resolve
     outputs:
@@ -405,7 +405,7 @@ jobs:
 
   publish_hands:
     name: Publish to Hands
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_ios_release]
     if: needs.resolve.outputs.publish_hands == 'true'
@@ -514,7 +514,7 @@ jobs:
 
   upload_testflight:
     name: Upload to TestFlight
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 30
     needs: [resolve, build_ios_release, publish_hands]
     if: |

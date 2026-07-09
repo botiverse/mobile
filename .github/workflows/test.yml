@@ -50,7 +50,7 @@ jobs:
   # same entries instead of rebuilding per (job, os) combination.
   kuikly-artifacts:
     name: Kuikly fork artifacts (prebuild)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -180,7 +180,7 @@ jobs:
   # other's build.
   fork-deps:
     name: Shared fork dependencies (prebuild)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 60
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -358,7 +358,7 @@ jobs:
 
   android:
     name: Android compile & tests
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: kuikly-artifacts
     timeout-minutes: 30
     env:
@@ -435,7 +435,7 @@ jobs:
     # OHOS shared compile on PRs already catch shared-code breaks; iOS-specific
     # regressions are caught on main/nightly. (artin, 2026-07-08.)
     if: ${{ github.event_name != 'pull_request' }}
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 75
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
@@ -531,7 +531,7 @@ jobs:
 
   ohos:
     name: OHOS shared compile
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     env:
@@ -635,7 +635,7 @@ jobs:
   # fork-dependency mavenLocal set as the ohos job is published first.
   ohos-host:
     name: OHOS host (hvigor/ArkTS) compile
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     container:
