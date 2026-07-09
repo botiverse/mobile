@@ -6,6 +6,7 @@ Outputs by default:
 - Android Compose ImageVector catalog
 - OHOS raw SVG resources and Path registry
 - Shared Kuikly icon name registry
+- iOS asset catalog SVG imagesets
 - Shared/OHOS/iOS bundled brand SVG assets used by assets:// image URLs
 
 Requirements for Android generation:
@@ -1083,6 +1084,23 @@ def generate_brand_assets(shared_asset_output, ohos_resfile_output, ios_asset_ca
     )
 
 
+def generate_ios(icons, version, ios_asset_catalog, lucide_source_dir):
+    ios_asset_catalog = os.path.abspath(ios_asset_catalog)
+    for icon in icons:
+        asset_name = normalize_icon_name(icon)
+        svg_text = read_lucide_svg(
+            asset_name,
+            version,
+            fallback_dir=None,
+            lucide_source_dir=lucide_source_dir,
+        ).strip() + "\n"
+        filename = f"{asset_name}.svg"
+        imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
+        write_text(os.path.join(imageset_dir, filename), svg_text)
+        write_text(os.path.join(imageset_dir, "Contents.json"), ios_imageset_contents(filename))
+    print(f"Generated {len(icons)} iOS Lucide SVG assets -> {ios_asset_catalog}")
+
+
 def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
     all_icons = [*BRAND_SVGS.keys(), *icons]
     cases = []
@@ -1207,7 +1225,7 @@ def generate_shared_catalog(icons, output):
 
 def parse_targets(value):
     targets = {part.strip().lower() for part in value.split(",") if part.strip()}
-    valid = {"android", "ohos", "shared", "brand-assets"}
+    valid = {"android", "ohos", "ios", "shared", "brand-assets"}
     unknown = targets - valid
     if unknown:
         raise argparse.ArgumentTypeError(f"Unknown target(s): {', '.join(sorted(unknown))}")
@@ -1233,7 +1251,7 @@ def main():
     parser.add_argument("--all-lucide-icons", action="store_true")
     args = parser.parse_args()
 
-    lucide_targets = args.targets & {"android", "ohos", "shared"}
+    lucide_targets = args.targets & {"android", "ohos", "ios", "shared"}
     lucide_source_dir = None
     icons = []
     if lucide_targets:
@@ -1263,6 +1281,13 @@ def main():
             args.version,
             os.path.abspath(args.ohos_output),
             os.path.abspath(args.ohos_resfile_output),
+            lucide_source_dir,
+        )
+    if "ios" in args.targets:
+        generate_ios(
+            icons,
+            args.version,
+            os.path.abspath(args.ios_asset_catalog),
             lucide_source_dir,
         )
     if "shared" in args.targets:
