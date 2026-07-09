@@ -526,6 +526,9 @@ jobs:
               continue
             fi
             xcrun simctl io "$UDID" screenshot "visual-testing-results/ios/$case_id.png"
+            # task #441: stash any SLOCK_RICHTEXT_CAPS marker line(s) printed
+            # after the first frame so the metadata step can merge per-case caps.
+            grep "SLOCK_RICHTEXT_CAPS " /tmp/launch.log > "visual-testing-results/ios/$case_id.caps.log" 2>/dev/null || true
             echo "[$i/$total] $case_id OK"
           done < /tmp/ios-cases.tsv
           captured=$(ls visual-testing-results/ios/*.png 2>/dev/null | wc -l | tr -d ' ')
@@ -560,6 +563,13 @@ jobs:
                   json.dump(meta, out, indent=2)
           print('metadata written for', len(glob.glob('visual-testing-results/ios/*.metadata.json')), 'cases')
           "
+          # task #441: merge the SLOCK_RICHTEXT_CAPS marker into each case's
+          # metadata (site reads richTextCapabilities + declaredDivergences).
+          # No marker for a case -> keys stay absent (unknown, never defaulted).
+          python3 scripts/collect_richtext_caps.py \
+            --metadata-dir visual-testing-results/ios \
+            --log-for 'visual-testing-results/ios/%s.caps.log' || true
+          rm -f visual-testing-results/ios/*.caps.log
           if [ "$captured" -eq 0 ]; then
             echo "::error::no cases captured"; exit 1
           fi
