@@ -4,8 +4,11 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
-// No native controller on the iOS video host yet; shared controls stay.
-internal actual fun slockPlatformUsesNativeVideoController(): Boolean = false
+// task #11: the iOS video host embeds AVPlayerViewController — the system's
+// mature controller (scrub, ±15s, fullscreen) owns the surface, so the
+// shared minimal controls stay out of its way (same switch as Android's
+// Media3 PlayerView, task #556 phase 2).
+internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
