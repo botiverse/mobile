@@ -1,5 +1,6 @@
 package build.raft.app
 
+import com.tencent.kuikly.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -40,5 +41,18 @@ class SettingsHomeSearchHighlightTest {
         )
         assertEquals(SlockColor.BrandYellow, annotated.spanStyles.single().item.background)
         assertEquals(SlockColor.TextBlack, annotated.spanStyles.single().item.color)
+    }
+
+    @Test
+    fun searchResultTimestampsUseReactMonoMetadataFont() {
+        val regular = sharedHomeSearchTimestampTextStyle(compact = false)
+        val compact = sharedHomeSearchTimestampTextStyle(compact = true)
+
+        assertEquals(SlockMonoFamily, regular.fontFamily)
+        assertEquals(10.sp, regular.fontSize)
+        assertEquals(12.sp, regular.lineHeight)
+        assertEquals(SlockMonoFamily, compact.fontFamily)
+        assertEquals(9.sp, compact.fontSize)
+        assertEquals(11.sp, compact.lineHeight)
     }
 }
