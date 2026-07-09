@@ -1880,21 +1880,16 @@ private fun SlockFilePreviewVideoPanel(
                     title = fallbackMessage.ifBlank { "Video preview is unavailable." },
                     detail = name.ifBlank { meta }
                 )
-            } else if (audioOnly) {
+            } else if (audioOnly && !nativeController) {
                 // Audio sources render no frames — keep a persistent music
                 // visual over the surface instead of a black box (task #556).
-                // With the native controller its center play/seek cluster owns
-                // the middle of the surface, so the visual moves to the top.
+                // With the native controller the card is dropped entirely
+                // (task #15): its play/seek cluster owns the surface and the
+                // page header already shows the file name and meta.
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.FileMusic,
                     title = name.ifBlank { "Audio preview" },
-                    detail = meta,
-                    modifier =
-                        if (nativeController) {
-                            Modifier.align(Alignment.TopCenter).padding(top = SlockSpacing.Md)
-                        } else {
-                            Modifier
-                        }
+                    detail = meta
                 )
             } else if (!nativeController && !firstFrameVisible && !isPlaying) {
                 SlockFilePreviewVideoOverlayText(
