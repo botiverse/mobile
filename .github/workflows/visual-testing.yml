@@ -576,10 +576,13 @@ jobs:
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
     runs-on: ubuntu-latest
-    # 60 not 30: AI analysis re-runs every case whose image changed; a round
-    # after a big fix (e.g. 40+ new iOS frames) needs >30min and run
-    # 28996493997 was killed mid-analysis at exactly the old 30min cap.
-    timeout-minutes: 60
+    # AI analysis moved to the ai-analysis job (images publish first, per
+    # artin 2026-07-09); without it diff/report/site fits well inside 30.
+    timeout-minutes: 30
+    outputs:
+      run_id: ${{ steps.pairs.outputs.run_id }}
+      current: ${{ steps.pairs.outputs.current }}
+      published: ${{ steps.pairs.outputs.published }}
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
@@ -672,16 +675,26 @@ jobs:
           # prior analysis JSONs seed the imageHash cache so unchanged cases skip re-analysis
           test -d "$SRC/analysis" && cp -R "$SRC/analysis" visual-testing-results/analysis || true
 
+      # Prior analysis JSONs from gh-pages seed the site so the previous
+      # run's AI notes stay visible (marked stale where images changed) while
+      # the ai-analysis job refreshes them AFTER images publish. The normal
+      # path needs this seed too now that analyze left this job.
+      - name: Seed prior analysis from gh-pages
+        if: ${{ !inputs.site_only }}
+        working-directory: mobile
+        continue-on-error: true
+        run: |
+          git fetch origin gh-pages --depth 1
+          git worktree add /tmp/ghpages-seed origin/gh-pages
+          SRC=/tmp/ghpages-seed/visual-testing/latest
+          test -d "$SRC/analysis" && mkdir -p visual-testing-results && cp -R "$SRC/analysis" visual-testing-results/analysis || echo "no prior analysis to seed"
+          git worktree remove --force /tmp/ghpages-seed || true
+
       - name: Diff / report / site
+        id: pairs
         working-directory: mobile
         env:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
-          # AI analysis credential: the visual-testing CLI calls the pi SDK
-          # (@earendil-works/pi-ai, provider minimax) directly when
-          # MINIMAX_API_KEY is set. PI_MODEL picks the vision model
-          # (default MiniMax-M3). Absent credential -> the analyze step skips.
-          PI_API_KEY: ${{ secrets.PI_API_KEY }}
-          PI_MODEL: ${{ vars.PI_MODEL }}
         run: |
           # ios joins the pair list only when its captures are present, so a
           # red/absent ios leg degrades to the classic react__android site.
@@ -691,22 +704,19 @@ jobs:
           fi
           echo "diff pairs: baseline=react current=$CURRENT"
           node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
-          # AI diff analysis (task: site "AI diff notes"/summary badges). Runs
-          # only when the pi credential is configured; the CLI then calls the
-          # pi SDK (minimax/$PI_MODEL) in-process — no codex CLI install.
-          # imageHash caching in the CLI keeps re-runs incremental (only
-          # changed cases re-analyze). Failure degrades to a site without
-          # fresh notes — never blocks.
-          if [ -n "$PI_API_KEY" ]; then
-            export MINIMAX_API_KEY="$PI_API_KEY"
-            node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" \
-              || echo "::warning::AI diff analysis failed; publishing without fresh notes"
-          else
-            echo "No AI credential (PI_API_KEY); skipping AI diff analysis"
-          fi
+          # AI analysis runs in the ai-analysis job AFTER this site publishes
+          # (images first — artin 2026-07-09); seeded prior notes render as
+          # cached/stale meanwhile.
           node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
           node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
           echo "CURRENT=$CURRENT" >> "$GITHUB_ENV"
+          # Stable run id shared by this job's publish and the ai-analysis
+          # republish so both write the same runs/<id> + latest generation.
+          RUN_ID="$(git rev-parse --short HEAD)-$(date -u +%Y%m%d%H%M%S)"
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "published=${{ inputs.publish || inputs.site_only || github.event_name == 'schedule' }}" >> "$GITHUB_OUTPUT"
 
       - name: Upload site artifact
         uses: actions/upload-artifact@v4
@@ -724,5 +734,107 @@ jobs:
           git config user.name "raft-visual-bot"
           git config user.email "visual-testing@raft.build"
           git fetch origin gh-pages:refs/remotes/origin/gh-pages || echo "no existing gh-pages branch"
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --dry-run
-          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir .
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --run-id "$RUN_ID" --dry-run
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "${CURRENT:-android}" --repo-dir . --run-id "$RUN_ID"
+
+  # AI diff analysis, decoupled from the image publish (artin 2026-07-09:
+  # "图先出来，AI 并行异步"). Runs after the site is live, re-analyzes only
+  # what the perceptual cache says changed, and republishes the SAME run id
+  # so analysis lands on the generation the images shipped with.
+  ai-analysis:
+    name: AI diff analysis (async)
+    needs: [report]
+    # Only meaningful when the report actually published a site to update.
+    if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # A rerun/new publish supersedes the in-flight analysis of the previous
+    # one: cancel it instead of letting it burn model calls and a runner
+    # (artin). Completed pairs persist via the analysis JSONs + perceptual
+    # cache, so a cancelled batch resumes incrementally next round.
+    concurrency:
+      group: visual-testing-ai-analysis-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout mobile
+        uses: actions/checkout@v5
+        with:
+          path: mobile
+
+      - name: Checkout slock source (visual CLI)
+        uses: actions/checkout@v5
+        with:
+          repository: botiverse/slock
+          ref: ${{ inputs.slock_source_ref }}
+          token: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN || secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}
+          path: slock-source
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: slock-source/package.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: slock-source/pnpm-lock.yaml
+
+      - name: Install visual-testing CLI deps (sharp, pi-ai)
+        working-directory: slock-source
+        run: pnpm install --frozen-lockfile --filter "@botiverse/raft-visual-testing..."
+
+      # Rebuild visual-testing-results from what the report job just
+      # published: raw captures + prior analysis (the perceptual cache keys
+      # incremental re-analysis off the analysis JSONs).
+      - name: Reconstruct results from gh-pages
+        working-directory: mobile
+        run: |
+          git fetch origin gh-pages --depth 1
+          git worktree add /tmp/ghpages origin/gh-pages
+          SRC=/tmp/ghpages/visual-testing/latest
+          test -d "$SRC/react" && test -d "$SRC/android" || { echo "gh-pages latest/ lacks raw captures"; exit 1; }
+          mkdir -p visual-testing-results
+          cp -R "$SRC/react" visual-testing-results/react
+          cp -R "$SRC/android" visual-testing-results/android
+          test -d "$SRC/ios" && cp -R "$SRC/ios" visual-testing-results/ios || echo "no ios captures on gh-pages"
+          test -d "$SRC/analysis" && cp -R "$SRC/analysis" visual-testing-results/analysis || echo "no prior analysis"
+          git worktree remove --force /tmp/ghpages || true
+
+      - name: Analyze and republish (generation-guarded)
+        working-directory: mobile
+        env:
+          SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
+          # pi SDK credential (provider minimax, model $PI_MODEL, default
+          # MiniMax-M3). Absent -> skip with a notice, never fail the run.
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          PI_MODEL: ${{ vars.PI_MODEL }}
+          RUN_ID: ${{ needs.report.outputs.run_id }}
+        run: |
+          if [ -z "$PI_API_KEY" ]; then
+            echo "No AI credential (PI_API_KEY); skipping AI diff analysis"
+            exit 0
+          fi
+          export MINIMAX_API_KEY="$PI_API_KEY"
+          CURRENT="android"
+          if [ -d visual-testing-results/ios ] && [ -n "$(ls visual-testing-results/ios/*.png 2>/dev/null)" ]; then
+            CURRENT="android,ios"
+          fi
+          node scripts/slock-visual-testing.mjs diff --baseline react --current "$CURRENT"
+          node scripts/slock-visual-testing.mjs analyze --baseline react --current "$CURRENT" \
+            || { echo "::warning::AI diff analysis failed; site keeps previous notes"; exit 0; }
+          node scripts/slock-visual-testing.mjs report --baseline react --current "$CURRENT"
+          node scripts/slock-visual-testing.mjs site --baseline react --current "$CURRENT"
+          # Generation guard (write-back protection): only republish if the
+          # live site still shows OUR run id. A newer publish supersedes this
+          # analysis — drop the write, never overwrite newer images.
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+          LIVE_RUN_ID=$(git show origin/gh-pages:visual-testing/latest/metadata.json | node -e "let d='';process.stdin.on('data',(c)=>d+=c).on('end',()=>console.log(JSON.parse(d).runId||''))")
+          if [ "$LIVE_RUN_ID" != "$RUN_ID" ]; then
+            echo "::notice::superseded: live runId=$LIVE_RUN_ID != ours=$RUN_ID; skipping analysis republish"
+            exit 0
+          fi
+          git config user.name "raft-visual-bot"
+          git config user.email "visual-testing@raft.build"
+          node scripts/slock-visual-testing.mjs publish-gh-pages --baseline react --current "$CURRENT" --repo-dir . --run-id "$RUN_ID"
