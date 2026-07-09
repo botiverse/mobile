@@ -95,6 +95,7 @@ internal class SlockSharedStoreProvider private constructor(
     private var homeActivityStore: SharedActivityStore? = null
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
+    private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = homeStore
@@ -107,6 +108,13 @@ internal class SlockSharedStoreProvider private constructor(
             apiEnvironmentStore = apiEnvironmentStore,
             authStore = authStore
         )
+
+    fun markActiveAppShellPager(pagerId: String) {
+        activeAppShellPagerOwner.markActive(pagerId)
+    }
+
+    fun isActiveAppShellPager(pagerId: String): Boolean =
+        activeAppShellPagerOwner.isActive(pagerId)
 
     fun updateEventBus(nextEventBus: SlockEventBus, source: String) {
         eventBus.update(nextEventBus)
@@ -461,6 +469,17 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger
     )
+
+internal class AppShellActivePagerOwner {
+    private var activePagerId: String? = null
+
+    fun markActive(pagerId: String) {
+        activePagerId = pagerId.takeIf { it.isNotBlank() }
+    }
+
+    fun isActive(pagerId: String): Boolean =
+        activePagerId == null || activePagerId == pagerId
+}
 
 internal interface RealtimeDomainEventOwner {
     fun registerSinks(sinks: RealtimeDomainEventSinks)

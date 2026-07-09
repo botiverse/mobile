@@ -1094,6 +1094,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         internal const val KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID = "slockNotificationMessageId"
         internal const val KEY_APP_SHELL_NOTIFICATION_PARENT_CHANNEL_ID = "slockNotificationParentChannelId"
         internal const val KEY_APP_SHELL_NOTIFICATION_PARENT_MESSAGE_ID = "slockNotificationParentMessageId"
+        internal const val KEY_APP_SHELL_NOTIFICATION_KIND = "slockNotificationKind"
         internal const val KEY_APP_SHELL_NOTIFICATION_CATEGORY = "slockNotificationCategory"
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
@@ -1243,6 +1244,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             }
             request.optTrimmedString("parentMessageId")?.let { parentMessageId ->
                 appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_PARENT_MESSAGE_ID, parentMessageId)
+            }
+            request.optTrimmedString("kind")?.let { kind ->
+                appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_KIND, kind)
             }
             request.optTrimmedString("category")?.let { category ->
                 appShellPageData.put(KEY_APP_SHELL_NOTIFICATION_CATEGORY, category)

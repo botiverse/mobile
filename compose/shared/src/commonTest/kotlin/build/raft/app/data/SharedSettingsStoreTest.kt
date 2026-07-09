@@ -748,6 +748,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
+        store.accept(SharedSettingsIntent.SetComposerSendKey(false))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("saved", true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
@@ -759,6 +760,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
+        assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
@@ -771,6 +773,8 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.foregroundMessageBanners.statusLabel)
         assertEquals(true, mobile.activityTaskStatusBadges.enabled)
         assertEquals("Enabled", mobile.activityTaskStatusBadges.statusLabel)
+        assertEquals(false, mobile.composerSendKey.enabled)
+        assertEquals("New line", mobile.composerSendKey.statusLabel)
         assertEquals(setOf("saved"), mobile.threadRowAffordances.selectedKeys)
         assertEquals("Saved", mobile.threadRowAffordances.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
@@ -3016,6 +3020,7 @@ class SharedSettingsStoreTest {
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
+        var composerSendKeyEnabled: Boolean = true,
         var translationMode: TranslationModePreference = TranslationModePreference.Automatic,
         var threadRowAffordances: Set<ThreadRowAffordancePreference> =
             ThreadRowAffordancePreference.Default
@@ -3027,6 +3032,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3041,6 +3047,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3056,6 +3063,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3068,6 +3076,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3081,6 +3090,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3094,6 +3104,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3107,6 +3118,21 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
+                translationMode = translationMode,
+                threadRowAffordances = threadRowAffordances
+            )
+        }
+
+        override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+            composerSendKeyEnabled = enabled
+            return ChatLayoutPreferenceSnapshot(
+                myMessageAlignment = alignment,
+                compactConsecutiveMessages = compactConsecutiveMessages,
+                imageAnnotationEnabled = imageAnnotationEnabled,
+                foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
+                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3120,6 +3146,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
@@ -3141,6 +3168,7 @@ class SharedSettingsStoreTest {
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )

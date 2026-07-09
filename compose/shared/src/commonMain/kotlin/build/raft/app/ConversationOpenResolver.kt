@@ -158,7 +158,8 @@ internal fun AppShellNotificationThreadLaunchRequest.toConversationOpenSourceMes
         channelId = channelId?.takeIf { it.isNotBlank() } ?: threadId.takeIf { it.isNotBlank() },
         threadChannelId = threadId.takeIf { it.isNotBlank() },
         parentChannelId = parentChannelId?.takeIf { it.isNotBlank() },
-        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() },
+        conversationKind = conversationKind
     )
 
 private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIdentity(): ThreadLaunchConversationIdentity? {
@@ -168,7 +169,16 @@ private fun ConversationOpenSourceMessageIdentity.toThreadLaunchConversationIden
     // parent shape — that is exactly the #415 misroute. Only a trusted typed
     // parentConversationKind (server-enriched, e.g. Activity InboxItem.parentChannelKind) may
     // rebuild the thread; a null parent kind stays unresolved for the caller to handle.
-    if (kind == ConversationKind.Thread && parentConversationKind == null) return null
+    if (kind == ConversationKind.Thread && parentConversationKind == null) {
+        if (
+            source != ConversationOpenSource.Notification ||
+            parentChannelId.isNullOrBlank() ||
+            parentMessageId.isNullOrBlank() ||
+            threadChannelId.isNullOrBlank()
+        ) {
+            return null
+        }
+    }
     return buildThreadLaunchConversationIdentity(
         kind = kind,
         channelId = channel,

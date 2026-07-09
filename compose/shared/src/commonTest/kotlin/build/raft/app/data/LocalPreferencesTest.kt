@@ -44,6 +44,7 @@ class LocalPreferencesTest {
         assertEquals(false, snapshot.imageAnnotationEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
         assertEquals(false, snapshot.activityTaskStatusBadgesEnabled)
+        assertEquals(true, snapshot.composerSendKeyEnabled)
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(setOf(ThreadRowAffordancePreference.Reactions), snapshot.threadRowAffordances)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
@@ -69,6 +70,7 @@ class LocalPreferencesTest {
         val imageAnnotation = repository.setImageAnnotationEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
         val activityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(true)
+        val composerSendKey = repository.setComposerSendKeyEnabled(false)
         val translationMode = repository.setTranslationMode(TranslationModePreference.Manual)
         val savedAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Saved, true)
         val reactionAction = repository.setThreadRowAffordance(ThreadRowAffordancePreference.Reactions, false)
@@ -76,6 +78,7 @@ class LocalPreferencesTest {
         val disabledImageAnnotation = repository.setImageAnnotationEnabled(false)
         val disabledActivityTaskStatusBadges = repository.setActivityTaskStatusBadgesEnabled(false)
         val disabledCompact = repository.setCompactConsecutiveMessages(false)
+        val enabledComposerSendKey = repository.setComposerSendKeyEnabled(true)
         val restoredDisabledCompact = repository.getChatLayoutPreference()
 
         assertEquals(MyMessageAlignmentPreference.Right, alignment.myMessageAlignment)
@@ -84,6 +87,7 @@ class LocalPreferencesTest {
         assertEquals(true, imageAnnotation.imageAnnotationEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
         assertEquals(true, activityTaskStatusBadges.activityTaskStatusBadgesEnabled)
+        assertEquals(false, composerSendKey.composerSendKeyEnabled)
         assertEquals(TranslationModePreference.Manual, translationMode.translationMode)
         assertEquals(MyMessageAlignmentPreference.Right, restored.myMessageAlignment)
         assertEquals(LargeScreenNavigationPreference.FloatingDock, restored.largeScreenNavigation)
@@ -91,6 +95,7 @@ class LocalPreferencesTest {
         assertEquals(true, restored.imageAnnotationEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)
+        assertEquals(false, restored.composerSendKeyEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
         assertEquals(
             setOf(ThreadRowAffordancePreference.Reactions, ThreadRowAffordancePreference.Saved),
@@ -102,7 +107,9 @@ class LocalPreferencesTest {
         assertEquals(false, repository.setForegroundMessageBannersEnabled(false).foregroundMessageBannersEnabled)
         assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
         assertEquals(false, disabledCompact.compactConsecutiveMessages)
+        assertEquals(true, enabledComposerSendKey.composerSendKeyEnabled)
         assertEquals(false, restoredDisabledCompact.compactConsecutiveMessages)
+        assertEquals(true, restoredDisabledCompact.composerSendKeyEnabled)
     }
 
     @Test

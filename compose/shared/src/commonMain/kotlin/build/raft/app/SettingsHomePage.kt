@@ -42,6 +42,7 @@ import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
+import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
@@ -542,6 +543,7 @@ private const val AppShellNotificationChannelIdKey = "slockNotificationChannelId
 private const val AppShellNotificationMessageIdKey = "slockNotificationMessageId"
 private const val AppShellNotificationParentChannelIdKey = "slockNotificationParentChannelId"
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
+private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
 private const val AppShellChildPageGlassStyleLiquid = "liquid"
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
@@ -1854,6 +1856,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    LaunchedEffect(pager.pagerId, pageVisibleTick, initialAuthRestoreTick) {
+        if (pageVisibleTick > 0 || initialAuthRestoreTick > 0) {
+            sharedStores.markActiveAppShellPager(pager.pagerId)
+        }
+    }
     val authStore = sharedStores.authStore
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
@@ -2289,7 +2296,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 .mergedSharedConversationDirectoryState()
         }
     val latestAppShellConversationDirectory by rememberUpdatedState(appShellConversationDirectory)
-    val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
+    val latestSelectedHomeConversationId by rememberUpdatedState(
+        appShellForegroundVisibleHomeConversationId(
+            homeShellSelectedConversationId = selectedHomeConversationId,
+            homeStoreSelectedConversationId = homeState.selectedConversationId
+        )
+    )
     LaunchedEffect(sharedStores.serverMembersStore, readyServerId, foregroundMessageBannersEnabled) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
@@ -3267,6 +3279,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     // server-qualified `notification:push` stream (server PR #4233):
                     // identity is typed on the payload, so there is nothing to defer.
                     if (event is NotificationPushReceived) {
+                        if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                            return@launch
+                        }
                         if (latestForegroundMessageBannersEnabled) {
                             val banner =
                                 slockNotificationPushBannerOrNull(
@@ -4505,6 +4520,9 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetActivityTaskStatusBadges(enabled))
                         onActivityTaskStatusBadgesSelected(enabled)
                     },
+                    onComposerSendKeyChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetComposerSendKey(enabled))
+                    },
                     onThreadRowAffordanceChange = { affordance, enabled ->
                         onSettingsIntent(
                             SharedSettingsIntent.SetThreadRowAffordance(
@@ -5531,6 +5549,7 @@ private fun SettingsMobileContent(
     onForegroundMessageBannersChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
+    onComposerSendKeyChange: (Boolean) -> Unit,
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val snapshot =
@@ -5569,6 +5588,13 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onActivityTaskStatusBadgesChange = onActivityTaskStatusBadgesChange
+                )
+            }
+            item {
+                SettingsComposerSendKeyCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onComposerSendKeyChange = onComposerSendKeyChange
                 )
             }
             item {
@@ -5755,6 +5781,54 @@ private fun SettingsActivityTaskStatusBadgesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsComposerSendKeyCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onComposerSendKeyChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
+    val preference = snapshot.composerSendKey
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = "Composer keyboard key") {
+        SettingsFormDetailText(preference.detail)
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = preference.available && !busy) {
+                        onComposerSendKeyChange(!preference.enabled)
+                    }
+                    .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = preference.statusLabel,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (preference.enabled) "Keyboard action sends messages" else "Keyboard action inserts a new line",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockSwitchButton(
+                checked = preference.enabled,
+                enabled = preference.available && !busy
+            )
+        }
+        if (actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -8335,6 +8409,11 @@ private fun SharedQuiverFeedbackContent(
 ) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val chatLayoutPreferenceStore =
+        remember {
+            KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
+        }
+    val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     val message = messageFieldValue.text
     var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
@@ -8571,6 +8650,7 @@ private fun SharedQuiverFeedbackContent(
                         statusLabel = error?.takeIf { it.isNotBlank() },
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems()
                     ),
+                composerSendKeyEnabled = composerSendKeyEnabled,
                 onEvent = { action, value, _, attachmentId ->
                     when (action) {
                         "change" -> {
@@ -15127,6 +15207,7 @@ internal data class AppShellNotificationThreadLaunchRequest(
     val channelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val conversationKind: ConversationKind? = null,
     val category: String? = null
 )
 
@@ -15140,6 +15221,7 @@ private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotifi
             channelId = optString(AppShellNotificationChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentChannelId = optString(AppShellNotificationParentChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentMessageId = optString(AppShellNotificationParentMessageIdKey).trim().takeIf { it.isNotBlank() },
+            conversationKind = parseConversationKindOrNull(optString(AppShellNotificationKindKey)),
             category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() }
         )
     }
@@ -15166,7 +15248,8 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
         messageId = messageId,
         channelId = payload.threadId?.takeIf { it.isNotBlank() },
         parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() },
-        parentMessageId = payload.parentMessageId?.takeIf { it.isNotBlank() }
+        parentMessageId = payload.parentMessageId?.takeIf { it.isNotBlank() },
+        conversationKind = if (payload.parentMessageId.isNullOrBlank()) null else ConversationKind.Thread
     )
 }
 

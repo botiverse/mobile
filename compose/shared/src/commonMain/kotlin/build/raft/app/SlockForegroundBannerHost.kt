@@ -343,6 +343,16 @@ internal fun appShellVisibleForegroundConversationKey(
                 selectedHomeDestination == null
         }
 
+@Suppress("UNUSED_PARAMETER")
+internal fun appShellForegroundVisibleHomeConversationId(
+    homeShellSelectedConversationId: String?,
+    homeStoreSelectedConversationId: String?
+): String? =
+    // The Home store keeps its last selected conversation while Home is retained off-screen.
+    // Foreground-banner visibility must use the AppShell route host instead.
+    homeShellSelectedConversationId
+        ?.takeIf { it.isNotBlank() }
+
 internal fun slockConversationDirectoryStateFromProjections(
     projections: Collection<SharedConversationDirectoryProjection>
 ): SharedConversationDirectoryState =

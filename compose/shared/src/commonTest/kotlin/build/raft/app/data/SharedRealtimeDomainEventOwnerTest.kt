@@ -28,6 +28,24 @@ import kotlin.test.assertEquals
 
 class SharedRealtimeDomainEventOwnerTest {
     @Test
+    fun appShellActivePagerStartsOpenAndThenFiltersInactivePagers() {
+        val owner = AppShellActivePagerOwner()
+
+        assertEquals(true, owner.isActive("pager-a"))
+        assertEquals(true, owner.isActive("pager-b"))
+
+        owner.markActive("pager-a")
+
+        assertEquals(true, owner.isActive("pager-a"))
+        assertEquals(false, owner.isActive("pager-b"))
+
+        owner.markActive("pager-b")
+
+        assertEquals(false, owner.isActive("pager-a"))
+        assertEquals(true, owner.isActive("pager-b"))
+    }
+
+    @Test
     fun ignoresBlankServerIdsAndHeartbeats() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
