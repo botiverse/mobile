@@ -630,7 +630,11 @@ private data class AuthDiagnosticsUiState(
     val loading: Boolean = true,
     val about: SharedSettingsAboutSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val reporting: Boolean = false,
+    val reportTicketId: String? = null,
+    val reportErrorMessage: String? = null,
+    val reportFallbackShared: Boolean = false
 )
 
 @Composable
@@ -654,6 +658,8 @@ private fun AuthDiagnosticsScreen() {
         }
     var refreshNonce by remember { mutableStateOf(0) }
     var copyNonce by remember { mutableStateOf(0) }
+    var shareNonce by remember { mutableStateOf(0) }
+    var reportNonce by remember { mutableStateOf(0) }
     var state by remember { mutableStateOf(AuthDiagnosticsUiState()) }
 
     LaunchedEffect(refreshNonce) {
@@ -690,6 +696,54 @@ private fun AuthDiagnosticsScreen() {
         }
     }
 
+    LaunchedEffect(shareNonce) {
+        if (shareNonce > 0 && !settingsCapabilities.shareDiagnostics()) {
+            bridge.toast("Unable to open diagnostics share sheet")
+        }
+    }
+
+    LaunchedEffect(reportNonce) {
+        if (reportNonce == 0) return@LaunchedEffect
+        val exportText =
+            buildAuthDiagnosticsExportText(
+                about = state.about,
+                entries = state.entries,
+                errorMessage = state.errorMessage
+            )
+        state = state.copy(
+            reporting = true,
+            reportTicketId = null,
+            reportErrorMessage = null,
+            reportFallbackShared = false
+        )
+        when (
+            val result =
+                settingsCapabilities.submitQuiverFeedback(
+                    message = buildSignedOutAuthDiagnosticsFeedbackMessage(state.about),
+                    attachments = emptyList()
+                )
+        ) {
+            is DataResult.Content -> {
+                state = state.copy(reporting = false, reportTicketId = result.data.ticketId)
+                bridge.toast("Report submitted; ticket reference copied")
+            }
+            else -> {
+                settingsCapabilities.bridgeCopyToClipboard(exportText)
+                val shared = settingsCapabilities.shareDiagnostics()
+                state =
+                    state.copy(
+                        reporting = false,
+                        reportErrorMessage = result.authDiagnosticsErrorLabel("feedback") ?: "feedback unavailable",
+                        reportFallbackShared = shared
+                    )
+                bridge.toast(
+                    if (shared) "Report failed; diagnostics copied and ready to share"
+                    else "Report failed; diagnostics copied"
+                )
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = stringResource(MR.strings.auth_diagnostics_title),
@@ -712,6 +766,12 @@ private fun AuthDiagnosticsScreen() {
                         shadowOffset = 2.dp
                     )
                     SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Share,
+                        onClick = { shareNonce += 1 },
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                    SlockBrutalIconButton(
                         iconName = SlockLucideIconName.RefreshCw,
                         onClick = { refreshNonce += 1 },
                         enabled = !state.loading,
@@ -726,21 +786,54 @@ private fun AuthDiagnosticsScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SlockBrutalActionButton(
+                            label = stringResource(MR.strings.auth_action_copy),
+                            leadingIcon = SlockLucideIconName.Copy,
+                            onClick = { copyNonce += 1 },
+                            backgroundColor = SlockColor.BrandYellow,
+                            minWidth = 94.dp
+                        )
+                        SlockBrutalActionButton(
+                            label = if (state.loading) "Loading" else "Refresh",
+                            leadingIcon = SlockLucideIconName.RefreshCw,
+                            onClick = { refreshNonce += 1 },
+                            enabled = !state.loading,
+                            minWidth = 104.dp
+                        )
+                    }
                     SlockBrutalActionButton(
-                        label = stringResource(MR.strings.auth_action_copy),
-                        leadingIcon = SlockLucideIconName.Copy,
-                        onClick = { copyNonce += 1 },
-                        backgroundColor = SlockColor.BrandYellow,
-                        minWidth = 94.dp
+                        label = if (state.reporting) "Reporting" else "Report",
+                        leadingIcon = SlockLucideIconName.MessageSquarePlus,
+                        onClick = { reportNonce += 1 },
+                        enabled = !state.loading && !state.reporting,
+                        backgroundColor = SlockColor.AccentCyan,
+                        minWidth = 100.dp
                     )
-                    SlockBrutalActionButton(
-                        label = if (state.loading) "Loading" else "Refresh",
-                        leadingIcon = SlockLucideIconName.RefreshCw,
-                        onClick = { refreshNonce += 1 },
-                        enabled = !state.loading,
-                        minWidth = 104.dp
-                    )
+                }
+            }
+            state.reportTicketId?.let { ticketId ->
+                item {
+                    AuthDiagnosticsPanel("Report submitted") {
+                        AuthDiagnosticsValue("Ticket", ticketId)
+                        AuthDiagnosticsValue("Copy", "Ticket reference copied to clipboard")
+                    }
+                }
+            }
+            state.reportErrorMessage?.let { error ->
+                item {
+                    AuthDiagnosticsPanel("Report fallback") {
+                        AuthDiagnosticsValue("Error", error)
+                        AuthDiagnosticsValue(
+                            "Diagnostics",
+                            if (state.reportFallbackShared) {
+                                "Copied to clipboard and share sheet opened"
+                            } else {
+                                "Copied to clipboard"
+                            }
+                        )
+                    }
                 }
             }
             state.errorMessage?.let { error ->
@@ -882,6 +975,21 @@ internal fun buildAuthDiagnosticsExportText(
                     appendLine("${entry.timestampLabel} ${entry.tag}: ${entry.message}")
                 }
             }
+        }
+    )
+
+internal fun buildSignedOutAuthDiagnosticsFeedbackMessage(
+    about: SharedSettingsAboutSnapshot?
+): String =
+    redactAuthDiagnosticsText(
+        buildString {
+            appendLine("Signed-out auth diagnostics report")
+            appendLine()
+            appendLine("Submitted from the signed-out Diagnostics screen.")
+            appendDiagnosticsLine("Version", about?.versionLabel)
+            appendDiagnosticsLine("Build", about?.buildLabel)
+            appendDiagnosticsLine("Source", about?.sourceLabel)
+            appendLine("The attached diagnostics archive contains auth critical records when available.")
         }
     )
 
