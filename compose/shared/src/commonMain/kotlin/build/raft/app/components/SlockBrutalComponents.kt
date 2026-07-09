@@ -806,7 +806,8 @@ internal fun SlockBrutalActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
-    disabledBackgroundColor: Color = SlockColor.SurfaceCream,
+    // react bg-brutal-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
+    disabledBackgroundColor: Color = Color(0xFFE6E3E0),
     disabledBorderColor: Color = SlockColor.BorderBlack,
     disabledShadowColor: Color = SlockColor.ShadowBlack.copy(alpha = 0.40f),
     disabledContentColor: Color = SlockColor.TextBlack.copy(alpha = 0.40f),
