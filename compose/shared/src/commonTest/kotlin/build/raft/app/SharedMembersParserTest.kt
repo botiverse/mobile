@@ -121,6 +121,7 @@ class SharedMembersParserTest {
             """.trimIndent().toKuiklyMembersPayload()
 
         assertEquals(true, payload.canCreateAgents)
+        assertEquals(true, payload.canInviteHumans)
     }
 
     @Test
@@ -162,6 +163,27 @@ class SharedMembersParserTest {
 
         assertEquals(false, falsePayload.canCreateAgents)
         assertEquals(true, truePayload.canCreateAgents)
+    }
+
+    @Test
+    fun membersPayloadCanInviteHumansParsesFalseAndTrue() {
+        val falsePayload =
+            """
+            {
+              "instanceId": "server-1",
+              "canInviteHumans": false
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+        val truePayload =
+            """
+            {
+              "instanceId": "server-1",
+              "canInviteHumans": true
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+
+        assertEquals(false, falsePayload.canInviteHumans)
+        assertEquals(true, truePayload.canInviteHumans)
     }
 
     @Test
@@ -397,6 +419,23 @@ class SharedMembersParserTest {
             listOf("activity", "profile"),
             buildHostMembersPayload(adminServer, null, agentPanelTabOrder = listOf("activity", "profile")).agentPanelTabOrder
         )
+    }
+
+    @Test
+    fun hostMembersPayloadMapsInviteHumansToInviteMemberPermission() {
+        val restrictedServer =
+            ServerSummary(
+                id = ServerId("server-1"),
+                name = "Restricted",
+                permissions = ServerPermissions(canInviteMember = false)
+            )
+        val inviteAllowedServer =
+            restrictedServer.copy(
+                permissions = ServerPermissions(canInviteMember = true)
+            )
+
+        assertEquals(false, buildHostMembersPayload(restrictedServer, null).canInviteHumans)
+        assertEquals(true, buildHostMembersPayload(inviteAllowedServer, null).canInviteHumans)
     }
 
     @Test

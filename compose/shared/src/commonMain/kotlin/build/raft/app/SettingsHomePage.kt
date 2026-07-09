@@ -11564,7 +11564,7 @@ private fun SharedMembersScreen(
                     }
                 }
             }
-            val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+            val inviteHumanSubmitHandler: suspend (List<String>) -> DataResult<Unit> =
                 remember(settingsMembersDataSource, serverId) {
                     { emails ->
                         if (serverId.isBlank()) {
@@ -11596,6 +11596,8 @@ private fun SharedMembersScreen(
                         }
                     }
                 }
+            val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+                inviteHumanSubmitHandler.takeIf { membersPayload.canInviteHumans }
             val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
                 val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
@@ -11705,7 +11707,8 @@ internal fun buildHostMembersPayload(
         agentPanelTabOrder = agentPanelTabOrder,
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.
-        canCreateAgents = server.permissions.canManageSettings
+        canCreateAgents = server.permissions.canManageSettings,
+        canInviteHumans = server.permissions.canInviteMember
     )
 
 internal sealed interface SharedMembersUiState {
