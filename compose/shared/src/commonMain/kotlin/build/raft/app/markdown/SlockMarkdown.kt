@@ -9,6 +9,7 @@ import build.raft.app.withResolvedSlockFontFamily
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1117,16 +1118,26 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
 internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
-internal val SlockMarkdownRendererRichTextCapabilities =
-    SlockRichTextCapabilities(
-        consumesDocument = true,
-        consumesChromeTokens = true,
-        consumesActions = true,
-        consumesStyleTokens = true,
-        hasMeasurementAdapter = true,
-        hasDrawAdapter = true,
-        hasHitTestAdapter = true
-    )
+// Chrome-related fields are platform-derived (task #441): declaring
+// consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
+// whose native renderer doesn't draw the chip chrome (it was hardcoded true
+// while OHOS had no chip at all). Document/action/style-token consumption is
+// shared-side behavior and genuinely platform-independent.
+internal val SlockMarkdownRendererRichTextCapabilities: SlockRichTextCapabilities
+    get() {
+        val platformCaps = slockRichTextPlatformCaps()
+        val chromeRenders = platformCaps.inlineCodeChrome && platformCaps.slockRefChrome
+        return SlockRichTextCapabilities(
+            consumesDocument = true,
+            consumesChromeTokens = chromeRenders,
+            consumesActions = true,
+            consumesStyleTokens = true,
+            hasMeasurementAdapter = chromeRenders,
+            hasDrawAdapter = chromeRenders,
+            hasHitTestAdapter = true,
+            declaredDivergences = platformCaps.declaredDivergences
+        )
+    }
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this
@@ -1254,6 +1265,12 @@ fun SlockMarkdownBody(
     performanceKey: String? = null,
     performanceLogger: (String) -> Unit = {}
 ) {
+    // task #441: print the factual renderer-capability marker so visual capture
+    // records this platform's caps (collector: scripts/collect_richtext_caps.py;
+    // missing marker = unknown, repeated lines are fine — the last one wins).
+    LaunchedEffect(Unit) {
+        println(slockRichTextCapsLine())
+    }
     val content = remember(body, performanceKey) {
         val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
         val (prepared, cacheHit) =
