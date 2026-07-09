@@ -91,7 +91,6 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -160,6 +159,7 @@ private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = SlockLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
+private const val HomeServerBadgeTiltSlope = 0.035f
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
@@ -2339,7 +2339,7 @@ private fun SlockLogoBadge(
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
     if (tilted) {
-        SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
+        SlockPixelAlignedTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
         return
     }
 
@@ -2359,39 +2359,22 @@ private fun SlockLogoBadge(
 }
 
 @Composable
-private fun SlockTiltedLogoBadge(
+private fun SlockPixelAlignedTiltedLogoBadge(
     text: String,
     modifier: Modifier = Modifier,
     showDropdown: Boolean = false,
     unread: Boolean = false,
     textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
 ) {
-    SlockRotatedLogoBadge(
-        text = text,
-        modifier = modifier,
-        showDropdown = showDropdown,
-        unread = unread,
-        textStyle = textStyle
-    )
-}
-
-@Composable
-private fun SlockRotatedLogoBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    showDropdown: Boolean = false,
-    unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
-) {
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
-        RectBadgeChrome(
+    // Draw the tilt from integer-pixel runs. A graphics-layer rotation would
+    // resample the badge chrome, server name, and icon on every host.
+    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+        PixelAlignedTiltedBadgeChrome(
             color = SlockColor.ShadowBlack,
-            borderColor = Color.Transparent,
             modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
         )
-        RectBadgeChrome(
+        PixelAlignedTiltedBadgeChrome(
             color = SlockColor.TextBlack,
-            borderColor = SlockColor.BorderBlack,
             modifier = Modifier.matchParentSize()
         )
         com.tencent.kuikly.compose.foundation.layout.Row(
@@ -2402,7 +2385,7 @@ private fun SlockRotatedLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(4.dp))
-                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
+                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp), color = SlockColor.BrandYellowArgb)
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
@@ -2410,18 +2393,51 @@ private fun SlockRotatedLogoBadge(
 }
 
 @Composable
-private fun RectBadgeChrome(
+private fun PixelAlignedTiltedBadgeChrome(
     color: Color,
-    borderColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val borderedModifier =
-        if (borderColor == Color.Transparent) {
-            modifier.background(color)
-        } else {
-            modifier.background(color).border(SlockStroke.Default, borderColor)
+    Canvas(modifier = modifier) {
+        homeServerBadgeTiltRuns(
+            widthPx = size.width.roundToInt(),
+            heightPx = size.height.roundToInt()
+        ).forEach { run ->
+            drawRect(
+                color = color,
+                topLeft = Offset(run.startX.toFloat(), run.top.toFloat()),
+                size = Size((run.endX - run.startX).toFloat(), run.height.toFloat())
+            )
         }
-    Box(borderedModifier)
+    }
+}
+
+internal data class HomeServerBadgeTiltRun(
+    val startX: Int,
+    val endX: Int,
+    val top: Int,
+    val height: Int
+)
+
+internal fun homeServerBadgeTiltRuns(
+    widthPx: Int,
+    heightPx: Int
+): List<HomeServerBadgeTiltRun> {
+    val safeWidth = widthPx.coerceAtLeast(1)
+    val safeHeight = heightPx.coerceAtLeast(1)
+    val rise =
+        (safeWidth * HomeServerBadgeTiltSlope)
+            .roundToInt()
+            .coerceIn(1, (safeHeight / 3).coerceAtLeast(1))
+    val runCount = rise + 1
+    val runHeight = (safeHeight - rise).coerceAtLeast(1)
+    return List(runCount) { step ->
+        HomeServerBadgeTiltRun(
+            startX = (step * safeWidth.toFloat() / runCount).roundToInt(),
+            endX = ((step + 1) * safeWidth.toFloat() / runCount).roundToInt(),
+            top = rise - step,
+            height = runHeight
+        )
+    }.filter { it.endX > it.startX }
 }
 
 @Composable

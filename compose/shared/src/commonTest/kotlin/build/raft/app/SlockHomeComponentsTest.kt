@@ -114,6 +114,22 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerBadgeTiltUsesContiguousIntegerPixelRuns() {
+        val runs = homeServerBadgeTiltRuns(widthPx = 300, heightPx = 40)
+
+        assertEquals(0, runs.first().startX)
+        assertEquals(300, runs.last().endX)
+        assertEquals(11, runs.first().top)
+        assertEquals(0, runs.last().top)
+        assertTrue(runs.all { it.height == 29 })
+        assertTrue(
+            runs.zipWithNext().all { (current, next) ->
+                current.endX == next.startX && current.top == next.top + 1
+            }
+        )
+    }
+
+    @Test
     fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
         assertEquals(
             SlockSize.PageHeaderHeight + 4.dp,
