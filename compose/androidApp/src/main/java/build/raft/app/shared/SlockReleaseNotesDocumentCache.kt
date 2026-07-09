@@ -109,7 +109,7 @@ internal class SlockReleaseNotesDocumentCache(
         fun isReleaseNotesUrl(url: String): Boolean {
             val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
             return uri.scheme == "https" &&
-                uri.host == "quiver.oranix.io" &&
+                uri.host == "hands.build" &&
                 uri.path?.startsWith("/notes/") == true &&
                 releaseNotesVersionCode(url) != null
         }

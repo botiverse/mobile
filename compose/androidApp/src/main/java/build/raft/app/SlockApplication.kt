@@ -5,7 +5,7 @@ import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.SlockAndroidAppDiagnostics
-import io.quiver.update.QuiverCrash
+import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.installAndroidAppScopeEventBus
@@ -38,7 +38,7 @@ class SlockApplication : Application() {
                 selectedServerSlug = session.selectedServerSlug
             )
         }
-        QuiverCrash.install(
+        HandsCrash.install(
             context = this,
             baseUrl = BuildConfig.QUIVER_BASE_URL,
             appSlug = BuildConfig.QUIVER_APP_SLUG,

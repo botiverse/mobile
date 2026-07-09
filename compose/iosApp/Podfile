@@ -8,7 +8,7 @@ target 'iosApp' do
   pod 'OpenKuiklyIOSRender', :path => '../../third_party/kuikly-ui'
   pod 'shared', :path => '../shared'
 
-  pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :commit => 'f0c16c6e1191c9147af25a37d36bab049d65540e'
+  pod 'Hands', :git => 'https://github.com/oranix-io/hands.git', :tag => 'ios-v0.2.1'
   pod 'SDWebImage'
   # task #436: SVG decoding for iOS. Kuikly loads images via UIImage (no native
   # SVG support), so provider icons shipped as SVG rendered blank. SDWebImage's

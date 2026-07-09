@@ -6,7 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@oranix/quiver": "file:./libs/quiver.har",
+    "@botiverse/hands": "file:./libs/hands.har",
     "@kuikly-open/render": 'file:./libs/kuikly-render-staging2-d2954d58.har',
     "@ohos/apng": "^1.0.0-rc.8",
     "@kuiklybase/knoi": "0.0.4",

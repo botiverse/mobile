@@ -38,7 +38,7 @@ struct iOSApp: App {
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAppScopeMMKV.install()
         SlockIosSharedLogBridge.install()
-        SlockIosInstallQuiverReporting()
+        SlockIosInstallHandsReporting()
         SlockIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
     }
 

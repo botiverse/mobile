@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-QUIVER_CLI="${QUIVER_CLI:-quiver}"
-QUIVER_CLI_PACKAGE="${QUIVER_CLI_PACKAGE:-@oranix/quiver-cli@0.1.0}"
-APP_SLUG="${QUIVER_APP_SLUG:-raft-android}"
-CHANNEL="${QUIVER_CHANNEL:-main}"
+HANDS_CLI="${HANDS_CLI:-${QUIVER_CLI:-hands}}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-${QUIVER_CLI_PACKAGE:-@botiverse/hands-cli@0.4.0}}"
+APP_SLUG="${HANDS_APP_SLUG:-${QUIVER_APP_SLUG:-raft-android}}"
+CHANNEL="${HANDS_CHANNEL:-${QUIVER_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 ARCH="${SLOCK_ANDROID_ARCH:-arm64-v8a}"
 VERSION_X="${SLOCK_ANDROID_VERSION_MAJOR:-1}"
@@ -15,7 +15,7 @@ VERSION_BUILD="${SLOCK_ANDROID_VERSION_BUILD:-0}"
 VERSION_SUFFIX="${SLOCK_ANDROID_VERSION_SUFFIX:-}"
 SKIP_GRADLE_BUILD="${SLOCK_SKIP_GRADLE_BUILD:-0}"
 COLLECT_SYMBOLS="${SLOCK_COLLECT_ANDROID_SYMBOLS:-1}"
-DRY_RUN="${SLOCK_QUIVER_DRY_RUN:-0}"
+DRY_RUN="${SLOCK_HANDS_DRY_RUN:-${SLOCK_QUIVER_DRY_RUN:-0}}"
 
 die() {
   echo "error: $*" >&2
@@ -38,23 +38,23 @@ json_string() {
   python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
 }
 
-run_quiver() {
-  if [ -f "${QUIVER_CLI}" ]; then
-    case "${QUIVER_CLI}" in
+run_hands() {
+  if [ -f "${HANDS_CLI}" ]; then
+    case "${HANDS_CLI}" in
       *.js)
-        node "${QUIVER_CLI}" "$@"
+        node "${HANDS_CLI}" "$@"
         ;;
       *)
-        "${QUIVER_CLI}" "$@"
+        "${HANDS_CLI}" "$@"
         ;;
     esac
   else
-    if command -v "${QUIVER_CLI}" >/dev/null 2>&1; then
-      "${QUIVER_CLI}" "$@"
+    if command -v "${HANDS_CLI}" >/dev/null 2>&1; then
+      "${HANDS_CLI}" "$@"
     elif command -v npm >/dev/null 2>&1; then
-      npm exec --yes --package "${QUIVER_CLI_PACKAGE}" -- quiver "$@"
+      npm exec --yes --package "${HANDS_CLI_PACKAGE}" -- hands "$@"
     else
-      die "Quiver CLI not found: ${QUIVER_CLI}; install with: npm install -g @oranix/quiver-cli"
+      die "Hands CLI not found: ${HANDS_CLI}; install with: npm install -g @botiverse/hands-cli"
     fi
   fi
 }
@@ -95,16 +95,15 @@ usage() {
 Usage: scripts/publish_android_quiver_release.sh [options]
 
 Builds a Slock Android APK, collects support artifacts, and publishes an
-Android release to Quiver.
+Android release to Hands.
 
 Environment overrides:
-  QUIVER_APP_SLUG=raft-android
-  QUIVER_CHANNEL=main
-  QUIVER_API=https://quiver.oranix.io
-  QUIVER_SESSION_COOKIE=<quiver_session cookie>
-  QUIVER_AUTH_TOKEN=<agent or CI bearer token>
-  QUIVER_CLI=quiver
-  QUIVER_CLI_PACKAGE=@oranix/quiver-cli@0.1.0
+  HANDS_APP_SLUG=raft-android
+  HANDS_CHANNEL=main
+  HANDS_API=https://hands.build
+  HANDS_AUTH_TOKEN=<agent or CI bearer token>
+  HANDS_CLI=hands
+  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.4.0
   SLOCK_ANDROID_VERSION_MAJOR=1
   SLOCK_ANDROID_VERSION_MINOR=0
   SLOCK_ANDROID_VERSION_PATCH=0
@@ -119,8 +118,8 @@ Environment overrides:
   SLOCK_QUIVER_DRY_RUN=1
 
 Options:
-  --channel <slug>       Quiver channel. Default: $QUIVER_CHANNEL or main.
-  --app <slug>           Quiver app slug. Default: raft-android.
+  --channel <slug>       Hands channel. Default: $HANDS_CHANNEL or main.
+  --app <slug>           Hands app slug. Default: raft-android.
   --variant <name>       Gradle build variant. Default: release.
   --build <n>            Version build component.
   --suffix <value>       Version name suffix.
@@ -257,18 +256,18 @@ fi
   printf '}\n'
 } >"${METADATA_PATH}"
 
-echo "Prepared Quiver Android release artifacts:"
+echo "Prepared Hands Android release artifacts:"
 echo "  APK:      ${APK_PATH}"
 echo "  Metadata: ${METADATA_PATH}"
 [ -f "${MAPPING_PATH}" ] && echo "  Mapping:  ${MAPPING_PATH}"
 [ -n "${SYMBOL_ARCHIVE}" ] && echo "  Symbols:  ${SYMBOL_ARCHIVE}"
 
 if [ "${DRY_RUN}" = "1" ]; then
-  echo "Dry run: not publishing to Quiver."
+  echo "Dry run: not publishing to Hands."
   exit 0
 fi
 
-QUIVER_ARGS=(
+HANDS_ARGS=(
   builds
   publish-android
   "${APP_SLUG}"
@@ -283,16 +282,16 @@ QUIVER_ARGS=(
   --metadata "${METADATA_PATH}"
 )
 if [ -n "${SLOCK_RELEASE_CHANGELOG_FILE:-}" ] && [ -s "${SLOCK_RELEASE_CHANGELOG_FILE}" ]; then
-  QUIVER_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
+  HANDS_ARGS+=(--changelog-file "${SLOCK_RELEASE_CHANGELOG_FILE}")
 fi
 if [ "${SLOCK_QUIVER_DRAFT:-0}" = "1" ]; then
-  QUIVER_ARGS+=(--draft)
+  HANDS_ARGS+=(--draft)
 fi
 if [ -f "${MAPPING_PATH}" ]; then
-  QUIVER_ARGS+=(--mapping "${MAPPING_PATH}")
+  HANDS_ARGS+=(--mapping "${MAPPING_PATH}")
 fi
 if [ -n "${SYMBOL_ARCHIVE}" ]; then
-  QUIVER_ARGS+=(--symbols "${SYMBOL_ARCHIVE}")
+  HANDS_ARGS+=(--symbols "${SYMBOL_ARCHIVE}")
 fi
 
-run_quiver "${QUIVER_ARGS[@]}"
+run_hands "${HANDS_ARGS[@]}"

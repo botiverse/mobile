@@ -16,7 +16,7 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
-import { Quiver } from '@oranix/quiver';
+import { Hands } from '@botiverse/hands';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
@@ -66,11 +66,11 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
     this.setupKnoi();
-    // App-owned Quiver reporting config (client key is DSN-class: it
-    // identifies the app; rotate from the Quiver console if leaked).
-    Quiver.install(
+    // App-owned Hands reporting config (client key is DSN-class: it
+    // identifies the app; rotate from the Hands console if leaked).
+    Hands.install(
       {
-        baseUrl: 'https://quiver.oranix.io',
+        baseUrl: 'https://hands.build',
         appSlug: 'raft-ohos',
         channel: 'main',
         clientKey: 'qk_425c2f5b28aae3d46037634665b99bc72605bb6e',

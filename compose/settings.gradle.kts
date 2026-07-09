@@ -142,12 +142,12 @@ dependencyResolutionManagement {
         }
     }
 
-    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesQuiver() {
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesHands() {
         maven {
-            name = "GitHubPackagesQuiver"
-            url = uri("https://maven.pkg.github.com/oranix-io/quiver")
+            name = "GitHubPackagesHands"
+            url = uri("https://maven.pkg.github.com/oranix-io/hands")
             content {
-                includeModuleByRegex("io\\.quiver", ".*")
+                includeModuleByRegex("build\\.hands", ".*")
             }
             credentials {
                 val (user, token) = githubPackagesCredentials()
@@ -159,7 +159,7 @@ dependencyResolutionManagement {
 
     repositories {
         githubPackagesKuiklyBase()
-        githubPackagesQuiver()
+        githubPackagesHands()
         mavenLocal()
         google()
         mavenCentral()
