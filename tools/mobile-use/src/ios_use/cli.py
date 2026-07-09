@@ -100,6 +100,24 @@ def build_parser() -> argparse.ArgumentParser:
     add_artifact_args(screenshot)
     screenshot.add_argument("--device", default=None)
 
+    interact = add(sub, "interact", cmd_interact, "Drive UI actions through the iosAppUITests XCUITest harness")
+    add_interaction_args(interact)
+    interact.add_argument("--actions", default=None, help="JSON array of ios-use actions")
+    interact.add_argument("--actions-file", default=None, help="Path to a JSON action array")
+
+    tap_text = add(sub, "tap-text", cmd_tap_text, "Tap an element by accessibility label or visible text")
+    add_interaction_args(tap_text)
+    tap_text.add_argument("text")
+
+    tap = add(sub, "tap", cmd_tap, "Tap normalized screen coordinates")
+    add_interaction_args(tap)
+    tap.add_argument("x", type=float, help="Normalized x coordinate, 0.0 to 1.0")
+    tap.add_argument("y", type=float, help="Normalized y coordinate, 0.0 to 1.0")
+
+    swipe = add(sub, "swipe", cmd_swipe, "Swipe in a direction")
+    add_interaction_args(swipe)
+    swipe.add_argument("--direction", required=True, choices=["up", "down", "left", "right"])
+
     log = add(sub, "log", cmd_log, "Capture simulator log stream for a duration")
     add_artifact_args(log)
     log.add_argument("--device", default=None)
@@ -121,6 +139,15 @@ def add(sub: argparse._SubParsersAction[argparse.ArgumentParser], name: str, fun
 def add_artifact_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out", default="/tmp/ios-use")
     parser.add_argument("--prefix", default="state")
+
+
+def add_interaction_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--workspace", default=argparse.SUPPRESS)
+    parser.add_argument("--interaction-scheme", default=argparse.SUPPRESS)
+    parser.add_argument("--configuration", default=argparse.SUPPRESS)
+    parser.add_argument("--derived-data", default=argparse.SUPPRESS)
+    parser.add_argument("--bundle", default=argparse.SUPPRESS)
+    parser.add_argument("--device", default=argparse.SUPPRESS)
 
 
 def cmd_doctor(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
@@ -203,6 +230,53 @@ def cmd_open_url(args: argparse.Namespace, config: IosConfig) -> dict[str, objec
 
 def cmd_screenshot(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
     return IosSimulator(config).screenshot(out=Path(args.out).expanduser(), prefix=args.prefix, device=args.device)
+
+
+def cmd_interact(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
+    raw = read_actions(args.actions, args.actions_file)
+    return run_interaction(args, config, raw)
+
+
+def cmd_tap_text(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
+    return run_interaction(args, config, [{"type": "tapText", "text": args.text}])
+
+
+def cmd_tap(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
+    if not (0.0 <= args.x <= 1.0 and 0.0 <= args.y <= 1.0):
+        raise IosUseError("tap coordinates are normalized and must be between 0.0 and 1.0")
+    return run_interaction(args, config, [{"type": "tap", "x": args.x, "y": args.y}])
+
+
+def cmd_swipe(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:
+    return run_interaction(args, config, [{"type": "swipe", "direction": args.direction}])
+
+
+def run_interaction(args: argparse.Namespace, config: IosConfig, actions: list[dict[str, Any]]) -> dict[str, object]:
+    return IosSimulator(config).interact(
+        actions,
+        workspace=Path(args.workspace).expanduser() if getattr(args, "workspace", None) else None,
+        interaction_scheme=getattr(args, "interaction_scheme", "iosAppUITests"),
+        configuration=getattr(args, "configuration", None),
+        derived_data=Path(args.derived_data).expanduser() if getattr(args, "derived_data", None) else None,
+        bundle=getattr(args, "bundle", None),
+        device=getattr(args, "device", None),
+    )
+
+
+def read_actions(raw: str | None, path: str | None) -> list[dict[str, Any]]:
+    if raw and path:
+        raise IosUseError("pass only one of --actions or --actions-file")
+    if path:
+        raw = Path(path).expanduser().read_text(encoding="utf-8")
+    if not raw:
+        raise IosUseError("interact requires --actions or --actions-file")
+    try:
+        actions = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise IosUseError(f"invalid actions JSON: {exc}") from exc
+    if not isinstance(actions, list) or not all(isinstance(action, dict) for action in actions):
+        raise IosUseError("actions JSON must be an array of objects")
+    return actions
 
 
 def cmd_log(args: argparse.Namespace, config: IosConfig) -> dict[str, object]:

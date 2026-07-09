@@ -49,6 +49,8 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
         self.backgroundColor = UIColor.clearColor;
         _contentContainerView = [[UIView alloc] initWithFrame:CGRectZero];
         _contentContainerView.backgroundColor = UIColor.clearColor;
+        _contentContainerView.hidden = YES;
+        self.userInteractionEnabled = NO;
         [self addSubview:_contentContainerView];
     }
     return self;
@@ -321,6 +323,8 @@ static CGFloat const SlockKuiklyPageViewLiquidGlassCornerRadius = 28.0;
 - (void)syncChildVisibility {
     BOOL shouldBeRendered = self.childActive && self.childView != nil;
     BOOL shouldBeLifecycleVisible = shouldBeRendered && self.viewDidAppear && self.pageDidAppear;
+    self.contentContainerView.hidden = !shouldBeRendered;
+    self.userInteractionEnabled = shouldBeRendered;
     self.childView.hidden = !shouldBeRendered;
     if (self.childVisible == shouldBeLifecycleVisible) {
         return;
