@@ -510,6 +510,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   var rowById = {};
   var selectedId = null;
   var compTab = null;
+  var overviewComparison = (DATA.comparisons && DATA.comparisons[0] && DATA.comparisons[0].current) || DATA.current;
   var addonTab = "metrics";
   var zoom = 1;
   var bgIndex = 0;
@@ -543,6 +544,12 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   function tc(value) {
     value = String(value || "");
     return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+  }
+  function providerTitle(value) {
+    value = String(value || "");
+    if (value.toLowerCase() === "ios") return "iOS";
+    if (value.toLowerCase() === "ohos") return "OHOS";
+    return tc(value);
   }
   function anchorId(id) {
     return String(id).replace(/[^a-zA-Z0-9]+/g, "-");
@@ -913,11 +920,48 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   })();
 
   // ----- waterfall overview grid -----
-  (function () {
+  function overviewPairDefs() {
+    var pairs = (DATA.comparisons || []).length
+      ? DATA.comparisons
+      : [{ baseline: DATA.baseline, current: DATA.current, comparison: DATA.baseline + "__" + DATA.current, summary: DATA.summary || {} }];
+    return pairs.map(function (pair) {
+      return {
+        key: pair.current,
+        label: "Side-by-side · " + (pair.currentLabel || providerTitle(pair.current)),
+        pair: pair
+      };
+    });
+  }
+  function overviewComparisonForItem(item) {
+    if (!item) return null;
+    if (!overviewComparison || overviewComparison === DATA.current) {
+      return {
+        status: item.status,
+        similarity: item.similarity,
+        sideBySideImage: item.sideBySideImage,
+        fallbackImage: item.baselineImage || item.currentImage
+      };
+    }
+    var comparisons = item.comparisons || [];
+    for (var i = 0; i < comparisons.length; i += 1) {
+      if (comparisons[i].current === overviewComparison) {
+        return {
+          status: comparisons[i].status,
+          similarity: comparisons[i].similarity,
+          sideBySideImage: comparisons[i].sideBySideImage,
+          fallbackImage: comparisons[i].currentImage
+        };
+      }
+    }
+    return { status: "missing", similarity: null, sideBySideImage: null, fallbackImage: null };
+  }
+  function renderOverviewWaterfall() {
     var waterfall = document.getElementById("vt-waterfall");
     if (!waterfall) return;
+    waterfall.innerHTML = "";
     var items = orderedCases.length ? orderedCases : (DATA.cases || []);
     items.forEach(function (item) {
+      var comparison = overviewComparisonForItem(item);
       var card = el("button", "sb-wcard");
       card.type = "button";
       card.title = caseLabel(item) + " · " + item.id;
@@ -925,11 +969,11 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       var meta = el("div", "meta");
       meta.appendChild(el("span", "name", caseLabel(item)));
       meta.appendChild(copyIdButton(item.id, "span"));
-      var p = pct(item.similarity);
+      var p = pct(comparison && comparison.similarity);
       if (p) meta.appendChild(el("span", "sb-pct", p));
-      meta.appendChild(el("span", "sb-dot " + statusKind(item.status)));
+      meta.appendChild(el("span", "sb-dot " + statusKind(comparison && comparison.status)));
       card.appendChild(meta);
-      var src = item.sideBySideImage || item.baselineImage || item.currentImage;
+      var src = (comparison && comparison.sideBySideImage) || (comparison && comparison.fallbackImage);
       if (src) {
         var img = document.createElement("img");
         img.loading = "lazy";
@@ -943,7 +987,25 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       card.addEventListener("click", function () { selectCase(item.id, true); });
       waterfall.appendChild(card);
     });
-  })();
+  }
+  function buildOverviewTabs() {
+    compTabsBox.innerHTML = "";
+    var defs = overviewPairDefs();
+    if (defs.length < 2) return;
+    if (!defs.some(function (def) { return def.key === overviewComparison; })) overviewComparison = defs[0].key;
+    defs.forEach(function (def) {
+      var button = el("button", "sb-comptab", def.label);
+      button.type = "button";
+      if (def.key === overviewComparison) button.classList.add("active");
+      button.addEventListener("click", function () {
+        overviewComparison = def.key;
+        Array.prototype.forEach.call(compTabsBox.children, function (child) { child.classList.remove("active"); });
+        button.classList.add("active");
+        renderOverviewWaterfall();
+      });
+      compTabsBox.appendChild(button);
+    });
+  }
 
   // ----- toolbar tools -----
   function iconBtn(icon, title) {
@@ -972,7 +1034,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
 
   // ----- comparison tabs + stage -----
   function baselineLabel() { return DATA.baselineLabel || tc(DATA.baseline); }
-  function currentLabel() { return DATA.currentLabel || tc(DATA.current); }
+  function currentLabel() { return DATA.currentLabel || providerTitle(DATA.current); }
   // The primary pair (DATA.baseline vs DATA.current) always gets the first
   // four tabs; each extra comparison (e.g. react__ios next to react__android)
   // adds its own raw/side-by-side/overlay tabs suffixed by provider label.
@@ -984,7 +1046,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       { key: "overlay", label: "Overlay", overlay: Boolean(item.baselineImage && item.currentImage), currentLabel: currentLabel(), currentSrc: item.currentImage, metrics: item.metrics }
     ];
     (item.comparisons || []).forEach(function (comparison) {
-      var label = comparison.label || tc(comparison.current);
+      var label = comparison.label || providerTitle(comparison.current);
       defs.push({ key: "current-" + comparison.current, label: label, src: comparison.currentImage });
       defs.push({ key: "side-" + comparison.current, label: "Side-by-side · " + label, src: comparison.sideBySideImage });
       defs.push({
@@ -1116,7 +1178,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       var extras = item.comparisons || [];
       appendMetricsBlock(extras.length ? baselineLabel() + " vs " + currentLabel() : null, item.metrics, item.status, currentLabel());
       extras.forEach(function (comparison) {
-        var label = comparison.label || tc(comparison.current);
+        var label = comparison.label || providerTitle(comparison.current);
         appendMetricsBlock(baselineLabel() + " vs " + label, comparison.metrics, comparison.status, label);
       });
       if (!rendered) {
@@ -1151,6 +1213,40 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
       });
       return;
     }
+    if (addonTab === "ai") {
+      function appendAiBlock(title, analysis) {
+        var block = el("div", "sb-ai-block");
+        block.appendChild(el("div", "sb-mtable-title", title));
+        if (!analysis || analysis.status !== "ready") {
+          block.appendChild(el("div", "sb-addon-empty", analysis && analysis.error ? analysis.error : "AI analysis pending."));
+          addonBody.appendChild(block);
+          return;
+        }
+        var meta = el("div", "sb-ai-meta");
+        var source = [];
+        if (analysis.analysisProvider) source.push("provider " + analysis.analysisProvider);
+        if (analysis.analysisModel) source.push("model " + analysis.analysisModel);
+        meta.textContent = [analysis.severity || "unknown"].concat(source).join(" · ");
+        block.appendChild(meta);
+        function list(label, values) {
+          if (!values || !values.length) return;
+          block.appendChild(el("div", "sb-ai-label", label));
+          var ul = document.createElement("ul");
+          values.forEach(function (value) { ul.appendChild(el("li", null, value)); });
+          block.appendChild(ul);
+        }
+        list("Summary", analysis.summary || []);
+        list("Likely causes", analysis.likelyCauses || []);
+        list("Suggested fixes", analysis.suggestedFixes || []);
+        if (analysis.suggestedOwner) block.appendChild(el("div", "sb-ai-owner", "Owner: " + analysis.suggestedOwner));
+        addonBody.appendChild(block);
+      }
+      appendAiBlock(baselineLabel() + " vs " + currentLabel(), item.analysis);
+      (item.comparisons || []).forEach(function (comparison) {
+        appendAiBlock(baselineLabel() + " vs " + (comparison.label || providerTitle(comparison.current)), comparison.analysis);
+      });
+      return;
+    }
     // info
     var kv = el("dl", "sb-kv");
     function pair(term, value, mono) {
@@ -1175,7 +1271,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   }
   function buildAddons(item) {
     addonTabbar.innerHTML = "";
-    [["metrics", "Metrics"], ["variant", "Variant"], ["info", "Info"]].forEach(function (entry) {
+    [["metrics", "Metrics"], ["ai", "AI"], ["variant", "Variant"], ["info", "Info"]].forEach(function (entry) {
       var button = el("button", "sb-addon-tab", entry[1]);
       button.type = "button";
       if (entry[0] === addonTab) button.classList.add("active");
@@ -1259,6 +1355,8 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
     addons.hidden = true;
     storyTitle.innerHTML = "";
     storyTitle.appendChild(el("span", "t", "Overview"));
+    buildOverviewTabs();
+    renderOverviewWaterfall();
     if (selectedId && rowById[selectedId]) rowById[selectedId].classList.remove("active");
     selectedId = null;
     // Restore the saved overview scroll position (e.g. after browser Back).
@@ -1289,7 +1387,7 @@ body.sb-foot-resizing { cursor: row-resize; user-select: none; }
   window.addEventListener("popstate", applyHash);
   applyHash();
 })();
-  </script>
+</script>
   <script>
     (() => {
       const formatter = new Intl.DateTimeFormat(undefined, {
