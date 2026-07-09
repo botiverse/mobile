@@ -511,6 +511,13 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
     }
     val shortStart = nameEndExclusive + 1
     if (nameEndExclusive < length && this[nameEndExclusive] == ':' && shortStart < length) {
+        // A colon followed by whitespace belongs to the prose, not to a
+        // channel-thread short id (for example `#design: next`).
+        // Keep the channel token and leave the colon outside its range. A
+        // non-empty but malformed short id remains rejected below.
+        if (this[shortStart].isWhitespace()) {
+            return start until nameEndExclusive
+        }
         var shortEndExclusive = shortStart
         while (shortEndExclusive < length &&
             shortEndExclusive - shortStart < 8 &&

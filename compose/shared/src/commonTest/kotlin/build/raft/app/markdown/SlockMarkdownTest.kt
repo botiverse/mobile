@@ -637,6 +637,41 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun channelBeforeProseColonKeepsKnownChannelToken() {
+        val body = "Rich fixture for #design: @artin"
+        val matches = body.threadInlineTagMatches()
+        val channel = matches.single { it.tag.kind == ThreadMarkdownTagKind.Channel }
+
+        assertEquals("#design", channel.tag.label)
+        assertEquals("#design", body.substring(channel.range))
+
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        highlightedMentions = setOf("artin"),
+                        isTagValid =
+                            validThreadMarkdownTags(
+                                knownChannels = setOf("design"),
+                                knownMentions = setOf("artin")
+                            )
+                    )
+            )
+
+        assertEquals(body, annotated.text)
+        assertEquals(setOf("slock:17", "slock:26"), annotated.slockMarkdownClickableTags())
+        assertEquals(
+            listOf(
+                SlockRichTextChromeKind.Channel.wireValue,
+                SlockRichTextChromeKind.SelfMention.wireValue
+            ),
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
+    }
+
+    @Test
     fun task25ReferenceScenarioKeepsReactTokenColorsAndBoundaries() {
         val body =
             "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25; " +
