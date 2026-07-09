@@ -1,5 +1,7 @@
 package build.raft.app.model
 
+import build.raft.app.data.SettingsServerSidebarPinnedItem
+
 import kotlinx.serialization.Serializable
 
 // Session and Server Models
@@ -606,6 +608,18 @@ data class PerReceiverNotificationPrefsChanged(
     val scopeId: ChannelId,
     val preference: ChannelActivityNotificationPreference,
     val prefsVersion: Long
+) : RealtimeEvent
+
+/**
+ * Per-receiver pinned sidebar update. The wire event is emitted to the
+ * receiving user's room; the receiving member is inferred from the active
+ * session and [pinnedVersion] is gated as a user-global server/member scope.
+ */
+@Serializable
+data class PerReceiverPinnedChanged(
+    val serverId: ServerId? = null,
+    val pinned: List<SettingsServerSidebarPinnedItem>,
+    val pinnedVersion: Long
 ) : RealtimeEvent
 
 /**

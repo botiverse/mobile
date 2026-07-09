@@ -891,7 +891,7 @@ class SlockHomeComponentsTest {
                 pinnedOrder = listOf("dm-agent-1", "agent-1", "dm-human-1"),
                 typedPinnedItems =
                     listOf(
-                        SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                        SettingsServerSidebarPinnedItem(kind = "channel", id = "dm-agent-1"),
                         SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
                         SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")
                     ),

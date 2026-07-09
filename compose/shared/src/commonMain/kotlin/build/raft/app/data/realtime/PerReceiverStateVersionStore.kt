@@ -8,7 +8,8 @@ import build.raft.app.model.ServerId
 enum class PerReceiverStateScope(val wireName: String) {
     ReadState("read_state"),
     NotificationPrefs("notification_prefs"),
-    ServerOrder("server_order")
+    ServerOrder("server_order"),
+    Pinned("pinned")
 }
 
 data class PerReceiverStateVersionDecision(
@@ -24,8 +25,8 @@ data class PerReceiverStateVersionDecision(
  * `read_state` and `notification_prefs` versions live on the per-(user,
  * channel) cursor row (`user_channel_read_cursors` PK (user_id, channel_id)),
  * so callers MUST pass the [scopeId] those versions are counted against.
- * `server_order` is one blob per (server, member), so it gates at family
- * level with no [scopeId].
+ * `server_order` and `pinned` are one blob per (server, member), so they
+ * gate at family level with no [scopeId].
  */
 class PerReceiverStateVersionStore(
     private val store: SharedPreferenceStore

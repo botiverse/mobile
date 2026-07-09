@@ -335,6 +335,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeEvent
@@ -15648,6 +15649,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is Heartbeat -> "heartbeat"
         is PerReceiverReadStateChanged -> "read_state_updated"
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+        is PerReceiverPinnedChanged -> "pinned_updated"
         is NotificationPushReceived -> "notification_push"
     }
 
@@ -15669,7 +15671,8 @@ private fun RealtimeEvent.performanceMarkerPhase(): String =
         is AgentCreated -> "realtime_membership_apply"
         is Heartbeat -> "realtime_heartbeat"
         is PerReceiverReadStateChanged,
-        is PerReceiverNotificationPrefsChanged -> "realtime_content_apply"
+        is PerReceiverNotificationPrefsChanged,
+        is PerReceiverPinnedChanged -> "realtime_content_apply"
         is NotificationPushReceived -> "realtime_notification_apply"
     }
 

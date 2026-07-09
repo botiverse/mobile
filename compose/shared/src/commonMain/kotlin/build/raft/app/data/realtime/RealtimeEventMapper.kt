@@ -1,6 +1,7 @@
 package build.raft.app.data.realtime
 
 import build.raft.app.KuiklyThreadSurfaceKind
+import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
@@ -29,6 +30,7 @@ import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.Presence
@@ -217,6 +219,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ReadStateUpdatedBulkDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPrefsUpdated ->
                 decodeOrNull(NotificationPrefsUpdatedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.PinnedUpdated ->
+                decodeOrNull(PinnedUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.NotificationPush ->
                 decodeOrNull(NotificationPushDto.serializer(), element)?.toDomainOrNull()
             else -> null
@@ -548,6 +552,13 @@ private data class NotificationPrefsUpdatedDto(
     val scopeId: String,
     val prefs: NotificationPrefsWireDto = NotificationPrefsWireDto(),
     val prefsVersion: Long,
+)
+
+@Serializable
+private data class PinnedUpdatedDto(
+    val serverId: String? = null,
+    val pinned: List<SettingsServerSidebarPinnedItem> = emptyList(),
+    val pinnedVersion: Long,
 )
 
 // ── DTO → domain mappers ─────────────────────────────────────────────────────
@@ -1102,6 +1113,20 @@ private fun NotificationPrefsUpdatedDto.toDomain(): PerReceiverNotificationPrefs
             activityMuteSupported = true
         ),
         prefsVersion = prefsVersion
+    )
+}
+
+private fun PinnedUpdatedDto.toDomain(): PerReceiverPinnedChanged? {
+    val cleanPinned =
+        pinned.mapNotNull { item ->
+            val kind = item.kind.trim().lowercase().takeIf { it == "channel" || it == "agent" || it == "human" }
+            val id = item.id.trim().takeIf { it.isNotBlank() }
+            if (kind != null && id != null) SettingsServerSidebarPinnedItem(kind = kind, id = id) else null
+        }
+    return PerReceiverPinnedChanged(
+        serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        pinned = cleanPinned,
+        pinnedVersion = pinnedVersion
     )
 }
 

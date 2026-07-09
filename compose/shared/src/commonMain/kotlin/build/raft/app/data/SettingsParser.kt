@@ -759,8 +759,7 @@ fun parseSharedSettingsSidebarOrder(bodyText: String): SettingsServerSidebarOrde
                     val kind = item.kind.trim().lowercase().takeIf { it == "channel" || it == "agent" || it == "human" }
                     val id = item.id.trim().takeIf { it.isNotBlank() }
                     if (kind != null && id != null) SettingsServerSidebarPinnedItem(kind = kind, id = id) else null
-                }
-                .distinctBy { "${it.kind}:${it.id}" },
+                },
         hiddenDmIds = order.hiddenDmIds,
         channelPanelTabOrder = order.channelPanelTabOrder,
         agentPanelTabOrder = order.agentPanelTabOrder,

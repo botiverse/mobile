@@ -59,6 +59,7 @@ object RealtimeSocketEvents {
     const val ReadStateUpdated = "read_state:updated"
     const val ReadStateUpdatedBulk = "read_state:updated_bulk"
     const val NotificationPrefsUpdated = "notification_prefs:updated"
+    const val PinnedUpdated = "pinned:updated"
 
     // task #459: server-qualified notification stream, emitted to the caller's
     // `user:<id>` room at the sendPushNotifications call point (server PR
@@ -70,6 +71,7 @@ object RealtimeSocketEvents {
             ReadStateUpdated,
             ReadStateUpdatedBulk,
             NotificationPrefsUpdated,
+            PinnedUpdated,
             NotificationPush,
         )
 }

@@ -10,6 +10,7 @@ import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
@@ -364,6 +365,8 @@ internal class SharedHomeStore(
                 applyPerReceiverNotificationPrefs(intent.update)
             is SharedHomeIntent.ApplyPerReceiverServerOrder ->
                 applyPerReceiverServerOrder(intent.update)
+            is SharedHomeIntent.ApplyPerReceiverPinned ->
+                applyPerReceiverPinned(intent.update)
             }
         }
     }
@@ -440,6 +443,10 @@ internal class SharedHomeStore(
             applyPerReceiverNotificationPrefsChanged(serverId, event)
             return
         }
+        if (event is PerReceiverPinnedChanged) {
+            applyPerReceiverPinnedChanged(serverId, event)
+            return
+        }
         applyRealtimeHomeEventLocally(serverId, event)
     }
 
@@ -494,6 +501,30 @@ internal class SharedHomeStore(
         diagnosticsLogger(
             "per_receiver_notification_prefs_apply serverId=${eventServerId.value} scopeId=${event.scopeId.value} " +
                 "version=${event.prefsVersion} muted=${event.preference.activityMuted} " +
+                "result=${if (applied) "applied" else "skipped"}"
+        )
+    }
+
+    private fun applyPerReceiverPinnedChanged(
+        serverId: ServerId,
+        event: PerReceiverPinnedChanged
+    ) {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val eventServerId = event.serverId ?: serverId
+        val update =
+            PerReceiverPinnedUpdate(
+                serverId = eventServerId,
+                memberId = content.snapshot.currentMember.id,
+                version = event.pinnedVersion,
+                sidebarOrder =
+                    content.snapshot.sidebarOrder
+                        ?.withCanonicalTypedPinned(event.pinned)
+                        ?: SettingsServerSidebarOrderSnapshot().withCanonicalTypedPinned(event.pinned)
+            )
+        val applied = applyPerReceiverPinned(update)
+        diagnosticsLogger(
+            "per_receiver_pinned_apply serverId=${eventServerId.value} " +
+                "version=${event.pinnedVersion} pinned=${event.pinned.size} " +
                 "result=${if (applied) "applied" else "skipped"}"
         )
     }
@@ -1105,49 +1136,10 @@ internal class SharedHomeStore(
             return
         }
         val target = current.snapshot.pinnedToggleTarget(conversationId)
-        val isCurrentlyPinned =
-            if (target.agentId != null) {
-                previous.pinnedAgentIds.contains(target.agentId) ||
-                    previous.pinnedChannelIds.contains(target.conversationId)
-            } else {
-                previous.pinnedChannelIds.contains(target.conversationId)
-            }
-        val next = if (isCurrentlyPinned) {
-            if (target.agentId != null) {
-                previous.copy(
-                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
-                    pinnedAgentIds = previous.pinnedAgentIds - target.agentId,
-                    pinnedOrder =
-                        previous.pinnedOrder.filterNot { it == target.conversationId || it == target.agentId }
-                )
-            } else {
-                previous.copy(
-                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
-                    pinnedOrder = previous.pinnedOrder.filterNot { it == target.conversationId }
-                )
-            }
-        } else {
-            if (target.agentId != null) {
-                previous.copy(
-                    pinnedChannelIds = previous.pinnedChannelIds - target.conversationId,
-                    pinnedAgentIds = (previous.pinnedAgentIds + target.agentId).distinct(),
-                    pinnedOrder =
-                        (previous.pinnedOrder.filterNot { it == target.conversationId || it == target.agentId } +
-                            target.agentId)
-                            .distinct()
-                )
-            } else {
-                previous.copy(
-                    pinnedChannelIds = (previous.pinnedChannelIds + target.conversationId).distinct(),
-                    pinnedOrder = (previous.pinnedOrder + target.conversationId).distinct()
-                )
-            }
-        }
+        val next = previous.withToggledPinnedTarget(target)
         applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
-            pinnedChannelIds = next.pinnedChannelIds,
-            pinnedAgentIds = next.pinnedAgentIds,
-            pinnedOrder = next.pinnedOrder
+            pinned = next.pinned
         )
         when (val result = updateSidebarOrder(request)) {
             is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
@@ -1158,23 +1150,6 @@ internal class SharedHomeStore(
                 pinUpdateFailureCallback("Unable to update pinned channels")
             }
         }
-    }
-
-    private fun HomeSnapshot.pinnedToggleTarget(conversationId: String): PinnedToggleTarget {
-        val directMessage =
-            directMessages.firstOrNull { row ->
-                row.threadId.value == conversationId || row.channelId.value == conversationId
-            }
-        val agentId =
-            directMessage
-                ?.takeIf { it.directMessagePeerType.equals("agent", ignoreCase = true) }
-                ?.presenceMemberId
-                ?.value
-                ?.takeIf { it.isNotBlank() }
-        return PinnedToggleTarget(
-            conversationId = conversationId,
-            agentId = agentId
-        )
     }
 
     private suspend fun setPinnedSortMode(mode: SlockSidebarSortMode) {
@@ -1274,13 +1249,16 @@ internal class SharedHomeStore(
             }
         }
         if (intent.pinnedOrder != null) {
-            val pinnedIdSet = previous.pinnedChannelIds.toSet() + previous.pinnedAgentIds.toSet()
+            val currentPinned = previous.typedPinnedOrLegacy()
+            val pinnedIdSet = currentPinned.map { it.id }.toSet()
             val cleanedPinned = intent.pinnedOrder.distinct().filter { it.isNotBlank() && it in pinnedIdSet }
             if (cleanedPinned.isNotEmpty()) {
                 val nextPinnedOrder =
-                    (cleanedPinned + previous.pinnedOrder.filterNot { it in cleanedPinned }).distinct()
-                if (nextPinnedOrder != previous.pinnedOrder) {
+                    (cleanedPinned + currentPinned.map { it.id }.filterNot { it in cleanedPinned }).distinct()
+                if (nextPinnedOrder != currentPinned.map { it.id }) {
+                    val byId = currentPinned.associateBy { it.id }
                     next = next.copy(
+                        pinned = nextPinnedOrder.mapNotNull { byId[it] },
                         pinnedOrder = nextPinnedOrder,
                         pinnedSortMode = SlockSidebarSortMode.Manual.wireValue
                     )
@@ -1294,7 +1272,7 @@ internal class SharedHomeStore(
             channelSortMode = next.channelSortMode.takeIf { next.channelOrder != previous.channelOrder || next.channelSortMode != previous.channelSortMode },
             dmOrder = next.dmOrder.takeIf { next.dmOrder != previous.dmOrder },
             dmSortMode = next.dmSortMode.takeIf { next.dmOrder != previous.dmOrder || next.dmSortMode != previous.dmSortMode },
-            pinnedOrder = next.pinnedOrder.takeIf { next.pinnedOrder != previous.pinnedOrder },
+            pinned = next.pinned.takeIf { next.pinned != previous.pinned },
             pinnedSortMode = next.pinnedSortMode.takeIf { next.pinnedOrder != previous.pinnedOrder || next.pinnedSortMode != previous.pinnedSortMode }
         )
         when (val result = updateSidebarOrder(request)) {
@@ -1599,6 +1577,28 @@ internal class SharedHomeStore(
         )
     }
 
+    private fun applyPerReceiverPinned(update: PerReceiverPinnedUpdate): Boolean {
+        if (!canApplyPerReceiverState(
+                serverId = update.serverId,
+                memberId = update.memberId,
+                scope = PerReceiverStateScope.Pinned,
+                version = update.version
+            )
+        ) {
+            return false
+        }
+        perReceiverStateVersionStore.recordApplied(
+            serverId = update.serverId,
+            memberId = update.memberId,
+            scope = PerReceiverStateScope.Pinned,
+            incomingVersion = update.version
+        )
+        return applySidebarOrderLocally(
+            serverId = update.serverId,
+            next = update.sidebarOrder
+        )
+    }
+
     private fun canApplyPerReceiverState(
         serverId: ServerId,
         memberId: MemberId,
@@ -1855,8 +1855,70 @@ private fun HomeSnapshot.findHomeConversation(conversationId: String): HomeConve
 
 private data class PinnedToggleTarget(
     val conversationId: String,
-    val agentId: String? = null
+    val item: SettingsServerSidebarPinnedItem
 )
+
+private fun HomeSnapshot.pinnedToggleTarget(conversationId: String): PinnedToggleTarget {
+    val directMessage =
+        directMessages.firstOrNull { row ->
+            row.threadId.value == conversationId || row.channelId.value == conversationId
+        }
+    val peerType = directMessage?.directMessagePeerType?.lowercase()
+    val memberId = directMessage?.presenceMemberId?.value?.takeIf { it.isNotBlank() }
+    val item =
+        when (peerType) {
+            "agent" -> memberId?.let { SettingsServerSidebarPinnedItem(kind = "agent", id = it) }
+            "human", "user" -> memberId?.let { SettingsServerSidebarPinnedItem(kind = "human", id = it) }
+            else -> null
+        } ?: SettingsServerSidebarPinnedItem(kind = "channel", id = conversationId)
+    return PinnedToggleTarget(conversationId = conversationId, item = item)
+}
+
+private fun SettingsServerSidebarOrderSnapshot.withToggledPinnedTarget(
+    target: PinnedToggleTarget
+): SettingsServerSidebarOrderSnapshot {
+    val current = typedPinnedOrLegacy()
+    val isPinned = current.any { it.matchesPinnedTarget(target) } || legacyPinnedContains(target)
+    val withoutTarget = current.filterNot { it.matchesPinnedTarget(target) }
+    val nextPinned = if (isPinned) withoutTarget else withoutTarget + target.item
+    return withCanonicalTypedPinned(nextPinned)
+}
+
+private fun SettingsServerSidebarOrderSnapshot.typedPinnedOrLegacy(): List<SettingsServerSidebarPinnedItem> {
+    if (pinned.isNotEmpty()) return pinned
+    val orderedIds =
+        (pinnedOrder + pinnedChannelIds + pinnedAgentIds)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+    return orderedIds.mapNotNull { id ->
+        when {
+            id in pinnedAgentIds -> SettingsServerSidebarPinnedItem(kind = "agent", id = id)
+            id in pinnedChannelIds -> SettingsServerSidebarPinnedItem(kind = "channel", id = id)
+            else -> null
+        }
+    }
+}
+
+private fun SettingsServerSidebarOrderSnapshot.legacyPinnedContains(target: PinnedToggleTarget): Boolean =
+    target.conversationId in pinnedChannelIds ||
+        (target.item.kind == "agent" && target.item.id in pinnedAgentIds) ||
+        target.item.id in pinnedOrder ||
+        target.conversationId in pinnedOrder
+
+private fun SettingsServerSidebarPinnedItem.matchesPinnedTarget(target: PinnedToggleTarget): Boolean =
+    kind == target.item.kind && id == target.item.id ||
+        kind == "channel" && id == target.conversationId
+
+private fun SettingsServerSidebarOrderSnapshot.withCanonicalTypedPinned(
+    nextPinned: List<SettingsServerSidebarPinnedItem>
+): SettingsServerSidebarOrderSnapshot =
+    copy(
+        pinned = nextPinned,
+        pinnedChannelIds = nextPinned.filter { it.kind == "channel" }.map { it.id },
+        pinnedAgentIds = nextPinned.filter { it.kind == "agent" }.map { it.id },
+        pinnedOrder = nextPinned.map { it.id }
+    )
 
 private data class ChannelActivityMuteRequest(
     val id: Long,
@@ -1902,6 +1964,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ApplyPerReceiverReadState -> "read_state:${update.serverId.value}:${update.channelId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverNotificationPrefs -> "notification_prefs:${update.serverId.value}:${update.channelId.value}:${update.version}"
         is SharedHomeIntent.ApplyPerReceiverServerOrder -> "server_order:${update.serverId.value}:${update.version}"
+        is SharedHomeIntent.ApplyPerReceiverPinned -> "pinned:${update.serverId.value}:${update.version}"
     }
 
 private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
@@ -2359,6 +2422,7 @@ sealed interface SharedHomeIntent {
     data class ApplyPerReceiverReadState(val update: PerReceiverReadStateUpdate) : SharedHomeIntent
     data class ApplyPerReceiverNotificationPrefs(val update: PerReceiverNotificationPrefsUpdate) : SharedHomeIntent
     data class ApplyPerReceiverServerOrder(val update: PerReceiverServerOrderUpdate) : SharedHomeIntent
+    data class ApplyPerReceiverPinned(val update: PerReceiverPinnedUpdate) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -2390,7 +2454,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
-            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
+            is SharedHomeIntent.ApplyPerReceiverServerOrder,
+            is SharedHomeIntent.ApplyPerReceiverPinned -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -2422,7 +2487,8 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
-            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
+            is SharedHomeIntent.ApplyPerReceiverServerOrder,
+            is SharedHomeIntent.ApplyPerReceiverPinned -> false
         }
 
 private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
@@ -2454,7 +2520,8 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
             is SharedHomeIntent.ApplyPerReceiverNotificationPrefs,
-            is SharedHomeIntent.ApplyPerReceiverServerOrder -> false
+            is SharedHomeIntent.ApplyPerReceiverServerOrder,
+            is SharedHomeIntent.ApplyPerReceiverPinned -> false
         }
 
 sealed interface SharedHomeContentState {
@@ -2516,6 +2583,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.TaskUpdated -> "task_updated"
         is PerReceiverReadStateChanged -> "read_state_updated"
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+        is PerReceiverPinnedChanged -> "pinned_updated"
         else -> "realtime"
     }
 

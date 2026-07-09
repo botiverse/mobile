@@ -2792,6 +2792,7 @@ private fun SettingsServerSidebarOrderUpdateRequest.hasAtLeastOneField(): Boolea
         channelSortMode != null ||
         dmSortMode != null ||
         pinnedSortMode != null ||
+        pinned != null ||
         pinnedChannelIds != null ||
         pinnedAgentIds != null ||
         pinnedOrder != null ||
@@ -2978,6 +2979,7 @@ data class SettingsServerSidebarOrderUpdateRequestBody(
     val channelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
+    val pinned: List<SettingsServerSidebarPinnedItem>? = null,
     val pinnedChannelIds: List<String>? = null,
     val pinnedAgentIds: List<String>? = null,
     val pinnedOrder: List<String>? = null,
@@ -3000,6 +3002,7 @@ fun buildSharedSettingsServerSidebarOrderUpdateBody(request: SettingsServerSideb
             channelSortMode = request.channelSortMode,
             dmSortMode = request.dmSortMode,
             pinnedSortMode = request.pinnedSortMode,
+            pinned = request.pinned,
             pinnedChannelIds = request.pinnedChannelIds,
             pinnedAgentIds = request.pinnedAgentIds,
             pinnedOrder = request.pinnedOrder,
