@@ -17481,7 +17481,9 @@ internal fun SettingsHomeContent(
                     items = payload.items,
                     showSelection = payload.showSelection,
                     onSelect = onSelect,
-                    modifier = Modifier.padding(start = SlockSpacing.Md)
+                    modifier = Modifier.padding(start = SlockSpacing.Md),
+                    sectionStartPadding = 0.dp,
+                    itemStartPadding = 0.dp
                 )
             }
             item {

@@ -138,7 +138,9 @@ internal fun SlockVerticalTabBar(
     items: List<SlockTabItemPayload>,
     showSelection: Boolean,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    sectionStartPadding: Dp = 6.dp,
+    itemStartPadding: Dp = 14.dp
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         var lastSection: String? = null
@@ -148,7 +150,7 @@ internal fun SlockVerticalTabBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 6.dp, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
+                        .padding(start = sectionStartPadding, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
                 ) {
                     Text(
                         item.section.uppercase(),
@@ -164,7 +166,8 @@ internal fun SlockVerticalTabBar(
                 item = item,
                 selected = showSelection && item.selected,
                 drawTopBorder = index == 0,
-                onSelect = onSelect
+                onSelect = onSelect,
+                itemStartPadding = itemStartPadding
             )
         }
     }
@@ -523,7 +526,8 @@ private fun SlockVerticalTabItem(
     item: SlockTabItemPayload,
     selected: Boolean,
     drawTopBorder: Boolean,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    itemStartPadding: Dp
 ) {
     val textColor = if (item.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
     Box(
@@ -547,7 +551,7 @@ private fun SlockVerticalTabItem(
                 .background(if (selected) SlockColor.AccentPink else Color.Transparent)
                 .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
-                .padding(start = 14.dp, end = 10.dp),
+                .padding(start = itemStartPadding, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
