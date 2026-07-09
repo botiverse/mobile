@@ -1,0 +1,439 @@
+name: iOS TestFlight Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_major:
+        description: "CFBundleShortVersionString major (X)"
+        required: true
+        type: string
+        default: "1"
+      version_minor:
+        description: "CFBundleShortVersionString minor (Y)"
+        required: true
+        type: string
+        default: "0"
+      version_patch:
+        description: "CFBundleShortVersionString patch (Z)"
+        required: true
+        type: string
+        default: "0"
+      version_build:
+        description: "CFBundleVersion build (x*1_000_000 + y*10_000 + z*100 + build)"
+        required: true
+        type: string
+        default: "0"
+      version_suffix:
+        description: "Version suffix for Hands metadata only; App Store builds should leave this empty"
+        required: false
+        type: string
+        default: ""
+      hands_channel:
+        description: "Hands channel: main | preview | nightly | debug"
+        required: true
+        type: choice
+        default: "main"
+        options:
+          - main
+          - preview
+          - nightly
+          - debug
+      release_mode:
+        description: "draft = create a Hands draft release for review; publish = immediately active"
+        required: true
+        type: choice
+        default: "draft"
+        options:
+          - draft
+          - publish
+      publish_hands:
+        description: "Upload signed IPA + dSYM to Hands"
+        required: true
+        type: boolean
+        default: true
+      upload_testflight:
+        description: "Upload the same signed IPA to App Store Connect/TestFlight"
+        required: true
+        type: boolean
+        default: true
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy=in-process"
+  GRADLE_MAX_WORKERS: "1"
+  IOS_WORKSPACE: compose/iosApp/iosApp.xcworkspace
+  IOS_SCHEME: iosApp
+  IOS_CONFIGURATION: Release
+  IOS_BUNDLE_ID: build.raft.app
+  HANDS_API: https://hands.build
+  QUIVER_API: https://hands.build
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  resolve:
+    name: Resolve release parameters
+    runs-on: ubuntu-22.04
+    outputs:
+      version_name: ${{ steps.p.outputs.version_name }}
+      version_code: ${{ steps.p.outputs.version_code }}
+      hands_channel: ${{ steps.p.outputs.hands_channel }}
+      release_mode: ${{ steps.p.outputs.release_mode }}
+      publish_hands: ${{ steps.p.outputs.publish_hands }}
+      upload_testflight: ${{ steps.p.outputs.upload_testflight }}
+    steps:
+      - id: p
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAJOR="${{ inputs.version_major }}"
+          MINOR="${{ inputs.version_minor }}"
+          PATCH="${{ inputs.version_patch }}"
+          BUILD="${{ inputs.version_build }}"
+          SUFFIX="${{ inputs.version_suffix }}"
+
+          VERSION_CODE=$((MAJOR * 1000000 + MINOR * 10000 + PATCH * 100 + BUILD))
+          VERSION_NAME="${MAJOR}.${MINOR}.${PATCH}"
+          if [ -n "${SUFFIX}" ]; then
+            VERSION_NAME="${VERSION_NAME}-${SUFFIX}"
+          fi
+
+          {
+            echo "version_name=${VERSION_NAME}"
+            echo "version_code=${VERSION_CODE}"
+            echo "hands_channel=${{ inputs.hands_channel }}"
+            echo "release_mode=${{ inputs.release_mode }}"
+            echo "publish_hands=${{ inputs.publish_hands }}"
+            echo "upload_testflight=${{ inputs.upload_testflight }}"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  build_ios_release:
+    name: Build signed IPA
+    runs-on: macos-15
+    timeout-minutes: 60
+    needs: resolve
+    outputs:
+      ipa_path: ${{ steps.collect.outputs.ipa_path }}
+      ipa_sha256: ${{ steps.collect.outputs.ipa_sha256 }}
+      ipa_size: ${{ steps.collect.outputs.ipa_size }}
+      dsym_path: ${{ steps.collect.outputs.dsym_path }}
+    env:
+      SLOCK_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+      SLOCK_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+      SLOCK_GIT_COMMIT: ${{ github.sha }}
+      SLOCK_BUILD_TIME: ${{ github.event.repository.updated_at }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Write GitHub Packages credentials
+        shell: bash
+        run: |
+          {
+            echo "githubPackagesUsername=${{ secrets.SLOCK_GITHUB_PACKAGES_USERNAME }}"
+            echo "githubPackagesToken=${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN }}"
+          } > compose/github-packages.properties
+
+      - name: Install signing certificate and provisioning profile
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${IOS_DISTRIBUTION_CERTIFICATE_BASE64}" ] || [ -z "${IOS_PROVISIONING_PROFILE_BASE64}" ]; then
+            echo "Missing iOS signing secrets." >&2
+            exit 1
+          fi
+
+          CERT_PATH="${RUNNER_TEMP}/ios_distribution.p12"
+          PROFILE_PATH="${RUNNER_TEMP}/ios_profile.mobileprovision"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/ios-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "${IOS_DISTRIBUTION_CERTIFICATE_BASE64}" | base64 --decode > "${CERT_PATH}"
+          printf '%s' "${IOS_PROVISIONING_PROFILE_BASE64}" | base64 --decode > "${PROFILE_PATH}"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -P "${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${KEYCHAIN_PATH}"
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+
+          PROFILE_UUID="$(security cms -D -i "${PROFILE_PATH}" | /usr/libexec/PlistBuddy -c 'Print :UUID' /dev/stdin)"
+          PROFILE_NAME="$(security cms -D -i "${PROFILE_PATH}" | /usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin)"
+          mkdir -p "${HOME}/Library/MobileDevice/Provisioning Profiles"
+          cp "${PROFILE_PATH}" "${HOME}/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+
+          echo "IOS_PROFILE_UUID=${PROFILE_UUID}" >> "$GITHUB_ENV"
+          echo "IOS_PROFILE_NAME=${PROFILE_NAME}" >> "$GITHUB_ENV"
+
+      - name: Install CocoaPods dependencies
+        working-directory: compose/iosApp
+        shell: bash
+        run: pod install --repo-update
+
+      - name: Create export options
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${IOS_TEAM_ID}" ]; then
+            echo "Missing IOS_TEAM_ID secret." >&2
+            exit 1
+          fi
+          cat > "${RUNNER_TEMP}/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_ID}</key>
+              <string>${IOS_PROFILE_NAME}</string>
+            </dict>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadSymbols</key>
+            <false/>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Archive
+        env:
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -workspace "${IOS_WORKSPACE}" \
+            -scheme "${IOS_SCHEME}" \
+            -configuration "${IOS_CONFIGURATION}" \
+            -destination "generic/platform=iOS" \
+            -archivePath "${RUNNER_TEMP}/Raft.xcarchive" \
+            DEVELOPMENT_TEAM="${IOS_TEAM_ID}" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="${IOS_PROFILE_NAME}" \
+            CURRENT_PROJECT_VERSION="${SLOCK_IOS_VERSION_CODE}" \
+            MARKETING_VERSION="${SLOCK_IOS_VERSION_NAME}" \
+            clean archive
+
+      - name: Export signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath "${RUNNER_TEMP}/Raft.xcarchive" \
+            -exportOptionsPlist "${RUNNER_TEMP}/ExportOptions.plist" \
+            -exportPath "${RUNNER_TEMP}/export"
+
+      - name: Collect IPA and dSYM
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/ios
+          IPA="$(find "${RUNNER_TEMP}/export" -maxdepth 1 -type f -name '*.ipa' | sort | head -n 1)"
+          if [ -z "${IPA}" ]; then
+            echo "No IPA exported." >&2
+            exit 1
+          fi
+          cp "${IPA}" "dist/ios/Raft-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}.ipa"
+          (cd "${RUNNER_TEMP}/Raft.xcarchive/dSYMs" && zip -qry "${GITHUB_WORKSPACE}/dist/ios/Raft-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}.dSYM.zip" .)
+
+          IPA_OUT="dist/ios/Raft-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}.ipa"
+          DSYM_OUT="dist/ios/Raft-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}.dSYM.zip"
+          echo "ipa_path=${IPA_OUT}" >> "$GITHUB_OUTPUT"
+          echo "dsym_path=${DSYM_OUT}" >> "$GITHUB_OUTPUT"
+          echo "ipa_sha256=$(shasum -a 256 "${IPA_OUT}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "ipa_size=$(stat -f %z "${IPA_OUT}")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: ${{ steps.collect.outputs.ipa_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload dSYM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-dsym
+          path: ${{ steps.collect.outputs.dsym_path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "### iOS release build summary"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| **versionName** | \`${{ needs.resolve.outputs.version_name }}\` |"
+            echo "| **versionCode / CFBundleVersion** | \`${{ needs.resolve.outputs.version_code }}\` |"
+            echo "| **IPA sha256** | \`${{ steps.collect.outputs.ipa_sha256 || '(none)' }}\` |"
+            echo "| **IPA size** | \`${{ steps.collect.outputs.ipa_size || '(none)' }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish_ios:
+    name: Publish to Hands and TestFlight
+    runs-on: macos-15
+    timeout-minutes: 30
+    needs: [resolve, build_ios_release]
+    if: needs.resolve.outputs.publish_hands == 'true' || needs.resolve.outputs.upload_testflight == 'true'
+    environment:
+      name: production
+    env:
+      HANDS_APP_SLUG: raft-ios
+      HANDS_AUTH_TOKEN: ${{ secrets.HANDS_BEARER_TOKEN || secrets.QUIVER_BEARER_TOKEN }}
+      QUIVER_AUTH_TOKEN: ${{ secrets.HANDS_BEARER_TOKEN || secrets.QUIVER_BEARER_TOKEN }}
+      HANDS_API: https://hands.build
+      QUIVER_API: https://hands.build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-ipa
+          path: dist/ios
+
+      - name: Download dSYM
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-release-dsym
+          path: dist/ios
+
+      - name: Install Hands CLI
+        if: needs.resolve.outputs.publish_hands == 'true'
+        shell: bash
+        run: |
+          npm install -g @botiverse/hands-cli@0.4.0 --registry=https://registry.npmjs.org/
+          hands --version
+
+      - name: Publish signed IPA to Hands
+        id: publish-hands
+        if: needs.resolve.outputs.publish_hands == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA="$(find dist/ios -maxdepth 1 -type f -name '*.ipa' | sort | head -n 1)"
+          DSYM="$(find dist/ios -maxdepth 1 -type f -name '*.dSYM.zip' | sort | head -n 1)"
+          if [ -z "${IPA}" ] || [ -z "${DSYM}" ]; then
+            echo "Missing IPA or dSYM under dist/ios." >&2
+            exit 1
+          fi
+
+          ARGS=(
+            builds publish-ios "${HANDS_APP_SLUG}"
+            --ipa "${IPA}"
+            --dsym "${DSYM}"
+            --channel "${{ needs.resolve.outputs.hands_channel }}"
+            --version-name "${{ needs.resolve.outputs.version_name }}"
+            --version-code "${{ needs.resolve.outputs.version_code }}"
+            --source-commit "${GITHUB_SHA}"
+            --source-branch "${GITHUB_REF_NAME}"
+            --ci-provider github-actions
+            --ci-run-id "${GITHUB_RUN_ID}"
+            --ci-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            --export-method app-store
+            --appstore-build-number "${{ needs.resolve.outputs.version_code }}"
+            --testflight-status "${{ needs.resolve.outputs.upload_testflight == 'true' && 'uploading' || 'not-uploaded' }}"
+          )
+          if [ "${{ needs.resolve.outputs.release_mode }}" = "draft" ]; then
+            ARGS+=(--draft)
+          fi
+          hands "${ARGS[@]}" | tee hands-publish.log
+          BUILD_ID="$(awk '/^[[:space:]]*build:/ {print $2}' hands-publish.log | tail -n 1)"
+          RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' hands-publish.log | tail -n 1)"
+          echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed IPA to TestFlight
+        if: needs.resolve.outputs.upload_testflight == 'true'
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_STORE_CONNECT_KEY_ID}" ] || [ -z "${APP_STORE_CONNECT_ISSUER_ID}" ] || [ -z "${APP_STORE_CONNECT_API_KEY_BASE64}" ]; then
+            echo "Missing App Store Connect API key secrets." >&2
+            exit 1
+          fi
+          IPA="$(find dist/ios -maxdepth 1 -type f -name '*.ipa' | sort | head -n 1)"
+          KEY_PATH="${RUNNER_TEMP}/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+          API_KEY_JSON="${RUNNER_TEMP}/appstore-connect-api-key.json"
+          printf '%s' "${APP_STORE_CONNECT_API_KEY_BASE64}" | base64 --decode > "${KEY_PATH}"
+          python3 - <<'PY' "${API_KEY_JSON}" "${APP_STORE_CONNECT_KEY_ID}" "${APP_STORE_CONNECT_ISSUER_ID}" "${KEY_PATH}"
+          import json
+          import sys
+
+          out, key_id, issuer_id, key_path = sys.argv[1:5]
+          with open(key_path, "r", encoding="utf-8") as fh:
+              key = fh.read()
+          with open(out, "w", encoding="utf-8") as fh:
+              json.dump(
+                  {
+                      "key_id": key_id,
+                      "issuer_id": issuer_id,
+                      "key": key,
+                      "in_house": False,
+                  },
+                  fh,
+              )
+          PY
+          gem install fastlane --no-document
+          fastlane pilot upload \
+            --api_key_path "${API_KEY_JSON}" \
+            --ipa "${IPA}" \
+            --skip_waiting_for_build_processing true \
+            --distribute_external false
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "### iOS publish summary"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| **Hands channel** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
+            echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
+            echo "| **Hands build id** | \`${{ steps.publish-hands.outputs.build_id || '(skipped)' }}\` |"
+            echo "| **Hands release id** | \`${{ steps.publish-hands.outputs.release_id || '(skipped)' }}\` |"
+            echo "| **TestFlight upload** | \`${{ needs.resolve.outputs.upload_testflight }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
