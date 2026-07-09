@@ -1012,6 +1012,7 @@ internal fun ThreadComposerContent(
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
+    composerSendKeyEnabled: Boolean = true,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
 ) {
@@ -1028,6 +1029,7 @@ internal fun ThreadComposerContent(
         hostPaddingHorizontal = hostPaddingHorizontal,
         hostPaddingTop = hostPaddingTop,
         keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
+        composerSendKeyEnabled = composerSendKeyEnabled,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed
     )
@@ -1044,6 +1046,7 @@ internal fun ThreadComposerContent(
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
+    composerSendKeyEnabled: Boolean = true,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
@@ -1165,6 +1168,12 @@ internal fun ThreadComposerContent(
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
             (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
+    val composerKeyboardOptions =
+        if (composerSendKeyEnabled) {
+            KeyboardOptions(imeAction = ImeAction.Send)
+        } else {
+            KeyboardOptions(imeAction = ImeAction.None)
+        }
 
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
         lastAcceptedLocalText = nextText
@@ -1275,6 +1284,12 @@ internal fun ThreadComposerContent(
             ThreadComposerEnterAction.Noop -> Unit
         }
     }
+    val composerKeyboardActions =
+        if (composerSendKeyEnabled) {
+            KeyboardActions(onSend = { handleKeyboardSend() })
+        } else {
+            KeyboardActions.Default
+        }
 
     val hostPaddingBottom =
         keyboardLiftBottomContentPadding?.let { bottomContentPadding ->
@@ -1403,12 +1418,8 @@ internal fun ThreadComposerContent(
                             onEvent("blur", null, null, null)
                         },
                         maxLines = 4,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                handleKeyboardSend()
-                            }
-                        ),
+                        keyboardOptions = composerKeyboardOptions,
+                        keyboardActions = composerKeyboardActions,
                         textStyle = SlockType.Input.copy(
                             color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                             fontSize = 16.sp,

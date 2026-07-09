@@ -156,6 +156,7 @@ data class ChatLayoutPreferenceSnapshot(
     val imageAnnotationEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
+    val composerSendKeyEnabled: Boolean = true,
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val supportedTranslationModes: List<TranslationModePreference> =
         TranslationModePreference.entries,
@@ -184,6 +185,9 @@ interface ChatLayoutPreferenceStore {
     fun readActivityTaskStatusBadgesEnabledSync(): Boolean
     suspend fun readActivityTaskStatusBadgesEnabled(): Boolean
     suspend fun saveActivityTaskStatusBadgesEnabled(enabled: Boolean)
+    fun readComposerSendKeyEnabledSync(): Boolean
+    suspend fun readComposerSendKeyEnabled(): Boolean
+    suspend fun saveComposerSendKeyEnabled(enabled: Boolean)
     fun readTranslationModeSync(): TranslationModePreference
     suspend fun readTranslationMode(): TranslationModePreference
     suspend fun saveTranslationMode(mode: TranslationModePreference)
@@ -259,6 +263,16 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED, enabled)
     }
 
+    override fun readComposerSendKeyEnabledSync(): Boolean =
+        store.getBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, true)
+
+    override suspend fun readComposerSendKeyEnabled(): Boolean =
+        readComposerSendKeyEnabledSync()
+
+    override suspend fun saveComposerSendKeyEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, enabled)
+    }
+
     override fun readTranslationModeSync(): TranslationModePreference =
         TranslationModePreference.fromStorageKey(store.getString(KEY_TRANSLATION_MODE))
 
@@ -301,6 +315,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
+        const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_TRANSLATION_MODE = "settings.translationMode"
         const val KEY_THREAD_ROW_AFFORDANCES = "chatLayout:thread_row_affordances"
     }
@@ -318,6 +333,7 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setTranslationMode(mode: TranslationModePreference): ChatLayoutPreferenceSnapshot
     suspend fun setThreadRowAffordance(
         affordance: ThreadRowAffordancePreference,
@@ -336,6 +352,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -351,6 +368,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -367,6 +385,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -381,6 +400,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -395,6 +415,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = enabled,
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -409,6 +430,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -423,6 +445,22 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
+            translationMode = store.readTranslationMode(),
+            threadRowAffordances = store.readThreadRowAffordances()
+        )
+    }
+
+    override suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveComposerSendKeyEnabled(enabled)
+        return ChatLayoutPreferenceSnapshot(
+            myMessageAlignment = store.readMyMessageAlignment(),
+            largeScreenNavigation = store.readLargeScreenNavigation(),
+            compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            imageAnnotationEnabled = store.readImageAnnotationEnabled(),
+            foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
+            activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = enabled,
             translationMode = store.readTranslationMode(),
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -437,6 +475,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = mode,
             threadRowAffordances = store.readThreadRowAffordances()
         )
@@ -461,6 +500,7 @@ class PersistentChatLayoutPreferenceRepository(
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
+            composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             translationMode = store.readTranslationMode(),
             threadRowAffordances = next
         )

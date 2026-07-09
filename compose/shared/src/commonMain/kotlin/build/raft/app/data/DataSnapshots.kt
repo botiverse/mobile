@@ -1148,6 +1148,13 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Show task status badges at the bottom of Activity rows. Keep this off for a quieter Activity list."
         ),
+    val composerSendKey: SettingsMobileToggleSnapshot =
+        SettingsMobileToggleSnapshot(
+            enabled = true,
+            available = true,
+            statusLabel = "Enabled",
+            detail = "Use the keyboard action key to send messages. Turn off to make the keyboard key insert new lines."
+        ),
     val threadRowAffordances: SettingsMobileMultiSelectionSnapshot =
         SettingsMobileMultiSelectionSnapshot(
             selectedKeys = ThreadRowAffordancePreference.Default.map { it.storageKey }.toSet(),

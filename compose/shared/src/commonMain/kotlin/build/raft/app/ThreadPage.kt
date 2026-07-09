@@ -3029,6 +3029,7 @@ internal fun SharedThreadRouteContent(
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
     fun foregroundMessageBannersEnabled(): Boolean =
         chatLayoutPreferenceStore.readForegroundMessageBannersEnabledSync()
+    val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -4467,6 +4468,7 @@ internal fun SharedThreadRouteContent(
             pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled,
+            composerSendKeyEnabled = composerSendKeyEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
@@ -7837,6 +7839,7 @@ private fun ThreadPageContent(
     pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
+    composerSendKeyEnabled: Boolean = true,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
@@ -8441,6 +8444,7 @@ private fun ThreadPageContent(
                                     insertMentionRequest = null
                                 }
                             },
+                            composerSendKeyEnabled = composerSendKeyEnabled,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
                                     composerKeyboardInsetDp = nextInset
@@ -8812,6 +8816,7 @@ private fun ThreadComposerRoute(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    composerSendKeyEnabled: Boolean = true,
     onKeyboardHeightChange: (Float) -> Unit
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
@@ -8835,6 +8840,7 @@ private fun ThreadComposerRoute(
         onEvent = onEvent,
         insertMentionRequest = insertMentionRequest,
         onInsertMentionConsumed = onInsertMentionConsumed,
+        composerSendKeyEnabled = composerSendKeyEnabled,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
         contentPaddingBottom = 0.dp
@@ -8854,6 +8860,7 @@ private fun ThreadComposerContentWithSuggestions(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
     onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
+    composerSendKeyEnabled: Boolean = true,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp
@@ -8941,7 +8948,8 @@ private fun ThreadComposerContentWithSuggestions(
         contentPaddingBottom = contentPaddingBottom,
         agentStatusResolver = agentStatusResolver,
         insertMentionRequest = insertMentionRequest,
-        onInsertMentionConsumed = onInsertMentionConsumed
+        onInsertMentionConsumed = onInsertMentionConsumed,
+        composerSendKeyEnabled = composerSendKeyEnabled,
     )
 }
 
