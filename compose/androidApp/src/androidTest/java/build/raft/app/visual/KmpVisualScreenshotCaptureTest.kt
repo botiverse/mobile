@@ -1219,6 +1219,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsComputersLoadingScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.settings.computers.loading",
+            pageName = "compose_settings_computers",
+            pageData = JSONObject().put("visualFixture", "computers-loading"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureSettingsComputerDetailScreen() {
         captureKmpComponentCase(
             caseId = "screens.settings.computer-detail",

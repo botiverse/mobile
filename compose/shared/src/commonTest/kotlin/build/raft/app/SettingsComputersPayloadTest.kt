@@ -37,17 +37,18 @@ class SettingsComputersPayloadTest {
     }
 
     @Test
-    fun computersListStatusPresentationDistinguishesLoadingErrorPermissionAndEmpty() {
+    fun computersListStatusPresentationDistinguishesPageLoadingErrorPermissionAndEmpty() {
         val loadingState: ScreenLoadState<SettingsComputersSnapshot> = ScreenLoadState.Loading
         val loading = loadingState.toComputersPayload(refreshing = false, timeContext = null)
         assertEquals("loading", loading.status)
-        assertEquals(SlockLucideIconName.LoaderCircle, loading.statusPresentation().iconName)
-        assertEquals("Loading computers", loading.statusPresentation().title)
+        assertEquals(true, loading.isPageLevelLoading())
+        assertEquals("Loading computers", loading.pageLevelLoadingMessage())
 
         val errorState: ScreenLoadState<SettingsComputersSnapshot> =
             ScreenLoadState.Error(ScreenError(code = "server_unavailable", retryable = true))
         val error = errorState.toComputersPayload(refreshing = false, timeContext = null)
         assertEquals("error", error.status)
+        assertEquals(false, error.isPageLevelLoading())
         assertEquals(SlockLucideIconName.TriangleAlert, error.statusPresentation().iconName)
         assertEquals("Unable to load computers", error.statusPresentation().title)
 

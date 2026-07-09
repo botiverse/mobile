@@ -186,11 +186,17 @@ private fun SettingsComputersScreen() {
     val timeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.settingsStandaloneTimeContext()
     }
-    if (visualFixture == "computers") {
+    if (visualFixture == "computers" || visualFixture == "computers-loading") {
         Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
             SettingsComputersListHeader(onBack = {}, onAddComputer = {})
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                SettingsComputersContent(visualSettingsComputersPayload()) { _, _ -> }
+                SettingsComputersContent(
+                    if (visualFixture == "computers-loading") {
+                        visualSettingsComputersLoadingPayload()
+                    } else {
+                        visualSettingsComputersPayload()
+                    }
+                ) { _, _ -> }
             }
         }
         return
@@ -607,6 +613,10 @@ internal fun SettingsComputersContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
+    if (payload.isPageLevelLoading()) {
+        SettingsComputersPageLoadingMessage(payload.pageLevelLoadingMessage())
+        return
+    }
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -635,6 +645,26 @@ internal fun SettingsComputersContent(
             item { SettingsInfoStrip("Add computer", reason) }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+internal fun KuiklySettingsComputersPayload.isPageLevelLoading(): Boolean =
+    status == "loading" && computers.isEmpty()
+
+internal fun KuiklySettingsComputersPayload.pageLevelLoadingMessage(): String =
+    emptyTitle.ifBlank { "Loading computers" }
+
+@Composable
+private fun SettingsComputersPageLoadingMessage(message: String) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            message,
+            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
     }
 }
 
@@ -1544,6 +1574,14 @@ private fun visualSettingsComputersPayload(): KuiklySettingsComputersPayload =
         addComputerUnavailableReason = null,
         latestDaemonVersion = "0.65.0",
         latestComputerVersion = "0.0.50"
+    )
+
+private fun visualSettingsComputersLoadingPayload(): KuiklySettingsComputersPayload =
+    KuiklySettingsComputersPayload(
+        instanceId = "visual-settings-computers-loading",
+        status = "loading",
+        emptyTitle = "Loading computers",
+        emptyDetail = "Fetching connected machines from this server."
     )
 
 private fun visualSettingsComputerDetailPayload(
