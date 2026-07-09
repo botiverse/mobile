@@ -768,7 +768,7 @@ internal fun String.withInsertedThreadMention(handle: String): String {
     }
 }
 
-private fun String.toThreadMentionToken(): String? =
+internal fun String.toThreadMentionToken(): String? =
     trim()
         .removePrefix("@")
         .takeIf { it.isNotBlank() }

@@ -7926,6 +7926,8 @@ private fun ThreadPageContent(
     var forwardSendingTargetId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var forwardSelectedTarget by remember(threadInstanceKey) { mutableStateOf<ForwardMessageTarget?>(null) }
     var forwardNote by remember(threadInstanceKey) { mutableStateOf("") }
+    var insertMentionRequestNonce by remember(threadInstanceKey) { mutableStateOf(0) }
+    var insertMentionRequest by remember(threadInstanceKey) { mutableStateOf<ThreadComposerInsertMentionRequest?>(null) }
     val shareSelectionActive = selectedShareMessageIds.isNotEmpty() && selectedTab == KuiklyThreadTab.Chat
     val selectableShareMessageIds =
         remember(timelineSlice) {
@@ -8203,7 +8205,12 @@ private fun ThreadPageContent(
                         onMentionAuthor = { message ->
                             val handle = mentionHandleResolver(message)
                             if (showComposerForSelectedTab && handle != null) {
-                                composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
+                                insertMentionRequestNonce += 1
+                                insertMentionRequest =
+                                    ThreadComposerInsertMentionRequest(
+                                        nonce = insertMentionRequestNonce,
+                                        handle = handle
+                                    )
                             }
                         },
                         onOpenMarkdownTag = openMarkdownTag,
@@ -8428,6 +8435,12 @@ private fun ThreadPageContent(
                             channelSuggestionsFlow = channelSuggestionsFlow,
                             agentStatusResolver = agentStatusResolver,
                             onEvent = onComposerEvent,
+                            insertMentionRequest = insertMentionRequest,
+                            onInsertMentionConsumed = { request ->
+                                if (insertMentionRequest?.nonce == request.nonce) {
+                                    insertMentionRequest = null
+                                }
+                            },
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
                                     composerKeyboardInsetDp = nextInset
@@ -8797,6 +8810,8 @@ private fun ThreadComposerRoute(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onKeyboardHeightChange: (Float) -> Unit
 ) {
     val composerDraftState by composerDraftViewModel.state.collectAsState()
@@ -8818,6 +8833,8 @@ private fun ThreadComposerRoute(
         channelSuggestionsFlow = channelSuggestionsFlow,
         agentStatusResolver = agentStatusResolver,
         onEvent = onEvent,
+        insertMentionRequest = insertMentionRequest,
+        onInsertMentionConsumed = onInsertMentionConsumed,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = 0.dp,
         contentPaddingBottom = 0.dp
@@ -8835,6 +8852,8 @@ private fun ThreadComposerContentWithSuggestions(
     channelSuggestionsFlow: Flow<SharedMembersChannelSuggestionSlice>,
     agentStatusResolver: SlockAgentStatusResolver,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {},
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp
@@ -8920,7 +8939,9 @@ private fun ThreadComposerContentWithSuggestions(
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
         contentPaddingBottom = contentPaddingBottom,
-        agentStatusResolver = agentStatusResolver
+        agentStatusResolver = agentStatusResolver,
+        insertMentionRequest = insertMentionRequest,
+        onInsertMentionConsumed = onInsertMentionConsumed
     )
 }
 

@@ -235,6 +235,11 @@ internal data class ThreadComposerUiState(
     val hookLabels: List<String> = emptyList()
 )
 
+internal data class ThreadComposerInsertMentionRequest(
+    val nonce: Int,
+    val handle: String
+)
+
 internal enum class ThreadComposerSuggestionPanelState {
     Hidden,
     MemberItems,
@@ -1006,7 +1011,9 @@ internal fun ThreadComposerContent(
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
-    keyboardLiftBottomContentPadding: Dp? = null
+    keyboardLiftBottomContentPadding: Dp? = null,
+    insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
 ) {
     ThreadComposerContent(
         surface =
@@ -1020,7 +1027,9 @@ internal fun ThreadComposerContent(
         contentPaddingBottom = contentPaddingBottom,
         hostPaddingHorizontal = hostPaddingHorizontal,
         hostPaddingTop = hostPaddingTop,
-        keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding
+        keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
+        insertMentionRequest = insertMentionRequest,
+        onInsertMentionConsumed = onInsertMentionConsumed
     )
 }
 
@@ -1035,7 +1044,9 @@ internal fun ThreadComposerContent(
     hostPaddingHorizontal: Dp = 0.dp,
     hostPaddingTop: Dp = 0.dp,
     keyboardLiftBottomContentPadding: Dp? = null,
-    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver
+    agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
+    insertMentionRequest: ThreadComposerInsertMentionRequest? = null,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit = {}
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
     // updates / suggestion list filtering are all under this; per-phase breakdown
@@ -1160,6 +1171,25 @@ internal fun ThreadComposerContent(
         lastAcceptedLocalAsTask = nextAsTask
         staleCallbackGuard = null
         onEvent("change", nextText, nextAsTask, null)
+    }
+
+    fun insertMentionAtCursor(handle: String) {
+        applyKuiklyComposerDirectMentionInsert(
+            text = text,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            handle = handle
+        )?.let { edit ->
+            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            focused = true
+            emitChange(nextText = edit.text)
+        }
+    }
+
+    LaunchedEffect(insertMentionRequest?.nonce) {
+        val request = insertMentionRequest ?: return@LaunchedEffect
+        insertMentionAtCursor(request.handle)
+        onInsertMentionConsumed(request)
     }
 
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
@@ -2967,6 +2997,27 @@ internal fun commitKuiklyComposerSuggestionToken(
     return KuiklyComposerSuggestionEdit(
         text = nextText,
         cursor = (safeEnd + 1).coerceIn(0, nextText.length)
+    )
+}
+
+internal fun applyKuiklyComposerDirectMentionInsert(
+    text: String,
+    selectionStart: Int,
+    selectionEnd: Int,
+    handle: String
+): KuiklyComposerSuggestionEdit? {
+    val token = handle.toThreadMentionToken() ?: return null
+    val safeStart = selectionStart.coerceIn(0, text.length)
+    val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
+    val prefix = text.substring(0, safeStart)
+    val suffix = text.substring(safeEnd)
+    val leadingSpace = if (prefix.isNotEmpty() && !prefix.last().isWhitespace()) " " else ""
+    val trailingSpace = if (suffix.isNotEmpty() && suffix.first().isWhitespace()) "" else " "
+    val mention = "$leadingSpace@$token$trailingSpace"
+    val nextText = prefix + mention + suffix
+    return KuiklyComposerSuggestionEdit(
+        text = nextText,
+        cursor = prefix.length + mention.length
     )
 }
 
