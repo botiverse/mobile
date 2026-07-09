@@ -1241,6 +1241,20 @@ class KmpVisualScreenshotCaptureTest {
     // layered on later behind the fullHeight marker once the eager-render hook
     // lands (#388 A).
     @Test
+    fun captureSettingsRootPage() {
+        captureKmpComponentCase(
+            caseId = "components.settings.root.page",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "home")
+                    .put("fixtureKey", "canonical"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureSettingsAdministrationFullRoute() {
         captureKmpComponentCase(
             caseId = "screens.settings.administration.full",
