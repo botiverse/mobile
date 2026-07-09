@@ -3481,7 +3481,7 @@ internal class SlockKuiklyBridgeModule(
                         )
                     }
                 }
-        return mapOf("status" to "ok", "entries" to entries)
+        return mapOf("status" to "ok", "entriesJson" to entries.toString())
     }
 
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
