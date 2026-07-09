@@ -531,14 +531,17 @@ jobs:
 
   ohos:
     name: OHOS shared compile
-    # Runs on Linux, not macOS. This job only consumes ohosArm64 klibs, and every
-    # one of them is built on Linux by the prebuild jobs and shared through
-    # Blacksmith's colocated cache. Blacksmith macOS runners do not participate in
-    # that cache, so a macOS runner here misses the prebuild artifacts
-    # (fail-on-cache-miss) even though the sibling ohos-host container hits them.
-    # The OHOS Kotlin/Native compile is host-agnostic klib work (same as the
-    # prebuild's --ohos-only build), so Linux is the correct host.
+    # Runs on Linux, not macOS (#469): this job only consumes ohosArm64 klibs,
+    # all built on Linux by the prebuilds and shared through Blacksmith's
+    # colocated cache, which macOS runners do not participate in (the sibling
+    # ohos-host container hits it). On top of that it runs in artin's
+    # harmonyos-ci-image (task #240), which presets the full OHOS toolchain
+    # (OHOS_SDK_HOME/LLVM from command-line-tools 6.1.1.280) — no per-run
+    # setup-ohos-sdk download, and the SDK version matches ohos-host and the
+    # KuiklyBase-components CI instead of the previous 6.0 pin.
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    container:
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     env:
@@ -556,18 +559,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
-
-      - name: Set up OpenHarmony SDK
-        id: setup-ohos-sdk
-        uses: openharmony-rs/setup-ohos-sdk@v1.0.1
-        with:
-          version: "6.0"
-          components: native
-          cache: true
-
-      - name: Export OpenHarmony SDK path
-        shell: bash
-        run: echo "OHOS_SDK_HOME=${{ steps.setup-ohos-sdk.outputs.ohos-base-sdk-home }}" >> "$GITHUB_ENV"
 
       - name: Write GitHub Packages credentials
         shell: bash
@@ -646,7 +637,7 @@ jobs:
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     container:
-      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:latest
+      image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280
     env:
       GITHUB_PACKAGES_USERNAME: ${{ vars.GITHUB_PACKAGES_USERNAME || 'bytemain' }}
       GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_PACKAGES_TOKEN || github.token }}
