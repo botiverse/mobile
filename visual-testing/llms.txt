@@ -1,10 +1,10 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 07:37:47 UTC
-Latest run: f00de08-20260709073651
-Latest commit: f00de08-20260709073651
-Commit subject: ci(visual-testing): report job timeout 30->60 for analysis-heavy rounds (#413)
-Providers: react vs android
+Generated: 2026-07-09 08:40:03 UTC
+Latest run: 3748ea5-20260709083602
+Latest commit: 3748ea5-20260709083602
+Commit subject: fix(ios): add shared iosApp.xcscheme (unblocks iOS build/capture) (#423)
+Providers: react vs android, react vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
 AI analysis: ready 86 / total 89, pending 3
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
@@ -13,6 +13,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 ## Comparisons
 
 - react__android: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
+- react__ios: total 89, same 0, pass 9, basic-pass 13, different 58, missing 9
 
 ## Capture Type Coverage
 
@@ -114,6 +115,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 3748ea5-20260709083602: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/3748ea5-20260709083602/component-matrix.json, page runs/3748ea5-20260709083602/
 - f00de08-20260709073651: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/f00de08-20260709073651/component-matrix.json, page runs/f00de08-20260709073651/
 - f00de08-20260709072311: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/f00de08-20260709072311/component-matrix.json, page runs/f00de08-20260709072311/
 - 86f2b41-20260708224504: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/86f2b41-20260708224504/component-matrix.json, page runs/86f2b41-20260708224504/

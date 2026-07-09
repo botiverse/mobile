@@ -27,10 +27,10 @@
     "rootWidthPx": 1440,
     "rootHeightPx": 3120,
     "hardwareAccelerated": true,
-    "totalViews": 84,
-    "laidOutViews": 82,
-    "visibleContentLeafViews": 2
+    "totalViews": 82,
+    "laidOutViews": 80,
+    "visibleContentLeafViews": 1
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783579996232"
+              "capturedAt": "1783585743166"
             }
