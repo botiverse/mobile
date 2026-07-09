@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-09T07:23:38.984Z",
-  "runId": "f00de08-20260709072311",
-  "commit": "f00de08-20260709072311",
+  "generatedAt": "2026-07-09T07:37:47.439Z",
+  "runId": "f00de08-20260709073651",
+  "commit": "f00de08-20260709073651",
   "commitSubject": "ci(visual-testing): report job timeout 30->60 for analysis-heavy rounds (#413)",
   "baseline": "react",
   "current": "android",

@@ -1,8 +1,8 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 07:23:38 UTC
-Latest run: f00de08-20260709072311
-Latest commit: f00de08-20260709072311
+Generated: 2026-07-09 07:37:47 UTC
+Latest run: f00de08-20260709073651
+Latest commit: f00de08-20260709073651
 Commit subject: ci(visual-testing): report job timeout 30->60 for analysis-heavy rounds (#413)
 Providers: react vs android
 Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
@@ -114,6 +114,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- f00de08-20260709073651: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/f00de08-20260709073651/component-matrix.json, page runs/f00de08-20260709073651/
 - f00de08-20260709072311: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/f00de08-20260709072311/component-matrix.json, page runs/f00de08-20260709072311/
 - 86f2b41-20260708224504: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/86f2b41-20260708224504/component-matrix.json, page runs/86f2b41-20260708224504/
 - 6ae2789-20260708204330: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/6ae2789-20260708204330/component-matrix.json, page runs/6ae2789-20260708204330/
