@@ -1830,7 +1830,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     // global from the persisted `AppLocale` as early as possible
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
     // against the user's last selection rather than the OS default.
-    RememberKmmResourceLocaleSeedFromLocalActivity()
+    RememberKmmResourceLocaleSeedFromLocalActivity(pageVisibleTick)
     val pager = LocalActivity.current.getPager() as Pager
     val launchSelection = remember(pager.pageData.params.toString()) {
         pager.pageData.params.appShellLaunchSelection()
@@ -4552,6 +4552,9 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile),
                     bottomContentPadding = bottomContentPadding,
+                    onLocaleChange = { localeTag ->
+                        onSettingsIntent(SharedSettingsIntent.SetLocale(localeTag))
+                    },
                     onAlignmentChange = { itemId ->
                         onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
                         onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
@@ -5314,8 +5317,12 @@ private fun SettingsLanguagePreferenceCard(
             SettingsFormDetailText(snapshot.translationDisplay.detail)
         }
         if (selectedDisplay != "original") {
-            SlockBrutalSectionLabel(label = "Preferred language")
-            SettingsFormDetailText("Used as the target language for automatic and manual translation.")
+            SlockBrutalSectionLabel(
+                label = stringResource(MR.strings.settings_preferred_translation_language_title)
+            )
+            SettingsFormDetailText(
+                stringResource(MR.strings.settings_preferred_translation_language_detail)
+            )
             SlockBrutalSelectField(
                 options = snapshot.browserLanguage.toSelectOptions(),
                 selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
@@ -5595,6 +5602,7 @@ private fun SettingsMobileContent(
     actionState: SharedSettingsActionState?,
     refreshing: Boolean,
     bottomContentPadding: Dp,
+    onLocaleChange: (String) -> Unit,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onForegroundMessageBannersChange: (Boolean) -> Unit,
@@ -5613,6 +5621,13 @@ private fun SettingsMobileContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
+            item {
+                SettingsAppLanguageCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onLocaleChange = onLocaleChange
+                )
+            }
             item {
                 SettingsMessageAlignmentCard(
                     snapshot = snapshot,
@@ -5664,6 +5679,45 @@ private fun SettingsMobileContent(
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsAppLanguageCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onLocaleChange: (String) -> Unit
+) {
+    val preference = snapshot.localePreference
+    val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
+    SettingsFormSectionCard(
+        iconName = SlockLucideIconName.Languages,
+        title = stringResource(MR.strings.settings_app_language_title)
+    ) {
+        SettingsSegmentedControlField(
+            detail = stringResource(MR.strings.settings_app_language_detail),
+            selectedValue = preference.selectedKey.ifBlank { AppLocale.System.languageTag },
+            options =
+                listOf(
+                    SegmentedControlOption(
+                        AppLocale.System.languageTag,
+                        stringResource(MR.strings.settings_app_language_system)
+                    ),
+                    SegmentedControlOption(
+                        AppLocale.English.languageTag,
+                        stringResource(MR.strings.settings_app_language_english)
+                    ),
+                    SegmentedControlOption(
+                        AppLocale.SimplifiedChinese.languageTag,
+                        stringResource(MR.strings.settings_app_language_simplified_chinese)
+                    )
+                ),
+            onValueSelected = { selected -> selected?.let(onLocaleChange) },
+            enabled = preference.available && !busy
+        )
+        if (actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
     }
 }
 
@@ -8215,7 +8269,8 @@ internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
         } catch (_: Throwable) {
             AppLocale.Default.kmmResourceLocaleTag
         }
-    return "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode&lang=$localeTag"
+    val baseUrl = "https://quiver.oranix.io/notes/${slockReleaseNotesAppSlug()}?version_code=$versionCode"
+    return localeTag?.let { "$baseUrl&lang=$it" } ?: baseUrl
 }
 
 @Composable
@@ -9840,7 +9895,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                             languageRegion.browserLanguage.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_LANGUAGE,
                                 iconName = SlockLucideIconName.Globe,
-                                title = "Device language",
+                                title = "Preferred translation language",
                                 fallbackStatus = "Others",
                                 actionState = actionState
                             )

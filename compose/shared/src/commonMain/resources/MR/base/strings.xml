@@ -57,6 +57,13 @@
     <string name="settings_language_region_title">Language &amp; Region</string>
     <string name="settings_language_region_subtitle">Language, timezone, translation</string>
     <string name="settings_language_title">Language</string>
+    <string name="settings_app_language_title">App language</string>
+    <string name="settings_app_language_detail">Follow the system language or keep Raft in a specific language.</string>
+    <string name="settings_app_language_system">System</string>
+    <string name="settings_app_language_english">English</string>
+    <string name="settings_app_language_simplified_chinese">简体中文</string>
+    <string name="settings_preferred_translation_language_title">Preferred translation language</string>
+    <string name="settings_preferred_translation_language_detail">Used as the target language for automatic and manual message translation.</string>
     <string name="settings_diagnostics_title">Diagnostics</string>
     <string name="settings_profile_title">Profile</string>
     <string name="settings_foreground_banners_title">Foreground message banners</string>

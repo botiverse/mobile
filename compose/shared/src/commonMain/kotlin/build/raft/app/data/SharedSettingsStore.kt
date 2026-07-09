@@ -855,7 +855,7 @@ class SharedSettingsDataSource(
         // shared `StringDesc` lookup renders the correct locale. This is a
         // one-way set: the source of truth for the user's preference remains
         // the `LocaleRepository`; the resource global just consumes it.
-        StringDesc.localeType = StringDesc.LocaleType.Custom(locale.kmmResourceLocaleTag)
+        StringDesc.localeType = locale.stringDescLocaleType
         return loadMobile()
     }
 

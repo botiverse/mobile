@@ -689,7 +689,15 @@ class SharedSettingsStoreTest {
                     scope = scope
                 )
 
-            // Step 1: switch to Simplified Chinese. KmmResource should now
+            // Step 1: follow the system locale.
+            val result0 = dataSource.setLocale("system")
+            assertIs<DataResult.Content<*>>(result0)
+            assertEquals(
+                com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.System,
+                com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
+            )
+
+            // Step 2: switch to Simplified Chinese. KmmResource should now
             // hold a `Custom` locale type for the selected language.
             val result1 = dataSource.setLocale("zh-Hans")
             assertIs<DataResult.Content<*>>(result1)
@@ -697,7 +705,7 @@ class SharedSettingsStoreTest {
                 com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
             )
 
-            // Step 2: switch back to English. KmmResource should remain
+            // Step 3: switch back to English. KmmResource should remain
             // explicitly pinned to the selected app locale instead of OS locale.
             val result2 = dataSource.setLocale("en")
             assertIs<DataResult.Content<*>>(result2)
@@ -718,8 +726,19 @@ class SharedSettingsStoreTest {
         // folder matcher falls back from the script-only
         // `zh-Hans` form to the region-based `zh-rCN` folder by
         // language match).
+        assertEquals(null, AppLocale.System.kmmResourceLocaleTag)
         assertEquals("en", AppLocale.English.kmmResourceLocaleTag)
         assertEquals("zh-CN", AppLocale.SimplifiedChinese.kmmResourceLocaleTag)
+        assertEquals(
+            com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.System,
+            AppLocale.System.stringDescLocaleType
+        )
+        assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
+            AppLocale.English.stringDescLocaleType
+        )
+        assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
+            AppLocale.SimplifiedChinese.stringDescLocaleType
+        )
     }
 
     @Test
@@ -765,6 +784,10 @@ class SharedSettingsStoreTest {
         assertEquals(setOf(ThreadRowAffordancePreference.Saved), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
+        assertEquals(
+            listOf("system", "en", "zh-Hans"),
+            mobile.localePreference.options.map { it.key }
+        )
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
         assertEquals(true, mobile.compactConsecutiveMessages.enabled)
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
@@ -779,6 +802,12 @@ class SharedSettingsStoreTest {
         assertEquals(setOf("saved"), mobile.threadRowAffordances.selectedKeys)
         assertEquals("Saved", mobile.threadRowAffordances.statusLabel)
         assertNull(store.state.value.actionState?.errorCode)
+
+        store.accept(SharedSettingsIntent.SetLocale("system"))
+        val systemMobile =
+            assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals(AppLocale.System, localeRepository.current)
+        assertEquals("System default", systemMobile.localePreference.statusLabel)
         scope.cancel()
     }
 
