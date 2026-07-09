@@ -35,6 +35,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -91,22 +92,56 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
-    private var homeStore: SharedHomeStore? = null
-    private var homeActivityStore: SharedActivityStore? = null
+    private val shellRuntimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
+    private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
+    private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
+    private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
+    private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
+    private val homeActivityStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
-        get() = homeStore
+        get() = conversationIdentityProvider(SlockShellStoreScope.Legacy)
 
     val sharedHomeStore: SharedHomeStore?
-        get() = homeStore
+        get() = sharedHomeStore(SlockShellStoreScope.Legacy)
+
+    fun conversationIdentityProvider(scope: SlockShellStoreScope): SharedConversationIdentityProvider? =
+        homeStores.get(scope)
+
+    fun sharedHomeStore(scope: SlockShellStoreScope): SharedHomeStore? =
+        homeStores.get(scope)
+
+    fun shellRuntime(scope: SlockShellStoreScope): SlockShellStoreRuntime =
+        shellRuntimes.getOrPut(scope) { SlockShellStoreRuntime(scope) }
+
+    fun scopesForServer(serverId: String): List<SlockShellStoreScope> {
+        val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()
+        return shellRuntimes.entries().mapNotNull { (scope, runtime) ->
+            scope.takeIf { runtime.currentServerId.value == normalizedServerId && !runtime.disposed.value }
+        }
+    }
+
+    fun authStore(scope: SlockShellStoreScope): SlockAuthSessionStore =
+        shellAuthStores.getOrPut(scope) {
+            SlockShellAuthSessionStore(
+                delegate = authStore,
+                runtime = shellRuntime(scope)
+            )
+        }
 
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = apiEnvironmentStore,
             authStore = authStore
+        )
+
+    fun createAuthDataSourceForCurrentEnvironment(scope: SlockShellStoreScope): SharedAuthDataSource =
+        createSharedAuthDataSourceForCurrentEnvironment(
+            apiEnvironmentStore = apiEnvironmentStore,
+            authStore = authStore(scope)
         )
 
     fun markActiveAppShellPager(pagerId: String) {
@@ -130,6 +165,7 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     fun getOrCreateHomeStore(
+        scope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
         dataSource: SharedHomeDataSource,
         loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -158,7 +194,7 @@ internal class SlockSharedStoreProvider private constructor(
         pinUpdateFailureCallback: (String) -> Unit = {},
         diagnosticsLogger: (String) -> Unit = {}
     ): SharedHomeStore {
-        homeStore?.let { store ->
+        homeStores.get(scope)?.let { store ->
             store.updateRuntimeIntegrations(
                 dataSource = dataSource,
                 diagnosticsLogger = diagnosticsLogger,
@@ -175,9 +211,12 @@ internal class SlockSharedStoreProvider private constructor(
             return store
         }
         return SharedHomeStore(
-            authStore = authStore,
+            authStore = authStore(scope),
             dataSource = dataSource,
-            scope = homeStoreScope,
+            scope =
+                homeStoreScopes.getOrPut(scope) {
+                    if (scope == SlockShellStoreScope.Legacy) homeStoreScope else CoroutineScope(SupervisorJob())
+                },
             diagnosticsLogger = diagnosticsLogger,
             loadSidebarOrder = loadSidebarOrder,
             updateSidebarOrder = updateSidebarOrder,
@@ -190,10 +229,11 @@ internal class SlockSharedStoreProvider private constructor(
             perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
             pinUpdateFailureCallback = pinUpdateFailureCallback,
             persistSlices = listOf(homeIdentityPersistSlice)
-        ).also { homeStore = it }
+        ).also { homeStores.getOrPut(scope) { it } }
     }
 
     fun getOrCreateHomeActivityStore(
+        scope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
         inboxRepository: InboxRepository,
         readReceiptRepository: ReadReceiptRepository,
         conversationRepository: ConversationRepository,
@@ -201,13 +241,10 @@ internal class SlockSharedStoreProvider private constructor(
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
-        val existingStore =
-            homeActivityStore
-                ?: SlockSharedStoreRegistry.homeActivityStore
-        existingStore
+        homeActivityStores.get(scope)
             ?.also { store ->
                 store.updateRuntimeIntegrations(
-                    authStore = authStore,
+                    authStore = authStore(scope),
                     inboxRepository = inboxRepository,
                     readReceiptRepository = readReceiptRepository,
                     conversationRepository = conversationRepository,
@@ -218,11 +255,10 @@ internal class SlockSharedStoreProvider private constructor(
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     diagnosticsLogger = diagnosticsLogger
                 )
-                homeActivityStore = store
                 return store
             }
         return SharedActivityStore(
-            authStore = authStore,
+            authStore = authStore(scope),
             inboxRepository = inboxRepository,
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
@@ -231,12 +267,25 @@ internal class SlockSharedStoreProvider private constructor(
             tasksDataStore = tasksDataStore,
             persistSlices = listOf(activityPersistSlice),
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
-            scope = homeActivityStoreScope,
+            scope =
+                homeActivityStoreScopes.getOrPut(scope) {
+                    if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
+                },
             diagnosticsLogger = diagnosticsLogger ?: {}
         ).also {
-            homeActivityStore = it
-            SlockSharedStoreRegistry.homeActivityStore = it
+            homeActivityStores.getOrPut(scope) { it }
         }
+    }
+
+    fun releaseShellStoreScope(scope: SlockShellStoreScope) {
+        if (scope == SlockShellStoreScope.Legacy) return
+        shellRuntimes.get(scope)?.dispose()
+        homeStores.remove(scope)?.clear()
+        homeActivityStores.remove(scope)?.clear()
+        homeStoreScopes.remove(scope)?.cancel()
+        homeActivityStoreScopes.remove(scope)?.cancel()
+        shellAuthStores.remove(scope)
+        shellRuntimes.remove(scope)
     }
 
     fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
@@ -741,7 +790,6 @@ private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<
 
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
-    internal var homeActivityStore: SharedActivityStore? = null
 
     fun get(bridge: BridgeModule): SlockSharedStoreProvider {
         val eventBus = SlockEventBuses.appScope()

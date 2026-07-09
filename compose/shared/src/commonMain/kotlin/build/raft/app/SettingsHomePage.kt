@@ -168,6 +168,7 @@ import build.raft.app.data.ServerSwitcherOrderPreference
 import build.raft.app.data.SlockAuthApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.toSharedHomeAppUpdateNotification
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
@@ -778,6 +779,7 @@ private data class HomeSecondaryRouteEnvironment(
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
     val threadRowAffordances: Set<ThreadRowAffordancePreference>,
+    val storeScope: SlockShellStoreScope,
     val shellScope: SlockAppShellScope,
     val conversationIdentityProvider: SharedConversationIdentityProvider?
 )
@@ -787,13 +789,16 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val settingsCapabilities =
         remember(bridge, bridgeCallScope) {
             BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
         }
-    val authStore = sharedStores.authStore
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = sharedStores.networkClient
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
@@ -833,6 +838,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         foregroundMessageBannersEnabled,
         activityTaskStatusBadgesEnabled,
         threadRowAffordances,
+        storeScope,
         shellScope
     ) {
         HomeSecondaryRouteEnvironment(
@@ -850,8 +856,9 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
             threadRowAffordances = threadRowAffordances,
+            storeScope = storeScope,
             shellScope = shellScope,
-            conversationIdentityProvider = sharedStores.conversationIdentityProvider
+            conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope)
         )
     }
 }
@@ -905,7 +912,8 @@ private fun HomeActivityRouterContent(
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances
+                threadRowAffordances = environment.threadRowAffordances,
+                storeScope = environment.storeScope
             )
         },
         onClose = { environment.pager.closeHomeSecondaryPage() },
@@ -914,6 +922,7 @@ private fun HomeActivityRouterContent(
         shellScope = environment.shellScope,
         listState = listState,
         activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
+        storeScope = environment.storeScope,
         onTitleClick = { scrollScope.launch { listState.animateScrollToTopExpressive() } }
     )
 }
@@ -1033,7 +1042,8 @@ private fun HomeSearchRouterContent(
                         timeContext = environment.timeContext,
                         alignOwnMessagesRight = environment.alignOwnMessagesRight,
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        threadRowAffordances = environment.threadRowAffordances
+                        threadRowAffordances = environment.threadRowAffordances,
+                        storeScope = environment.storeScope
                     )
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
@@ -1050,7 +1060,8 @@ private fun HomeSearchRouterContent(
                 timeContext = environment.timeContext,
                 alignOwnMessagesRight = environment.alignOwnMessagesRight,
                 compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                threadRowAffordances = environment.threadRowAffordances
+                threadRowAffordances = environment.threadRowAffordances,
+                storeScope = environment.storeScope
             )
         },
         initialOpenFilterId = initialOpenFilterId,
@@ -1130,7 +1141,8 @@ private fun HomeSavedRouterContent(
                         timeContext = environment.timeContext,
                         alignOwnMessagesRight = environment.alignOwnMessagesRight,
                         compactConsecutiveMessages = environment.compactConsecutiveMessages,
-                        threadRowAffordances = environment.threadRowAffordances
+                        threadRowAffordances = environment.threadRowAffordances,
+                        storeScope = environment.storeScope
                     )
                 is ConversationOpenResolution.Pending -> {
                     environment.bridge.logWarn(
@@ -1855,6 +1867,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     LaunchedEffect(pager.pagerId, pageVisibleTick, initialAuthRestoreTick) {
         if (pageVisibleTick > 0 || initialAuthRestoreTick > 0) {
@@ -1862,7 +1877,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     }
     val authStore = sharedStores.authStore
-    val authDataSource = sharedStores.authDataSource
+    val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val shellRuntime = remember(sharedStores, storeScope) { sharedStores.shellRuntime(storeScope) }
+    val runtimeServerId by shellRuntime.currentServerId.collectAsState()
+    val navigationStoreScope = remember(storeScope.shellInstanceId, runtimeServerId) {
+        SlockShellStoreScope.create(
+            shellInstanceId = storeScope.shellInstanceId,
+            initialServerId = runtimeServerId ?: storeScope.initialServerId
+        )
+    }
+    val authDataSource = remember(sharedStores, storeScope) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
+    }
     val appShellNetworkClient = sharedStores.networkClient
     val appShellCoroutineScope = rememberCoroutineScope()
     val settingsCapabilities =
@@ -1880,7 +1906,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeDataSource =
         remember(memberRepository, sharedStores.serverMembersStore, settingsCapabilities) {
             SharedHomeDataSource(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
@@ -2054,6 +2080,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeStore =
         remember(
             sharedStores,
+            storeScope,
             homeDataSource,
             homeSidebarOrderRepository,
             homeReadReceiptRepository,
@@ -2061,6 +2088,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             appShellCoroutineScope
         ) {
             sharedStores.getOrCreateHomeStore(
+                scope = storeScope,
                 dataSource = homeDataSource,
                 diagnosticsLogger = slockLogger("SlockSharedHome", "shared_home"),
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
@@ -2076,6 +2104,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     val homeActivityStore =
         remember(
+            storeScope,
             authStore,
             homeActivityRepository,
             homeReadReceiptRepository,
@@ -2085,6 +2114,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             homeStore
         ) {
             sharedStores.getOrCreateHomeActivityStore(
+                scope = storeScope,
                 inboxRepository = homeActivityRepository,
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
@@ -2476,7 +2506,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     LaunchedEffect(homeState.content, authGateState) {
         val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
         if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
-        val cachedSession = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+        val cachedSession = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
         if (!shouldApplyHomeAuthErrorGate(error, authGateState, cachedSession)) {
             bridge.logWarn(
                 "app_shell_home_auth_error_gate_skip code=$error " +
@@ -2525,7 +2555,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     LaunchedEffect(authStore) {
         authStore.sessionChanges.collect { fingerprint ->
             val cachedSession =
-                runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+                runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
             val currentSession = (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
             val identityChanged = appShellSessionIdentityChanged(cachedSession, currentSession)
             bridge.log(
@@ -2645,7 +2675,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
-        pager.openStandaloneThreadLaunchPayload(launchPayload)
+        pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
     }
 
     fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) {
@@ -2843,7 +2873,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         draftKey = launchPayload.threadComposerDraftKey(),
                         attachments = uploadedAttachments
                     )
-                    pager.openStandaloneThreadLaunchPayload(launchPayload)
+                    pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
                     bridge.toast("Diagnostics draft ready")
                 }
                 is DataResult.Error -> {
@@ -2899,7 +2929,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     fun openHomeSecondaryDestination(destination: String) {
         retainedHomeSecondaryDestination(destination)?.let { retainedDestination ->
             homeShellStore.dispatch(retainedDestination.toHomeSecondaryOpenIntent())
-            pager.openHomeSecondaryPage(retainedDestination, threadTimeContext)
+            pager.openHomeSecondaryPage(retainedDestination, threadTimeContext, navigationStoreScope)
         }
     }
 
@@ -2980,7 +3010,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         createChannelMembersLoading = true
         appShellCoroutineScope.launch {
             try {
-                val session = authStore.readSession()
+                val session = shellAuthStore.readSession()
                 val serverId = session?.currentServerId
                 if (serverId.isNullOrBlank()) {
                     createChannelMembers = emptyList()
@@ -3245,7 +3275,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         bridge.realtimeDisconnect("server_membership_removed")
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
-                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
                             authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
                         }
                         return@launch
@@ -3261,7 +3291,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         bridge.realtimeDisconnect("server_deleted")
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
-                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
                             authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
                         }
                         return@launch
@@ -3390,7 +3420,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                     timeContext = threadTimeContext,
                                     alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                     compactConsecutiveMessages = compactConsecutiveMessages,
-                                    threadRowAffordances = threadRowAffordances
+                                    threadRowAffordances = threadRowAffordances,
+                                    storeScope = navigationStoreScope
                                 )
                             }
                         )
@@ -3407,7 +3438,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 active = active,
                                 sessionReady = readyServerId?.isNotBlank() == true,
                                 draftPersistSlice = composerDraftPersistSlice,
-                                conversationIdentityProvider = sharedStores.conversationIdentityProvider,
+                                conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
                                 activityUnreadCount = homeActivityState.totalUnreadCount,
                                 activityTotalCount = homeActivityState.totalCount,
                                 savedCount = homeSearchSavedState.saved.totalCount,
@@ -15464,7 +15495,8 @@ private fun Pager.openStandaloneTaskThreadPage(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>
+    threadRowAffordances: Set<ThreadRowAffordancePreference>,
+    storeScope: SlockShellStoreScope
 ) {
     val launchPayload =
         buildStandaloneTaskThreadLaunchPayload(
@@ -15475,11 +15507,17 @@ private fun Pager.openStandaloneTaskThreadPage(
             threadRowAffordances = threadRowAffordances
         )
             ?: return
-    openStandaloneThreadLaunchPayload(launchPayload)
+    openStandaloneThreadLaunchPayload(launchPayload, storeScope)
 }
 
-private fun Pager.openStandaloneThreadLaunchPayload(launchPayload: WireThreadLaunchPayload) {
-    val pageData = threadLaunchPageData(launchPayload)
+private fun Pager.openStandaloneThreadLaunchPayload(
+    launchPayload: WireThreadLaunchPayload,
+    storeScope: SlockShellStoreScope
+) {
+    val pageData =
+        threadLaunchPageData(launchPayload)
+            .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
 }
 
@@ -15487,7 +15525,11 @@ private fun Pager.closeHomeSecondaryPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-private fun Pager.openHomeSecondaryPage(destination: String, timeContext: AppShellThreadTimeContext?) {
+private fun Pager.openHomeSecondaryPage(
+    destination: String,
+    timeContext: AppShellThreadTimeContext?,
+    storeScope: SlockShellStoreScope
+) {
     val retainedDestination = retainedHomeSecondaryDestination(destination) ?: return
     val pageName =
         when (retainedDestination) {
@@ -15500,6 +15542,8 @@ private fun Pager.openHomeSecondaryPage(destination: String, timeContext: AppShe
         JSONObject().apply {
             put("pageName", pageName)
             put("destination", retainedDestination)
+            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
             if (retainedDestination == HomeDestinationSearch) {
                 put(HOME_SEARCH_FOCUS_INPUT, true)
             }
@@ -15518,7 +15562,8 @@ private fun Pager.openStandaloneHomeMessageRequest(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>
+    threadRowAffordances: Set<ThreadRowAffordancePreference>,
+    storeScope: SlockShellStoreScope
 ) {
     openStandaloneHomeConversation(
         bridge = bridge,
@@ -15528,6 +15573,7 @@ private fun Pager.openStandaloneHomeMessageRequest(
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         threadRowAffordances = threadRowAffordances,
+        storeScope = storeScope,
         anchorMessageId = request.anchorMessageId,
         originFallback = request.originFallback
     )
@@ -15541,6 +15587,7 @@ private fun Pager.openStandaloneHomeConversation(
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
     threadRowAffordances: Set<ThreadRowAffordancePreference>,
+    storeScope: SlockShellStoreScope,
     anchorMessageId: String? = null,
     originFallback: ThreadLaunchOriginFallback? = null
 ) {
@@ -15577,7 +15624,7 @@ private fun Pager.openStandaloneHomeConversation(
             "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
             "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
     )
-    openStandaloneThreadLaunchPayload(launchPayload)
+    openStandaloneThreadLaunchPayload(launchPayload, storeScope)
 }
 
 private fun Pager.openHomeSearchEntity(
@@ -15586,7 +15633,8 @@ private fun Pager.openHomeSearchEntity(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean,
     compactConsecutiveMessages: Boolean,
-    threadRowAffordances: Set<ThreadRowAffordancePreference>
+    threadRowAffordances: Set<ThreadRowAffordancePreference>,
+    storeScope: SlockShellStoreScope
 ) {
     val conversation = entity.conversationIdentity
     if (conversation != null) {
@@ -15597,7 +15645,8 @@ private fun Pager.openHomeSearchEntity(
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
-            threadRowAffordances = threadRowAffordances
+            threadRowAffordances = threadRowAffordances,
+            storeScope = storeScope
         )
         return
     }
@@ -15617,6 +15666,8 @@ private fun Pager.openHomeSearchEntity(
             put("pageName", MEMBER_DETAIL_PAGE)
             put("payload", payload.toString())
             put("instanceId", instanceId)
+            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBER_DETAIL_PAGE, pageData)
 }

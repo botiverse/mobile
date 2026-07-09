@@ -14,6 +14,7 @@ import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityState
@@ -104,6 +105,7 @@ internal fun SharedHomeActivityScreen(
     includeTopSafeArea: Boolean = true,
     timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
@@ -149,6 +151,7 @@ internal fun SharedHomeActivityScreen(
         }
     val activityStore =
         remember(
+            storeScope,
             authStore,
             repository,
             readReceiptRepository,
@@ -156,6 +159,7 @@ internal fun SharedHomeActivityScreen(
             memberRepository
         ) {
             sharedStores.getOrCreateHomeActivityStore(
+                scope = storeScope,
                 inboxRepository = repository,
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
