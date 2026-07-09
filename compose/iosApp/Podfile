@@ -10,6 +10,11 @@ target 'iosApp' do
 
   pod 'Quiver', :git => 'https://github.com/oranix-io/quiver.git', :commit => 'f0c16c6e1191c9147af25a37d36bab049d65540e'
   pod 'SDWebImage'
+  # task #436: SVG decoding for iOS. Kuikly loads images via UIImage (no native
+  # SVG support), so provider icons shipped as SVG rendered blank. SDWebImage's
+  # official SVG coder (native CoreSVG, iOS 13+) decodes SVG through the image
+  # pipeline once registered at startup (see iOSApp.swift).
+  pod 'SDWebImageSVGCoder'
   pod 'Socket.IO-Client-Swift', '~> 16.1'
   pod 'MMKV', '~> 2.4.0'
 

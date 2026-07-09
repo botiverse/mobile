@@ -1,5 +1,7 @@
 import SwiftUI
 import shared
+import SDWebImage
+import SDWebImageSVGCoder
 
 private enum SlockIosSharedLogBridge {
     private static var observer: NSObjectProtocol?
@@ -29,6 +31,11 @@ struct iOSApp: App {
         // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
         // any page renders / touches MR.
         SlockIosResourceBundleKt.slockConfigureIosResourceBundle()
+        // task #436: register the SVG coder so SDWebImage (used by the image
+        // load path Kuikly delegates to) can decode SVG assets — e.g. the
+        // Google/GitHub provider icons, which are shipped as SVG and otherwise
+        // render blank on iOS (UIImage has no native SVG support).
+        SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
         SlockIosAppScopeMMKV.install()
         SlockIosSharedLogBridge.install()
         SlockIosInstallQuiverReporting()
