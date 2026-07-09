@@ -1,15 +1,25 @@
 #import "SlockKRVideoViewHandler.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <AVKit/AVKit.h>
 #import <math.h>
 
+// task #11 (iOS pendant of Android task #556 phase 2): the engine stays
+// AVPlayer — iOS's first-party Media3 equivalent; ijkplayer was evaluated
+// and rejected (unmaintained FFmpeg base, +8-15MB, buys only codecs our
+// mp4/mp3 attachments never use). What changes is the chrome: the bare
+// AVPlayerLayer becomes an embedded AVPlayerViewController, which ships the
+// mature system controller (tap-to-show play/pause, scrubbing, ±15s,
+// fullscreen) for free. The shared minimal controls are hidden on iOS via
+// slockPlatformUsesNativeVideoController(), same switch Android uses.
 @interface SlockKRVideoViewHandler ()
 
 @property (nonatomic, strong) AVPlayer *player;
-@property (nonatomic, strong) AVPlayerLayer *playerLayer;
+@property (nonatomic, strong) AVPlayerViewController *playerViewController;
 @property (nonatomic, strong) id timeObserver;
 @property (nonatomic, assign) BOOL observingStatus;
 @property (nonatomic, assign) BOOL firstFrameReported;
+@property (nonatomic, assign) BOOL embeddedInParentController;
 @property (nonatomic, assign) CGFloat preferredRate;
 
 @end
@@ -32,10 +42,13 @@
         NSURL *url = [NSURL URLWithString:src ?: @""];
         AVPlayerItem *item = url ? [AVPlayerItem playerItemWithURL:url] : nil;
         _player = [AVPlayer playerWithPlayerItem:item];
-        _playerLayer = [AVPlayerLayer playerLayerWithPlayer:_player];
-        _playerLayer.frame = self.bounds;
-        _playerLayer.videoGravity = AVLayerVideoGravityResizeAspect;
-        [self.layer addSublayer:_playerLayer];
+        _playerViewController = [[AVPlayerViewController alloc] init];
+        _playerViewController.player = _player;
+        _playerViewController.showsPlaybackControls = YES;
+        _playerViewController.videoGravity = AVLayerVideoGravityResizeAspect;
+        _playerViewController.view.frame = self.bounds;
+        _playerViewController.view.backgroundColor = UIColor.blackColor;
+        [self addSubview:_playerViewController.view];
 
         if (item) {
             [item addObserver:self forKeyPath:@"status" options:NSKeyValueObservingOptionNew context:nil];
@@ -60,7 +73,45 @@
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.playerLayer.frame = self.bounds;
+    self.playerViewController.view.frame = self.bounds;
+}
+
+// Proper view-controller containment: fullscreen transitions and rotation
+// need the AVPlayerViewController in the controller hierarchy, not just its
+// view in ours. Attach to the nearest ancestor controller once we are in a
+// window; detach on removal.
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    if (self.window && !self.embeddedInParentController) {
+        UIViewController *parent = [self slock_nearestViewController];
+        if (parent) {
+            [parent addChildViewController:self.playerViewController];
+            [self.playerViewController didMoveToParentViewController:parent];
+            self.embeddedInParentController = YES;
+        }
+    } else if (!self.window && self.embeddedInParentController) {
+        [self slock_detachPlayerViewController];
+    }
+}
+
+- (UIViewController *)slock_nearestViewController {
+    UIResponder *responder = self;
+    while (responder) {
+        responder = responder.nextResponder;
+        if ([responder isKindOfClass:UIViewController.class]) {
+            return (UIViewController *)responder;
+        }
+    }
+    return nil;
+}
+
+- (void)slock_detachPlayerViewController {
+    if (!self.embeddedInParentController) {
+        return;
+    }
+    [self.playerViewController willMoveToParentViewController:nil];
+    [self.playerViewController removeFromParentViewController];
+    self.embeddedInParentController = NO;
 }
 
 - (void)dealloc {
@@ -93,11 +144,11 @@
 
 - (void)krv_setVideoContentMode:(KRVideoViewContentMode)videoViewContentMode {
     if (videoViewContentMode == KRVideoViewContentModeScaleToFill) {
-        self.playerLayer.videoGravity = AVLayerVideoGravityResize;
+        self.playerViewController.videoGravity = AVLayerVideoGravityResize;
     } else if (videoViewContentMode == KRVideoViewContentModeScaleAspectFill) {
-        self.playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        self.playerViewController.videoGravity = AVLayerVideoGravityResizeAspectFill;
     } else {
-        self.playerLayer.videoGravity = AVLayerVideoGravityResizeAspect;
+        self.playerViewController.videoGravity = AVLayerVideoGravityResizeAspect;
     }
 }
 
@@ -225,6 +276,8 @@
     }
     [self.player pause];
     [self.player replaceCurrentItemWithPlayerItem:nil];
+    [self slock_detachPlayerViewController];
+    self.playerViewController.player = nil;
 }
 
 @end
