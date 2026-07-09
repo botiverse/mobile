@@ -403,6 +403,7 @@ sealed interface SharedSettingsIntent {
 
 sealed interface SharedSettingsEffect {
     data object Logout : SharedSettingsEffect
+    data class ApiEnvironmentChanged(val message: String) : SharedSettingsEffect
     data class OpenUrl(val url: String) : SharedSettingsEffect
     data object RequestNotificationPermission : SharedSettingsEffect
     data object OpenNotificationSettings : SharedSettingsEffect
@@ -1835,15 +1836,25 @@ class SharedSettingsStore(
                         effect = SharedSettingsEffect.ClearStorage(intent.target)
                     )
             is SharedSettingsIntent.SetApiEnvironment -> {
+                val changedMessage = apiEnvironmentChangedMessage(intent.environmentKey)
                 runAction(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey) {
                     dataSource.setApiEnvironment(intent.environmentKey)
-                        .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey)
+                        .applyDeveloperActionResult(
+                            DEVELOPER_ACTION_API_ENVIRONMENT,
+                            intent.environmentKey,
+                            changedMessage
+                        )
                 }
             }
             is SharedSettingsIntent.SaveApiEnvironment -> {
+                val changedMessage = apiEnvironmentChangedMessage(intent.request)
                 runAction(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key) {
                     dataSource.saveApiEnvironment(intent.request)
-                        .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key)
+                        .applyDeveloperActionResult(
+                            DEVELOPER_ACTION_API_ENVIRONMENT,
+                            intent.request.key,
+                            changedMessage
+                        )
                 }
             }
             SharedSettingsIntent.CheckQuiverUpdate -> {
@@ -2523,7 +2534,8 @@ class SharedSettingsStore(
 
     private fun DataResult<SharedSettingsDeveloperSnapshot>.applyDeveloperActionResult(
         action: String,
-        itemId: String? = null
+        itemId: String? = null,
+        apiEnvironmentChangedMessage: String? = null
     ) {
         val nextDeveloper = toScreenLoadState()
         _state.value =
@@ -2540,9 +2552,37 @@ class SharedSettingsStore(
                         inProgress = false,
                         errorCode = nextDeveloper.routeErrorCode()
                     ),
-                routeErrorCode = nextDeveloper.routeErrorCode()
+                routeErrorCode = nextDeveloper.routeErrorCode(),
+                effect =
+                    apiEnvironmentChangedMessage
+                        ?.takeIf { nextDeveloper is ScreenLoadState.Content }
+                        ?.let(SharedSettingsEffect::ApiEnvironmentChanged)
             )
     }
+
+    private fun apiEnvironmentChangedMessage(environmentKey: String): String? {
+        val developer = (_state.value.developer as? ScreenLoadState.Content)?.data ?: return null
+        if (developer.environmentKey == environmentKey) return null
+        val label =
+            developer.options.firstOrNull { it.key == environmentKey }?.label
+                ?: environmentKey
+        return apiEnvironmentChangedMessageForLabel(label)
+    }
+
+    private fun apiEnvironmentChangedMessage(request: SharedSettingsApiEnvironmentRequest): String? {
+        val developer = (_state.value.developer as? ScreenLoadState.Content)?.data ?: return apiEnvironmentChangedMessageForLabel(request.label)
+        val changed =
+            developer.environmentKey != request.key ||
+                developer.environmentLabel != request.label ||
+                developer.apiBaseUrl != request.apiBaseUrl ||
+                developer.socketBaseUrl != request.socketBaseUrl ||
+                developer.webUrl != request.webUrl
+        if (!changed) return null
+        return apiEnvironmentChangedMessageForLabel(request.label)
+    }
+
+    private fun apiEnvironmentChangedMessageForLabel(label: String): String =
+        "API server switched to ${label.ifBlank { "selected environment" }}. Sign in again to continue."
 
     private suspend fun <T> DataResult<T>.applyToState(
         destination: SharedSettingsDestination,

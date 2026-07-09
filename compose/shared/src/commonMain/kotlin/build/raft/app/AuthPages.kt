@@ -107,10 +107,8 @@ private fun Modifier.authPageStaticTextFocus(): Modifier =
 private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvider> =
     filterNot { provider -> provider in MobileHiddenSocialAuthProviders }.toSet()
 
-private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
-    val sharedStores = SlockSharedStoreRegistry.get(bridge)
-    return sharedStores.authDataSource
-}
+private fun currentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource =
+    SlockSharedStoreRegistry.get(bridge).createAuthDataSourceForCurrentEnvironment()
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : build.raft.app.base.BasePager() {
@@ -164,7 +162,6 @@ internal class ComposeAuthDeveloperPage : build.raft.app.base.BasePager() {
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
@@ -177,6 +174,7 @@ private fun LoginScreen() {
 
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
                 .getOrElse { SharedAuthResult.Failure(build.raft.app.data.SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
@@ -325,7 +323,6 @@ private data class PendingMobileOAuthLegalAcceptance(
 private fun AuthLegalAcceptanceScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val paramsSignature = pager.pageData.params.toString()
     val providerId = remember(paramsSignature) {
         pager.pageData.params.optString(AUTH_LEGAL_PROVIDER_KEY).ifBlank { AuthProvider.Google.providerId() }
@@ -352,6 +349,7 @@ private fun AuthLegalAcceptanceScreen() {
 
     LaunchedEffect(pending) {
         val effect = pending ?: return@LaunchedEffect
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.completeMobileOAuthLogin(
@@ -427,13 +425,13 @@ private fun AuthLegalAcceptanceScreen() {
 private fun RegisterScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
     var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
 
     LaunchedEffect(pendingRegister) {
         val effect = pendingRegister ?: return@LaunchedEffect
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation {
                 authDataSource.register(
@@ -514,13 +512,13 @@ private fun RegisterScreen() {
 private fun ForgotPasswordScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
     var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
 
     LaunchedEffect(pendingForgotPassword) {
         val effect = pendingForgotPassword ?: return@LaunchedEffect
+        val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
                 .getOrElse {

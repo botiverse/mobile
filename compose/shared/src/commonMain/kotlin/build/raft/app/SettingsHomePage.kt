@@ -3814,6 +3814,15 @@ private fun SettingsAppShellContent(
                 }
                 onLogout()
             }
+            is SharedSettingsEffect.ApiEnvironmentChanged -> {
+                settingsCapabilities.bridgeToast(effect.message)
+                val clearedSession = session
+                runCatchingPreservingCancellation { authDataSource.logout() }
+                if (clearedSession != null) {
+                    onSessionCleared(clearedSession)
+                }
+                onLogout()
+            }
             is SharedSettingsEffect.OpenUrl -> {
                 settingsCapabilities.openUrl(effect.url)
             }

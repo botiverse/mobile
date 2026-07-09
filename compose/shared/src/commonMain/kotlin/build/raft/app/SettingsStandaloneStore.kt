@@ -10,6 +10,7 @@ import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
 import build.raft.app.data.PersistentRecompositionProfilerPreferenceRepository
 import build.raft.app.data.RealSettingsRepository
+import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedCreateAgentCoordinator
@@ -132,6 +133,12 @@ internal fun StandaloneSettingsEffectHandler(
         val effect = state.effect ?: return@LaunchedEffect
         when (effect) {
             SharedSettingsEffect.Logout -> {
+                runCatchingPreservingCancellation { environment.authDataSource.logout() }
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                    .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
+            }
+            is SharedSettingsEffect.ApiEnvironmentChanged -> {
+                environment.settingsCapabilities.bridgeToast(effect.message)
                 runCatchingPreservingCancellation { environment.authDataSource.logout() }
                 pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
                     .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
