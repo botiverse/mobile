@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 22:19:06 UTC
+Generated: 2026-07-09 22:25:37 UTC
 Latest run: 4890633-20260709221654
 Latest commit: 4890633-20260709221654
 Commit subject: fix(diagnostics): isolate auth critical journal (#484)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-AI analysis: ready 81 / total 89, pending 8
+AI analysis: ready 85 / total 89, pending 4
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-09T22:19:06.106Z",
+  "generatedAt": "2026-07-09T22:25:37.626Z",
   "runId": "4890633-20260709221654",
   "commit": "4890633-20260709221654",
   "commitSubject": "fix(diagnostics): isolate auth critical journal (#484)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 81,
-        "pending": 8
+        "ready": 85,
+        "pending": 4
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 18,
-        "pending": 71
+        "ready": 78,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 15,
-        "pending": 74
+        "ready": 81,
+        "pending": 8
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 89,
-    "ready": 81,
-    "pending": 8
+    "ready": 85,
+    "pending": 4
   },
   "componentMatrixSummary": {
     "total": 109,
