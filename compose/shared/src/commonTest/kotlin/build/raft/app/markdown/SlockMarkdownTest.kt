@@ -611,11 +611,12 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun ordinaryMentionBeforeTaskReferenceKeepsCompactUnderlineAndVisibleText() {
+    fun visualFixtureUnknownMentionAndTaskReferenceStayPlainText() {
         val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
         val validator =
             validThreadMarkdownTags(
-                knownMentions = setOf("KMP-专家")
+                knownMentions = setOf("artin"),
+                knownTaskNumbers = setOf(42, 43)
             )
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
@@ -629,14 +630,8 @@ class SlockMarkdownTest {
 
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
-        assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
-        assertEquals(
-            listOf(
-                SlockRichTextChromeKind.OrdinaryMention.wireValue,
-                SlockRichTextChromeKind.Task.wireValue
-            ),
-            annotated.slockMarkdownTagChromeAnnotations()
-        )
+        assertEquals(emptySet(), annotated.slockMarkdownClickableTags())
+        assertEquals(emptyList(), annotated.slockMarkdownTagChromeAnnotations())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
@@ -1332,13 +1327,15 @@ class SlockMarkdownTest {
 
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),
-        knownMentions: Set<String> = emptySet()
+        knownMentions: Set<String> = emptySet(),
+        knownTaskNumbers: Set<Int>? = null
     ): (ThreadMarkdownTag) -> Boolean {
         val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
         return { tag ->
             when (tag.kind) {
-                ThreadMarkdownTagKind.Task -> true
+                ThreadMarkdownTagKind.Task ->
+                    knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
                 ThreadMarkdownTagKind.Channel,
