@@ -9,12 +9,16 @@ import kotlin.test.assertTrue
 class ThreadHeaderScrollToTopTest {
 
     @Test
-    fun headerScrollToTopOnlyEnabledForChatTab() {
-        assertTrue(threadHeaderScrollToTopEnabled("chat"))
-        assertTrue(threadHeaderScrollToTopEnabled(" Chat "))
-        assertFalse(threadHeaderScrollToTopEnabled("tasks"))
-        assertFalse(threadHeaderScrollToTopEnabled("files"))
-        assertFalse(threadHeaderScrollToTopEnabled(null))
+    fun headerScrollToTopOnlyEnabledForReplyThreadChatTab() {
+        assertTrue(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "chat"))
+        assertTrue(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, " Chat "))
+        assertFalse(threadHeaderScrollToTopEnabled(" Thread ", "chat"))
+        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.Channel, "chat"))
+        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.DirectMessage, "chat"))
+        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "tasks"))
+        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, "files"))
+        assertFalse(threadHeaderScrollToTopEnabled(KuiklyThreadSurfaceKind.ReplyThread, null))
+        assertFalse(threadHeaderScrollToTopEnabled(null, "chat"))
     }
 
     @Test
