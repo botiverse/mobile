@@ -12,6 +12,7 @@ import build.raft.app.components.SlockRaftUiMenuItem
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.SlockToolbarChip
 import build.raft.app.base.Utils
+import build.raft.app.base.putIfAbsent
 import build.raft.app.base.bridgeModule
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -1376,12 +1377,6 @@ internal fun TaskSummary.threadLinkedTaskAssigneeDisplayName(): String? {
     val displayName = assignee.displayName.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return null
     if (assigneeId != null && displayName.equals(assigneeId, ignoreCase = true)) return null
     return displayName.takeIf { it.isDisplaySafeTaskAssigneeName(assigneeId) }
-}
-
-private fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) {
-    if (!containsKey(key)) {
-        put(key, value)
-    }
 }
 
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
@@ -9110,7 +9105,7 @@ private fun List<KuiklyThreadMessageItem>.recentThreadParticipantRanks(): Map<St
         nextRank += 1
         ranks[authorId.threadParticipantIdKey()] = rank
         message.authorHandle.threadParticipantHandleKey()?.let { handleKey ->
-            ranks.putIfAbsentCompat(handleKey, rank)
+            ranks.putIfAbsent(handleKey, rank)
         }
     }
     return ranks

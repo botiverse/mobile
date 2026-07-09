@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.base.putIfAbsent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -84,12 +85,8 @@ internal class SharedAuthLossFunnel(
         val tokenKey = signal.tokenFingerprint
         val (inFlight, owner) =
             mutex.withLock {
-                // putIfAbsent is java.util.Map-only: commonMain must stay Kotlin/Native
-                // compatible (it broke the OHOS + iOS compiles), so spell it out.
                 signal.pendingOpenRequest?.let { request ->
-                    if (tokenKey !in pendingCandidatesByToken) {
-                        pendingCandidatesByToken[tokenKey] = request
-                    }
+                    pendingCandidatesByToken.putIfAbsent(tokenKey, request)
                 }
                 val existing = inFlightByToken[tokenKey]
                 if (existing != null) {
