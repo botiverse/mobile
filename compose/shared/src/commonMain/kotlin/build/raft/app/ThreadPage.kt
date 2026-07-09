@@ -8166,6 +8166,7 @@ private fun ThreadPageContent(
         }
         onThreadEvent("selectTab", null, null, tab.wireValue)
     }
+    var threadHeaderScrollToTopRequest by remember(threadInstanceKey) { mutableStateOf(0) }
     val renderThreadTabContent: @Composable (KuiklyThreadTab, Modifier) -> Unit = { tab, contentModifier ->
         Box(
             modifier = contentModifier
@@ -8213,6 +8214,7 @@ private fun ThreadPageContent(
                         shareSelectionCaptureActive = shareCaptureMode,
                         shareSelectionCaptureAnchorMessageId =
                             shareCaptureTargetMessageId ?: selectedShareMessages.firstOrNull()?.id,
+                        headerScrollToTopRequest = threadHeaderScrollToTopRequest,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onShareSelectionBounds = { messageId, rect ->
                             if (rect == null) {
@@ -8300,7 +8302,13 @@ private fun ThreadPageContent(
                 onShowSettings = {
                     activeModal = "settings"
                 },
-                onToggleActivityMute = onToggleActivityMute
+                onToggleActivityMute = onToggleActivityMute,
+                onTitleClick =
+                    if (threadHeaderScrollToTopEnabled(selectedTab.wireValue)) {
+                        { threadHeaderScrollToTopRequest += 1 }
+                    } else {
+                        null
+                    }
             )
             if (payload.showModeTabs) {
                 SlockTabbedScaffold(
@@ -8637,7 +8645,8 @@ private fun ThreadPageHeader(
     onOpenSearch: () -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit,
-    onToggleActivityMute: (() -> Unit)? = null
+    onToggleActivityMute: (() -> Unit)? = null,
+    onTitleClick: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val resolvedDmPeerAvatarWireValue =
@@ -8672,7 +8681,13 @@ private fun ThreadPageHeader(
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -9095,6 +9110,12 @@ private fun ThreadPageTabs(
     )
 }
 
+internal fun threadHeaderScrollToTopEnabled(selectedTab: String?): Boolean =
+    selectedTab?.trim()?.lowercase() == "chat"
+
+internal fun threadHeaderScrollToTopTargetIndex(lazyItemCount: Int): Int? =
+    if (lazyItemCount > 0) 0 else null
+
 @Composable
 private fun ThreadChatTab(
     threadInstanceKey: String,
@@ -9127,6 +9148,7 @@ private fun ThreadChatTab(
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
     shareSelectionCaptureAnchorMessageId: String? = null,
+    headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -9197,6 +9219,7 @@ private fun ThreadChatTab(
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
                     shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                    headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -9255,6 +9278,7 @@ private fun ThreadChatTab(
                     shareSelectionActive = shareSelectionActive,
                     shareSelectionCaptureActive = shareSelectionCaptureActive,
                     shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                    headerScrollToTopRequest = headerScrollToTopRequest,
                     selectedShareMessageIds = selectedShareMessageIds,
                     onShareSelectionBounds = onShareSelectionBounds,
                     onEnterShareSelection = onEnterShareSelection,
@@ -9300,6 +9324,7 @@ private fun ThreadChatTab(
                 shareSelectionActive = shareSelectionActive,
                 shareSelectionCaptureActive = shareSelectionCaptureActive,
                 shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+                headerScrollToTopRequest = headerScrollToTopRequest,
                 selectedShareMessageIds = selectedShareMessageIds,
                 onShareSelectionBounds = onShareSelectionBounds,
                 onEnterShareSelection = onEnterShareSelection,
@@ -9573,6 +9598,7 @@ private fun ThreadMessagesList(
     shareSelectionActive: Boolean = false,
     shareSelectionCaptureActive: Boolean = false,
     shareSelectionCaptureAnchorMessageId: String? = null,
+    headerScrollToTopRequest: Int = 0,
     selectedShareMessageIds: Set<String> = emptySet(),
     onShareSelectionBounds: (String, ThreadShareCaptureRect?) -> Unit = { _, _ -> },
     onEnterShareSelection: (String) -> Unit = {},
@@ -9972,6 +9998,26 @@ private fun ThreadMessagesList(
     }
     val currentPayloadState = rememberUpdatedState(renderPayload)
     val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
+    LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
+        val targetIndex = threadHeaderScrollToTopTargetIndex(lazyItemCount)
+        if (headerScrollToTopRequest <= 0 || targetIndex == null) {
+            return@LaunchedEffect
+        }
+        pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
+            scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
+        }
+        latestLocalSendBottomAnchorActiveKey = null
+        pendingKeyboardBottomAnchor = false
+        allowBottomAutoAnchor = false
+        initialBottomAnchorReady = true
+        userScrollGeneration += 1
+        diagnosticsLogger(
+            "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
+                "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
+        )
+        listState.awaitThreadMessagesLayoutFrame()
+        listState.animateScrollToTopExpressive()
+    }
     LaunchedEffect(
         threadInstanceKey,
         shareSelectionCaptureActive,
