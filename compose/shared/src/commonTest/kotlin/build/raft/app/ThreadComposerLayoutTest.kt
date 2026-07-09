@@ -23,6 +23,30 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun quiverFeedbackComposerPaddingKeepsShellPaddingWhenKeyboardClosed() {
+        assertEquals(
+            28.dp,
+            settingsQuiverFeedbackComposerBottomPadding(keyboardInsetDp = 0f, bottomContentPadding = 28.dp)
+        )
+    }
+
+    @Test
+    fun quiverFeedbackComposerPaddingUsesKeyboardInsetWhenKeyboardOpen() {
+        assertEquals(
+            320.dp,
+            settingsQuiverFeedbackComposerBottomPadding(keyboardInsetDp = 320f, bottomContentPadding = 28.dp)
+        )
+    }
+
+    @Test
+    fun quiverFeedbackComposerPaddingIgnoresNegativeKeyboardInset() {
+        assertEquals(
+            28.dp,
+            settingsQuiverFeedbackComposerBottomPadding(keyboardInsetDp = -1f, bottomContentPadding = 28.dp)
+        )
+    }
+
+    @Test
     fun mentionSuggestionInsertMovesCursorAfterInsertedMention() {
         val edit = applyKuiklyComposerSuggestionEdit(
             text = "ping @ar",
