@@ -980,7 +980,7 @@ class SharedSettingsDataSource(
     ): DataResult<SharedSettingsDeveloperSnapshot> {
         val changed = before != after
         if (changed) {
-            sessionStore.clearSession()
+            sessionStore.clearSession(reason = "api_environment_changed", source = "settings_store")
             when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
                 is DataResult.Content -> Unit
                 is DataResult.Empty -> Unit

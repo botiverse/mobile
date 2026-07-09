@@ -268,18 +268,26 @@ private fun NetworkResponse.toExecutorResponse(): SlockHttpExecutorResponse {
             code = 0,
             bodyText = null,
             errorBodyText = error?.message ?: "network_kmm_no_status",
-            transportDiagnostics = diagnostics
+            transportDiagnostics = diagnostics,
+            responseHeaders = headers
         )
     }
     val text = body.text()
     return if (status in 200..299) {
-        SlockHttpExecutorResponse(code = status, bodyText = text, errorBodyText = null, transportDiagnostics = diagnostics)
+        SlockHttpExecutorResponse(
+            code = status,
+            bodyText = text,
+            errorBodyText = null,
+            transportDiagnostics = diagnostics,
+            responseHeaders = headers
+        )
     } else {
         SlockHttpExecutorResponse(
             code = status,
             bodyText = null,
             errorBodyText = text ?: error?.message,
-            transportDiagnostics = diagnostics
+            transportDiagnostics = diagnostics,
+            responseHeaders = headers
         )
     }
 }
