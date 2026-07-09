@@ -1,11 +1,19 @@
 package build.raft.app.data
 
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+
 enum class AppLocale(
     val storageKey: String,
     val languageTag: String,
     val englishLabel: String,
     val nativeLabel: String
 ) {
+    System(
+        storageKey = "system",
+        languageTag = "system",
+        englishLabel = "System default",
+        nativeLabel = "System default"
+    ),
     English(
         storageKey = "en",
         languageTag = "en",
@@ -20,10 +28,19 @@ enum class AppLocale(
     );
 
     companion object {
-        val Default = English
+        val Default = System
 
-        fun fromStorageKey(value: String?): AppLocale =
-            entries.firstOrNull { it.storageKey == value } ?: Default
+        fun fromStorageKey(value: String?): AppLocale {
+            val normalized = value?.trim()?.lowercase()
+            return when (normalized) {
+                null, "", "auto", "default", System.storageKey -> System
+                "zh-cn", "zh-rcn", "zh_rcn" -> SimplifiedChinese
+                else ->
+                    entries.firstOrNull {
+                        it.storageKey.lowercase() == normalized || it.languageTag.lowercase() == normalized
+                    } ?: Default
+            }
+        }
     }
 }
 
@@ -40,11 +57,20 @@ enum class AppLocale(
  * falls back from `zh-Hans` script-only to `zh-rCN` region-only by
  * language match).
  */
-val AppLocale.kmmResourceLocaleTag: String
+val AppLocale.kmmResourceLocaleTag: String?
     get() =
         when (this) {
+            AppLocale.System -> null
             AppLocale.English -> "en"
             AppLocale.SimplifiedChinese -> "zh-CN"
+        }
+
+val AppLocale.stringDescLocaleType: StringDesc.LocaleType
+    get() =
+        when (this) {
+            AppLocale.System -> StringDesc.LocaleType.System
+            AppLocale.English,
+            AppLocale.SimplifiedChinese -> StringDesc.LocaleType.Custom(requireNotNull(kmmResourceLocaleTag))
         }
 
 data class LocaleSnapshot(

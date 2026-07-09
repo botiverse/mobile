@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.kmmResourceLocaleTag
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -20,16 +20,14 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
  * lookups would render with the runtime's default `LocaleType.System`
  * (which is the OS locale) instead of the user's persisted choice.
  *
- * We guard the init with a [remember] keyed on the [Pager] so it
- * runs exactly once per app shell instance and survives
- * recomposition. The resource global is a process-wide singleton; even
- * if [SlockAppShellContent] were re-entered (process restart,
- * logout/login), the idempotent `StringDesc.localeType = ...` set
- * is cheap and safe.
+ * The visibility tick deliberately re-runs the assignment when the app
+ * returns to the foreground. `LocaleType.System` resolves the platform's
+ * current locale at that point, while explicit app-language choices remain
+ * pinned to their custom locale.
  */
 @Composable
-internal fun rememberKmmResourceLocaleSeed(pager: Pager) {
-    remember(pager) {
+internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
+    remember(pager, refreshTick) {
         val store = KeyValueLocalePreferenceStore(slockSharedPreferenceStore())
         val persisted: AppLocale =
             try {
@@ -37,12 +35,10 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager) {
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                // If the persisted read fails (corrupted KV, missing
-                // platform, etc.) fall back to `AppLocale.Default`
-                // (English) and let the user re-select via Settings.
+                // Missing or unreadable legacy state follows the system.
                 AppLocale.Default
             }
-        StringDesc.localeType = StringDesc.LocaleType.Custom(persisted.kmmResourceLocaleTag)
+        StringDesc.localeType = persisted.stringDescLocaleType
         Unit
     }
 }
@@ -54,8 +50,8 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager) {
  * in the same composition tree resolve against the user's persisted locale.
  */
 @Composable
-internal fun RememberKmmResourceLocaleSeedFromLocalActivity() {
+internal fun RememberKmmResourceLocaleSeedFromLocalActivity(refreshTick: Int = 0) {
     val activity = LocalActivity.current
     val pager = activity.getPager() as Pager
-    rememberKmmResourceLocaleSeed(pager)
+    rememberKmmResourceLocaleSeed(pager, refreshTick)
 }
