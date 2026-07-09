@@ -3,6 +3,8 @@ package build.raft.app
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ReleaseNotesPageTest {
     @Test
@@ -19,5 +21,13 @@ class ReleaseNotesPageTest {
             "",
             releaseNotesVersionCodeFromPageData(JSONObject().put("versionCode", "1010000&lang=zh"))
         )
+    }
+
+    @Test
+    fun releaseNotesWebViewWaitsForBodyFrameBelowHeader() {
+        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 0f, width = 1080, height = 2200))
+        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 0, height = 2200))
+        assertFalse(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 1080, height = 0))
+        assertTrue(releaseNotesWebViewFrameIsReady(positionY = 180f, width = 1080, height = 2200))
     }
 }

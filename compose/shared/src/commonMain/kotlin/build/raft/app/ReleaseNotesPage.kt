@@ -8,6 +8,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.data.ScreenLoadState
@@ -30,6 +31,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
@@ -164,36 +167,66 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
     var loaded by remember(reloadKey, url) { mutableStateOf(false) }
+    var bodyFrameReady by remember(reloadKey, url) { mutableStateOf(false) }
+    var webViewAttachReady by remember(reloadKey, url) { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val loadStartedAt = remember(reloadKey, url) { TimeSource.Monotonic.markNow() }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+    LaunchedEffect(bodyFrameReady, reloadKey, url) {
+        if (!bodyFrameReady) {
+            webViewAttachReady = false
+            return@LaunchedEffect
+        }
+        // A cached document can commit before Kuikly applies the custom native
+        // view's final body frame. Wait for the measured body and two render
+        // frames so Android never attaches the WebView at the root viewport.
+        repeat(RELEASE_NOTES_WEB_VIEW_ATTACH_DELAY_FRAMES) {
+            withFrameNanos { }
+        }
+        webViewAttachReady = true
+    }
+    BoxWithConstraints(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .onGloballyPositioned { coordinates ->
+                    bodyFrameReady =
+                        releaseNotesWebViewFrameIsReady(
+                            positionY = coordinates.positionInRoot().y,
+                            width = coordinates.size.width,
+                            height = coordinates.size.height
+                        )
+                }
+    ) {
         // The native WebView applies its own bottom safe-area content inset, so it
         // stops short of the screen bottom; extend the frame past the slot so that
         // inset falls off-screen and the page fills edge-to-edge.
         val webViewHeight = maxHeight + slockBottomSafeAreaPadding()
-        key(reloadKey, url) {
-            SlockWebView(
-                url = url,
-                modifier = Modifier.fillMaxWidth().height(webViewHeight),
-                allowNavigation = true,
-                onLoadSuccess = {
-                    loadError = null
-                    loaded = true
-                    bridge.log(
-                        "release_notes_load_success versionCode=$versionCode " +
-                            "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
-                    )
-                },
-                onLoadFailure = { reason ->
-                    loadError = reason
-                    bridge.log(
-                        "release_notes_load_failure versionCode=$versionCode " +
-                            "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds} " +
-                            "reason=${reason.take(120)}"
-                    )
-                }
-            )
+        if (webViewAttachReady) {
+            key(reloadKey, url) {
+                SlockWebView(
+                    url = url,
+                    modifier = Modifier.fillMaxWidth().height(webViewHeight),
+                    allowNavigation = true,
+                    onLoadSuccess = {
+                        loadError = null
+                        loaded = true
+                        bridge.log(
+                            "release_notes_load_success versionCode=$versionCode " +
+                                "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    },
+                    onLoadFailure = { reason ->
+                        loadError = reason
+                        bridge.log(
+                            "release_notes_load_failure versionCode=$versionCode " +
+                                "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds} " +
+                                "reason=${reason.take(120)}"
+                        )
+                    }
+                )
+            }
         }
         // Cover the network-load gap: until the first successful load, the WebView
         // paints bare white, so show a loading notice over it instead (task #227).
@@ -227,6 +260,14 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
         }
     }
 }
+
+private const val RELEASE_NOTES_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
+
+internal fun releaseNotesWebViewFrameIsReady(
+    positionY: Float,
+    width: Int,
+    height: Int
+): Boolean = positionY > 0f && width > 0 && height > 0
 
 @Composable
 private fun ReleaseNotesCenteredNotice(message: String) {
