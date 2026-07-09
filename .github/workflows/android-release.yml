@@ -99,7 +99,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve release parameters
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
       version_major: ${{ steps.p.outputs.version_major }}
       version_minor: ${{ steps.p.outputs.version_minor }}
@@ -170,7 +170,7 @@ jobs:
 
   build_android_release:
     name: Build + sign APK
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     needs: resolve
     timeout-minutes: 30
     outputs:
@@ -357,7 +357,7 @@ jobs:
 
   publish_quiver:
     name: Publish to Quiver + create share page
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
@@ -533,7 +533,7 @@ jobs:
 
   tag_release:
     name: Tag release record
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     needs: [resolve, build_android_release, publish_quiver]
     # Main link is workflow_dispatch → build → draft → *then* record a tag so
     # git history and GitHub Releases line up with what shipped. Only on a
