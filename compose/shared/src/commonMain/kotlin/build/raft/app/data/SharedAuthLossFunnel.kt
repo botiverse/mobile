@@ -84,7 +84,11 @@ internal class SharedAuthLossFunnel(
         val tokenKey = signal.tokenFingerprint
         val (inFlight, owner) =
             mutex.withLock {
-                signal.pendingOpenRequest?.let { pendingCandidatesByToken.putIfAbsent(tokenKey, it) }
+                signal.pendingOpenRequest?.let { request ->
+                    if (!pendingCandidatesByToken.containsKey(tokenKey)) {
+                        pendingCandidatesByToken[tokenKey] = request
+                    }
+                }
                 val existing = inFlightByToken[tokenKey]
                 if (existing != null) {
                     existing to false
