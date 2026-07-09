@@ -1132,16 +1132,23 @@ internal fun SlockBrutalIconButton(
                     .offset(x = shadowOffset, y = shadowOffset)
                     .background(resolvedShadow)
         )
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .background(resolvedBackground)
-                    .border(SlockStroke.Default, resolvedBorder)
-                    .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
+        SlockAnchorButton(
+            onClick = onClick,
+            enabled = enabled,
+            pressFeedback = enabled,
+            pressOffset = shadowOffset,
+            modifier = Modifier.size(size)
         ) {
-            SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
+            Box(
+                modifier =
+                    Modifier
+                        .size(size)
+                        .background(resolvedBackground)
+                        .border(SlockStroke.Default, resolvedBorder),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
+            }
         }
     }
 }

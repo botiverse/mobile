@@ -151,6 +151,35 @@ internal fun SlockHeaderRefreshIndicator(
     )
 }
 
+@Composable
+internal fun SlockTopPageHeaderAction(
+    icon: SlockLucideIconName,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(modifier = modifier.padding(end = HeaderActionShadowOffset, bottom = HeaderActionShadowOffset)) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = HeaderActionShadowOffset, y = HeaderActionShadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .size(SectionHeaderActionSize)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+        ) {
+            SlockLucideIcon(
+                name = icon,
+                modifier = Modifier.size(SectionHeaderActionIconSize),
+                color = "#FF000000"
+            )
+        }
+    }
+}
+
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun SlockRaftPullRefreshIndicator(
