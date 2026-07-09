@@ -32,3 +32,10 @@ internal expect fun slockReleaseNotesAppSlug(): String
 // where the native render already handles wrapping. Remove each platform's
 // non-null value when its native chip ships.
 internal expect fun slockInlineCodeCharWrapBridgeThreshold(): Int?
+
+// task #92 close-out: feedback attachment size cap follows what each
+// platform's Hands SDK can actually deliver. Android/iOS stream >10MB
+// attachments through a presigned R2 PUT up to 200MB; the OHOS SDK still
+// reads the whole file into one ArrayBuffer, so it stays at 50MB until it
+// learns to stream.
+internal expect fun slockFeedbackAttachmentMaxBytes(): Long

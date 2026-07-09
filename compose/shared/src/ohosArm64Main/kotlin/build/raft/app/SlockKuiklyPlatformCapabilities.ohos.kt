@@ -14,3 +14,7 @@ internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 // the Android render's char-level atomization (runs longer than 16 chars).
 // Set back to null when the native OHOS chip lands.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
+
+// Hands OHOS SDK reads attachments into a single ArrayBuffer — 50MB hard cap
+// until it streams (see docs/sdk-parity/ohos.md in the hands repo).
+internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
