@@ -46,8 +46,8 @@ jobs:
   # Kuikly android/foundation + OHOS klibs and the stately/sqliter/sqldelight/
   # ktor-ohos stack are published to mavenLocal ONCE here (ubuntu) and shared
   # through os-less cache keys — the artifacts are jvm jars / klibs / .module
-  # metadata, all platform-neutral, so macos and container jobs restore the
-  # same entries instead of rebuilding per (job, os) combination.
+  # metadata, all platform-neutral, so the platform host and container jobs
+  # restore the same entries instead of rebuilding per (job, os) combination.
   kuikly-artifacts:
     name: Kuikly fork artifacts (prebuild)
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -531,7 +531,14 @@ jobs:
 
   ohos:
     name: OHOS shared compile
-    runs-on: blacksmith-6vcpu-macos-15
+    # Runs on Linux, not macOS. This job only consumes ohosArm64 klibs, and every
+    # one of them is built on Linux by the prebuild jobs and shared through
+    # Blacksmith's colocated cache. Blacksmith macOS runners do not participate in
+    # that cache, so a macOS runner here misses the prebuild artifacts
+    # (fail-on-cache-miss) even though the sibling ohos-host container hits them.
+    # The OHOS Kotlin/Native compile is host-agnostic klib work (same as the
+    # prebuild's --ohos-only build), so Linux is the correct host.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: [kuikly-artifacts, fork-deps]
     timeout-minutes: 90
     env:
