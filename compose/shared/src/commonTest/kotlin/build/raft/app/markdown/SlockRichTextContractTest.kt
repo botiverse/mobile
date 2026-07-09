@@ -15,7 +15,7 @@ class SlockRichTextContractTest {
                 SlockRichTextContext(
                     knownChannels = setOf("markdown专修"),
                     knownMentions = setOf("artin"),
-                    highlightedMentions = setOf("artin")
+                    viewerUserId = "artin"
                 )
             )
 
@@ -41,6 +41,35 @@ class SlockRichTextContractTest {
         )
         assertNull(inlineCode.actionId)
         assertEquals(refs.map { it.id }, document.actions.map { it.id })
+    }
+
+    @Test
+    fun viewerContextDeterminesSelfMentionChrome() {
+        val body = "Ping @artin"
+        val selfView =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(
+                    knownMentions = setOf("artin"),
+                    viewerUserId = "artin"
+                )
+            )
+        val otherView =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(
+                    knownMentions = setOf("artin"),
+                    viewerUserId = "cindy"
+                )
+            )
+
+        val selfMention = selfView.inlineTokens.single { it.kind == SlockRichTextInlineKind.SlockRef }
+        val otherMention = otherView.inlineTokens.single { it.kind == SlockRichTextInlineKind.SlockRef }
+
+        assertEquals(SlockRichTextChromeKind.SelfMention, selfMention.chrome)
+        assertEquals("selfMention", selfMention.styleTokenId)
+        assertEquals(SlockRichTextChromeKind.OrdinaryMention, otherMention.chrome)
+        assertEquals("ordinaryMention", otherMention.styleTokenId)
     }
 
     @Test
@@ -74,7 +103,7 @@ class SlockRichTextContractTest {
                 SlockRichTextContext(
                     knownChannels = setOf("markdown专修"),
                     knownMentions = setOf("artin"),
-                    highlightedMentions = setOf("artin"),
+                    viewerUserId = "artin",
                     knownTaskNumbers = setOf(42)
                 )
             )

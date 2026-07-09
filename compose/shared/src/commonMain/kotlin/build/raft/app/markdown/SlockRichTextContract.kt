@@ -197,6 +197,10 @@ data class SlockRichTextRange(
 data class SlockRichTextContext(
     val knownChannels: Set<String> = emptySet(),
     val knownMentions: Set<String> = emptySet(),
+    // Viewer identity is render-context data, not a stable message fact.
+    // The same @mention can be self chrome for one viewer and ordinary
+    // mention chrome for another.
+    val viewerUserId: String? = null,
     val highlightedMentions: Set<String> = emptySet(),
     val knownTaskNumbers: Set<Int>? = null,
     val activeTagKey: String? = null,
@@ -240,7 +244,7 @@ fun buildSlockRichTextDocument(
     val plan =
         SlockMarkdownInlineTokenRegistry.plan(
             parserContent,
-            highlightedMentions = context.highlightedMentions,
+            highlightedMentions = context.viewerScopedHighlightedMentions(),
             isTagValid = validator,
             inlineContentScope = context.inlineContentScope
         )
@@ -388,6 +392,12 @@ private fun SlockRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) -
         }
     }
 }
+
+private fun SlockRichTextContext.viewerScopedHighlightedMentions(): Set<String> =
+    buildSet {
+        addAll(highlightedMentions)
+        viewerUserId?.takeIf { it.isNotBlank() }?.let(::add)
+    }
 
 private fun String.textToken(start: Int, endExclusive: Int): SlockRichTextInlineToken =
     SlockRichTextInlineToken(
