@@ -443,7 +443,13 @@ jobs:
       - name: Build iOS app for simulator
         working-directory: compose/iosApp
         run: |
-          set -o pipefail
+          # Full build output goes to a file (uploaded via ios-diagnostics on
+          # failure); only the tail is echoed live. A raw `| tail -200` silently
+          # truncated Kotlin/Native `e:` errors from the `[CP-User] Build shared`
+          # phase behind the Pods compile spew, hiding the real cause of build
+          # breaks — capture the whole log and grep the errors out on failure.
+          log="$GITHUB_WORKSPACE/xcodebuild-ios.log"
+          set +e
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosApp \
@@ -452,7 +458,16 @@ jobs:
             -destination "platform=iOS Simulator,id=${UDID}" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
-            build | tail -200
+            build > "$log" 2>&1
+          status=$?
+          tail -200 "$log"
+          if [ "$status" -ne 0 ]; then
+            echo "===== iOS build FAILED (status=$status) — extracted errors ====="
+            grep -nE "e: |: error:|error: |Unresolved|unresolved reference|BUILD FAILED|following build commands failed|PhaseScriptExecution" "$log" | tail -100 || true
+            mkdir -p "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics"
+            cp "$log" "$GITHUB_WORKSPACE/visual-testing-results/ios-diagnostics/xcodebuild-ios.log" || true
+          fi
+          exit "$status"
 
       - name: Generate case manifest
         run: |
