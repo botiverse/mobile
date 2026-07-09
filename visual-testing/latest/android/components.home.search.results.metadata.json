@@ -16,8 +16,8 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 673,
-                  "dominantRatio": 0.8316168
+                  "uniqueColors": 684,
+                  "dominantRatio": 0.83164114
                 }
               },
               "diagnostics": {
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 1
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783548232351"
+              "capturedAt": "1783579913855"
             }
