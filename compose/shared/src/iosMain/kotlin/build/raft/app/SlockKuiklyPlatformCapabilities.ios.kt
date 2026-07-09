@@ -12,11 +12,13 @@ internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
-// task #401 A-bridge: core-render-ios has no slockInlineCode chip yet, so
-// wrap long code runs via markdown-layer zero-width spaces. Threshold matches
-// the Android render's char-level atomization (runs longer than 16 chars).
-// Set back to null when the native iOS chip lands (task #402).
+// iOS native render owns inline-code chrome/padding, but TextKit still needs
+// markdown-layer U+200B break opportunities for #58 character-level wrapping.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
+
+// #439 landed native iOS chip chrome. Do not also inject U+00A0 edge padding:
+// KRLabel would paint those compatibility characters inside the yellow fill.
+internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L

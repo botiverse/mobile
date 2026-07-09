@@ -12,5 +12,7 @@ internal actual fun slockReleaseNotesAppSlug(): String = "raft-android"
 // Android's core-render-android draws the chip and char-wraps natively.
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
+internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
+
 // Hands Android SDK 0.10.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L
