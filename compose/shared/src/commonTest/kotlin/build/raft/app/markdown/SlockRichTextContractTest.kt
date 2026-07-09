@@ -67,6 +67,83 @@ class SlockRichTextContractTest {
     }
 
     @Test
+    fun singleInlineCodeSpanKeepsBacktickInsideAsCodeAndOutsideAsText() {
+        val document = buildSlockRichTextDocument("a`b`c")
+
+        assertEquals(
+            listOf(
+                SlockRichTextInlineKind.Text to "a",
+                SlockRichTextInlineKind.InlineCode to "b",
+                SlockRichTextInlineKind.Text to "c"
+            ),
+            document.inlineTokens.map { it.kind to it.text }
+        )
+        assertEquals("`b`", document.inlineTokens.single { it.kind == SlockRichTextInlineKind.InlineCode }.sourceText)
+        assertEquals(emptyList(), document.actions)
+    }
+
+    @Test
+    fun adjacentAndMultipleInlineCodeSpansDoNotInvertPlainText() {
+        val document = buildSlockRichTextDocument("x`a``b`y `c`")
+
+        assertEquals(
+            listOf(
+                SlockRichTextInlineKind.Text to "x",
+                SlockRichTextInlineKind.InlineCode to "a",
+                SlockRichTextInlineKind.InlineCode to "b",
+                SlockRichTextInlineKind.Text to "y ",
+                SlockRichTextInlineKind.InlineCode to "c"
+            ),
+            document.inlineTokens.map { it.kind to it.text }
+        )
+        assertEquals(listOf("`a`", "`b`", "`c`"), document.inlineTokens
+            .filter { it.kind == SlockRichTextInlineKind.InlineCode }
+            .map { it.sourceText })
+        assertEquals(emptyList(), document.actions)
+    }
+
+    @Test
+    fun unclosedBacktickDoesNotTurnRemainingPlainTextIntoInlineCode() {
+        val document =
+            buildSlockRichTextDocument(
+                "a`b c @artin",
+                SlockRichTextContext(knownMentions = setOf("artin"))
+            )
+
+        assertEquals(emptyList(), document.inlineTokens.filter { it.kind == SlockRichTextInlineKind.InlineCode })
+        assertEquals(listOf("@artin"), document.actions.map { it.label })
+    }
+
+    @Test
+    fun realHandsPackageMarkdownKeepsBacktickedPackageScopesInlineCode() {
+        val body =
+            "两个包: **`@botiverse/hands-node`** schema 走子导出 " +
+                "`@botiverse/hands-node/logs/schema`; adapter **`@botiverse/hands-electron`**. " +
+                "@QA-Tester 的 Phase 1 验收口径 fold 进 spec。@artin 给个 go。"
+        val document =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(
+                    knownMentions = setOf("QA-Tester", "artin"),
+                    viewerUserId = "artin",
+                    knownTaskNumbers = emptySet()
+                )
+            )
+
+        assertEquals(
+            listOf(
+                "@botiverse/hands-node",
+                "@botiverse/hands-node/logs/schema",
+                "@botiverse/hands-electron"
+            ),
+            document.inlineTokens
+                .filter { it.kind == SlockRichTextInlineKind.InlineCode }
+                .map { it.text }
+        )
+        assertEquals(listOf("@QA-Tester", "@artin"), document.actions.map { it.label })
+    }
+
+    @Test
     fun viewerContextDeterminesSelfMentionChrome() {
         val body = "Ping @artin"
         val selfView =
