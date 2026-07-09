@@ -8484,8 +8484,12 @@ private fun SharedQuiverFeedbackContent(
             )
         )
     }
-    val attachmentLimit = 3
-    val attachmentMaxBytes = 10L * 1024L * 1024L
+    // task #92 close-out: server + Hands SDKs support 9 files with presigned
+    // large-file upload; the per-file byte cap is platform-dependent (OHOS SDK
+    // still caps at 50MB).
+    val attachmentLimit = 9
+    val attachmentMaxBytes = slockFeedbackAttachmentMaxBytes()
+    val attachmentMaxLabel = "${attachmentMaxBytes / (1024L * 1024L)} MB"
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
 
@@ -8504,7 +8508,7 @@ private fun SharedQuiverFeedbackContent(
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "Quiver 一次最多上传 3 个附件。"
+            error = "Hands 一次最多上传 $attachmentLimit 个附件。"
             return
         }
         busy = true
@@ -8520,8 +8524,8 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Quiver 单个附件最大 10 MB，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Quiver 一次最多上传 3 个附件，已保留前 3 个。"
+                        rejectedCount > 0 -> "Hands 单个附件最大 $attachmentMaxLabel，已跳过超限文件。"
+                        accepted.size > remainingSlots -> "Hands 一次最多上传 $attachmentLimit 个附件，已保留前 $attachmentLimit 个。"
                         else -> null
                     }
                 }

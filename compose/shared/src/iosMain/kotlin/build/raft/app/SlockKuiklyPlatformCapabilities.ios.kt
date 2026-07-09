@@ -17,3 +17,6 @@ internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 // the Android render's char-level atomization (runs longer than 16 chars).
 // Set back to null when the native iOS chip lands (task #402).
 internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
+
+// Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
+internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L
