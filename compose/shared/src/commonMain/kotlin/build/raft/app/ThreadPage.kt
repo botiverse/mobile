@@ -16038,6 +16038,71 @@ internal fun ThreadCommentAnchorVisualScreen() {
     )
 }
 
+@Page("compose_thread_forward_bundle_visual", supportInLocal = true)
+internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadForwardBundleVisualScreen() }
+    }
+}
+
+@Composable
+internal fun ThreadForwardBundleVisualScreen() {
+    // Renders ThreadForwardBundleModal so the forward-bundle metadata that
+    // task #425 switched to Space Mono is pinned by a fixture (task #427):
+    // the "N messages" count, each forwarded message's timestamp, and the
+    // attachment-count label. Seeded with a mixed bundle (with/without body,
+    // with/without attachments) so all three metadata paths render.
+    val bundle =
+        remember {
+            ForwardMessageBundle(
+                id = "bundle-visual-1",
+                title = "",
+                sourceTitle = "#design",
+                totalCount = 3,
+                messages =
+                    listOf(
+                        ForwardMessageItem(
+                            id = "fwd-1",
+                            authorId = "user-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "C",
+                            timestampLabel = "10:38",
+                            body = "Captured the Android visual artifact and queued React parity.",
+                            attachmentCount = 0
+                        ),
+                        ForwardMessageItem(
+                            id = "fwd-2",
+                            authorId = "user-artin",
+                            authorName = "artin",
+                            authorKind = "human",
+                            avatarLabel = "a",
+                            timestampLabel = "10:31",
+                            body = "",
+                            attachmentCount = 2
+                        ),
+                        ForwardMessageItem(
+                            id = "fwd-3",
+                            authorId = "user-ad",
+                            authorName = "Android Developer",
+                            authorKind = "agent",
+                            avatarLabel = "A",
+                            timestampLabel = "09:58",
+                            body = "Search parity now covers sender filters and time ranges.",
+                            attachmentCount = 1
+                        )
+                    )
+            )
+        }
+    ThreadForwardBundleModal(
+        bundle = bundle,
+        memberAvatarResolver = EmptySlockMemberAvatarResolver,
+        onDismiss = {},
+        onOpenMember = {}
+    )
+}
+
 @Composable
 private fun ThreadForwardTargetModal(
     selectedCount: Int,
