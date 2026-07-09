@@ -686,13 +686,12 @@ internal fun SlockBrutalReadOnlyValueField(
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         contentAlignment = Alignment.CenterStart
     ) {
-        TextField(
-            value = value,
-            onValueChange = {},
-            placeholder = "",
-            autoFocus = false,
+        Text(
+            text = value,
+            style = textStyle.copy(color = textColor),
+            color = textColor,
             maxLines = maxLines,
-            textStyle = textStyle.copy(color = textColor),
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
     }
