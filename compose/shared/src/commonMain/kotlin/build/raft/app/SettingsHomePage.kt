@@ -5945,7 +5945,7 @@ private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): Stri
         ThreadRowAffordancePreference.Reactions ->
             if (enabled) "Show reaction actions in message menus" else "Hide reaction actions"
         ThreadRowAffordancePreference.Saved ->
-            if (enabled) "Show the inline save action on message rows" else "Keep save in the action menu only"
+            if (enabled) "Show saved badges on message rows" else "Keep saved state out of message rows"
     }
 
 @Composable

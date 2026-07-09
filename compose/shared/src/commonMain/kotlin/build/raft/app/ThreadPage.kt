@@ -2032,7 +2032,6 @@ private fun ThreadMessageVisualScreenContent() {
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     onToggleReaction = {},
-                    onToggleSaved = {},
                     onOpenAttachment = {},
                     onOpenMarkdownTag = {},
                     onOpenMarkdownUrl = {},
@@ -2099,7 +2098,6 @@ private fun ThreadMessageVisualScreenContent() {
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
                     onToggleReaction = {},
-                    onToggleSaved = {},
                     onOpenAttachment = {},
                     onOpenMarkdownTag = {},
                     onOpenMarkdownUrl = {},
@@ -2196,7 +2194,6 @@ private fun ThreadMessageVisualScreenContent() {
                 onOpenTask = {},
                 onOpenTaskStatusMenu = {},
                 onToggleReaction = {},
-                onToggleSaved = {},
                 onOpenAttachment = {},
                 onOpenMarkdownTag = {},
                 onOpenMarkdownUrl = {},
@@ -10907,7 +10904,6 @@ private fun ThreadMessagesList(
                                         )
                                 },
                                 showReactionAddAction = renderPayload.showReactionActions && !message.hasLocalSendState(),
-                                onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = renderConfig.formatTimestampLabel(message.timestampLabel),
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message.timestampLabel),
@@ -12171,7 +12167,6 @@ private fun ThreadMessageCard(
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: (String) -> Unit,
     onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null,
-    onToggleSaved: () -> Unit,
     onOpenCommentHost: (KuiklyThreadMessageCommentRef) -> Unit = {},
     onOpenAttachment: (String) -> Unit,
     attachmentCommentsEnabled: Boolean = false,
@@ -12232,18 +12227,19 @@ private fun ThreadMessageCard(
     val showTimestampInAvatarSlot =
         compactConsecutiveMessages && !showAuthorChrome && pressed && compactTimestampLabel.isNotBlank()
     val hasThreadAttachments = richContentEnabled && message.attachments.isNotEmpty()
-    val showInlineBookmarkAction =
-        shouldShowThreadMessageInlineBookmark(
+    val showSavedBadge =
+        shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
             showInlineSaveAction = showInlineSaveAction,
             richContentEnabled = richContentEnabled,
-            hasLocalSendState = message.hasLocalSendState()
+            hasLocalSendState = message.hasLocalSendState(),
+            isSaved = message.isSaved
         )
-    val reserveInlineTrailingSpace = richContentEnabled && (message.isSendingLocalSend() || showInlineBookmarkAction)
+    val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend()
     val hasFooterMeta =
         richContentEnabled &&
             !message.hasLocalSendState() &&
-            message.hasThreadFooterMeta(replyMetadata, hasReplyDraft)
+            message.hasThreadFooterMeta(replyMetadata, hasReplyDraft, showSavedBadge)
     val messagePerformanceKey =
         remember(message.id, messageIndex) {
             threadMessagePerformanceKey(message.id, messageIndex)
@@ -12496,6 +12492,7 @@ private fun ThreadMessageCard(
                                     onOpenTask = onOpenTask,
                                     onShowActions = onShowActions,
                                     onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                    showSavedBadge = showSavedBadge,
                                     showReactionAddAction = showReactionAddAction,
                                     onToggleReaction = onToggleReaction,
                                     onShowReactionDetails = onShowReactionDetails
@@ -12507,13 +12504,6 @@ private fun ThreadMessageCard(
                         when {
                             message.isSendingLocalSend() -> {
                                 ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
-                            }
-                            showInlineBookmarkAction -> {
-                                ThreadMessageBookmarkButton(
-                                    saved = message.isSaved,
-                                    onClick = onToggleSaved,
-                                    modifier = Modifier.align(Alignment.TopEnd)
-                                )
                             }
                         }
                     }
@@ -12558,16 +12548,18 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
     }
 }
 
-internal fun shouldShowThreadMessageInlineBookmark(
+internal fun shouldShowThreadMessageSavedBadge(
     showSaveAction: Boolean,
     showInlineSaveAction: Boolean,
     richContentEnabled: Boolean,
-    hasLocalSendState: Boolean
+    hasLocalSendState: Boolean,
+    isSaved: Boolean
 ): Boolean =
     showSaveAction &&
         showInlineSaveAction &&
         richContentEnabled &&
-        !hasLocalSendState
+        !hasLocalSendState &&
+        isSaved
 
 @Composable
 private fun ThreadMessageSelectionToggle(
@@ -12670,29 +12662,6 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
             modifier = Modifier.size(14.dp),
             color = SlockColor.TextMutedGrayArgb,
             spinning = true
-        )
-    }
-}
-
-@Composable
-private fun ThreadMessageBookmarkButton(
-    saved: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Button(
-        modifier =
-            modifier
-                .size(24.dp)
-                .background(Color.Transparent),
-        onClick = onClick,
-        pressFeedback = false
-    ) {
-        SlockLucideIcon(
-            name = "bookmark",
-            modifier = Modifier.size(13.dp),
-            color = if (saved) "#FFF8A16F" else "#66000000",
-            fill = if (saved) "#FFF8A16F" else null
         )
     }
 }
@@ -13648,6 +13617,7 @@ private fun ThreadMessageFooterMeta(
     onOpenTask: (String) -> Unit,
     onShowActions: (Offset) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
+    showSavedBadge: Boolean = false,
     showReactionAddAction: Boolean = false,
     onToggleReaction: ((String) -> Unit)? = null,
     onShowReactionDetails: ((KuiklyThreadReactionItem, Offset) -> Unit)? = null
@@ -13657,7 +13627,7 @@ private fun ThreadMessageFooterMeta(
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     val showReactionAddChip = showReactionAddAction && hasReactions
-    if (!hasTask && !hasReplies && !hasReactions && !showReactionAddChip) return
+    if (!hasTask && !hasReplies && !showSavedBadge && !hasReactions && !showReactionAddChip) return
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -13720,6 +13690,18 @@ private fun ThreadMessageFooterMeta(
                 }
             )
         }
+        if (showSavedBadge) {
+            SlockAnchoredMetaChip(
+                label = "Saved",
+                iconName = SlockLucideIconName.Bookmark,
+                iconSize = 11.dp,
+                color = SlockColor.BrandYellow,
+                modifier = Modifier.widthIn(max = 96.dp),
+                pressFeedback = false,
+                clickIdentity = "thread-saved:${message.id}",
+                onClick = null
+            )
+        }
         if (hasReactions) {
             visibleReactions.forEach { reaction ->
                 key("reaction:${message.id}:${reaction.emoji}") {
@@ -13740,16 +13722,21 @@ private fun ThreadMessageFooterMeta(
     }
 }
 
-internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(hasReplyDraft: Boolean = false): Boolean =
-    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft)
+internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
+    hasReplyDraft: Boolean = false,
+    showSavedBadge: Boolean = false
+): Boolean =
+    hasThreadFooterMeta(toThreadReplyMetadata(), hasReplyDraft, showSavedBadge)
 
 internal fun KuiklyThreadMessageItem.hasThreadFooterMeta(
     replyMetadata: ThreadReplyMetadata,
-    hasReplyDraft: Boolean = false
+    hasReplyDraft: Boolean = false,
+    showSavedBadge: Boolean = false
 ): Boolean =
     hasThreadTaskFooterMeta() ||
         replyMetadata.replyCount > 0 ||
         hasReplyDraft ||
+        showSavedBadge ||
         reactions.any { it.count > 0 }
 
 private fun KuiklyThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
@@ -14658,7 +14645,6 @@ private fun ThreadOriginCard(
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             onShowReactionDetails = onShowReactionDetails,
                             showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
-                            onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
                             timestampLabel = renderConfig.formatTimestampLabel(origin.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
