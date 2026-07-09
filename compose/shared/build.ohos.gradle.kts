@@ -72,6 +72,12 @@ val prepareOhosSqliteProvider by tasks.registering(Exec::class) {
 }
 
 kotlin {
+    // Mirrors build.gradle.kts: suppress the per-declaration Beta warning for
+    // the kmmresource-generated expect/actual MR classes (KT-61573).
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     androidTarget {
         compilations.all {
             kotlinOptions {
