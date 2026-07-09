@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/test.yml"
       - "compose/**"
+      - "scripts/check_commonmain_map_compat.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -19,6 +20,7 @@ on:
     paths:
       - ".github/workflows/test.yml"
       - "compose/**"
+      - "scripts/check_commonmain_map_compat.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -367,6 +369,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      - name: Guard commonMain Map compatibility imports
+        shell: bash
+        run: |
+          scripts/check_commonmain_map_compat.sh --self-test
+          scripts/check_commonmain_map_compat.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5
