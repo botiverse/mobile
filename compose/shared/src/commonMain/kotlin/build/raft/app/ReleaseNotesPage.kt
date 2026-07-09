@@ -37,6 +37,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.time.TimeSource
 
 const val RELEASE_NOTES_PAGE = "compose_release_notes"
 
@@ -166,6 +167,9 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
     var reloadKey by remember { mutableStateOf(0) }
     var loadError by remember(reloadKey, url) { mutableStateOf<String?>(null) }
     var loaded by remember(reloadKey, url) { mutableStateOf(false) }
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val loadStartedAt = remember(reloadKey, url) { TimeSource.Monotonic.markNow() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         // The native WebView applies its own bottom safe-area content inset, so it
         // stops short of the screen bottom; extend the frame past the slot so that
@@ -179,8 +183,19 @@ private fun ReleaseNotesWebViewBody(versionCode: String) {
                 onLoadSuccess = {
                     loadError = null
                     loaded = true
+                    bridge.log(
+                        "release_notes_load_success versionCode=$versionCode " +
+                            "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+                    )
                 },
-                onLoadFailure = { reason -> loadError = reason }
+                onLoadFailure = { reason ->
+                    loadError = reason
+                    bridge.log(
+                        "release_notes_load_failure versionCode=$versionCode " +
+                            "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds} " +
+                            "reason=${reason.take(120)}"
+                    )
+                }
             )
         }
         // Cover the network-load gap: until the first successful load, the WebView

@@ -22,6 +22,7 @@ import org.json.JSONObject
 
 internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context) {
     private var webView = WebView(context)
+    private val releaseNotesDocumentCache = SlockReleaseNotesDocumentCache(context.applicationContext)
     private var destroyed: Boolean = false
     private var src: String = ""
     private var loadedSrc: String = ""
@@ -285,6 +286,9 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
                     if (request?.isForMainFrame == true && !allowNavigation && shouldBlockNavigation(url)) {
                         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                     }
+                    if (request?.isForMainFrame == true && request.method.equals("GET", ignoreCase = true)) {
+                        releaseNotesMainDocumentResponse(url)?.let { return it }
+                    }
                     return super.shouldInterceptRequest(view, request)
                 }
 
@@ -487,6 +491,23 @@ internal class SlockSandboxWebViewRenderView(context: Context) : KRView(context)
               <body></body>
             </html>
         """.trimIndent()
+    }
+
+    private fun releaseNotesMainDocumentResponse(url: String?): WebResourceResponse? {
+        val target = url?.takeIf(SlockReleaseNotesDocumentCache::isReleaseNotesUrl) ?: return null
+        val startedAt = System.currentTimeMillis()
+        val document = releaseNotesDocumentCache.loadForWebView(target) ?: return null
+        Log.i(
+            LOG_TAG,
+            "release_notes_main_document source=${document.source} " +
+                "bytes=${document.bytes.size} durationMs=${System.currentTimeMillis() - startedAt} " +
+                "url=${target.take(LOG_URL_LIMIT)}"
+        )
+        return WebResourceResponse(
+            document.mimeType,
+            "utf-8",
+            ByteArrayInputStream(document.bytes)
+        )
     }
 
     private fun Any.toBooleanValue(default: Boolean): Boolean =

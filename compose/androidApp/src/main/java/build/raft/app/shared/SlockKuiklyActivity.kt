@@ -2568,6 +2568,25 @@ internal class SlockKuiklyBridgeModule(
             }
             return
         }
+        if (action == "prefetchReleaseNotes") {
+            val url = request.optString("url")
+            if (!SlockReleaseNotesDocumentCache.isReleaseNotesUrl(url)) {
+                callback?.invoke(mapOf("status" to "unsupported", "code" to "release_notes_prefetch_url_invalid"))
+                return
+            }
+            val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.IO)
+            scope.launch(Dispatchers.IO) {
+                val startedAt = System.currentTimeMillis()
+                val cached = SlockReleaseNotesDocumentCache(appContext).prefetch(url)
+                SlockDiagnosticsLogger.record(
+                        "SlockReleaseNotes",
+                        "prefetch_result cached=$cached durationMs=${System.currentTimeMillis() - startedAt} " +
+                                binaryDownloadUrlDiagnostics(url)
+                )
+            }
+            callback?.invoke(mapOf("status" to "started"))
+            return
+        }
         val result =
                 runCatching {
                     when (request.optString("action")) {

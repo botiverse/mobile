@@ -205,6 +205,21 @@ internal class BridgeSettingsPlatformCapabilities(
     override suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         quiverUpdateAction("quiverUpdateInstall")
 
+    override suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> {
+        if (url.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val response =
+            settingsCapability(
+                JSONObject()
+                    .put("action", "prefetchReleaseNotes")
+                    .put("url", url)
+            )
+        return when (response?.optString("status")) {
+            "ok", "started" -> DataResult.Content(Unit)
+            "unsupported" -> DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            else -> DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_release_notes_prefetch_failed" }))
+        }
+    }
+
     override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
         val response =
             settingsCapability(

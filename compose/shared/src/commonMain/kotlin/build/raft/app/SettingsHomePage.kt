@@ -4520,6 +4520,9 @@ private fun SettingsAppShellContent(
                     onCheckQuiverUpdate = {
                         onSettingsIntent(SharedSettingsIntent.CheckQuiverUpdate)
                     },
+                    onPrefetchReleaseNotes = { url ->
+                        settingsCapabilities.prefetchReleaseNotes(url)
+                    },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
                     onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
@@ -7940,6 +7943,7 @@ private fun SharedSettingsAboutContent(
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
     onCheckQuiverUpdate: () -> Unit,
+    onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
     onCopyEnvironmentInfo: () -> Unit,
     onSendFeedback: () -> Unit
@@ -7949,6 +7953,14 @@ private fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
+    val releaseNotesVersionCode = releaseNotesSanitizeVersionCode(snapshot.buildLabel)
+    val releaseNotesUrl =
+        remember(releaseNotesVersionCode) {
+            releaseNotesVersionCode.takeIf { it.isNotBlank() }?.let(::sharedSettingsReleaseNotesUrl).orEmpty()
+        }
+    LaunchedEffect(releaseNotesUrl) {
+        releaseNotesUrl.takeIf { it.isNotBlank() }?.let { onPrefetchReleaseNotes(it) }
+    }
     val payload = snapshot.toAboutPayload(webUrl, updateCheck, actionState)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {

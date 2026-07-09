@@ -454,6 +454,9 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun installQuiverUpdate(): DataResult<SharedSettingsUpdateCheckSnapshot> =
         DataResult.Error(ScreenError("settings_quiver_update_install_unavailable", retryable = false))
 
+    suspend fun prefetchReleaseNotes(url: String): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
     suspend fun onApiEnvironmentChanged(
         before: SharedSettingsApiEnvironmentOption,
         after: SharedSettingsApiEnvironmentOption
