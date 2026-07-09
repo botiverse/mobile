@@ -36,21 +36,29 @@ The actuals live in `androidMain` and `ohosArm64Main`.
 
 ### JVM Map Helpers
 
-Do not rely on Java/JVM convenience methods such as `MutableMap.putIfAbsent` in
-commonMain. They may compile on Android because the backing target is JVM, but
-they are not part of the common Kotlin MutableMap API used by OHOS.
-
-Use an explicit helper:
+Do not rely on the JVM `Map` members without importing their commonMain-safe
+same-name extension. Android resolves the Java member even without an import,
+but OHOS and iOS only see the extension.
 
 ```kotlin
-private fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) {
-    if (!containsKey(key)) {
-        put(key, value)
-    }
-}
+import build.raft.app.base.putIfAbsent
+
+map.putIfAbsent(key, value)
 ```
 
-This keeps first-write-wins behavior without depending on JVM map extensions.
+The canonical helpers live in `build.raft.app.base.CommonMapCompat` and mirror
+the JVM return semantics for `putIfAbsent`, `computeIfAbsent`, and `merge`.
+`computeIfAbsent` and `merge` support non-null value maps only; for nullable
+value maps, use `getOrPut` or an explicit branch.
+
+`scripts/check_commonmain_map_compat.sh` runs in the Android pre-merge hard
+gate. It requires the canonical import at each helper call site and rejects
+unsupported JVM-only `compute` and `replaceAll` calls before Android-only CI
+can hide a Native compile break.
+
+`merge` can also name a non-Map API such as `Flow.merge`. For that intentional
+case, put `// common-map-compat: allow-nonmap-merge <reason>` on the call line
+or immediately above it; the guard otherwise requires the Map helper import.
 
 ### Numeric Overload Inference
 
