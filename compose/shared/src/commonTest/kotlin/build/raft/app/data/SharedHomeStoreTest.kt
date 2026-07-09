@@ -82,9 +82,19 @@ class SharedHomeStoreTest {
             diagnosticsLogger = refreshedLogs::add
         )
         store.dispatch(SharedHomeIntent.Start)
-        withTimeout(1_000) {
-            while (store.state.value.content !is SharedHomeContentState.Content) {
-                yield()
+        // #471: await the launched load deterministically instead of busy-spinning
+        // with yield() against a fixed 1s budget. dispatch() fires the load on a
+        // separate Unconfined scope; the old `while (…) yield()` poll raced that
+        // cross-scope completion and timed out under CI load (rerun-to-green flake).
+        // StateFlow.first { … } suspends until the *server-new* Content is emitted —
+        // waiting on the specific expected state (not merely any Content) is immune to
+        // any transient session/cached Content the store may surface before the network
+        // load resolves. The timeout is only a hang safety-net, not the polling mechanism.
+        withTimeout(2_000) {
+            store.state.first {
+                val content = it.content
+                content is SharedHomeContentState.Content &&
+                    content.snapshot.server.id.value == "server-new"
             }
         }
 
