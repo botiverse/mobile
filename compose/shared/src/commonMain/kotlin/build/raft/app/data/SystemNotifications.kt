@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
+import build.raft.app.toKuiklySurfaceKind
 
 data class NotificationPreferenceSnapshot(
     val enabled: Boolean,
@@ -109,6 +110,7 @@ data class SystemUnreadNotificationRequest(
     val channelId: String?,
     val parentChannelId: String?,
     val parentMessageId: String?,
+    val conversationKind: ConversationKind?,
     val category: SystemUnreadNotificationCategory,
     val title: String,
     val body: String,
@@ -223,6 +225,7 @@ fun buildSystemUnreadNotificationRequest(
         channelId = channelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        conversationKind = conversationKind,
         category = category,
         title = title,
         body = body,
@@ -270,9 +273,13 @@ fun buildSystemUnreadNotificationRequestFromPush(
         channelId = streamChannelId,
         parentChannelId = push.parentChannelId?.value,
         parentMessageId = push.parentMessageId?.value,
+        conversationKind = push.kind,
         category = category,
         title = push.title.ifBlank { "Raft" },
         body = push.body.ifBlank { "Sent a new message." },
         notificationKey = "unread:${push.serverId.value}:${streamChannelId ?: push.messageId.value}:${push.messageId.value}"
     )
 }
+
+fun SystemUnreadNotificationRequest.conversationKindWireValue(): String? =
+    conversationKind?.toKuiklySurfaceKind()

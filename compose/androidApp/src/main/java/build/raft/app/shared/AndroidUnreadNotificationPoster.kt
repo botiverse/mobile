@@ -16,6 +16,7 @@ import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SystemUnreadNotificationRequest
+import build.raft.app.data.conversationKindWireValue
 import build.raft.app.data.systemUnreadNotificationServerGate
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -207,6 +208,7 @@ internal object AndroidUnreadNotificationPoster {
             .put("channelId", channelId.orEmpty())
             .put("parentChannelId", parentChannelId.orEmpty())
             .put("parentMessageId", parentMessageId.orEmpty())
+            .put("kind", conversationKindWireValue().orEmpty())
             .put("category", category.wireValue)
             .put("title", title)
             .put("body", body)

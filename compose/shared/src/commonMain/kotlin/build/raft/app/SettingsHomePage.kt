@@ -542,6 +542,7 @@ private const val AppShellNotificationChannelIdKey = "slockNotificationChannelId
 private const val AppShellNotificationMessageIdKey = "slockNotificationMessageId"
 private const val AppShellNotificationParentChannelIdKey = "slockNotificationParentChannelId"
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
+private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
 private const val AppShellChildPageGlassStyleLiquid = "liquid"
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
@@ -1854,6 +1855,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    LaunchedEffect(pager.pagerId, pageVisibleTick, initialAuthRestoreTick) {
+        if (pageVisibleTick > 0 || initialAuthRestoreTick > 0) {
+            sharedStores.markActiveAppShellPager(pager.pagerId)
+        }
+    }
     val authStore = sharedStores.authStore
     val authDataSource = sharedStores.authDataSource
     val appShellNetworkClient = sharedStores.networkClient
@@ -2289,7 +2295,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 .mergedSharedConversationDirectoryState()
         }
     val latestAppShellConversationDirectory by rememberUpdatedState(appShellConversationDirectory)
-    val latestSelectedHomeConversationId by rememberUpdatedState(selectedHomeConversationId ?: homeState.selectedConversationId)
+    val latestSelectedHomeConversationId by rememberUpdatedState(
+        appShellForegroundVisibleHomeConversationId(
+            homeShellSelectedConversationId = selectedHomeConversationId,
+            homeStoreSelectedConversationId = homeState.selectedConversationId
+        )
+    )
     LaunchedEffect(sharedStores.serverMembersStore, readyServerId, foregroundMessageBannersEnabled) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
@@ -3267,6 +3278,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     // server-qualified `notification:push` stream (server PR #4233):
                     // identity is typed on the payload, so there is nothing to defer.
                     if (event is NotificationPushReceived) {
+                        if (!sharedStores.isActiveAppShellPager(pager.pagerId)) {
+                            return@launch
+                        }
                         if (latestForegroundMessageBannersEnabled) {
                             val banner =
                                 slockNotificationPushBannerOrNull(
@@ -15118,6 +15132,7 @@ internal data class AppShellNotificationThreadLaunchRequest(
     val channelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val conversationKind: ConversationKind? = null,
     val category: String? = null
 )
 
@@ -15131,6 +15146,7 @@ private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotifi
             channelId = optString(AppShellNotificationChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentChannelId = optString(AppShellNotificationParentChannelIdKey).trim().takeIf { it.isNotBlank() },
             parentMessageId = optString(AppShellNotificationParentMessageIdKey).trim().takeIf { it.isNotBlank() },
+            conversationKind = parseConversationKindOrNull(optString(AppShellNotificationKindKey)),
             category = optString(AppShellNotificationCategoryKey).trim().takeIf { it.isNotBlank() }
         )
     }
@@ -15157,7 +15173,8 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
         messageId = messageId,
         channelId = payload.threadId?.takeIf { it.isNotBlank() },
         parentChannelId = payload.parentChannelId?.takeIf { it.isNotBlank() },
-        parentMessageId = payload.parentMessageId?.takeIf { it.isNotBlank() }
+        parentMessageId = payload.parentMessageId?.takeIf { it.isNotBlank() },
+        conversationKind = if (payload.parentMessageId.isNullOrBlank()) null else ConversationKind.Thread
     )
 }
 

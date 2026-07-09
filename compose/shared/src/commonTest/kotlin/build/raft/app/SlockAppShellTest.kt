@@ -576,6 +576,39 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun foregroundBannerVisibleHomeConversationIgnoresRetainedHomeStoreSelection() {
+        val visibleConversation =
+            appShellVisibleForegroundConversationKey(
+                selectedTab = "settings",
+                selectedHomeDestination = null,
+                selectedConversationId =
+                    appShellForegroundVisibleHomeConversationId(
+                        homeShellSelectedConversationId = null,
+                        homeStoreSelectedConversationId = "channel-1"
+                    )
+            )
+        val banner =
+            slockNotificationPushBannerOrNull(
+                event =
+                    NotificationPushReceived(
+                        serverId = ServerId("server-1"),
+                        kind = ConversationKind.Channel,
+                        channelId = ChannelId("channel-1"),
+                        messageId = MessageId("message-1"),
+                        title = "#all - Raft",
+                        body = "Ada: visible from settings",
+                        tag = "message:message-1"
+                    ),
+                currentServerId = "server-1",
+                visibleConversationKey = visibleConversation
+            )
+
+        val resolved = assertNotNull(banner)
+        assertEquals("push:server-1:message-1", resolved.id)
+        assertEquals("channel-1", resolved.conversation.threadId.value)
+    }
+
+    @Test
     fun foregroundBannerProjectionUsesDirectoryContextForChannelAndThread() {
         val directory =
             slockConversationDirectoryStateFromProjections(
@@ -1594,6 +1627,31 @@ class SlockAppShellTest {
         val log = assertNotNull(logs.firstOrNull())
         assertTrue(log.contains("hitVia=parent-channel"), log)
         assertTrue(log.contains("hitEligible=false"), log)
+    }
+
+    @Test
+    fun resolveOpenRequestNotificationThreadUsesTypedPushIdentityWithoutDirectoryHydration() {
+        val resolution =
+            resolveOpenRequest(
+                serverId = "server-1",
+                sourceMessageIdentity =
+                    AppShellNotificationThreadLaunchRequest(
+                        threadId = "reply-stream",
+                        messageId = "reply-1",
+                        channelId = "reply-stream",
+                        parentChannelId = "parent-channel",
+                        parentMessageId = "parent-message",
+                        conversationKind = ConversationKind.Thread
+                    ).toConversationOpenSourceMessageIdentity(),
+                conversationDirectory = SharedConversationDirectoryState()
+            )
+
+        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
+        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+        assertEquals("parent-channel", request.conversationIdentity.thread?.parentChannelId?.value)
+        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
+        assertEquals("reply-stream", request.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals("reply-1", request.anchorMessageId)
     }
 
     @Test
