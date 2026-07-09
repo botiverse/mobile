@@ -3034,6 +3034,9 @@ internal fun SharedThreadRouteContent(
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
+    var inlineVideoPreviewStates by remember(threadInstanceKey) {
+        mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
+    }
     var attachmentUploadJobs by remember(threadInstanceKey) {
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
@@ -3109,6 +3112,7 @@ internal fun SharedThreadRouteContent(
         pendingThreadFollowMessageIds = emptySet()
         createAgentDialogState = null
         attachmentOpenStates = emptyMap()
+        inlineVideoPreviewStates = emptyMap()
         attachmentCommentsDialogState = null
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
@@ -3859,6 +3863,41 @@ internal fun SharedThreadRouteContent(
             }
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = lazyPreviewKind))
     }
+    fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
+        if (attachmentId.isBlank()) return
+        if (inlineVideoPreviewStates[attachmentId]?.status == ThreadInlineVideoPreviewStatus.Loading) return
+        if (!force && !inlineVideoPreviewStates.canRequestInlineVideoPreview(attachmentId)) return
+        inlineVideoPreviewStates =
+            inlineVideoPreviewStates +
+                (attachmentId to ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Loading))
+        coroutineScope.launch {
+            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> {
+                    val url = response.data.url.trim()
+                    inlineVideoPreviewStates =
+                        inlineVideoPreviewStates +
+                            (attachmentId to
+                                if (url.isNotBlank()) {
+                                    ThreadInlineVideoPreviewUiState(
+                                        status = ThreadInlineVideoPreviewStatus.Ready,
+                                        url = url,
+                                        expiresAt = response.data.expiresAt
+                                    )
+                                } else {
+                                    ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Error)
+                                })
+                }
+                is ThreadApiResult.Failure -> {
+                    inlineVideoPreviewStates =
+                        inlineVideoPreviewStates +
+                            (attachmentId to ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Error))
+                    if (response.code == 401) {
+                        routeAuthRequired("auth_required")
+                    }
+                }
+            }
+        }
+    }
 
     fun openComposerAttachmentPreview(attachmentId: String) {
         val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
@@ -4440,7 +4479,14 @@ internal fun SharedThreadRouteContent(
             foregroundMessageBanner = null
         }
     ) {
-        ThreadPageContent(
+        CompositionLocalProvider(
+            LocalThreadInlineVideoPreviewHost provides
+                ThreadInlineVideoPreviewHost(
+                    states = inlineVideoPreviewStates,
+                    requestPreview = ::requestInlineVideoPreview
+                )
+        ) {
+            ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
@@ -5725,7 +5771,8 @@ internal fun SharedThreadRouteContent(
                 }
                 }
             }
-        )
+            )
+        }
         markdownTaskCandidateModalState?.let { modalState ->
             ThreadMarkdownTaskCandidateModal(
                 state = modalState,
@@ -15097,7 +15144,7 @@ private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
 private fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
-private fun KuiklyThreadAttachmentItem.isMp4VideoAttachment(): Boolean =
+internal fun KuiklyThreadAttachmentItem.isMp4VideoAttachment(): Boolean =
     slockFilePreviewIsMp4VideoAttachment(fileName = name, mimeType = mimeType)
 
 private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
@@ -15173,7 +15220,7 @@ private fun PlatformFile.composerLocalPreviewUri(): String? =
     fileRef?.takeIf { it.isNotBlank() }
         ?: previewUri?.takeIf { it.isNotBlank() }
 
-private fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
+internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount
         .takeIf { it > 0 && !isImageAttachment() && !isPdfAttachment() }
         ?.let { count -> "$count ${if (count == 1) "comment" else "comments"}" }
@@ -15254,6 +15301,15 @@ private fun ThreadAttachmentChip(
     onOpen: () -> Unit,
     onOpenComments: () -> Unit = {}
 ) {
+    if (attachment.isMp4VideoAttachment()) {
+        ThreadInlineVideoAttachmentCard(
+            attachment = attachment,
+            commentsEnabled = commentsEnabled,
+            onOpenPreview = onOpen,
+            onOpenComments = onOpenComments
+        )
+        return
+    }
     val isOpening = openState.threadAttachmentIsOpening()
     val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
     val meta = attachment.threadAttachmentChipMetaLine()

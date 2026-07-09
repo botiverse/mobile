@@ -108,7 +108,7 @@ private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
-private data class SlockFilePreviewVideoSeekRequest(
+internal data class SlockFilePreviewVideoSeekRequest(
     val id: Int,
     val timeMs: Int
 )
@@ -2098,7 +2098,7 @@ private fun SlockFilePreviewVideoOverlayText(
 }
 
 @Composable
-private fun SlockFilePreviewKuiklyVideo(
+internal fun SlockFilePreviewKuiklyVideo(
     source: String,
     playControl: VideoPlayControl,
     seekRequest: SlockFilePreviewVideoSeekRequest?,

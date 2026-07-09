@@ -1041,6 +1041,68 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun mp4AttachmentsUseInlineVideoPreviewWithoutWideningOtherFiles() {
+        val mp4ByMime =
+            KuiklyThreadAttachmentItem(
+                id = "att-video-mime",
+                name = "clip.bin",
+                mimeType = "video/mp4; codecs=avc1"
+            )
+        val mp4ByName =
+            KuiklyThreadAttachmentItem(
+                id = "att-video-name",
+                name = "demo.MP4?download=1",
+                mimeType = "application/octet-stream"
+            )
+        val otherVideo =
+            KuiklyThreadAttachmentItem(
+                id = "att-video-webm",
+                name = "demo.webm",
+                mimeType = "video/webm"
+            )
+        val archive =
+            KuiklyThreadAttachmentItem(
+                id = "att-archive",
+                name = "demo.zip",
+                mimeType = "application/zip"
+            )
+
+        assertTrue(mp4ByMime.isMp4VideoAttachment())
+        assertTrue(mp4ByName.isMp4VideoAttachment())
+        assertFalse(otherVideo.isMp4VideoAttachment())
+        assertFalse(archive.isMp4VideoAttachment())
+    }
+
+    @Test
+    fun inlineVideoPreviewRequestsAreDeduplicatedUntilFailure() {
+        val attachmentId = "att-video"
+
+        assertTrue(emptyMap<String, ThreadInlineVideoPreviewUiState>().canRequestInlineVideoPreview(attachmentId))
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Loading)
+            ).canRequestInlineVideoPreview(attachmentId)
+        )
+        assertFalse(
+            mapOf(
+                attachmentId to
+                    ThreadInlineVideoPreviewUiState(
+                        status = ThreadInlineVideoPreviewStatus.Ready,
+                        url = "https://example.test/video.mp4"
+                    )
+            ).canRequestInlineVideoPreview(attachmentId)
+        )
+        assertTrue(
+            mapOf(
+                attachmentId to
+                    ThreadInlineVideoPreviewUiState(status = ThreadInlineVideoPreviewStatus.Error)
+            ).canRequestInlineVideoPreview(attachmentId)
+        )
+        assertFalse(emptyMap<String, ThreadInlineVideoPreviewUiState>().canRequestInlineVideoPreview(""))
+    }
+
+    @Test
     fun authSessionSelfMentionNamesIncludeBareHandle() {
         val session =
             StoredAuthSession(
