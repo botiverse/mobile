@@ -28,34 +28,50 @@ class SharedAuthTokenProvider(
         val expiresAt = current.accessToken.jwtExpiresAtMillis()
         val shouldRefresh = expiresAt == null || expiresAt - clockMillis() <= refreshSoonThresholdMillis
         if (!shouldRefresh) return current
-        logger("refresh_proactive_start reason=${if (expiresAt == null) "missing_exp" else "near_expiry"}")
+        val reason = if (expiresAt == null) "missing_exp" else "near_expiry"
+        logger("refresh_proactive_start reason=$reason caller=current_session")
         return refreshSession(
             failedAccessToken = current.accessToken,
-            clearOnUnauthorized = clearOnUnauthorized
+            clearOnUnauthorized = clearOnUnauthorized,
+            reason = reason,
+            caller = "current_session"
         )
     }
 
     suspend fun refreshSession(
         failedAccessToken: String?,
-        clearOnUnauthorized: Boolean = true
+        clearOnUnauthorized: Boolean = true,
+        reason: String = "unknown",
+        caller: String = "unknown"
     ): StoredAuthSession? =
         processRefreshMutex.withLock {
+            val safeReason = reason.toSafeAuthRefreshDiagnosticsToken()
+            val safeCaller = caller.toSafeAuthRefreshDiagnosticsToken()
             val current = sessionStore.readSession() ?: return@withLock null
             if (
                 failedAccessToken != null &&
                 failedAccessToken.isNotBlank() &&
                 current.accessToken != failedAccessToken
             ) {
-                logger("refresh_skip reason=token_already_updated")
+                logger(
+                    "refresh_skip reason=token_already_updated caller=$safeCaller requestReason=$safeReason " +
+                        "failedAccess=${failedAccessToken.authTokenDiagnosticsFingerprint()} " +
+                        "currentAccess=${current.accessToken.authTokenDiagnosticsFingerprint()}"
+                )
                 return@withLock current
             }
             val refreshToken = current.refreshToken.takeIf { it.isNotBlank() }
                 ?: run {
-                    warningLogger("refresh_skip reason=missing_refresh_token")
+                    warningLogger("refresh_skip reason=missing_refresh_token caller=$safeCaller requestReason=$safeReason")
                     if (clearOnUnauthorized) {
-                        sessionStore.clearSession()
+                        sessionStore.clearSession(
+                            reason = "missing_refresh_token",
+                            source = "token_provider:$safeCaller"
+                        )
                     } else {
-                        warningLogger("refresh_missing_refresh_token_session_preserved")
+                        warningLogger(
+                            "refresh_missing_refresh_token_session_preserved caller=$safeCaller requestReason=$safeReason"
+                        )
                     }
                     return@withLock null
                 }
@@ -66,11 +82,17 @@ class SharedAuthTokenProvider(
                     nowMillis = clockMillis()
                 ) == true
             ) {
-                warningLogger("refresh_skip reason=recent_unauthorized_session_preserved")
+                warningLogger(
+                    "refresh_skip reason=recent_unauthorized_session_preserved caller=$safeCaller requestReason=$safeReason"
+                )
                 return@withLock null
             }
 
-            logger("refresh_start")
+            logger(
+                "refresh_start reason=$safeReason caller=$safeCaller " +
+                    "access=${current.accessToken.authTokenDiagnosticsFingerprint()} " +
+                    "refresh=${refreshToken.authTokenDiagnosticsFingerprint()}"
+            )
             when (val response = authApi.refresh(refreshToken)) {
                 is AuthApiResult.Success -> {
                     val updated =
@@ -82,17 +104,28 @@ class SharedAuthTokenProvider(
                     if (recentPreservedUnauthorizedFailure?.matchesTokens(current) == true) {
                         recentPreservedUnauthorizedFailure = null
                     }
-                    logger("refresh_success")
+                    logger(
+                        "refresh_success reason=$safeReason caller=$safeCaller " +
+                            "accessRotated=${current.accessToken != updated.accessToken} " +
+                            "refreshRotated=${current.refreshToken != updated.refreshToken} " +
+                            "oldAccess=${current.accessToken.authTokenDiagnosticsFingerprint()} " +
+                            "newAccess=${updated.accessToken.authTokenDiagnosticsFingerprint()} " +
+                            "oldRefresh=${current.refreshToken.authTokenDiagnosticsFingerprint()} " +
+                            "newRefresh=${updated.refreshToken.authTokenDiagnosticsFingerprint()}"
+                    )
                     updated
                 }
                 is AuthApiResult.Failure -> {
                     val code = response.code
-                    warningLogger("refresh_failed status=$code")
+                    warningLogger("refresh_failed status=$code reason=$safeReason caller=$safeCaller")
                     if (code == 401 || code == 403) {
                         if (clearOnUnauthorized) {
-                            sessionStore.clearSession()
+                            sessionStore.clearSession(
+                                reason = "refresh_http_$code",
+                                source = "token_provider:$safeCaller"
+                            )
                             recentPreservedUnauthorizedFailure = null
-                            warningLogger("refresh_unauthorized_session_cleared")
+                            warningLogger("refresh_unauthorized_session_cleared status=$code reason=$safeReason caller=$safeCaller")
                         } else {
                             recentPreservedUnauthorizedFailure =
                                 PreservedUnauthorizedFailure(
@@ -100,7 +133,7 @@ class SharedAuthTokenProvider(
                                     refreshToken = current.refreshToken,
                                     failedAtMillis = clockMillis()
                                 )
-                            warningLogger("refresh_unauthorized_session_preserved")
+                            warningLogger("refresh_unauthorized_session_preserved status=$code reason=$safeReason caller=$safeCaller")
                         }
                     }
                     null
@@ -147,6 +180,19 @@ private data class PreservedUnauthorizedFailure(
 }
 
 private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L
+
+private fun String.authTokenDiagnosticsFingerprint(): String {
+    if (isBlank()) return "blank"
+    val tail = takeLast(4).toSafeAuthRefreshDiagnosticsToken()
+    val hash = (hashCode().toLong() and 0xffffffffL).toString(16)
+    return "len=${length}:tail4=$tail:hash=$hash"
+}
+
+private fun String.toSafeAuthRefreshDiagnosticsToken(): String =
+    trim()
+        .ifBlank { "unknown" }
+        .replace(Regex("""[^A-Za-z0-9_.:/-]"""), "_")
+        .take(96)
 
 @OptIn(ExperimentalEncodingApi::class)
 private fun String.jwtExpiresAtMillis(): Long? {

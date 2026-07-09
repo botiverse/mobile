@@ -354,7 +354,7 @@ class LiveSlockDbFlowTest {
             session = session?.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
         }
 
-        override suspend fun clearSession() {
+        override suspend fun clearSession(reason: String, source: String) {
             session = null
         }
     }

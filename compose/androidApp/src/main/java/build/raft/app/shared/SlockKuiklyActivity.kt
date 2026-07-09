@@ -3425,7 +3425,10 @@ internal class SlockKuiklyBridgeModule(
         val changed = before != after
         if (changed) {
             runBlocking {
-                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()
+                KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession(
+                    reason = "api_environment_changed",
+                    source = "android_activity"
+                )
             }
             AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
             SlockDiagnosticsLogger.record(

@@ -8,7 +8,8 @@ internal data class SlockHttpExecutorResponse(
     val code: Int,
     val bodyText: String?,
     val errorBodyText: String?,
-    val transportDiagnostics: String? = null
+    val transportDiagnostics: String? = null,
+    val responseHeaders: Map<String, List<String>> = emptyMap()
 ) {
     val isSuccessful: Boolean get() = code in 200..299
 }

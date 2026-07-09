@@ -28,7 +28,7 @@ interface SlockAuthSessionStore {
     suspend fun saveSession(session: StoredAuthSession)
     suspend fun updateTokens(accessToken: String, refreshToken: String)
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
-    suspend fun clearSession()
+    suspend fun clearSession(reason: String = "local", source: String = "unknown")
 }
 
 interface SlockAuthServerSelectionMemory {
@@ -221,7 +221,7 @@ class InMemorySlockAuthSessionStore(
         updatedFingerprint?.let { changes.emit(it) }
     }
 
-    override suspend fun clearSession() {
+    override suspend fun clearSession(reason: String, source: String) {
         mutex.withLock { session = null }
         invalidations.emit(Unit)
     }
@@ -322,14 +322,16 @@ class KeyValueAuthSessionStore(
         saveSession(current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug))
     }
 
-    override suspend fun clearSession() {
+    override suspend fun clearSession(reason: String, source: String) {
+        val safeReason = reason.toSafeAuthSessionDiagnosticsToken()
+        val safeSource = source.toSafeAuthSessionDiagnosticsToken()
         val previousSession =
             mutex.withLock {
                 val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
                 store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
                 current
             }
-        diagnosticsLogger("auth_session_clear reason=local hadSession=${previousSession != null}")
+        diagnosticsLogger("auth_session_clear reason=$safeReason source=$safeSource hadSession=${previousSession != null}")
         invalidations.emit(Unit)
     }
 
@@ -405,6 +407,12 @@ private fun Throwable.safeAuthSessionDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
 
 private fun authSessionDiagnosticsCaller(): String = "unknown"
+
+private fun String.toSafeAuthSessionDiagnosticsToken(): String =
+    trim()
+        .ifBlank { "unknown" }
+        .replace(Regex("""[^A-Za-z0-9_.:/-]"""), "_")
+        .take(96)
 
 private val authSessionStoreJson = Json {
     ignoreUnknownKeys = true

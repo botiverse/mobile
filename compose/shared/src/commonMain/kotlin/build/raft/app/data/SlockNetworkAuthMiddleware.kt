@@ -4,17 +4,22 @@ import build.raft.app.model.ServerId
 
 internal class SlockNetworkAuthMiddleware(
     private val sessionStore: SlockAuthSessionStore,
-    authApi: SlockAuthApi
+    authApi: SlockAuthApi,
+    logger: (String) -> Unit = {},
+    warningLogger: (String) -> Unit = {}
 ) {
     private val tokenProvider =
         SharedAuthTokenProvider(
             sessionStore = sessionStore,
             authApi = authApi,
-            clockMillis = { defaultNowMillis() }
+            clockMillis = { defaultNowMillis() },
+            logger = logger,
+            warningLogger = warningLogger
         )
 
     suspend fun request(
         serverIdOverride: ServerId? = null,
+        caller: String = "shared_network",
         block: suspend (SlockAuthenticatedRequestContext) -> HomeNetworkResponse
     ): HomeNetworkResponse {
         val session = sessionStore.readSession()
@@ -27,7 +32,12 @@ internal class SlockNetworkAuthMiddleware(
         val first = block(session.toRequestContext(serverId))
         if (!first.requiresTokenRefresh()) return first
 
-        val refreshed = tokenProvider.refreshSession(session.accessToken)
+        val refreshed =
+            tokenProvider.refreshSession(
+                failedAccessToken = session.accessToken,
+                reason = "http_401",
+                caller = caller
+            )
         if (refreshed == null) {
             return first.asSessionExpired()
         }
@@ -78,5 +88,7 @@ private fun HomeNetworkResponse.asSessionExpired(): HomeNetworkResponse =
     HomeNetworkResponse(
         code = 401,
         bodyText = null,
-        errorBodyText = errorBodyText.takeUnless { it.isNullOrBlank() } ?: SESSION_EXPIRED_ERROR
+        errorBodyText = errorBodyText.takeUnless { it.isNullOrBlank() } ?: SESSION_EXPIRED_ERROR,
+        transportDiagnostics = transportDiagnostics,
+        responseHeaders = responseHeaders
     )

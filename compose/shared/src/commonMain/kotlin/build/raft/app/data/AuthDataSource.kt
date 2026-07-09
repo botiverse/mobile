@@ -49,7 +49,9 @@ class SharedAuthDataSource(
         }
 
         diagnosticsLogger("auth_login_clear_cached_session_start provider=password")
-        runCatchingPreservingCancellation { sessionStore.clearSession() }
+        runCatchingPreservingCancellation {
+            sessionStore.clearSession(reason = "login_clear_cached_session", source = "auth_login")
+        }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_login_clear_cached_session_result result=failure stage=session_clear ${throwable.persistenceDiagnostics()} mapped=pre_login_setup"
@@ -600,7 +602,7 @@ class SharedAuthDataSource(
 
     suspend fun refresh(refreshToken: String): SharedAuthResult<StoredAuthSession> {
         if (refreshToken.isBlank()) {
-            sessionStore.clearSession()
+            sessionStore.clearSession(reason = "missing_refresh_token", source = "auth_data_source_refresh")
             return SharedAuthResult.Unauthenticated
         }
         val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
@@ -609,7 +611,7 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        sessionStore.clearSession()
+                        sessionStore.clearSession(reason = "refresh_http_401", source = "auth_data_source_refresh")
                         return SharedAuthResult.Unauthenticated
                     }
                     return response.toSharedAuthFailure()
@@ -680,7 +682,10 @@ class SharedAuthDataSource(
                         is AuthApiResult.Failure -> {
                             if (retryResponse.code == 401) {
                                 diagnosticsLogger("auth_servers_load_result result=unauthenticated source=refresh_retry")
-                                sessionStore.clearSession()
+                                sessionStore.clearSession(
+                                    reason = "servers_refresh_retry_http_401",
+                                    source = "auth_data_source_load_servers"
+                                )
                                 return SharedAuthResult.Unauthenticated
                             }
                             val failure = retryResponse.toSharedAuthFailure()
@@ -758,7 +763,7 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        sessionStore.clearSession()
+                        sessionStore.clearSession(reason = "create_server_http_401", source = "auth_data_source_create_server")
                         return SharedAuthResult.Unauthenticated
                     }
                     return response.toSharedAuthFailure()
@@ -792,7 +797,7 @@ class SharedAuthDataSource(
             }
             session.rememberSelectedServer(serverSelectionMemory)
         }
-        sessionStore.clearSession()
+        sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
         return SharedAuthResult.Success(Unit)
     }
 
@@ -805,7 +810,9 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        if (clearOnUnauthorized) sessionStore.clearSession()
+                        if (clearOnUnauthorized) {
+                            sessionStore.clearSession(reason = "current_user_http_401", source = "auth_data_source_current_user")
+                        }
                         return SharedAuthResult.Unauthenticated
                     }
                     return response.toSharedAuthFailure()

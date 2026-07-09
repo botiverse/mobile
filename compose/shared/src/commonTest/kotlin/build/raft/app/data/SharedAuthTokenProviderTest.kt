@@ -5,7 +5,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class SharedAuthTokenProviderTest {
@@ -75,11 +77,63 @@ class SharedAuthTokenProviderTest {
         assertNull(store.readSession())
         assertEquals(
             listOf(
-                "refresh_failed status=401",
-                "refresh_unauthorized_session_cleared"
+                "refresh_failed status=401 reason=unknown caller=unknown",
+                "refresh_unauthorized_session_cleared status=401 reason=unknown caller=unknown"
             ),
             warnings
         )
+    }
+
+    @Test
+    fun logsRefreshLifecycleWithTokenFingerprintsOnly() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "old-access-token", refreshToken = "old-refresh-token")
+            )
+        val provider =
+            SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi =
+                    FakeAuthApi(
+                        refreshTokenAssertion = "old-refresh-token",
+                        responses =
+                            listOf(
+                                AuthApiResult.Success(
+                                    AuthRefreshResponse("fresh-access-token", "fresh-refresh-token")
+                                )
+                            )
+                    ),
+                clockMillis = { 0L },
+                logger = logs::add
+            )
+
+        val refreshed =
+            provider.refreshSession(
+                failedAccessToken = "old-access-token",
+                reason = "http_401",
+                caller = "shared_network:auth/me"
+            )
+
+        assertEquals("fresh-access-token", refreshed?.accessToken)
+        val start = logs.single { it.startsWith("refresh_start") }
+        assertContains(start, "reason=http_401")
+        assertContains(start, "caller=shared_network:auth/me")
+        assertContains(start, "access=len=")
+        assertContains(start, "refresh=len=")
+        val success = logs.single { it.startsWith("refresh_success") }
+        assertContains(success, "accessRotated=true")
+        assertContains(success, "refreshRotated=true")
+        assertContains(success, "oldAccess=len=")
+        assertContains(success, "newAccess=len=")
+        assertContains(success, "oldRefresh=len=")
+        assertContains(success, "newRefresh=len=")
+        logs.forEach { log ->
+            assertFalse(log.contains("old-access-token"), "refresh diagnostics must not log full old access token")
+            assertFalse(log.contains("fresh-access-token"), "refresh diagnostics must not log full new access token")
+            assertFalse(log.contains("old-refresh-token"), "refresh diagnostics must not log full old refresh token")
+            assertFalse(log.contains("fresh-refresh-token"), "refresh diagnostics must not log full new refresh token")
+        }
     }
 
     @Test
@@ -113,8 +167,8 @@ class SharedAuthTokenProviderTest {
         assertEquals("preserve-access", store.readSession()?.accessToken)
         assertEquals(
             listOf(
-                "refresh_failed status=401",
-                "refresh_unauthorized_session_preserved"
+                "refresh_failed status=401 reason=unknown caller=unknown",
+                "refresh_unauthorized_session_preserved status=401 reason=unknown caller=unknown"
             ),
             warnings
         )
@@ -148,8 +202,8 @@ class SharedAuthTokenProviderTest {
         assertEquals("old-access", store.readSession()?.accessToken)
         assertEquals(
             listOf(
-                "refresh_skip reason=missing_refresh_token",
-                "refresh_missing_refresh_token_session_preserved"
+                "refresh_skip reason=missing_refresh_token caller=current_session requestReason=missing_exp",
+                "refresh_missing_refresh_token_session_preserved caller=current_session requestReason=missing_exp"
             ),
             warnings
         )
