@@ -1023,18 +1023,21 @@ internal fun SlockToolbarChip(
                     overflow = TextOverflow.Ellipsis
                 )
                 count?.let {
-                    Text(
-                        text = it.toString(),
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
-                        color = SlockColor.TextBlack,
+                    Box(
                         modifier =
                             Modifier
                                 .background(SlockColor.SurfaceWhite, RectangleShape)
                                 .border(SlockStroke.Thin, SlockColor.BorderBlack, RectangleShape)
                                 .slockSquareCorners()
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                        maxLines = 1
-                    )
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = it.toString(),
+                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 10.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1
+                        )
+                    }
                 }
                 trailingIconName?.let {
                     SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")

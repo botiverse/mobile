@@ -2935,18 +2935,21 @@ private fun ComposerTextChip(
     }
 
     if (variant == ComposerTextChipVariant.Disabled) {
-        Text(
-            text = text,
+        Box(
             modifier =
                 Modifier
                     .background(SlockColor.TextBlack.copy(alpha = 0.04f))
                     .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-            style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
-            color = SlockColor.TextBlack.copy(alpha = 0.4f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = text,
+                style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
+                color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         return
     }
 

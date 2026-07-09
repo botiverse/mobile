@@ -728,19 +728,22 @@ private fun SlockFilePreviewComposerImageEditor(
                 }
             }
             textAnnotations.forEach { annotation ->
-                Text(
-                    text = annotation.text,
+                Box(
                     modifier =
                         Modifier
                             .offset(x = annotation.position.x, y = annotation.position.y)
                             .background(Color(0xCCFFFFFF))
                             .border(1.dp, SlockColor.BorderBlack)
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
-                    style = SlockType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)),
-                    color = Color(0xFFFF3B30),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = annotation.text,
+                        style = SlockType.ButtonBold.copy(fontSize = 20.sp, lineHeight = 24.sp, color = Color(0xFFFF3B30)),
+                        color = Color(0xFFFF3B30),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
         Column(

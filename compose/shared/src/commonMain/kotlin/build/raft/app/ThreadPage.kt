@@ -12804,16 +12804,19 @@ private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
         } else {
             SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
         }
-    Text(
-        text = text,
-        style = style,
-        color = SlockColor.TextMutedGray,
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .padding(horizontal = 10.dp, vertical = 8.dp)
-    )
+    ) {
+        Text(
+            text = text,
+            style = style,
+            color = SlockColor.TextMutedGray
+        )
+    }
 }
 
 @Composable

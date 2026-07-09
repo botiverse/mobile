@@ -270,12 +270,20 @@ private fun SettingsStorageButton(
 
 @Composable
 private fun SettingsStorageFeedback(text: String) {
-    Text(
-        text,
-        style = SlockType.Body.copy(color = SlockColor.TextBlack),
-        color = SlockColor.TextBlack,
-        modifier = Modifier.fillMaxWidth().background(SlockColor.AccentCyan).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp)
-    )
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.AccentCyan)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(14.dp)
+    ) {
+        Text(
+            text,
+            style = SlockType.Body.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
+    }
 }
 
 @Composable
