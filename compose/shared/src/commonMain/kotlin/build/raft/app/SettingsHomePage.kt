@@ -440,7 +440,10 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -9269,6 +9272,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     )
 }
 
+@Composable
 private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
     session: StoredAuthSession?,
     refreshing: Boolean,
@@ -9293,88 +9297,98 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
-            settingsAdministrationSectionTitles().map { title ->
-                when (title) {
-                    "Admins" ->
+            settingsAdministrationSectionSpecs().map { spec ->
+                val section = sectionsByKey[spec.key]
+                val sectionTitle = (section?.title ?: spec.title).localized()
+                when (spec.key) {
+                    "admins" ->
                         KuiklySharedSettingsSection(
-                            title = title,
+                            title = sectionTitle,
                             rows =
                                 settingsAdministrationAdminRows(
                                     members = snapshot?.admins,
-                                    section = sectionsByKey["admins"],
+                                    section = section,
+                                    sectionTitle = sectionTitle,
                                     actorRole = server?.role,
                                     actionState = actionState
                                 )
                         )
-                    "System Channels" ->
+                    "system_channels" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.systemChannels.toSystemChannelRows(section, sectionTitle, actionState)
                         )
-                    "Pending Invites" ->
+                    "pending_invites" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
+                            title = sectionTitle,
+                            rows = snapshot?.pendingInvites.toInviteRows(section, sectionTitle, actionState, timeContext)
                         )
-                    "Join Links" ->
+                    "join_links" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
+                            title = sectionTitle,
+                            rows = snapshot?.joinLinks.toJoinLinkRows(section, sectionTitle, actionState, timeContext)
                         )
-                    "Pre-join Agreement" ->
+                    "pre_join_agreement" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.agreement.toAgreementRows(section, sectionTitle, actionState)
                         )
-                    "Onboarding" ->
+                    "onboarding_agent" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.onboarding.toOnboardingRows(section, sectionTitle, actionState)
                         )
-                    "Translation" ->
+                    "translation" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.translation.toTranslationRows(section, sectionTitle, actionState)
                         )
-                    "Member Permissions" ->
+                    "member_permissions" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.profile.toMemberPermissionsRows(section, sectionTitle, actionState)
                         )
-                    "Sidebar Order" ->
+                    "sidebar_order" ->
                         KuiklySharedSettingsSection(
-                            title = title,
-                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
+                            title = sectionTitle,
+                            rows = snapshot?.sidebarOrder.toSidebarOrderRows(section, sectionTitle, actionState)
                         )
-                    else -> error("Unknown administration section: $title")
+                    else -> error("Unknown administration section: ${spec.key}")
                 }
             }
     )
 }
 
-internal fun settingsAdministrationSectionTitles(): List<String> =
+internal data class SettingsAdministrationSectionSpec(
+    val key: String,
+    val title: StringDesc
+)
+
+internal fun settingsAdministrationSectionSpecs(): List<SettingsAdministrationSectionSpec> =
     listOf(
-        "Admins",
-        "System Channels",
-        "Pending Invites",
-        "Join Links",
-        "Pre-join Agreement",
-        "Onboarding",
-        "Translation",
-        "Member Permissions",
-        "Sidebar Order"
+        SettingsAdministrationSectionSpec("admins", MR.strings.settings_section_admins_title.desc()),
+        SettingsAdministrationSectionSpec("system_channels", MR.strings.settings_section_system_channels_title.desc()),
+        SettingsAdministrationSectionSpec("pending_invites", MR.strings.settings_section_pending_invites_title.desc()),
+        SettingsAdministrationSectionSpec("join_links", MR.strings.settings_section_join_links_title.desc()),
+        SettingsAdministrationSectionSpec("pre_join_agreement", MR.strings.settings_section_pre_join_agreement_title.desc()),
+        SettingsAdministrationSectionSpec("onboarding_agent", MR.strings.settings_section_onboarding_title.desc()),
+        SettingsAdministrationSectionSpec("translation", MR.strings.settings_section_translation_title.desc()),
+        SettingsAdministrationSectionSpec("member_permissions", MR.strings.settings_section_member_permissions_title.desc()),
+        SettingsAdministrationSectionSpec("sidebar_order", MR.strings.settings_section_sidebar_order_title.desc())
     )
 
 internal fun settingsAdministrationAdminRows(
     members: List<SettingsServerAdminSnapshot>?,
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
-    members.toAdminRows(section = section, actorRole = actorRole, actionState = actionState)
+    members.toAdminRows(section = section, sectionTitle = sectionTitle, actorRole = actorRole, actionState = actionState)
 
 private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actorRole: String?,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> {
@@ -9384,7 +9398,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
             .filter { it.isPrivilegedServerMember() }
             .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Owners & Admins", "No owners or admins are available."))
+        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, sectionTitle, "No owners or admins are available."))
     }
     val normalizedActorRole = actorRole.normalizedServerRole()
     val ownerCount = admins.count { it.normalizedRole() == "owner" }
@@ -9422,13 +9436,14 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
 
 private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     timeContext: SlockTimeContext?
 ): List<KuiklySharedSettingsRow> {
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
         return listOf(
-            section.toPlaceholderRow("pendingInvites", SlockLucideIconName.MailPlus, "Pending invites", "No pending invites are available.")
+            section.toPlaceholderRow("pendingInvites", SlockLucideIconName.MailPlus, sectionTitle, "No pending invites are available.")
         )
     }
     return invites.flatMap { invite ->
@@ -9460,6 +9475,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
 
 private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     timeContext: SlockTimeContext?
 ): List<KuiklySharedSettingsRow> {
@@ -9474,7 +9490,7 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
             enabled = actionState?.inProgress != true
         )
     if (links.isEmpty()) {
-        return listOf(section.toPlaceholderRow("joinLinks", SlockLucideIconName.Link2, "Join links", "No join links are available."), createRow)
+        return listOf(section.toPlaceholderRow("joinLinks", SlockLucideIconName.Link2, sectionTitle, "No join links are available."), createRow)
     }
     return links.flatMap { link ->
         listOf(
@@ -9506,6 +9522,7 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
 
 private fun SettingsServerAgreementSnapshot?.toAgreementRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
     listOf(
@@ -9519,11 +9536,12 @@ private fun SettingsServerAgreementSnapshot?.toAgreementRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, agreement.statusLabel),
                 enabled = agreement.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("preJoinAgreement", SlockLucideIconName.FileCheck, "Pre-join Agreement", "No pre-join agreement settings are available.")
+        } ?: section.toPlaceholderRow("preJoinAgreement", SlockLucideIconName.FileCheck, sectionTitle, "No pre-join agreement settings are available.")
     )
 
 private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
     listOf(
@@ -9537,11 +9555,12 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, onboarding.statusLabel),
                 enabled = onboarding.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("onboarding", SlockLucideIconName.Bot, "Onboarding Agent", "No onboarding settings are available.")
+        } ?: section.toPlaceholderRow("onboarding", SlockLucideIconName.Bot, sectionTitle, "No onboarding settings are available.")
     )
 
 private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissionsRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
     listOf(
@@ -9558,11 +9577,12 @@ private fun build.raft.app.data.SettingsServerProfileSnapshot?.toMemberPermissio
                 ),
                 enabled = profile.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("memberPermissions", SlockLucideIconName.UsersRound, "Member Permissions", "No member permission settings are available.")
+        } ?: section.toPlaceholderRow("memberPermissions", SlockLucideIconName.UsersRound, sectionTitle, "No member permission settings are available.")
     )
 
 private fun SettingsServerTranslationSnapshot?.toTranslationRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
     listOf(
@@ -9576,19 +9596,20 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_TRANSLATION_TOGGLE, translation.statusLabel),
                 enabled = translation.translationAvailable && translation.canManageTranslation && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("translation", SlockLucideIconName.Languages, "Translation", "No translation settings are available.")
+        } ?: section.toPlaceholderRow("translation", SlockLucideIconName.Languages, sectionTitle, "No translation settings are available.")
     )
 
 private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> {
     val system = this
     if (system == null) {
-        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, "System Channels", "System channel controls are unavailable."))
+        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, sectionTitle, "System channel controls are unavailable."))
     }
     if (system.allChannelId.isBlank()) {
-        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, "System Channels", "No #all channel was found for this workspace."))
+        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, sectionTitle, "No #all channel was found for this workspace."))
     }
     return listOf(
         KuiklySharedSettingsRow(
@@ -9605,6 +9626,7 @@ private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
 
 private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
     section: SettingsServerSectionSnapshot?,
+    sectionTitle: String,
     actionState: build.raft.app.data.SharedSettingsActionState?
 ): List<KuiklySharedSettingsRow> =
     listOf(
@@ -9619,7 +9641,7 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_SIDEBAR_ORDER, order.channelSortMode.ifBlank { "manual" }),
                 enabled = actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("sidebarOrder", SlockLucideIconName.ListTree, "Sidebar Order", "No sidebar order settings are available.")
+        } ?: section.toPlaceholderRow("sidebarOrder", SlockLucideIconName.ListTree, sectionTitle, "No sidebar order settings are available.")
     )
 
 private fun SettingsServerSnapshot?.toPlanRows(
@@ -9640,13 +9662,13 @@ private fun SettingsServerSnapshot?.toPlanRows(
 private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
     key: String,
     iconName: SlockLucideIconName,
-    title: String,
+    sectionTitle: String,
     fallbackDetail: String
 ): KuiklySharedSettingsRow =
     KuiklySharedSettingsRow(
         key = key,
         iconName = iconName,
-        title = this?.title ?: title,
+        title = sectionTitle,
         detail = this?.detail ?: fallbackDetail,
         status = this?.state?.name ?: "Unavailable",
         enabled = false
@@ -16500,14 +16522,14 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot {
             ),
         sections =
             listOf(
-                SettingsServerSectionSnapshot("admins", "Owners & Admins", "Control who can manage this workspace."),
-                SettingsServerSectionSnapshot("pending_invites", "Pending Invites", "Invite humans by email and revoke pending invites."),
-                SettingsServerSectionSnapshot("join_links", "Join Links", "Reusable links for onboarding larger teams."),
-                SettingsServerSectionSnapshot("pre_join_agreement", "Pre-join Agreement", "Require humans to accept a workspace agreement before joining."),
-                SettingsServerSectionSnapshot("onboarding_agent", "Onboarding", "Choose which agent greets new humans."),
-                SettingsServerSectionSnapshot("member_permissions", "Member Permissions", "Limit what member-role users can see."),
-                SettingsServerSectionSnapshot("translation", "Translation", "Enable server-level message translation."),
-                SettingsServerSectionSnapshot("danger", "Danger Zone", "Leave or delete this workspace.")
+                SettingsServerSectionSnapshot("admins", "Owners & Admins".desc(), "Control who can manage this workspace."),
+                SettingsServerSectionSnapshot("pending_invites", "Pending Invites".desc(), "Invite humans by email and revoke pending invites."),
+                SettingsServerSectionSnapshot("join_links", "Join Links".desc(), "Reusable links for onboarding larger teams."),
+                SettingsServerSectionSnapshot("pre_join_agreement", "Pre-join Agreement".desc(), "Require humans to accept a workspace agreement before joining."),
+                SettingsServerSectionSnapshot("onboarding_agent", "Onboarding".desc(), "Choose which agent greets new humans."),
+                SettingsServerSectionSnapshot("member_permissions", "Member Permissions".desc(), "Limit what member-role users can see."),
+                SettingsServerSectionSnapshot("translation", "Translation".desc(), "Enable server-level message translation."),
+                SettingsServerSectionSnapshot("danger", "Danger Zone".desc(), "Leave or delete this workspace.")
             ),
         admins =
             listOf(

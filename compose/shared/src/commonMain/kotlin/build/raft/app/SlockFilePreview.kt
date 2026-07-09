@@ -84,7 +84,10 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.views.PlayState
 import com.tencent.kuikly.core.views.VideoPlayControl
+import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
@@ -102,7 +105,6 @@ private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
 private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
 private const val SlockFilePreviewTextMaxChars = 96_000
-private const val SlockFilePreviewLoadingLabel = "Loading..."
 private const val SlockFilePreviewAttachmentDownloadEvent = "slock.attachmentDownloadProgress"
 private const val SlockFilePreviewVideoSeekProp = "seekToTimeMs"
 
@@ -149,10 +151,11 @@ internal object SlockFilePreviewLaunchPayloadStore {
         store.get(id)
 }
 
-@Serializable
 internal data class SlockFilePreviewPayload(
     val kind: String = "unsupported",
-    val title: String = "File preview",
+    val requestedKind: String = "",
+    val title: String = "",
+    val titleDesc: StringDesc = MR.strings.file_preview_title.desc(),
     val subtitle: String = "",
     val name: String = "",
     val path: String = "",
@@ -161,6 +164,7 @@ internal data class SlockFilePreviewPayload(
     val markdown: Boolean = false,
     val imageUrl: String? = null,
     val message: String = "",
+    val messageDesc: StringDesc? = MR.strings.file_preview_no_preview.desc(),
     val error: String? = null,
     val externalUrl: String? = null,
     val videoUrl: String? = null,
@@ -962,9 +966,8 @@ internal fun slockFilePreviewResolveLaunchPayload(
     return FilePreviewLaunchPayloadTrace(
         payload =
             resolvedPayload ?: SlockFilePreviewPayload(
-                title = "Preview unavailable",
-                subtitle = "File preview",
-                message = "Preview payload could not be loaded.",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                messageDesc = MR.strings.file_preview_error_load_payload.desc(),
                 error = if (parsedLaunch?.isSuccess == true) "preview_not_found" else "payload_parse_failed"
             ),
         responseBytes = source.encodeToByteArray().size,
@@ -1003,12 +1006,13 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
 ): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = "loading",
-        title = when (kind) {
-            "image" -> "Image preview"
-            "markdown" -> "Markdown preview"
-            "text" -> "Text preview"
-            "video" -> "Video preview"
-            else -> "File preview"
+        requestedKind = kind,
+        titleDesc = when (kind) {
+            "image" -> MR.strings.file_preview_image.desc()
+            "markdown" -> MR.strings.file_preview_markdown.desc()
+            "text" -> MR.strings.file_preview_text.desc()
+            "video" -> MR.strings.file_preview_video.desc()
+            else -> MR.strings.file_preview_title.desc()
         },
         subtitle = name.ifBlank { "Attachment" },
         name = name.ifBlank { "Attachment" },
@@ -1020,7 +1024,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
             } else {
                 null
             },
-        message = SlockFilePreviewLoadingLabel,
+        messageDesc = MR.strings.common_loading.desc(),
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,
@@ -1032,11 +1036,12 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
 internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = "loading",
-        title = "File preview",
+        requestedKind = "workspace",
+        titleDesc = MR.strings.file_preview_title.desc(),
         subtitle = path,
         name = path,
         path = path,
-        message = SlockFilePreviewLoadingLabel,
+        messageDesc = MR.strings.common_loading.desc(),
         source = SlockFilePreviewSourceAgentWorkspace,
         agentId = agentId
     )
@@ -1053,7 +1058,7 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         )
     val previewFileName = name.ifBlank { path.ifBlank { externalFileName } }
     val wantsImage =
-        title.equals("Image preview", ignoreCase = true) ||
+        requestedKind == "image" ||
             slockFilePreviewIsImageAttachment(fileName = previewFileName, mimeType = externalMimeType)
     val wantsMp4Video =
         slockFilePreviewIsMp4VideoAttachment(
@@ -1081,14 +1086,15 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
         wantsMp4Video -> loadThreadVideoAttachmentPreview(threadApi)
-        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = "Audio preview", audioOnly = true)
+        wantsMp3Audio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient)
         else ->
             copy(
                 kind = "unsupported",
-                title = "File preview",
-                message = "No preview is available for this file type."
+                titleDesc = MR.strings.file_preview_title.desc(),
+                message = "",
+                messageDesc = MR.strings.file_preview_no_preview.desc()
             )
     }
 }
@@ -1106,9 +1112,15 @@ private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
     val resolvedImageUrl = remoteImageUrl ?: imageUrl
     return copy(
         kind = "image",
-        title = "Image preview",
+        titleDesc = MR.strings.file_preview_image.desc(),
         imageUrl = resolvedImageUrl,
-        message = if (resolvedImageUrl == null) "Image preview is unavailable." else "",
+        message = "",
+        messageDesc =
+            if (resolvedImageUrl == null) {
+                MR.strings.file_preview_error_image_unavailable.desc()
+            } else {
+                null
+            },
         error = if (resolvedImageUrl == null) "image_preview_unavailable" else null
     )
 }
@@ -1122,25 +1134,27 @@ private suspend fun SlockFilePreviewPayload.loadThreadHtmlAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load HTML preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_html.desc(),
             error = "html_preview_url_failed"
         )
     return copy(
         kind = "html",
-        title = "HTML preview",
+        titleDesc = MR.strings.file_preview_html.desc(),
         content = "",
         imageUrl = null,
         videoUrl = null,
         externalUrl = target,
         message = "",
+        messageDesc = null,
         error = null
     )
 }
 
 private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
     threadApi: SlockThreadApiClient,
-    title: String = "Video preview",
+    title: StringDesc = MR.strings.file_preview_video.desc(),
     audioOnly: Boolean = false
 ): SlockFilePreviewPayload {
     val target =
@@ -1149,16 +1163,18 @@ private suspend fun SlockFilePreviewPayload.loadThreadVideoAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load media preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_media.desc(),
             error = "video_preview_url_failed"
         )
     return copy(
         kind = "video",
-        title = title,
+        titleDesc = title,
         videoUrl = target,
         audioOnly = audioOnly,
         message = "",
+        messageDesc = null,
         error = null
     )
 }
@@ -1207,10 +1223,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
             if (serverPreview.truncated) serverText + SlockFilePreviewServerTruncatedNotice else serverText
         return copy(
             kind = "text",
-            title = "Text preview",
+            titleDesc = MR.strings.file_preview_text.desc(),
             content = previewBody,
             markdown = false,
             message = "",
+            messageDesc = null,
             error = null
         )
     }
@@ -1220,8 +1237,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load text preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_text.desc(),
             error = "text_preview_url_failed"
         )
     val response =
@@ -1235,16 +1253,18 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
         } catch (_: Throwable) {
             return copy(
                 kind = "error",
-                title = "Preview unavailable",
-                message = "Unable to load text preview.",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                message = "",
+                messageDesc = MR.strings.file_preview_error_load_text.desc(),
                 error = "text_preview_fetch_failed"
             )
         }
     if (response.code !in 200..299) {
         return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load text preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_text.desc(),
             error = "text_preview_fetch_failed"
         )
     }
@@ -1258,10 +1278,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
         }
     return copy(
         kind = "text",
-        title = "Text preview",
+        titleDesc = MR.strings.file_preview_text.desc(),
         content = previewBody,
         markdown = false,
         message = "",
+        messageDesc = null,
         error = null
     )
 }
@@ -1281,10 +1302,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             }
         return copy(
             kind = "markdown",
-            title = "Markdown preview",
+            titleDesc = MR.strings.file_preview_markdown.desc(),
             content = previewBody,
             markdown = true,
             message = "",
+            messageDesc = null,
             error = null
         )
     }
@@ -1294,8 +1316,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load markdown preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
             error = "markdown_preview_url_failed"
         )
     val response =
@@ -1309,16 +1332,18 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         } catch (_: Throwable) {
             return copy(
                 kind = "error",
-                title = "Preview unavailable",
-                message = "Unable to load markdown preview.",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                message = "",
+                messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
                 error = "markdown_preview_fetch_failed"
             )
         }
     if (response.code !in 200..299) {
         return copy(
             kind = "error",
-            title = "Preview unavailable",
-            message = "Unable to load markdown preview.",
+            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
             error = "markdown_preview_fetch_failed"
         )
     }
@@ -1326,8 +1351,9 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         response.bodyText?.takeIf { it.isNotBlank() }
             ?: return copy(
                 kind = "error",
-                title = "Preview unavailable",
-                message = "Markdown file is empty.",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                message = "",
+                messageDesc = MR.strings.file_preview_error_markdown_empty.desc(),
                 error = "markdown_preview_empty"
             )
     val previewBody =
@@ -1339,10 +1365,11 @@ private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         }
     return copy(
         kind = "markdown",
-        title = "Markdown preview",
+        titleDesc = MR.strings.file_preview_markdown.desc(),
         content = previewBody,
         markdown = true,
         message = "",
+        messageDesc = null,
         error = null
     )
 }
@@ -1366,22 +1393,25 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
         is DataResult.Empty ->
             copy(
                 kind = "error",
-                title = "Preview unavailable",
-                message = "File content is unavailable.",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                message = "",
+                messageDesc = MR.strings.file_preview_file_unavailable.desc(),
                 error = "empty_preview"
             )
         is DataResult.Error ->
             copy(
                 kind = "error",
-                title = "Preview unavailable",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
                 message = "Failed to load: ${result.error.code}",
+                messageDesc = null,
                 error = result.error.code
             )
         is DataResult.NoPermission ->
             copy(
                 kind = "error",
-                title = "Preview hidden",
+                titleDesc = MR.strings.file_preview_hidden.desc(),
                 message = "File hidden: ${result.blocker.code}",
+                messageDesc = null,
                 error = result.blocker.code
             )
     }
@@ -1505,7 +1535,12 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
         is SlockWorkspaceFilePreview.Text ->
             SlockFilePreviewPayload(
                 kind = if (markdown) "markdown" else "text",
-                title = if (markdown) "Markdown preview" else "Text preview",
+                titleDesc =
+                    if (markdown) {
+                        MR.strings.file_preview_markdown.desc()
+                    } else {
+                        MR.strings.file_preview_text.desc()
+                    },
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
                 path = this.path,
@@ -1516,42 +1551,52 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
         is SlockWorkspaceFilePreview.Image ->
             SlockFilePreviewPayload(
                 kind = "image",
-                title = "Image preview",
+                titleDesc = MR.strings.file_preview_image.desc(),
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
                 path = this.path,
                 meta = membersWorkspaceMetaLine(path),
                 imageUrl = imageUrl,
-                message = description.orEmpty().ifBlank { "Image preview is unavailable." }
+                message = description.orEmpty(),
+                messageDesc =
+                    if (description.isNullOrBlank()) {
+                        MR.strings.file_preview_error_image_unavailable.desc()
+                    } else {
+                        null
+                    }
             )
         is SlockWorkspaceFilePreview.Unsupported ->
             SlockFilePreviewPayload(
                 kind = "unsupported",
-                title = "File preview",
+                titleDesc = MR.strings.file_preview_title.desc(),
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
                 path = this.path,
                 meta = membersWorkspaceMetaLine(path),
-                message = reason
+                message = reason,
+                messageDesc = null
             )
         is SlockWorkspaceFilePreview.Error ->
             SlockFilePreviewPayload(
                 kind = "error",
-                title = "Preview unavailable",
+                titleDesc = MR.strings.file_preview_unavailable.desc(),
                 subtitle = path,
                 name = path,
                 path = path,
                 message = reason,
+                messageDesc = null,
                 error = reason
             )
         is SlockWorkspaceFilePreview.Loading ->
             SlockFilePreviewPayload(
                 kind = "loading",
-                title = "File preview",
+                requestedKind = "workspace",
+                titleDesc = MR.strings.file_preview_title.desc(),
                 subtitle = path,
                 name = path,
                 path = path,
-                message = detail.ifBlank { SlockFilePreviewLoadingLabel }
+                message = detail,
+                messageDesc = if (detail.isBlank()) MR.strings.common_loading.desc() else null
             )
     }
 
@@ -1645,7 +1690,7 @@ internal fun SlockFilePreviewPayloadContent(
                         iconName = SlockLucideIconName.Image,
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
-                        message = payload.message.ifBlank { "Image preview is unavailable." },
+                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_image_unavailable) },
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
@@ -1681,7 +1726,7 @@ internal fun SlockFilePreviewPayloadContent(
                     SlockFilePreviewMessage(
                         iconName = SlockLucideIconName.TriangleAlert,
                         title = stringResource(MR.strings.file_preview_unavailable),
-                        detail = payload.message.ifBlank { "Unable to load HTML preview." },
+                        detail = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_load_html) },
                         modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md)
                     )
                 }
@@ -1700,7 +1745,7 @@ internal fun SlockFilePreviewPayloadContent(
                     source = payload.videoUrl.orEmpty(),
                     name = payload.name.ifBlank { payload.path },
                     meta = payload.meta,
-                    fallbackMessage = payload.message,
+                    fallbackMessage = payload.localizedMessage(),
                     audioOnly = payload.audioOnly,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -1720,7 +1765,7 @@ internal fun SlockFilePreviewPayloadContent(
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
                 title = stringResource(MR.strings.file_preview_unavailable),
-                detail = payload.error ?: payload.message.ifBlank { "Unable to load this file preview." },
+                detail = payload.error ?: payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_load_generic) },
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         else ->
@@ -1728,7 +1773,7 @@ internal fun SlockFilePreviewPayloadContent(
                 iconName = slockFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
                 meta = payload.meta,
-                message = slockFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null),
+                message = slockFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized(),
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
@@ -2217,16 +2262,19 @@ private fun SlockFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDis
     }
 }
 
+@Composable
 private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
     val source =
         name
             .ifBlank { path }
             .ifBlank { externalFileName }
             .ifBlank { title }
+            .ifBlank { titleDesc.localized() }
             .ifBlank { "File" }
     return source.slockFilePreviewFileName()
 }
 
+@Composable
 private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
     val headerTitle = previewHeaderTitle()
     return listOf(meta, path, subtitle, externalMimeType)
@@ -2239,6 +2287,10 @@ private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
                 !candidate.endsWith("preview", ignoreCase = true)
         }
 }
+
+@Composable
+private fun SlockFilePreviewPayload.localizedMessage(): String =
+    message.ifBlank { messageDesc?.localized().orEmpty() }
 
 private fun String.slockFilePreviewFileName(): String {
     val normalized = trim().replace('\\', '/')
@@ -2262,7 +2314,9 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
     val meta = listOf(sizeLabel, mimeType).filter { it.isNotBlank() }.joinToString(" · ")
     return previous.copy(
         kind = "loading",
-        title = "Image preview",
+        requestedKind = "image",
+        title = "",
+        titleDesc = MR.strings.file_preview_image.desc(),
         subtitle = title,
         name = title,
         path = title,
@@ -2270,7 +2324,8 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
         content = "",
         markdown = false,
         imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
-        message = SlockFilePreviewLoadingLabel,
+        message = "",
+        messageDesc = MR.strings.common_loading.desc(),
         error = null,
         externalUrl = null,
         videoUrl = null,
@@ -2379,10 +2434,11 @@ internal fun slockFilePreviewPrimaryActionLabel(payload: SlockFilePreviewPayload
         else -> "Open"
     }
 
-internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPayload, downloadable: Boolean): String =
+internal fun slockFilePreviewUnsupportedFileMessage(payload: SlockFilePreviewPayload, downloadable: Boolean): StringDesc =
     when {
-        downloadable -> "Download this file to open it with another app."
-        else -> payload.message.ifBlank { "No preview is available for this file type." }
+        downloadable -> MR.strings.file_preview_download_to_open.desc()
+        payload.message.isNotBlank() -> payload.message.desc()
+        else -> payload.messageDesc ?: MR.strings.file_preview_no_preview.desc()
     }
 
 internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =

@@ -224,7 +224,10 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3868,6 +3871,7 @@ internal fun SharedThreadRouteContent(
             pager.openSlockFilePreviewPage(
                 SlockFilePreviewPayload(
                     kind = if (attachment.status == "failed") "error" else "loading",
+                    requestedKind = "composer_attachment",
                     title = name,
                     subtitle = meta,
                     name = name,
@@ -3882,6 +3886,7 @@ internal fun SharedThreadRouteContent(
                                 ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
                             else -> "Preparing attachment preview..."
                         },
+                    messageDesc = null,
                     error =
                         if (attachment.status == "failed") {
                             "attachment_upload_failed"
@@ -10909,7 +10914,7 @@ private fun ThreadMessagesList(
                 item(key = ThreadNewerMessagesListItemKey) {
                     val actionSpec = threadNewerMessagesActionSpec(renderPayload.newerMessagesStatus)
                     ThreadInlineActionRow(
-                        label = actionSpec.label,
+                        label = actionSpec.label.localized(),
                         leadingIcon = actionSpec.leadingIcon,
                         onClick = {
                             onThreadEvent(
@@ -11168,13 +11173,13 @@ private val ThreadBottomScrollPaddingHeight = 16.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
 internal data class ThreadInlineActionSpec(
-    val label: String,
+    val label: StringDesc,
     val event: String,
     val leadingIcon: SlockLucideIconName? = null
 )
 
 internal data class ThreadHistoryStatusSpec(
-    val label: String,
+    val label: StringDesc,
     val leadingIcon: SlockLucideIconName? = null,
     val secondaryLabel: String? = null
 )
@@ -11216,16 +11221,16 @@ internal fun threadOlderMessagesStatusSpec(
     secondaryLabel: String? = null
 ): ThreadHistoryStatusSpec =
     if (canLoadMoreBefore) {
-        ThreadHistoryStatusSpec(label = "Loading older messages…")
+        ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
     } else {
-        ThreadHistoryStatusSpec(label = "Beginning of conversation", secondaryLabel = secondaryLabel)
+        ThreadHistoryStatusSpec(label = MR.strings.thread_state_beginning_conversation.desc(), secondaryLabel = secondaryLabel)
     }
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
-        "loading" -> ThreadInlineActionSpec(label = "Loading new messages…", event = "loadNewer")
-        "error" -> ThreadInlineActionSpec(label = "Retry new messages", event = "retryLoadNewer")
-        else -> ThreadInlineActionSpec(label = "Load new messages", event = "loadNewer")
+        "loading" -> ThreadInlineActionSpec(label = MR.strings.thread_state_loading_new.desc(), event = "loadNewer")
+        "error" -> ThreadInlineActionSpec(label = MR.strings.thread_retry_new.desc(), event = "retryLoadNewer")
+        else -> ThreadInlineActionSpec(label = MR.strings.thread_load_new.desc(), event = "loadNewer")
     }
 
 internal fun threadMessagesLazyItemCount(
@@ -12059,7 +12064,7 @@ private fun ThreadHistoryStatusRow(
                 Spacer(Modifier.width(6.dp))
             }
             Text(
-                text = spec.label,
+                text = spec.label.localized(),
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -13906,7 +13911,7 @@ private fun String.decodeBasicHtmlEntities(): String =
         .replace("&#39;", "'")
 
 private data class ThreadMessageMenuAction(
-    val label: String,
+    val label: StringDesc,
     val icon: SlockLucideIconName,
     val group: String,
     val enabled: Boolean = true,
@@ -13948,19 +13953,19 @@ private fun threadMessageMenuActions(
         if (showCopyLinkAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Copy Link",
+                    label = MR.strings.thread_action_copy_link.desc(),
                     icon = SlockLucideIconName.Link,
                     group = "copy",
                     onClick = onCopyLink
                 )
             )
         }
-        add(ThreadMessageMenuAction("Copy Markdown", SlockLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction("Select Text", SlockLucideIconName.FileText, "copy", onClick = onSelectText))
+        add(ThreadMessageMenuAction(MR.strings.thread_action_copy_markdown.desc(), SlockLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction(MR.strings.thread_action_select_text.desc(), SlockLucideIconName.FileText, "copy", onClick = onSelectText))
         if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Translate",
+                    label = MR.strings.thread_action_translate.desc(),
                     icon = SlockLucideIconName.Languages,
                     group = "copy",
                     onClick = onTranslate
@@ -13970,7 +13975,7 @@ private fun threadMessageMenuActions(
         if (showShareMessagesAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Select Message",
+                    label = MR.strings.thread_action_select_message.desc(),
                     icon = SlockLucideIconName.CircleCheck,
                     group = "copy",
                     onClick = onShareMessages
@@ -13978,12 +13983,17 @@ private fun threadMessageMenuActions(
             )
         }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction("Open Thread", SlockLucideIconName.MessageSquare, "message", onClick = onReply))
+            add(ThreadMessageMenuAction(MR.strings.thread_action_open_thread.desc(), SlockLucideIconName.MessageSquare, "message", onClick = onReply))
         }
         if (showSaveAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = if (message.isSaved) "Remove from Saved" else "Save Message",
+                    label =
+                        if (message.isSaved) {
+                            MR.strings.thread_action_remove_from_saved.desc()
+                        } else {
+                            MR.strings.thread_action_save_message.desc()
+                        },
                     icon = SlockLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
@@ -13994,7 +14004,12 @@ private fun threadMessageMenuActions(
         if (followThreadChannelId != null || replyMetadata.replyCount > 0 || replyMetadata.isThreadFollowed) {
             add(
                 ThreadMessageMenuAction(
-                    label = if (replyMetadata.isThreadFollowed) "Unfollow Thread" else "Follow Thread",
+                    label =
+                        if (replyMetadata.isThreadFollowed) {
+                            MR.strings.thread_action_unfollow_thread.desc()
+                        } else {
+                            MR.strings.thread_action_follow_thread.desc()
+                        },
                     icon = SlockLucideIconName.MessageSquare,
                     group = "message",
                     onClick = {
@@ -14010,7 +14025,7 @@ private fun threadMessageMenuActions(
         if (showDeleteAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Delete",
+                    label = MR.strings.common_delete.desc(),
                     icon = SlockLucideIconName.Trash,
                     group = "destructive",
                     onClick = onDelete
@@ -14020,7 +14035,7 @@ private fun threadMessageMenuActions(
         if (showCancelAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Cancel",
+                    label = MR.strings.common_cancel.desc(),
                     icon = SlockLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
@@ -14031,7 +14046,12 @@ private fun threadMessageMenuActions(
             val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
             add(
                 ThreadMessageMenuAction(
-                    label = if (isDone) "Reopen Task" else "Mark as Done",
+                    label =
+                        if (isDone) {
+                            MR.strings.thread_action_reopen_task.desc()
+                        } else {
+                            MR.strings.thread_action_mark_done.desc()
+                        },
                     icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
                     group = "task",
                     onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
@@ -14041,7 +14061,7 @@ private fun threadMessageMenuActions(
         if (showConvertToTaskAction && message.canConvertToTask()) {
             add(
                 ThreadMessageMenuAction(
-                    label = "Convert to Task",
+                    label = MR.strings.thread_action_convert_to_task.desc(),
                     icon = SlockLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
@@ -14484,7 +14504,7 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
                 color = if (action.enabled) "#FF000000" else "#FF6B625F"
             )
             Text(
-                text = action.label,
+                text = action.label.localized(),
                 style = (if (action.enabled) SlockType.Button else SlockType.Body)
                     .copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = if (action.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
@@ -15154,6 +15174,7 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
 ): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = kind,
+        requestedKind = kind,
         title = title,
         subtitle = name.ifBlank { "Attachment" },
         name = name.ifBlank { "Attachment" },
@@ -15163,6 +15184,7 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
         markdown = kind == "markdown",
         imageUrl = imageUrl,
         message = message,
+        messageDesc = null,
         error = error,
         externalUrl = externalUrl,
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },

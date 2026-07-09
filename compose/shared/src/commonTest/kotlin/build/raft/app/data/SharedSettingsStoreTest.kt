@@ -7,6 +7,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import com.tencent.kuikly.compose.profiler.RecompositionReport
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -3292,14 +3293,14 @@ class SharedSettingsStoreTest {
             profile = SettingsServerProfileSnapshot(name = "Slock Community", slug = "slock", canSave = true),
             sections =
                 listOf(
-                    SettingsServerSectionSnapshot("admins", "Admins", "1 admin", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("billing", "Plan & Billing", "Current plan: Team", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("pending_invites", "Pending Invites", "1 pending invite", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("join_links", "Join Links", "1 active link", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("onboarding_agent", "Onboarding Agent", "Enabled", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("translation", "Translation", "Enabled", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("sidebar_order", "Sidebar Order", "Manual", SettingsSectionAvailability.Available),
-                    SettingsServerSectionSnapshot("danger", "Danger Zone", "Owner only", SettingsSectionAvailability.NoPermission)
+                    SettingsServerSectionSnapshot("admins", "Admins".desc(), "1 admin", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("billing", "Plan & Billing".desc(), "Current plan: Team", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("pending_invites", "Pending Invites".desc(), "1 pending invite", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("join_links", "Join Links".desc(), "1 active link", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("onboarding_agent", "Onboarding Agent".desc(), "Enabled", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("translation", "Translation".desc(), "Enabled", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("sidebar_order", "Sidebar Order".desc(), "Manual", SettingsSectionAvailability.Available),
+                    SettingsServerSectionSnapshot("danger", "Danger Zone".desc(), "Owner only", SettingsSectionAvailability.NoPermission)
                 ),
             admins = listOf(SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")),
             usageRows = listOf(SettingsPlanUsageSnapshot("Messages", "100")),
