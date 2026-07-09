@@ -22,16 +22,20 @@ internal expect fun slockPlatformUsesNativeVideoController(): Boolean
 // the launch payload.)
 internal expect fun slockReleaseNotesAppSlug(): String
 
-// task #401 TEMPORARY A-bridge: Android's Kuikly render draws the inline-code
-// chip natively (atom advance + chrome) and wraps long code at character
-// boundaries; the OHOS and iOS renders have no slockInlineCode handling yet,
-// so long code runs there render as one unbreakable word. Until each native
-// chip lands (OHOS core-render-ohos / iOS core-render-ios task #402), the
-// markdown layer interleaves zero-width spaces into inline-code runs longer
-// than this threshold so those platforms wrap like web/Android. Returns null
-// where the native render already handles wrapping. Remove each platform's
-// non-null value when its native chip ships.
+// task #401 temporary char-wrap bridge. The markdown layer interleaves U+200B
+// break opportunities into long inline-code runs on platforms whose native
+// layout does not yet atomize them. This is independent from chrome ownership:
+// iOS has native chrome but still needs this line-breaking bridge.
 internal expect fun slockInlineCodeCharWrapBridgeThreshold(): Int?
+
+/**
+ * Whether markdown must synthesize NBSP characters at inline-code edges.
+ *
+ * This is separate from [slockInlineCodeCharWrapBridgeThreshold]: a platform
+ * may own native chip padding while still needing U+200B break opportunities
+ * for long code runs.
+ */
+internal expect fun slockInlineCodeUsesEdgePaddingBridge(): Boolean
 
 // task #92 close-out: feedback attachment size cap follows what each
 // platform's Hands SDK can actually deliver. Android/iOS stream >10MB

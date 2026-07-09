@@ -4,6 +4,7 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockType
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
+import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withSlockFontWeight
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -1395,7 +1396,7 @@ class SlockMarkdownTest {
     // padding only exists on A-bridge platforms (no native chip chrome); the
     // android target reserves real advance padding instead (task #407).
     private fun inlineCodeSegment(code: String): String =
-        if (slockInlineCodeCharWrapBridgeThreshold() != null) {
+        if (slockInlineCodeUsesEdgePaddingBridge()) {
             "$inlineCodePadding$code$inlineCodePadding"
         } else {
             code

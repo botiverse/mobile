@@ -36,6 +36,7 @@ import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING
 import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
+import build.raft.app.slockInlineCodeUsesEdgePaddingBridge
 
 // task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
 // longer than [threshold] so renders without native inline-code atomization
@@ -359,23 +360,21 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         val codeStart = length
                         pushStyle(annotatorSettings.codeSpanStyle)
                         val charWrapThreshold = slockInlineCodeCharWrapBridgeThreshold()
-                        // NBSP edge padding predates the Android native chip
-                        // chrome, which now reserves real advance padding
-                        // (KRRichTextBuilder EDGE_PADDING/EDGE_MARGIN) — keeping
-                        // the NBSP there double-pads the chip's leading edge
-                        // (task #407: 13px vs react's 5px). Platforms still on
-                        // the A-bridge (charWrapThreshold != null: no native
-                        // chrome, same gate as the char-wrap bridge) keep the
-                        // NBSP as their only visual padding.
-                        if (charWrapThreshold != null) {
+                        val usesEdgePaddingBridge = slockInlineCodeUsesEdgePaddingBridge()
+                        // NBSP edge padding is only for platforms whose fallback
+                        // renderer does not own chip box metrics. Keep this gate
+                        // independent from charWrapThreshold: iOS now owns native
+                        // chrome/padding but still needs U+200B break opportunities,
+                        // while OHOS needs both fallback behaviours.
+                        if (usesEdgePaddingBridge) {
                             append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
                         }
                         if (charWrapThreshold != null) {
                             // task #401 A-bridge (see the expect in
                             // SlockKuiklyPlatformCapabilities.kt): on platforms whose
-                            // native render lacks the inline-code chip, append the code
-                            // text with zero-width-space break opportunities so long
-                            // runs wrap at character boundaries. Code spans carry no
+                            // native layout cannot atomize long inline-code runs, append
+                            // zero-width-space break opportunities so they wrap at
+                            // character boundaries. Code spans carry no
                             // nested markup, so flattening the recursion's output text
                             // is lossless here.
                             val codeText =
@@ -390,7 +389,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         } else {
                             buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
                         }
-                        if (charWrapThreshold != null) {
+                        if (usesEdgePaddingBridge) {
                             append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
                         }
                         pop()
