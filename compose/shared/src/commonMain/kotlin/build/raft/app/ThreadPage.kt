@@ -20,6 +20,7 @@ import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
+import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
@@ -95,6 +96,7 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.actionCardFromMessageMetadata
+import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.AgentStatus
@@ -518,20 +520,6 @@ internal fun threadHeaderDisplayTitle(
     surfaceKind: String = KuiklyThreadSurfaceKind.Channel
 ): String =
     threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
-
-internal enum class StandaloneThreadAuthRequiredAction {
-    PreserveSession,
-    OpenLogin
-}
-
-internal fun standaloneThreadAuthRequiredAction(
-    session: StoredAuthSession?
-): StandaloneThreadAuthRequiredAction =
-    if (session == null) {
-        StandaloneThreadAuthRequiredAction.OpenLogin
-    } else {
-        StandaloneThreadAuthRequiredAction.PreserveSession
-    }
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : build.raft.app.base.BasePager() {
@@ -1736,6 +1724,7 @@ private fun ThreadPageScreen() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val threadPageCoroutineScope = rememberCoroutineScope()
+    var authLossReportInProgress by remember { mutableStateOf(false) }
     val networkClient = sharedStores.networkClient
     val agentsApiClient = remember(networkClient) {
         SlockAgentsApiClient(
@@ -1898,27 +1887,33 @@ private fun ThreadPageScreen() {
         },
         onAuthRequired = { code ->
             bridge.logWarn("thread_auth_required code=$code route=standalone instanceId=${payload.instanceId}")
-            threadPageCoroutineScope.launch {
-                val session =
-                    runCatchingPreservingCancellation { authStore.readSession() }
-                        .getOrNull()
-                when (standaloneThreadAuthRequiredAction(session)) {
-                    StandaloneThreadAuthRequiredAction.PreserveSession -> {
-                        bridge.logWarn(
-                            "thread_auth_required_session_preserved code=$code " +
-                                "route=standalone instanceId=${payload.instanceId} " +
-                                "serverId=${session?.currentServerId.orEmpty()}"
-                        )
-                        bridge.toast("Unable to load thread. Try again.")
-                    }
-                    StandaloneThreadAuthRequiredAction.OpenLogin -> {
-                        bridge.toast("Session expired")
-                        routerModule.openPage(
-                            LOGIN_PAGE,
-                            JSONObject().apply { put("pageName", LOGIN_PAGE) }
-                        )
+            if (!authLossReportInProgress) {
+                authLossReportInProgress = true
+                threadPageCoroutineScope.launch {
+                    try {
+                        val session =
+                            runCatchingPreservingCancellation { authStore.readSession() }
+                                .getOrNull()
+                        val pendingOpenRequest =
+                            payload
+                                .toWireThreadLaunchPayloadOrNull()
+                                ?.toAuthPendingOpenRequest(session?.currentServerId.orEmpty())
+                        sharedStores.authLossFunnel
+                            .report(
+                                AuthLossSignal(
+                                    source = "thread:${payload.instanceId}",
+                                    tokenFingerprint = session?.accessToken.authLossTokenFingerprint(),
+                                    pendingOpenRequest = pendingOpenRequest
+                                )
+                            ).await()
+                    } finally {
+                        authLossReportInProgress = false
                     }
                 }
+            } else {
+                bridge.logWarn(
+                    "thread_auth_loss_report_skip reason=in_progress code=$code instanceId=${payload.instanceId}"
+                )
             }
         },
         onOpenMemberProfile = { currentPayload, timelineSlice, memberId, selectedMemberKind, sourceServerId ->

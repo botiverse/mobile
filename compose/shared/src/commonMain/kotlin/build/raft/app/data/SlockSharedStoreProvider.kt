@@ -71,6 +71,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: KuiklyAuthSessionEvents,
     val authDataSource: SharedAuthDataSource,
+    val authLossFunnel: SharedAuthLossFunnel,
     val networkClient: SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
@@ -338,6 +339,15 @@ internal class SlockSharedStoreProvider private constructor(
                     apiEnvironmentStore = apiEnvironmentStore,
                     authStore = authStore
                 )
+            val authLossFunnel =
+                SharedAuthLossFunnel(
+                    restoreSession = { authDataSource.restoreSession() },
+                    clearSession = { reason, clearSource ->
+                        authStore.clearSession(reason = reason, source = clearSource)
+                    },
+                    scope = CoroutineScope(SupervisorJob()),
+                    diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
+                )
             val networkClient =
                 SharedSlockNetworkClient(
                     sessionStore = authStore,
@@ -382,6 +392,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,
                 authDataSource = authDataSource,
+                authLossFunnel = authLossFunnel,
                 networkClient = networkClient,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
