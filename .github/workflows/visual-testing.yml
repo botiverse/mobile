@@ -576,7 +576,10 @@ jobs:
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 60 not 30: AI analysis re-runs every case whose image changed; a round
+    # after a big fix (e.g. 40+ new iOS frames) needs >30min and run
+    # 28996493997 was killed mid-analysis at exactly the old 30min cap.
+    timeout-minutes: 60
     steps:
       - name: Checkout mobile
         uses: actions/checkout@v5
