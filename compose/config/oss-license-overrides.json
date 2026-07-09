@@ -40,11 +40,11 @@
       "reason": "Pulled transitively by androidx.media3 (task #556); license inherited from the Guava parent POM, same resolution gap as guava/listenablefuture."
     },
     {
-      "id": "io.quiver:quiver-android-updater",
-      "displayName": "Quiver Android Updater",
+      "id": "build.hands:hands-android-sdk",
+      "displayName": "Hands Android SDK",
       "licenseName": "MIT License",
       "licenseUrl": "https://opensource.org/licenses/MIT",
-      "sourceUrl": "https://github.com/oranix-io/quiver",
+      "sourceUrl": "https://github.com/oranix-io/hands",
       "reason": "The artifact's POM declares MIT, but Gradle metadata can be preferred during artifact resolution; keep the Android package disclosure deterministic."
     },
     {

@@ -13,7 +13,7 @@ import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
 import { SlockOhosAppDiagnostics } from '../../entryability/SlockOhosAppDiagnostics';
-import { QuiverFeedbackClient } from '@oranix/quiver';
+import { HandsFeedbackClient } from '@botiverse/hands';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
@@ -513,16 +513,16 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         case "prepareDiagnosticsFeedback": {
           // Raft-channel feedback flow retired (parity with Android):
           // a non-draft response skips the channel picker and the shared
-          // settings UI falls through to sendFeedback -> Quiver.
+          // settings UI falls through to sendFeedback -> Hands.
           callback({ "status": "unsupported" });
           return;
         }
         case "sendFeedback": {
-          callback(await this.sendFeedbackToQuiverCapability());
+          callback(await this.sendFeedbackToHandsCapability());
           return;
         }
         case "submitFeedback": {
-          callback(await this.submitFeedbackToQuiverCapability(records));
+          callback(await this.submitFeedbackToHandsCapability(records));
           return;
         }
         case "requestNotificationPermission": {
@@ -712,14 +712,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   /**
-   * Submit in-app feedback to the Quiver ticket system (kind=bug) with the
+   * Submit in-app feedback to the Hands ticket system (kind=bug) with the
    * diagnostics archive attached — same behavior as the Android host.
    */
-  private async sendFeedbackToQuiverCapability(): Promise<Record<string, Object>> {
+  private async sendFeedbackToHandsCapability(): Promise<Record<string, Object>> {
     try {
       const context = getContext(this) as common.UIAbilityContext;
       const archivePath = await SlockOhosAppDiagnostics.prepareFeedbackArchivePath(context);
-      const ticketId = await QuiverFeedbackClient.submit(
+      const ticketId = await HandsFeedbackClient.submit(
         context,
         'In-app feedback (diagnostics attached).',
         'bug',
@@ -735,7 +735,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private async submitFeedbackToQuiverCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
+  private async submitFeedbackToHandsCapability(records: Record<string, Object>): Promise<Record<string, Object>> {
     try {
       const message = ((records["message"] as string | undefined) ?? "").trim();
       if (message.length === 0) {
@@ -753,7 +753,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           SlockOhosDiagnostics.record("Settings", `quiver_feedback_diagnostics_attachment_skipped path=${archivePath}`);
         }
       }
-      const ticketId = await QuiverFeedbackClient.submit(
+      const ticketId = await HandsFeedbackClient.submit(
         context,
         message,
         'bug',
@@ -762,7 +762,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       );
       const shortId = ticketId.slice(0, 8);
       const environmentText = SlockOhosAppDiagnostics.exportEnvironmentText(context);
-      const shareText = `Quiver feedback ${shortId}\nTicket: ${ticketId}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
+      const shareText = `Hands feedback ${shortId}\nTicket: ${ticketId}\n\nEnvironment:\n${environmentText}\n\nFeedback:\n${message}`;
       SlockOhosClipboard.copyText(shareText);
       SlockOhosDiagnostics.record("Settings", `quiver_feedback_submitted ticket=${shortId}`);
       return { "status": "ok", "ticketId": ticketId, "shareText": shareText };

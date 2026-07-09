@@ -482,7 +482,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          HANDS_API_BASE="${HANDS_API:-${QUIVER_API:-https://quiver.oranix.io}}"
+          HANDS_API_BASE="${HANDS_API:-${QUIVER_API:-https://hands.build}}"
           HANDS_TOKEN="${HANDS_BEARER_TOKEN:-${QUIVER_BEARER_TOKEN}}"
           APP_ID="$(curl -fsS -H "Authorization: Bearer ${HANDS_TOKEN}" \
             "${HANDS_API_BASE}/api/apps" \

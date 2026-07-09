@@ -1,7 +1,7 @@
 #import "HRBridgeModule.h"
 
 #import "KuiklyRenderViewController.h"
-#import <Quiver/Quiver.h>
+#import <Hands/Hands.h>
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
@@ -624,8 +624,8 @@ NSString *SlockIosPrepareDiagnosticsCrashAttachmentPath(void) {
     return SlockIosPrepareDiagnosticsAttachmentPaths(@"crash").firstObject;
 }
 
-static void SlockIosRegisterQuiverDiagnosticsProvider(void) {
-    Class crashReporter = NSClassFromString(@"QuiverCrashReporter");
+static void SlockIosRegisterHandsDiagnosticsProvider(void) {
+    Class crashReporter = NSClassFromString(@"HandsCrashReporter");
     SEL selector = NSSelectorFromString(@"setDiagnosticsProvider:");
     if (!crashReporter || ![crashReporter respondsToSelector:selector]) {
         SlockDiagnosticsRecord(@"warn", @"SlockDiagnostics", @"quiver_diagnostics_provider_unavailable");
@@ -641,13 +641,13 @@ static void SlockIosRegisterQuiverDiagnosticsProvider(void) {
     SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_diagnostics_provider_registered crashAtMillis=true");
 }
 
-void SlockIosInstallQuiverReporting(void) {
+void SlockIosInstallHandsReporting(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // App-owned Quiver reporting config (client key is DSN-class: it
-        // identifies the app; rotate from the Quiver console if leaked).
-        SlockIosRegisterQuiverDiagnosticsProvider();
-        [Quiver installWithConfig:[QuiverConfig configWithBaseUrl:@"https://quiver.oranix.io"
+        // App-owned Hands reporting config (client key is DSN-class: it
+        // identifies the app; rotate from the Hands console if leaked).
+        SlockIosRegisterHandsDiagnosticsProvider();
+        [Hands installWithConfig:[HandsConfig configWithBaseUrl:@"https://hands.build"
                                                           appSlug:@"raft-ios"
                                                           channel:@"main"
                                                         clientKey:@"qk_2d6ac57a6532bc7ff1d3183b43bda99e2e732a99"]];
@@ -1072,7 +1072,7 @@ void SlockIosInstallQuiverReporting(void) {
         return [self slock_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
-        [self slock_promptAndSubmitQuiverFeedback];
+        [self slock_promptAndSubmitHandsFeedback];
         SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_prompt_opened");
         return @{ @"status" : @"ok" };
     }
@@ -1083,7 +1083,7 @@ void SlockIosInstallQuiverReporting(void) {
             return [self slock_unsupportedResultWithCode:@"settings_feedback_message_required"
                                                  message:@"Feedback message is required"];
         }
-        [self slock_submitQuiverFeedbackWithDescription:description];
+        [self slock_submitHandsFeedbackWithDescription:description];
         SlockDiagnosticsRecord(@"info", @"SlockDiagnostics", @"quiver_feedback_submit_started");
         return @{ @"status" : @"ok", @"ticketId" : @"", @"shareText" : @"" };
     }
@@ -1118,11 +1118,11 @@ void SlockIosInstallQuiverReporting(void) {
     });
 }
 
-/// Quiver feedback flow (parity with the Android host): prompt for a
+/// Hands feedback flow (parity with the Android host): prompt for a
 /// description, submit a kind=bug ticket with the diagnostics export
-/// attached, then copy a shareable "Quiver feedback <id>" reference to the
+/// attached, then copy a shareable "Hands feedback <id>" reference to the
 /// clipboard so the user can paste it in the community.
-- (void)slock_promptAndSubmitQuiverFeedback {
+- (void)slock_promptAndSubmitHandsFeedback {
     SlockBridgeRunOnMain(^{
         UIViewController *controller = [self slock_currentViewController];
         if (!controller) {
@@ -1130,7 +1130,7 @@ void SlockIosInstallQuiverReporting(void) {
         }
         UIAlertController *prompt =
             [UIAlertController alertControllerWithTitle:@"Send feedback"
-                                                message:@"Your message plus device diagnostics will be sent to Quiver. You'll get a copyable reference to share in the community."
+                                                message:@"Your message plus device diagnostics will be sent to Hands. You'll get a copyable reference to share in the community."
                                          preferredStyle:UIAlertControllerStyleAlert];
         [prompt addTextFieldWithConfigurationHandler:^(UITextField *textField) {
             textField.placeholder = @"Describe your feedback";
@@ -1147,19 +1147,19 @@ void SlockIosInstallQuiverReporting(void) {
             if (description.length == 0) {
                 return;
             }
-            [self slock_submitQuiverFeedbackWithDescription:description];
+            [self slock_submitHandsFeedbackWithDescription:description];
         }]];
         [controller presentViewController:prompt animated:YES completion:nil];
     });
 }
 
-- (void)slock_submitQuiverFeedbackWithDescription:(NSString *)description {
+- (void)slock_submitHandsFeedbackWithDescription:(NSString *)description {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSDictionary *draft = [self slock_prepareDiagnosticsFeedbackDraft];
         NSArray *draftPaths = [draft[@"attachmentPaths"] isKindOfClass:NSArray.class] ? draft[@"attachmentPaths"] : @[];
         NSString *path = SlockBridgeString(draft[@"filePath"]);
         NSArray<NSString *> *attachments = draftPaths.count > 0 ? draftPaths : (path.length > 0 ? @[ path ] : @[]);
-        [Quiver submitFeedback:description
+        [Hands submitFeedback:description
                            kind:@"bug"
                 attachmentPaths:attachments
                          extras:nil
@@ -1181,7 +1181,7 @@ void SlockIosInstallQuiverReporting(void) {
                 NSString *environment = SlockDiagnosticsEnvironmentSectionFromExportText(
                     SlockDiagnosticsBuildExportText([self slock_settingsCapabilityResultForAction:@"loadAbout" params:@{}])
                 );
-                NSString *shareText = [NSString stringWithFormat:@"Quiver feedback %@\nTicket: %@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
+                NSString *shareText = [NSString stringWithFormat:@"Hands feedback %@\nTicket: %@\n\nEnvironment:\n%@\n\nFeedback:\n%@",
                     shortId,
                     ticketId,
                     environment.length > 0 ? environment : @"--",

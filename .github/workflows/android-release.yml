@@ -37,7 +37,7 @@ on:
         type: string
         default: ""
       quiver_channel:
-        description: "Quiver channel: main | preview | nightly | debug"
+        description: "Hands channel: main | preview | nightly | debug"
         required: true
         type: choice
         default: "main"
@@ -63,7 +63,7 @@ on:
           - draft
           - publish
       publish_quiver:
-        description: "If true, push the signed APK + metadata to Quiver + create share page"
+        description: "If true, push the signed APK + metadata to Hands + create share page"
         required: true
         type: boolean
         default: false
@@ -351,12 +351,12 @@ jobs:
             echo "| **APK** | \`${{ steps.locate.outputs.apk_path }}\` |"
             echo "| **size (bytes)** | \`${{ steps.verify.outputs.size }}\` |"
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
-            echo "| **Quiver channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
-            echo "| **Publish to Quiver** | \`${{ needs.resolve.outputs.publish_quiver }}\` |"
+            echo "| **Hands channel target** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Publish to Hands** | \`${{ needs.resolve.outputs.publish_quiver }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish_quiver:
-    name: Publish to Quiver + create share page
+    name: Publish to Hands + create share page
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 15
     needs: [resolve, build_android_release]
@@ -370,8 +370,12 @@ jobs:
       QUIVER_APP_SLUG: raft-android
       QUIVER_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
       QUIVER_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+      HANDS_APP_SLUG: raft-android
+      HANDS_BEARER_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+      HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
+      HANDS_API: https://hands.build
       # Mirror the chosen channel into both env names so the helper picks
-      # it up AND any direct Quiver API calls (which use QUIVER_CHANNEL) stay
+      # it up AND any direct Hands API calls (which use the legacy variable) stay
       # consistent.
       SLOCK_QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
       QUIVER_CHANNEL: ${{ needs.resolve.outputs.quiver_channel }}
@@ -406,11 +410,11 @@ jobs:
           name: android-release-mapping
           path: compose/androidApp/build/outputs/mapping/${{ needs.resolve.outputs.android_variant }}/
 
-      - name: Install Quiver CLI (npm)
+      - name: Install Hands CLI (npm)
         shell: bash
         run: |
-          npm install -g @oranix/quiver-cli@0.3.1
-          quiver --version
+          npm install -g @botiverse/hands-cli@0.4.0
+          hands --version
 
       - name: Generate changelog from git history
         id: generate-changelog
@@ -420,7 +424,7 @@ jobs:
           # Range: previous build's provenance source_commit (authenticated
           # builds API) .. HEAD. Falls back to the last 15 subjects when the
           # previous commit is unknown or unreachable.
-          QUIVER_API_BASE="${QUIVER_API:-https://quiver.oranix.io}"
+          QUIVER_API_BASE="${HANDS_API:-https://hands.build}"
           APP_ID="$(curl -fsS -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
             "${QUIVER_API_BASE}/api/apps" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print(next((a['id'] for a in d.get('apps',[]) if a.get('slug')=='${QUIVER_APP_SLUG}'), ''))" \
@@ -450,7 +454,7 @@ jobs:
         run: |
           set -euo pipefail
           # The release helper handles metadata.json generation, channel
-          # routing, and Quiver CLI invocation. Build + sign were already
+          # routing, and Hands CLI invocation. Build + sign were already
           # done in build_android_release; --skip-gradle-build reuses the
           # signed APK on disk.
           APK="$(find dist -type f -name '*.apk' | sort | head -n 1)"
@@ -467,7 +471,7 @@ jobs:
           ./scripts/publish_android_quiver_release.sh | tee quiver-publish.log
           RELEASE_ID="$(awk '/^[[:space:]]*release:/ {print $2}' quiver-publish.log | tail -n 1)"
           if [ -z "${RELEASE_ID}" ]; then
-            echo "Could not parse release id from Quiver publish output" >&2
+            echo "Could not parse release id from Hands publish output" >&2
             exit 1
           fi
           echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
@@ -485,14 +489,14 @@ jobs:
           echo "release_id=$RELEASE_ID"
           APP_ID="$(curl -fsS \
             -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
-            "${QUIVER_API:-https://quiver.oranix.io}/api/apps" \
+            "${HANDS_API:-https://hands.build}/api/apps" \
             | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(a['id'] for a in d.get('apps',[]) if a.get('slug')=='${{ env.QUIVER_APP_SLUG }}'))")"
           SHARE_JSON="$(curl -fsS \
             -X POST \
             -H "Authorization: Bearer ${QUIVER_BEARER_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "{\"ttl_seconds\":${{ needs.resolve.outputs.share_ttl_seconds }}}" \
-            "${QUIVER_API:-https://quiver.oranix.io}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
+            "${HANDS_API:-https://hands.build}/api/apps/${APP_ID}/releases/${RELEASE_ID}/shares")"
           echo "$SHARE_JSON"
           SHARE_URL="$(printf '%s' "$SHARE_JSON" | python3 -c "import json,sys;print(json.load(sys.stdin)['share_url'])")"
           echo "share_url=$SHARE_URL" >> "$GITHUB_OUTPUT"
@@ -501,13 +505,13 @@ jobs:
         if: always()
         run: |
           {
-            echo "### Quiver publish summary"
+            echo "### Hands publish summary"
             echo
             echo "| Field | Value |"
             echo "|---|---|"
             echo "| **APK** | \`${{ needs.build_android_release.outputs.apk_path }}\` |"
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
-            echo "| **Quiver channel** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
+            echo "| **Hands channel** | \`${{ needs.resolve.outputs.quiver_channel }}\` |"
             echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
             echo "| **Release id** | \`${{ steps.publish-quiver-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"
@@ -521,12 +525,12 @@ jobs:
               cat changelog.txt 2>/dev/null || echo "(no changelog generated)"
               echo '\`\`\`'
               echo
-              echo "Publish flow (see quiver docs/release-runbook.md):"
+              echo "Publish flow:"
               echo
               echo '\`\`\`sh'
-              echo "quiver releases show raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
-              echo "quiver releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-file zh=zh.md --changelog-file en=en.md"
-              echo "quiver releases publish raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
+              echo "hands releases show raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
+              echo "hands releases update raft-android ${{ steps.publish-quiver-release.outputs.release_id }} --changelog-file zh=zh.md --changelog-file en=en.md"
+              echo "hands releases publish raft-android ${{ steps.publish-quiver-release.outputs.release_id }}"
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
@@ -566,6 +570,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${VERSION_NAME} (published via Quiver)"
+          git tag -a "${TAG}" -m "Release ${VERSION_NAME} (published via Hands)"
           git push origin "${TAG}"
           echo "Pushed ${TAG} at ${GITHUB_SHA}. (GITHUB_TOKEN push — does not re-trigger the release workflow.)"

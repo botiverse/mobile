@@ -8,10 +8,10 @@ import { SLOCK_OHOS_GIT_COMMIT } from '../kuikly/generated/SlockOhosBuildMetadat
 
 /**
  * App diagnostics for HarmonyOS: local log breadcrumbs + a feedback archive
- * builder used by the Quiver feedback flow.
+ * builder used by the Hands feedback flow.
  *
- * External crash reporting moved — crash capture is handled by the Quiver SDK
- * (QuiverCrashReporter). This keeps the public methods the app relies on
+ * External crash reporting moved — crash capture is handled by the Hands SDK
+ * (HandsCrashReporter). This keeps the public methods the app relies on
  * (record / reportCaughtError / updateScene / exportDiagnosticsText /
  * prepareFeedbackArchivePath), all backed by the local diagnostics logger.
  */
@@ -37,7 +37,7 @@ export class SlockOhosAppDiagnostics {
     return { "status": "ok", "code": "scene_recorded" };
   }
 
-  /** Build the diagnostics feedback archive and return its path (for Quiver upload). */
+  /** Build the diagnostics feedback archive and return its path (for Hands upload). */
   static async prepareFeedbackArchivePath(context: common.UIAbilityContext): Promise<string> {
     const summaryText = SlockOhosAppDiagnostics.exportDiagnosticsText(context);
     const diagnosticFilePath = SlockOhosAppDiagnostics.writeDiagnosticSnapshot(context, summaryText);

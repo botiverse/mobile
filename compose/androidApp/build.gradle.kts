@@ -353,7 +353,7 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
-        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://quiver.oranix.io")}\"")
+        buildConfigField("String", "QUIVER_BASE_URL", "\"${slockBuildConfigString("SLOCK_HANDS_BASE_URL", slockBuildConfigString("SLOCK_QUIVER_BASE_URL", "https://hands.build"))}\"")
         buildConfigField("String", "QUIVER_APP_SLUG", "\"${slockBuildConfigString("SLOCK_QUIVER_APP_SLUG", "raft-android")}\"")
         buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "main")}\"")
         buildConfigField("String", "QUIVER_CLIENT_KEY", "\"${slockBuildConfigString("SLOCK_QUIVER_CLIENT_KEY", "qk_40c9c9ab0b91665c85ca6278f3b0268c08d5afa3")}\"")
@@ -421,7 +421,7 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
             "com.tencent.kuiklybase:resource-core-android",
             "com.tencent.kuikly-open:compose",
             "com.tencent.kuikly-open:compose-android",
-            "io.quiver:quiver-android-updater"
+            "build.hands:hands-android-sdk"
         )
     )
     overridesFile.set(layout.projectDirectory.file("../config/oss-license-overrides.json"))
@@ -484,7 +484,7 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
-    implementation("io.quiver:quiver-android-updater:0.5.0")
+    implementation("build.hands:hands-android-sdk:0.10.1")
     implementation(libs.socket.io.client)
     implementation(libs.androidsvg)
     implementation(libs.mmkv)

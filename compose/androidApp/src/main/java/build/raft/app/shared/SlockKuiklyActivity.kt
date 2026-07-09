@@ -118,11 +118,11 @@ import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
 import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
-import io.quiver.update.QuiverDeviceId
-import io.quiver.update.QuiverFeedback
-import io.quiver.update.QuiverFeedbackException
-import io.quiver.update.internal.QuiverClient
-import io.quiver.update.models.UpdateCheckResponse
+import build.hands.update.HandsDeviceId
+import build.hands.update.HandsFeedback
+import build.hands.update.HandsFeedbackException
+import build.hands.update.internal.HandsClient
+import build.hands.update.models.UpdateCheckResponse
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -3090,7 +3090,7 @@ internal class SlockKuiklyBridgeModule(
                 "webUrl" to current.webUrl,
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
-                "updateCheckDetail" to "Check Quiver channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
+                "updateCheckDetail" to "Check Hands channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
                 "options" to options,
                 "feedback" to feedback.orEmpty()
         )
@@ -3099,7 +3099,7 @@ internal class SlockKuiklyBridgeModule(
     private suspend fun checkQuiverUpdate(install: Boolean = true): Map<String, Any> {
         val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
         val response =
-                QuiverClient(BuildConfig.QUIVER_BASE_URL)
+                HandsClient(BuildConfig.QUIVER_BASE_URL)
                         .checkForUpdate(
                                 slug = BuildConfig.QUIVER_APP_SLUG,
                                 channel = BuildConfig.QUIVER_CHANNEL,
@@ -3108,7 +3108,7 @@ internal class SlockKuiklyBridgeModule(
                                 platform = "android",
                                 arch = arch,
                                 filetype = "apk",
-                                deviceId = QuiverDeviceId.get(appContext)
+                                deviceId = HandsDeviceId.get(appContext)
                         )
         SlockDiagnosticsLogger.record(
                 "SlockQuiverUpdate",
@@ -3127,7 +3127,7 @@ internal class SlockKuiklyBridgeModule(
         val feedback =
                 when {
                     updateAvailable -> "Update available: ${response.latest?.version?.ifBlank { null } ?: "version code ${response.latest?.version_code ?: 0L}"}."
-                    else -> "No Quiver update available on ${BuildConfig.QUIVER_CHANNEL}."
+                    else -> "No Hands update available on ${BuildConfig.QUIVER_CHANNEL}."
                 }
         return loadSettingsDeveloper(feedback = feedback) +
                 mapOf(
@@ -3524,7 +3524,7 @@ internal class SlockKuiklyBridgeModule(
                         "attachmentCount=${attachments.size}"
         )
         return runCatching {
-            val ticketId = QuiverFeedback(
+            val ticketId = HandsFeedback(
                     context = appContext,
                     baseUrl = BuildConfig.QUIVER_BASE_URL,
                     appSlug = BuildConfig.QUIVER_APP_SLUG,
@@ -3540,7 +3540,7 @@ internal class SlockKuiklyBridgeModule(
             // Shareable reference the user can paste into the community channel.
             val shareText = buildQuiverFeedbackShareText(ticketId, description)
             withContext(Dispatchers.Main) {
-                copyText("Quiver feedback", shareText)
+                copyText("Hands feedback", shareText)
                 Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
             }
             SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
@@ -3571,13 +3571,13 @@ internal class SlockKuiklyBridgeModule(
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US)
                         .format(Date())
         return buildString {
-            append("Quiver feedback ").append(ticketId.take(8))
+            append("Hands feedback ").append(ticketId.take(8))
             appendLine()
             append("Ticket: ").append(ticketId)
             appendLine()
             append("Submitted: ").append(utcTime).append(" (local ").append(localTime).append(")")
             appendLine()
-            append("Quiver: slug=").append(BuildConfig.QUIVER_APP_SLUG)
+            append("Hands: slug=").append(BuildConfig.QUIVER_APP_SLUG)
                 .append(", channel=").append(BuildConfig.QUIVER_CHANNEL)
             appendLine()
             appendLine()
@@ -3605,7 +3605,7 @@ internal class SlockKuiklyBridgeModule(
                 }
                 val dialog = AlertDialog.Builder(host)
                         .setTitle("Send feedback")
-                        .setMessage("Your message plus device diagnostics will be sent to Quiver. You'll get a copyable reference to share in the community.")
+                        .setMessage("Your message plus device diagnostics will be sent to Hands. You'll get a copyable reference to share in the community.")
                         .setView(input)
                         .setPositiveButton("Send") { _, _ ->
                             val text = input.text?.toString()?.trim().orEmpty()
@@ -3657,7 +3657,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun quiverFeedbackSubmitErrorCode(throwable: Throwable): String {
-        val httpCode = (throwable as? QuiverFeedbackException)?.code
+        val httpCode = (throwable as? HandsFeedbackException)?.code
         return when {
             httpCode == 401 || httpCode == 403 -> "settings_feedback_auth_failed"
             httpCode == 429 -> "settings_feedback_rate_limited"
