@@ -257,7 +257,8 @@ internal fun SlockSlugInput(
     val shadowOffset = SlockShadow.BrutalSmall
     val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.40f)
     val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.45f)
-    val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f)
+    // react text-black @ fixture opacity-60 over white = #666666, i.e. black @ 0.60 (visual-fix pilot, AI analysis 2026-07-09)
+    val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.60f)
     Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
         if (shadowOffset > 0.dp) {
             Box(
