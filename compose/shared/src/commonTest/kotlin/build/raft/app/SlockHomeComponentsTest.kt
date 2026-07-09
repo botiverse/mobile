@@ -114,6 +114,20 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerBadgeTiltUsesFinalVectorGeometry() {
+        val corners = homeServerBadgeTiltCorners(widthPx = 300f, heightPx = 80f)
+
+        assertEquals(4, corners.size)
+        assertTrue(corners.all { it.x.isFinite() && it.y.isFinite() })
+        assertTrue(corners.minOf { it.x } in -0.01f..0.01f)
+        assertTrue(corners.maxOf { it.x } in 299.99f..300.01f)
+        assertTrue(corners.minOf { it.y } in -0.01f..0.01f)
+        assertTrue(corners.maxOf { it.y } in 79.99f..80.01f)
+        assertTrue(corners[0].y > corners[1].y)
+        assertTrue(corners[3].y > corners[2].y)
+    }
+
+    @Test
     fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
         assertEquals(
             SlockSize.PageHeaderHeight + 4.dp,
