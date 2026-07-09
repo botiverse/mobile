@@ -35,6 +35,7 @@ internal class SlockNetworkAuthMiddleware(
         val refreshed =
             tokenProvider.refreshSession(
                 failedAccessToken = session.accessToken,
+                clearOnUnauthorized = false,
                 reason = "http_401",
                 caller = caller
             )

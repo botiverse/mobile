@@ -4,7 +4,6 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class SlockNetworkAuthMiddlewareTest {
     @Test
@@ -35,12 +34,16 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     @Test
-    fun clearsSessionWhenRefreshTokenIsUnauthorized() = runBlocking {
-        val store = InMemorySlockAuthSessionStore(sampleSession())
+    fun preservesSessionWhenRefreshTokenIsUnauthorized() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "preserve-access", refreshToken = "preserve-refresh")
+            )
         val middleware =
             SlockNetworkAuthMiddleware(
                 store,
                 FakeAuthApi(
+                    refreshTokenAssertion = "preserve-refresh",
                     refreshResult =
                         AuthApiResult.Failure(
                             code = 401,
@@ -53,7 +56,8 @@ class SlockNetworkAuthMiddlewareTest {
             middleware.request { HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""") }
 
         assertEquals(401, response.code)
-        assertNull(store.readSession())
+        assertEquals("preserve-access", store.readSession()?.accessToken)
+        assertEquals("preserve-refresh", store.readSession()?.refreshToken)
     }
 
     @Test
@@ -127,7 +131,8 @@ class SlockNetworkAuthMiddlewareTest {
     }
 
     private class FakeAuthApi(
-        private val refreshResult: AuthApiResult<AuthRefreshResponse>?
+        private val refreshResult: AuthApiResult<AuthRefreshResponse>?,
+        private val refreshTokenAssertion: String = "refresh-token"
     ) : SlockAuthApi {
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             error("not used")
@@ -187,7 +192,7 @@ class SlockNetworkAuthMiddlewareTest {
             error("not used")
 
         override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
-            assertEquals("refresh-token", refreshToken)
+            assertEquals(refreshTokenAssertion, refreshToken)
             return refreshResult ?: error("refresh should not be called")
         }
 

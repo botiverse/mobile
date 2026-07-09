@@ -209,6 +209,34 @@ class SharedAuthTokenProviderTest {
         )
     }
 
+    @Test
+    fun networkMiddlewarePreservesSessionWhenRefreshIsUnauthorized() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                sampleSession(accessToken = "old-access", refreshToken = "old-refresh")
+            )
+        val middleware =
+            SlockNetworkAuthMiddleware(
+                sessionStore = store,
+                authApi =
+                    FakeAuthApi(
+                        refreshTokenAssertion = "old-refresh",
+                        responses =
+                            listOf(
+                                AuthApiResult.Failure(code = 401, errorBodyText = """{"error":"invalid refresh"}""")
+                            )
+                    )
+            )
+
+        val response =
+            middleware.request {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"jwt expired"}""")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals("old-access", store.readSession()?.accessToken)
+    }
+
     private class FakeAuthApi(
         private val refreshTokenAssertion: String,
         private val responses: List<AuthApiResult<AuthRefreshResponse>>,
