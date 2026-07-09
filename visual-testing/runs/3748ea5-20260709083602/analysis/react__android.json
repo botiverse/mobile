@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-09T08:39:23.926Z",
+  "generatedAt": "2026-07-09T08:48:11.072Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 86,
-    "pending": 3
+    "ready": 87,
+    "pending": 2
   },
   "cases": [
     {
@@ -1628,7 +1628,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T08:39:16.196Z",
+      "generatedAt": "2026-07-09T08:48:03.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1921,15 +1921,36 @@
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff87ff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc87d7bffc8007affc8ff7fffc7ff787f847f7898887f780348807823c401780006c77800083f783fc83f780fc980781fc8007b7fc81f7b7fc73e7bffc5307c7c07f17ffe04307fffc4f07e1fc80f780000027cfff40078ffc61f78fc001f2ffffffff",
-      "generatedAt": "2026-07-09T08:39:18.546Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T08:42:14.078Z",
+      "severity": "high",
+      "summary": [
+        "React shows 'Save Profile' button (pink/disabled-looking) while Android shows a 'Retry' button (pink/enabled) — different primary action and behavior in error state",
+        "React renders single error banner 'Avatar upload failed: upload_failed'; Android renders three distinct error banners (avatar upload, profile save, provider link) — Android exposes more error states",
+        "Section title differs: React uses 'ACCOUNT' (uppercase, icon) vs Android 'Profile' (sentence case, person icon)",
+        "Connected accounts state differs: React shows Google 'Connected as artin@slock.ai' and GitHub 'Not connected'; Android shows both Google and GitHub as 'Not connected' with a 'Provider link failed' error",
+        "Field labels differ in casing: React uses 'Name' / 'Display Name' / 'Email' (Title case) vs Android 'NAME' / 'DISPLAY NAME' / 'Email' (uppercase/sentence mixed)"
+      ],
+      "likelyCauses": [
+        "React and Android implementations are wired to different error-code states and render different error banner lists for the same component",
+        "Form labels are not sourced from a shared design-token / typography style — React uses Title Case text styles, Android uses TextAppearance with uppercase",
+        "Connected-accounts mock/fixture data is out of sync between platforms (Google connected in React, not in Android)",
+        "Section headers/icons are mapped differently (React uses 'ACCOUNT' + person outline; Android uses 'Profile' + person icon)",
+        "Retry vs Save action: Android component branches to a Retry button on error while React keeps the Save Profile CTA — divergent error-handling UX"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize label casing across platforms via shared typography token (e.g. use 'Name' / 'Display name' / 'Email' consistently, not ALL CAPS in Android)",
+        "Consolidate error rendering: decide whether one or multiple banners should show and align React + Android to the same contract",
+        "Align primary CTA in error state — either both render 'Save Profile' or both render 'Retry'",
+        "Sync connected-accounts fixture/state so Google connection status matches across React and Android previews",
+        "Unify section header treatment: single label string and single icon for the Account/Profile section"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3112927181647561
     },
     {
@@ -2458,7 +2479,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T08:39:20.429Z",
+      "generatedAt": "2026-07-09T08:48:07.575Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

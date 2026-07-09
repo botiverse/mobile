@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 08:40:03 UTC
+Generated: 2026-07-09 08:48:49 UTC
 Latest run: 3748ea5-20260709083602
 Latest commit: 3748ea5-20260709083602
 Commit subject: fix(ios): add shared iosApp.xcscheme (unblocks iOS build/capture) (#423)
 Providers: react vs android, react vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 82, missing 2
-AI analysis: ready 86 / total 89, pending 3
+AI analysis: ready 87 / total 89, pending 2
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

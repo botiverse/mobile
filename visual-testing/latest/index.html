@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>3748ea5-20260709083602</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-09T08:40:03.581Z" data-timestamp="2026-07-09T08:40:03.581Z" title="2026-07-09T08:40:03.581Z">2026-07-09 08:40:03 UTC</time></p>
+    <p class="runMeta"><code>3748ea5-20260709083602</code> · <strong>react</strong> vs <strong>android</strong> · Generated <time class="localizedTime" datetime="2026-07-09T08:48:49.940Z" data-timestamp="2026-07-09T08:48:49.940Z" title="2026-07-09T08:48:49.940Z">2026-07-09 08:48:49 UTC</time></p>
     <p class="runMeta">Comparisons: <strong>React vs Android</strong> · <a href="react__ios.html">React vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 89</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 5</span>
       <span class="pill">Different 82</span>
       <span class="pill">Missing 2</span>
-      <span class="pill">AI 86/89 ready</span>
+      <span class="pill">AI 87/89 ready</span>
       <span class="pill">Matrix 90/109 active</span>
       <span class="pill">Components Parity 76/80 active</span><span class="pill">Screens Parity 14/29 active</span>
     </div>
@@ -4025,7 +4025,12 @@
       <p><code>RGB 88.5%</code><br/><code>Pixel 68.87%</code><br/><code>Mismatch 31.13%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / viewport-bounds 390×844</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-system</summary>
+    <ul><li>React shows 'Save Profile' button (pink/disabled-looking) while Android shows a 'Retry' button (pink/enabled) — different primary action and behavior in error state</li><li>React renders single error banner 'Avatar upload failed: upload_failed'; Android renders three distinct error banners (avatar upload, profile save, provider link) — Android exposes more error states</li><li>Section title differs: React uses 'ACCOUNT' (uppercase, icon) vs Android 'Profile' (sentence case, person icon)</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize label casing across platforms via shared typography token (e.g. use 'Name' / 'Display name' / 'Email' consistently, not ALL CAPS in Android)</li><li>Consolidate error rendering: decide whether one or multiple banners should show and align React + Android to the same contract</li><li>Align primary CTA in error state — either both render 'Save Profile' or both render 'Retry'</li><li>Sync connected-accounts fixture/state so Google connection status matches across React and Android previews</li><li>Unify section header treatment: single label string and single icon for the Account/Profile section</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.account.error-state.png" data-current-src="android/components.settings.account.error-state.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under Android</summary>
     <div class="overlayControls">

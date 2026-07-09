@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-09T08:40:03.581Z",
+  "generatedAt": "2026-07-09T08:48:49.940Z",
   "runId": "3748ea5-20260709083602",
   "commit": "3748ea5-20260709083602",
   "commitSubject": "fix(ios): add shared iosApp.xcscheme (unblocks iOS build/capture) (#423)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 86,
-        "pending": 3
+        "ready": 87,
+        "pending": 2
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 0,
-        "pending": 89
+        "ready": 80,
+        "pending": 9
       }
     }
   ],
@@ -66,8 +66,8 @@
   },
   "analysisSummary": {
     "total": 89,
-    "ready": 86,
-    "pending": 3
+    "ready": 87,
+    "pending": 2
   },
   "componentMatrixSummary": {
     "total": 109,
