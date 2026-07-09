@@ -81,4 +81,28 @@ class SlockRichTextContractTest {
             document.toGoldenJson()
         )
     }
+
+    @Test
+    fun richTextCapabilitiesTreatMissingAsUnknownAndDivergencesAsMetadata() {
+        val unknown = richTextCapabilities
+        val declared =
+            SlockRichTextCapabilities(
+                consumesDocument = true,
+                consumesChromeTokens = true,
+                declaredDivergences =
+                    listOf(
+                        SlockRichTextDeclaredDivergence(
+                            id = "ios-a-bridge-inline-code",
+                            description = "A bridge keeps temporary inline-code padding until native adapter lands."
+                        )
+                    )
+            )
+
+        assertEquals("SLOCK_RICHTEXT_CAPS", SLOCK_RICHTEXT_CAPS)
+        assertNull(unknown.consumesDocument)
+        assertNull(unknown.hasHitTestAdapter)
+        assertEquals(true, declared.consumesDocument)
+        assertEquals(1, declared.declaredDivergences.size)
+        assertFalse(declared.declaredDivergences.isEmpty())
+    }
 }

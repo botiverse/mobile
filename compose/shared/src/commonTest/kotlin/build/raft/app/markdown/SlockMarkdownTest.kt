@@ -540,10 +540,11 @@ class SlockMarkdownTest {
         )
         assertEquals(
             listOf(
-                SlockMarkdownTagChromeKind.SelfMention.wireValue,
-                SlockMarkdownTagChromeKind.Channel.wireValue,
-                SlockMarkdownTagChromeKind.Thread.wireValue,
-                SlockMarkdownTagChromeKind.Task.wireValue
+                SlockRichTextChromeKind.SelfMention.wireValue,
+                SlockRichTextChromeKind.OrdinaryMention.wireValue,
+                SlockRichTextChromeKind.Channel.wireValue,
+                SlockRichTextChromeKind.Thread.wireValue,
+                SlockRichTextChromeKind.Task.wireValue
             ),
             annotated.slockMarkdownTagChromeAnnotations()
         )
@@ -552,6 +553,53 @@ class SlockMarkdownTest {
                 .contains(SlockMarkdownTagChromeKind.SelfMention.wireValue + ":ordinary")
         )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
+    }
+
+    @Test
+    fun richTextDocumentDrivesRendererChromeAndActions() {
+        val body = "Ping @artin in #visual-testing:0211621f for #438 and `#not-ref`"
+        val document =
+            buildSlockRichTextDocument(
+                body,
+                SlockRichTextContext(
+                    knownChannels = setOf("visual-testing"),
+                    knownMentions = setOf("artin"),
+                    highlightedMentions = setOf("artin")
+                )
+            )
+        var openedAction: SlockRichTextAction? = null
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = document.content,
+                annotator =
+                    slockMarkdownAnnotator(
+                        document = document,
+                        onOpenAction = { action -> openedAction = action }
+                    )
+            )
+        val refTokens = document.inlineTokens.filter { it.kind == SlockRichTextInlineKind.SlockRef }
+        val inlineCode = document.inlineTokens.single { it.kind == SlockRichTextInlineKind.InlineCode }
+        val expectedActionIds = refTokens.mapNotNullTo(mutableSetOf()) { it.actionId }
+
+        assertEquals(setOf("slock:5", "slock:15", "slock:44"), expectedActionIds)
+        assertEquals(expectedActionIds, annotated.slockMarkdownClickableTags())
+        assertEquals(expectedActionIds, annotated.slockMarkdownClickableLinkTags())
+        assertEquals(
+            refTokens.mapNotNull { it.chrome?.wireValue },
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
+        assertEquals("#not-ref", inlineCode.text)
+        assertFalse(annotated.slockMarkdownClickableTags().contains(inlineCode.id))
+
+        val taskAction = document.actions.single { it.refKind == SlockRichTextRefKind.Task }
+        val taskLink =
+            annotated.getLinkAnnotations(0, annotated.length)
+                .map { it.item }
+                .filterIsInstance<LinkAnnotation.Clickable>()
+                .single { it.tag == taskAction.id }
+        taskLink.linkInteractionListener?.onClick(taskLink)
+
+        assertEquals(taskAction, openedAction)
     }
 
     @Test
@@ -574,7 +622,13 @@ class SlockMarkdownTest {
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
         assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
-        assertEquals(listOf(SlockMarkdownTagChromeKind.Task.wireValue), annotated.slockMarkdownTagChromeAnnotations())
+        assertEquals(
+            listOf(
+                SlockRichTextChromeKind.OrdinaryMention.wireValue,
+                SlockRichTextChromeKind.Task.wireValue
+            ),
+            annotated.slockMarkdownTagChromeAnnotations()
+        )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 

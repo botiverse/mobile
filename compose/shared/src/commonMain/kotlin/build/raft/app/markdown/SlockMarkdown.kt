@@ -603,28 +603,49 @@ internal fun slockMarkdownAnnotator(
             inlineContentScope = inlineContentScope
         )
 ): MarkdownAnnotator {
+    val document =
+        buildSlockRichTextDocumentFromMarkdownPlan(
+            source = content,
+            content = content,
+            tokenPlan = tokenPlan,
+            activeTagKey = activeTagKey
+        )
+    return slockMarkdownAnnotator(
+        document = document,
+        onOpenAction = { action -> onOpenTag(action.toThreadMarkdownTag()) },
+        resolveActionLabel =
+            resolveTagLabel?.let { resolver ->
+                { action: SlockRichTextAction -> resolver(action.toThreadMarkdownTag()) }
+            },
+        onDiagnostics = onDiagnostics
+    )
+}
+
+internal fun slockMarkdownAnnotator(
+    document: SlockRichTextDocument,
+    onOpenAction: (SlockRichTextAction) -> Unit = {},
+    resolveActionLabel: ((SlockRichTextAction) -> String?)? = null,
+    onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
+    capabilities: SlockRichTextCapabilities = SlockMarkdownRendererRichTextCapabilities
+): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val plannedInlineTagTokens = tokenPlan.tagTokens()
+    val rendererInput = SlockRichTextRendererInput(document, capabilities)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
-            plannedInlineTagTokens.size,
-            tokenPlan.inlineCodeMatchCount(),
+            rendererInput.slockRefTokenCount,
+            rendererInput.inlineCodeTokenCount,
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
     return markdownAnnotator(
         annotateSequence = { markdownContent, children, startIndex, _ ->
-            consumeSlockMarkdownSplitTagSequence(
+            consumeSlockRichTextSplitTagSequence(
                 markdownContent = markdownContent,
                 children = children,
                 startIndex = startIndex,
-                tokenPlan = tokenPlan,
-                highlightedMentions = highlightedMentions,
-                isTagValid = isTagValid,
-                inlineContentScope = inlineContentScope,
-                activeTagKey = activeTagKey,
-                onOpenTag = onOpenTag,
-                resolveTagLabel = resolveTagLabel
+                rendererInput = rendererInput,
+                onOpenAction = onOpenAction,
+                resolveActionLabel = resolveActionLabel
             )
         },
         annotate = { markdownContent, child, _ ->
@@ -638,16 +659,12 @@ internal fun slockMarkdownAnnotator(
 
             val nodeText = child.getTextInNode(markdownContent).toString()
             val nodeStart = child.startOffset
-            appendSlockMarkdownTextSegment(
+            appendSlockRichTextSegment(
                 text = nodeText,
                 documentOffset = nodeStart,
-                tokenPlan = tokenPlan,
-                highlightedMentions = highlightedMentions,
-                isTagValid = isTagValid,
-                inlineContentScope = inlineContentScope,
-                activeTagKey = activeTagKey,
-                onOpenTag = onOpenTag,
-                resolveTagLabel = resolveTagLabel
+                rendererInput = rendererInput,
+                onOpenAction = onOpenAction,
+                resolveActionLabel = resolveActionLabel
             )
         },
         inlineContent = { emptyMap() },
@@ -655,23 +672,58 @@ internal fun slockMarkdownAnnotator(
     )
 }
 
-private data class SlockMarkdownSplitTagStart(
-    val token: MarkdownInlineToken,
+private data class SlockRichTextRendererInput(
+    val document: SlockRichTextDocument,
+    val capabilities: SlockRichTextCapabilities
+) {
+    private val slockRefTokens: List<SlockRichTextInlineToken> =
+        document.inlineTokens
+            .filter { token -> token.kind == SlockRichTextInlineKind.SlockRef && token.actionId != null }
+            .sortedBy { token -> token.range.start }
+    private val actionsById: Map<String, SlockRichTextAction> =
+        document.actions.associateBy { action -> action.id }
+
+    val slockRefTokenCount: Int = slockRefTokens.size
+    val inlineCodeTokenCount: Int =
+        document.inlineTokens.count { token -> token.kind == SlockRichTextInlineKind.InlineCode }
+
+    fun actionFor(token: SlockRichTextInlineToken): SlockRichTextAction? =
+        token.actionId?.let(actionsById::get)
+
+    fun slockRefTokensStartingInRange(start: Int, endExclusive: Int): List<SlockRichTextInlineToken> =
+        slockRefTokens.filter { token ->
+            token.range.start >= start && token.range.start < endExclusive && token.range.endExclusive <= endExclusive
+        }
+
+    fun slockRefTokensStartingInTextNode(start: Int, endExclusive: Int): List<SlockRichTextInlineToken> =
+        slockRefTokens.filter { token ->
+            token.range.start >= start && token.range.start < endExclusive
+        }
+
+    fun slockRefTokensMatchingText(text: String, minStart: Int): List<SlockRichTextInlineToken> {
+        val matches =
+            slockRefTokens.filter { token ->
+                token.range.start >= minStart && token.sourceText.isNotEmpty() && text.contains(token.sourceText)
+            }
+        return matches.ifEmpty {
+            slockRefTokens.filter { token -> token.sourceText.isNotEmpty() && text.contains(token.sourceText) }
+        }
+    }
+}
+
+private data class SlockRichTextSplitTagStart(
+    val token: SlockRichTextInlineToken,
     val relativeStart: Int,
     val consumedPrefix: String
 )
 
-private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
+private fun AnnotatedString.Builder.consumeSlockRichTextSplitTagSequence(
     markdownContent: String,
     children: List<ASTNode>,
     startIndex: Int,
-    tokenPlan: MarkdownInlineTokenPlan,
-    highlightedMentions: Set<String>,
-    isTagValid: (ThreadMarkdownTag) -> Boolean,
-    inlineContentScope: String?,
-    activeTagKey: String?,
-    onOpenTag: (ThreadMarkdownTag) -> Unit,
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+    rendererInput: SlockRichTextRendererInput,
+    onOpenAction: (SlockRichTextAction) -> Unit,
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?
 ): Int {
     val child = children.getOrNull(startIndex) ?: return 0
     if (child.parent?.type == MarkdownElementTypes.CODE_SPAN || child.type != MarkdownTokenTypes.TEXT) {
@@ -679,9 +731,9 @@ private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
     }
     val nodeText = child.getTextInNode(markdownContent).toString()
     val nodeStart = child.startOffset
-    val splitStart = nodeText.slockMarkdownSplitTagStart(nodeStart, tokenPlan) ?: return 0
+    val splitStart = nodeText.slockRichTextSplitTagStart(nodeStart, rendererInput) ?: return 0
     var consumedCount = 1
-    var remaining = splitStart.token.label.drop(splitStart.consumedPrefix.length)
+    var remaining = splitStart.token.sourceText.drop(splitStart.consumedPrefix.length)
     var tailText: String? = null
     var tailDocumentOffset = 0
     var nextIndex = startIndex + 1
@@ -707,91 +759,75 @@ private fun AnnotatedString.Builder.consumeSlockMarkdownSplitTagSequence(
 
     val prefixEnd = splitStart.relativeStart
     if (prefixEnd > 0) {
-        appendSlockMarkdownTextSegmentOrText(
+        appendSlockRichTextSegmentOrText(
             text = nodeText.substring(0, prefixEnd),
             documentOffset = nodeStart,
-            tokenPlan = tokenPlan,
-            highlightedMentions = highlightedMentions,
-            isTagValid = isTagValid,
-            inlineContentScope = inlineContentScope,
-            activeTagKey = activeTagKey,
-            onOpenTag = onOpenTag,
-            resolveTagLabel = resolveTagLabel
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel
         )
     }
-    appendSlockMarkdownTagToken(
+    appendSlockRichTextToken(
         token = splitStart.token,
-        activeTagKey = activeTagKey,
-        onOpenTag = onOpenTag,
-        resolveTagLabel = resolveTagLabel
+        rendererInput = rendererInput,
+        onOpenAction = onOpenAction,
+        resolveActionLabel = resolveActionLabel
     )
     tailText?.let { tail ->
-        appendSlockMarkdownTextSegmentOrText(
+        appendSlockRichTextSegmentOrText(
             text = tail,
             documentOffset = tailDocumentOffset,
-            tokenPlan = tokenPlan,
-            highlightedMentions = highlightedMentions,
-            isTagValid = isTagValid,
-            inlineContentScope = inlineContentScope,
-            activeTagKey = activeTagKey,
-            onOpenTag = onOpenTag,
-            resolveTagLabel = resolveTagLabel
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel
         )
     }
     return consumedCount
 }
 
-private fun AnnotatedString.Builder.appendSlockMarkdownTextSegmentOrText(
+private fun AnnotatedString.Builder.appendSlockRichTextSegmentOrText(
     text: String,
     documentOffset: Int,
-    tokenPlan: MarkdownInlineTokenPlan,
-    highlightedMentions: Set<String>,
-    isTagValid: (ThreadMarkdownTag) -> Boolean,
-    inlineContentScope: String?,
-    activeTagKey: String?,
-    onOpenTag: (ThreadMarkdownTag) -> Unit,
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+    rendererInput: SlockRichTextRendererInput,
+    onOpenAction: (SlockRichTextAction) -> Unit,
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?
 ) {
-    if (!appendSlockMarkdownTextSegment(
+    if (!appendSlockRichTextSegment(
             text = text,
             documentOffset = documentOffset,
-            tokenPlan = tokenPlan,
-            highlightedMentions = highlightedMentions,
-            isTagValid = isTagValid,
-            inlineContentScope = inlineContentScope,
-            activeTagKey = activeTagKey,
-            onOpenTag = onOpenTag,
-            resolveTagLabel = resolveTagLabel
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel
         )
     ) {
         append(text)
     }
 }
 
-private fun String.slockMarkdownSplitTagStart(
+private fun String.slockRichTextSplitTagStart(
     nodeStart: Int,
-    tokenPlan: MarkdownInlineTokenPlan
-): SlockMarkdownSplitTagStart? {
+    rendererInput: SlockRichTextRendererInput
+): SlockRichTextSplitTagStart? {
     val nodeEndExclusive = nodeStart + length
-    return tokenPlan
-        .tagTokensStartingInRange(nodeStart, nodeEndExclusive)
+    return rendererInput
+        .slockRefTokensStartingInTextNode(nodeStart, nodeEndExclusive)
         .firstNotNullOfOrNull { token ->
-            val relativeStartFromRange = token.range.first - nodeStart
+            val relativeStartFromRange = token.range.start - nodeStart
             val relativeStart =
                 if (relativeStartFromRange in indices) {
                     relativeStartFromRange
                 } else {
                     indices.firstOrNull { index ->
                         val char = this[index]
-                        (char == '#' || char == '@') && token.label.startsWith(substring(index))
+                        (char == '#' || char == '@') && token.sourceText.startsWith(substring(index))
                     } ?: return@firstNotNullOfOrNull null
                 }
             val available = substring(relativeStart)
             if (available.isNotEmpty() &&
-                token.label.startsWith(available) &&
-                available.length < token.label.length
+                token.sourceText.startsWith(available) &&
+                available.length < token.sourceText.length
             ) {
-                SlockMarkdownSplitTagStart(
+                SlockRichTextSplitTagStart(
                     token = token,
                     relativeStart = relativeStart,
                     consumedPrefix = available
@@ -802,31 +838,21 @@ private fun String.slockMarkdownSplitTagStart(
         }
 }
 
-private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
+private fun AnnotatedString.Builder.appendSlockRichTextSegment(
     text: String,
     documentOffset: Int,
-    tokenPlan: MarkdownInlineTokenPlan,
-    highlightedMentions: Set<String>,
-    isTagValid: (ThreadMarkdownTag) -> Boolean,
-    inlineContentScope: String?,
-    activeTagKey: String?,
-    onOpenTag: (ThreadMarkdownTag) -> Unit,
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+    rendererInput: SlockRichTextRendererInput,
+    onOpenAction: (SlockRichTextAction) -> Unit,
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?
 ): Boolean {
-    val documentTokens = tokenPlan.tagTokensStartingInRange(documentOffset, documentOffset + text.length)
+    val documentTokens = rendererInput.slockRefTokensStartingInRange(documentOffset, documentOffset + text.length)
     val localTokens =
         if (documentTokens.isEmpty()) {
             // Some markdown-renderer paths, including list-item paragraphs,
-            // expose child offsets in a local node coordinate space.
-            SlockMarkdownInlineTokenRegistry
-                .plan(
-                    text,
-                    highlightedMentions,
-                    isTagValid,
-                    inlineContentScope = inlineContentScope,
-                    baseOffset = documentOffset
-                )
-                .tagTokens()
+            // expose child offsets in a local node coordinate space. Match
+            // already-built IR tokens back to that text instead of reparsing
+            // Slock refs in the renderer adapter.
+            rendererInput.slockRefTokensMatchingText(text, minStart = documentOffset)
         } else {
             emptyList()
         }
@@ -838,24 +864,24 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
     tokens.forEach { token ->
         val relativeRange =
             if (useDocumentOffsets) {
-                (token.range.first - documentOffset)..(token.range.last - documentOffset)
+                (token.range.start - documentOffset) until (token.range.endExclusive - documentOffset)
             } else {
-                token.range
+                0 until text.length
             }
-        val sourceStart = text.indexOf(token.label, startIndex = cursor).takeIf { it >= 0 }
+        val sourceStart = text.indexOf(token.sourceText, startIndex = cursor).takeIf { it >= 0 }
         val relativeStart = sourceStart ?: relativeRange.first
         val relativeEndExclusive =
-            (sourceStart?.let { it + token.label.length } ?: (relativeRange.last + 1))
+            (sourceStart?.let { it + token.sourceText.length } ?: relativeRange.last + 1)
                 .coerceAtMost(text.length)
         if (relativeStart < cursor || relativeStart !in text.indices) return@forEach
         if (relativeStart > cursor) {
             append(text.substring(cursor, relativeStart))
         }
-        appendSlockMarkdownTagToken(
+        appendSlockRichTextToken(
             token = token,
-            activeTagKey = activeTagKey,
-            onOpenTag = onOpenTag,
-            resolveTagLabel = resolveTagLabel
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel
         )
         cursor = relativeEndExclusive
     }
@@ -863,22 +889,21 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTextSegment(
     return true
 }
 
-private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
-    token: MarkdownInlineToken,
-    activeTagKey: String?,
-    onOpenTag: (ThreadMarkdownTag) -> Unit,
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)?
+private fun AnnotatedString.Builder.appendSlockRichTextToken(
+    token: SlockRichTextInlineToken,
+    rendererInput: SlockRichTextRendererInput,
+    onOpenAction: (SlockRichTextAction) -> Unit,
+    resolveActionLabel: ((SlockRichTextAction) -> String?)?
 ) {
-    val tag = token.tag ?: return append(token.label)
+    val action = rendererInput.actionFor(token) ?: return append(token.text)
     val label =
-        resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
-            ?: threadMarkdownTagDisplayLabel(tag.label)
+        resolveActionLabel?.invoke(action)?.takeIf { it.isNotBlank() }
+            ?: token.text
     pushStringAnnotation(
         tag = SlockMarkdownTagAnnotationTag,
-        annotation = token.id
+        annotation = action.id
     )
-    val active = activeTagKey != null && activeTagKey == threadMarkdownTagActivationKey(tag)
-    val chromeKind = slockMarkdownTagChromeKind(tag.kind, highlighted = token.highlighted, active = active)
+    val chromeKind = token.chrome
     if (chromeKind != null) {
         pushStringAnnotation(
             tag = SlockMarkdownTagChromeAnnotationTag,
@@ -887,9 +912,9 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
     }
     withLink(
         LinkAnnotation.Clickable(
-            tag = token.id,
-            styles = slockMarkdownTagLinkStyles(tag.kind, highlighted = token.highlighted, active = active),
-            linkInteractionListener = LinkInteractionListener { onOpenTag(tag) }
+            tag = action.id,
+            styles = slockMarkdownRichTextTagLinkStyles(chromeKind),
+            linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
         )
     ) {
         append(label)
@@ -899,6 +924,20 @@ private fun AnnotatedString.Builder.appendSlockMarkdownTagToken(
     }
     pop()
 }
+
+private fun SlockRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
+    ThreadMarkdownTag(
+        label = label,
+        kind =
+            when (refKind) {
+                SlockRichTextRefKind.Channel -> ThreadMarkdownTagKind.Channel
+                SlockRichTextRefKind.Thread -> ThreadMarkdownTagKind.ChannelThread
+                SlockRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
+                SlockRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
+            },
+        channelName = channelName,
+        threadShortId = threadShortId
+    )
 
 private object SlockMarkdownTextProvider : TextProvider {
     @Composable
@@ -1078,6 +1117,16 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
 internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
+internal val SlockMarkdownRendererRichTextCapabilities =
+    SlockRichTextCapabilities(
+        consumesDocument = true,
+        consumesChromeTokens = true,
+        consumesActions = true,
+        consumesStyleTokens = true,
+        hasMeasurementAdapter = true,
+        hasDrawAdapter = true,
+        hasHitTestAdapter = true
+    )
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this
@@ -1264,12 +1313,21 @@ fun SlockMarkdownBody(
             inlineContentScope = inlineContentScope
         )
     }
+    val richTextDocument: SlockRichTextDocument = remember(body, parserContent, tokenPlan, activeTagKey) {
+        buildSlockRichTextDocumentFromMarkdownPlan(
+            source = body,
+            content = parserContent,
+            tokenPlan = tokenPlan,
+            activeTagKey = activeTagKey
+        )
+    }
     if (performanceKey != null) {
         performanceLogger(
             "thread_markdown_body key=$performanceKey contentLength=${content.length} " +
                 "parserHash=${parserContent.hashCode().toString(16)} highlighted=${highlightedMentions.size} " +
-                "tokenCount=${tokenPlan.tokens.size} tagTokens=${tokenPlan.tagTokens().size} " +
-                "inlineCode=${tokenPlan.inlineCodeMatchCount()} scope=${inlineContentScope.orEmpty()}"
+                "tokenCount=${richTextDocument.inlineTokens.size} tagTokens=${richTextDocument.actions.size} " +
+                "inlineCode=${richTextDocument.inlineTokens.count { it.kind == SlockRichTextInlineKind.InlineCode }} " +
+                "scope=${inlineContentScope.orEmpty()}"
         )
     }
     if (performanceKey != null) {
@@ -1279,24 +1337,22 @@ fun SlockMarkdownBody(
             bodyLength = content.length,
             extra =
                 "key=$performanceKey " +
-                    "tokens=${tokenPlan.tokens.size} " +
-                    "tagTokens=${tokenPlan.tagTokens().size} " +
-                    "inlineCode=${tokenPlan.inlineCodeMatchCount()} " +
+                    "tokens=${richTextDocument.inlineTokens.size} " +
+                    "tagTokens=${richTextDocument.actions.size} " +
+                    "inlineCode=${richTextDocument.inlineTokens.count { it.kind == SlockRichTextInlineKind.InlineCode }} " +
                     "scope=${inlineContentScope.orEmpty()}"
         )
     }
-    val annotator = remember(parserContent, highlightedMentions, activeTagKey, performanceKey, tokenPlan) {
+    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey) {
         slockMarkdownAnnotator(
-            parserContent,
-            highlightedMentions = highlightedMentions,
-            isTagValid = isTagValid,
-            inlineContentScope = inlineContentScope,
-            activeTagKey = activeTagKey,
-            onOpenTag = { tag -> currentOnOpenTag(tag) },
-            resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) },
+            document = richTextDocument,
+            onOpenAction = { action: SlockRichTextAction -> currentOnOpenTag(action.toThreadMarkdownTag()) },
+            resolveActionLabel = { action: SlockRichTextAction ->
+                currentResolveTagLabel?.invoke(action.toThreadMarkdownTag())
+            },
             onDiagnostics =
                 performanceKey?.let { key ->
-                    { inlineTagCount, inlineCodeCount, durationMs ->
+                    { inlineTagCount: Int, inlineCodeCount: Int, durationMs: Long ->
                         if (shouldLogSlockMarkdownPerformance(durationMs)) {
                             performanceLogger(
                                 "thread_markdown_prepare stage=annotator key=$key " +
@@ -1305,8 +1361,7 @@ fun SlockMarkdownBody(
                             )
                         }
                     }
-                },
-            tokenPlan = tokenPlan
+                }
         )
     }
     if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -1712,3 +1767,28 @@ internal fun slockMarkdownTagLinkStyles(
         pressedStyle = pressedStyle
     )
 }
+
+internal fun slockMarkdownRichTextTagLinkStyles(
+    chromeKind: SlockRichTextChromeKind?
+): TextLinkStyles {
+    val defaultStyle = slockMarkdownRichTextTagSpanStyle(chromeKind)
+    val pressedStyle = slockMarkdownRichTextTagSpanStyle(SlockRichTextChromeKind.Active)
+    return TextLinkStyles(
+        style = defaultStyle,
+        pressedStyle = pressedStyle
+    )
+}
+
+private fun slockMarkdownRichTextTagSpanStyle(
+    chromeKind: SlockRichTextChromeKind?
+): SpanStyle =
+    when (chromeKind) {
+        SlockRichTextChromeKind.Active,
+        SlockRichTextChromeKind.SelfMention -> slockMarkdownSelfMentionChipSpanStyle()
+        SlockRichTextChromeKind.Channel,
+        SlockRichTextChromeKind.Thread,
+        SlockRichTextChromeKind.Task,
+        SlockRichTextChromeKind.OrdinaryMention,
+        SlockRichTextChromeKind.InlineCode,
+        null -> slockMarkdownTagUnderlineSpanStyle()
+    }
