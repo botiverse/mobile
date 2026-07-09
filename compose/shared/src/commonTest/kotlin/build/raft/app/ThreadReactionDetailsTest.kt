@@ -51,3 +51,120 @@ class ThreadReactionDetailsTest {
         assertEquals("4 people", threadReactionDetailsLabel(emptyList(), count = 4))
     }
 }
+
+// task #569 follow-up: reactor names arrive empty on the addReaction mutation
+// summary / reduced payloads even when reactor ids are present, so the tooltip
+// degraded to "1 person" right after tapping. resolveThreadReactorNames
+// backfills names from the thread member directory on-device.
+class ResolveThreadReactorNamesTest {
+    private val members = mapOf("u1" to "Alice", "u2" to "Bob", "self" to "Artin")
+
+    @Test
+    fun serverProvidedNamesArePreserved() {
+        assertEquals(
+            listOf("Alice", "Bob"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("u1", "u2"),
+                reactorNames = listOf("Alice", "Bob"),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun selfReactionResolvesFromDirectoryWhenNamesEmpty() {
+        // The addReaction summary named nobody but carried the current user's id.
+        assertEquals(
+            listOf("Artin"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("self"),
+                reactorNames = emptyList(),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun namesAndIdsMergeWithoutDuplicates() {
+        // Server named Alice; Bob only came through as an id — union, deduped.
+        assertEquals(
+            listOf("Alice", "Bob"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("u1", "u2"),
+                reactorNames = listOf("Alice"),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun unknownIdsAreSkippedSoTheLabelCanFallBackToCount() {
+        // Reactor not in the roster — leave it out; the "+K" remainder in
+        // threadReactionDetailsLabel still reflects the true count.
+        assertEquals(
+            emptyList<String>(),
+            resolveThreadReactorNames(
+                reactorIds = listOf("ghost"),
+                reactorNames = emptyList(),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun blankIdsAndNamesAreDropped() {
+        assertEquals(
+            listOf("Alice"),
+            resolveThreadReactorNames(
+                reactorIds = listOf(" ", "u1"),
+                reactorNames = listOf("  "),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun selfReactionResolvesFromSessionEvenWhenNotInRoster() {
+        // First principles: the current user's own name is authoritative from
+        // the session, so a self-reaction must resolve even if the thread roster
+        // is incomplete and doesn't list them.
+        assertEquals(
+            listOf("Me"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("stranger-self"),
+                reactorNames = emptyList(),
+                memberNameById = emptyMap(),
+                currentUserId = "stranger-self",
+                currentUserName = "Me"
+            )
+        )
+    }
+
+    @Test
+    fun dedupIsByReactorIdNotDisplayName() {
+        // Dedup is anchored on reactor identity: a repeated id collapses to one,
+        // and the true count is preserved for the label's "+K" remainder.
+        assertEquals(
+            listOf("Alice", "Bob"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("u1", "u1", "u2"),
+                reactorNames = listOf("Alice", "Alice", "Bob"),
+                memberNameById = members
+            )
+        )
+    }
+
+    @Test
+    fun sessionNameTakesPrecedenceOverRosterForCurrentUser() {
+        assertEquals(
+            listOf("Me", "Alice"),
+            resolveThreadReactorNames(
+                reactorIds = listOf("self", "u1"),
+                reactorNames = emptyList(),
+                memberNameById = members,
+                currentUserId = "self",
+                currentUserName = "Me"
+            )
+        )
+    }
+}

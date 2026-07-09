@@ -3621,10 +3621,12 @@ internal class SharedThreadStore(
     }
 
     private suspend fun applyMessageMutation(summary: MessageMutationSummary) {
-        val currentUserId = dataSource.readSession()?.user?.id
+        val session = dataSource.readSession()
+        val currentUserId = session?.user?.id
+        val currentUserName = session?.user?.bestDisplayName
         confirmReactionRealtimeGuards(summary, currentUserId)
         val currentPayload = _state.value.payload
-        val canonicalPayload = currentPayload.withMessageMutationSummary(summary, currentUserId)
+        val canonicalPayload = currentPayload.withMessageMutationSummary(summary, currentUserId, currentUserName)
         val selected =
             dataSource
                 .cacheCanonicalPayload(canonicalPayload)
@@ -5057,7 +5059,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
         }
     val shouldUpdateTimeline = matchesTimeline || matchesThreadContent
     if (!matchesOrigin && !shouldUpdateTimeline) return this
-    val reactionUpdate = message.reactions.toRealtimeThreadReactionItems(currentUserId)
+    val reactionUpdate = message.reactions.toRealtimeThreadReactionItems(currentUserId, threadReactorNameById())
     val updatedMessages =
         if (shouldUpdateTimeline) {
             messages.map { item ->
@@ -5269,13 +5271,28 @@ internal fun KuiklyThreadScreenPayload.withSavedMessageIds(savedIds: Set<String>
         originMessage = originMessage?.let { message -> message.copy(isSaved = message.id in savedIds) }
     )
 
+// task #569 follow-up: id -> display name over the thread's known members
+// (roster + mention candidates) so reaction-tooltip name resolution can backfill
+// reactor ids the mutation/realtime payload didn't name. The current user is in
+// this roster, so their own just-added reaction resolves without a server round.
+private fun KuiklyThreadScreenPayload.threadReactorNameById(): Map<String, String> {
+    val byId = LinkedHashMap<String, String>()
+    (members + memberCandidates).forEach { member ->
+        val id = member.id.trim()
+        val name = member.displayName.trim()
+        if (id.isNotBlank() && name.isNotBlank() && !byId.containsKey(id)) byId[id] = name
+    }
+    return byId
+}
+
 private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
     summary: MessageMutationSummary,
-    currentUserId: String?
+    currentUserId: String?,
+    currentUserName: String? = null
 ): KuiklyThreadScreenPayload {
     val messageId = summary.messageId.trim()
     if (messageId.isBlank()) return this
-    val reactions = summary.reactions.toThreadReactionItems(currentUserId)
+    val reactions = summary.reactions.toThreadReactionItems(currentUserId, threadReactorNameById(), currentUserName)
     return copy(
         messages = messages.map { message ->
             if (message.id == messageId) message.copy(reactions = reactions.orderedLike(message.reactions)) else message
@@ -5358,7 +5375,59 @@ private fun KuiklyThreadMessageItem.withReactionSelection(emoji: String, selecte
     return copy(reactions = nextReactions)
 }
 
-private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: String?): List<KuiklyThreadReactionItem> =
+// task #569 follow-up: the who-reacted tooltip reads reactorNames off the
+// KuiklyThreadReactionItem. The server's initial GET already carries names
+// (messageService enrichWithSenderNames), but the addReaction mutation summary
+// and any reduced payload can arrive with reactorNames empty while reactorIds
+// is populated — so right after you tap a reaction the tooltip degraded to the
+// bare "1 person" count. Resolve display names on-device (no server change):
+// keep any server-provided names, then resolve remaining reactor ids: the
+// current user's own id from the session identity (authoritative, always known
+// regardless of roster completeness) and everyone else from the thread member
+// directory. So a just-added self-reaction shows the name immediately, and
+// other reactors resolve whenever they're in the roster. Degrades to the honest
+// count when neither a name nor a resolvable id is available.
+internal fun resolveThreadReactorNames(
+    reactorIds: List<String>,
+    reactorNames: List<String>,
+    memberNameById: Map<String, String>,
+    currentUserId: String? = null,
+    currentUserName: String? = null
+): List<String> {
+    val cleanSelfId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    val cleanSelfName = currentUserName?.trim()?.takeIf { it.isNotBlank() }
+    // Identity is the source of truth: dedup by reactor id (two distinct people
+    // who happen to share a display name each count), then map each id to a name
+    // — self from the session, others from the index-aligned server name or the
+    // member directory. Unresolvable ids are dropped; the tooltip label's "+K"
+    // remainder (max(count, names)) still reflects the true reactor count.
+    val resolved = LinkedHashSet<String>()
+    if (reactorIds.isEmpty()) {
+        // Older/edge payload with names but no ids to anchor to — dedup by name.
+        reactorNames.forEach { name -> name.trim().takeIf { it.isNotBlank() }?.let(resolved::add) }
+        return resolved.toList()
+    }
+    val seenIds = HashSet<String>()
+    reactorIds.forEachIndexed { index, rawId ->
+        val id = rawId.trim()
+        if (id.isBlank() || !seenIds.add(id)) return@forEachIndexed
+        val name =
+            if (id == cleanSelfId && cleanSelfName != null) {
+                cleanSelfName
+            } else {
+                reactorNames.getOrNull(index)?.trim()?.takeIf { it.isNotBlank() }
+                    ?: memberNameById[id]?.trim()?.takeIf { it.isNotBlank() }
+            }
+        name?.let(resolved::add)
+    }
+    return resolved.toList()
+}
+
+private fun List<MessageReactionSummary>.toThreadReactionItems(
+    currentUserId: String?,
+    memberNameById: Map<String, String> = emptyMap(),
+    currentUserName: String? = null
+): List<KuiklyThreadReactionItem> =
     mapNotNull { reaction ->
         val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
@@ -5367,7 +5436,18 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: St
             count = count,
             selected = currentUserId != null && currentUserId in reaction.reactorIds,
             reactorIds = reaction.reactorIds,
-            reactorNames = reaction.reactorNames
+            reactorNames =
+                if (memberNameById.isEmpty() && currentUserName.isNullOrBlank()) {
+                    reaction.reactorNames
+                } else {
+                    resolveThreadReactorNames(
+                        reaction.reactorIds,
+                        reaction.reactorNames,
+                        memberNameById,
+                        currentUserId,
+                        currentUserName
+                    )
+                }
         )
     }
 
@@ -5377,7 +5457,10 @@ private val PendingReactionRealtimeGuard.key: String
 private fun List<KuiklyThreadReactionItem>.selectedForEmoji(emoji: String): Boolean =
     any { reaction -> reaction.emoji == emoji && reaction.selected && reaction.count > 0 }
 
-private fun List<MessageReaction>?.toRealtimeThreadReactionItems(currentUserId: String?): List<KuiklyThreadReactionItem>? =
+private fun List<MessageReaction>?.toRealtimeThreadReactionItems(
+    currentUserId: String?,
+    memberNameById: Map<String, String> = emptyMap()
+): List<KuiklyThreadReactionItem>? =
     this?.mapNotNull { reaction ->
         val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
@@ -5386,7 +5469,12 @@ private fun List<MessageReaction>?.toRealtimeThreadReactionItems(currentUserId: 
             count = count,
             selected = currentUserId != null && currentUserId in reaction.reactorIds,
             reactorIds = reaction.reactorIds,
-            reactorNames = reaction.reactorNames
+            reactorNames =
+                if (memberNameById.isEmpty()) {
+                    reaction.reactorNames
+                } else {
+                    resolveThreadReactorNames(reaction.reactorIds, reaction.reactorNames, memberNameById)
+                }
         )
     }
 
