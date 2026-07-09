@@ -4,7 +4,7 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -29,7 +29,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             "SlockBoot",
             "main_activity_created " +
                 "source=${intent.slockLaunchSource()} " +
@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             "SlockBoot",
             "main_activity_new_intent " +
                 "source=${intent.slockLaunchSource()} " +
@@ -294,7 +294,7 @@ internal fun mobileOAuthLegalAcceptancePageData(
         .put(SlockKuiklyRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 private fun logSharedAuthDiagnostics(message: String) {
-    SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")
+    SlockAppLog.d("SlockKuikly", "shared_auth $message")
 }
 
 internal fun Intent?.shouldClearTaskForSharedShell(): Boolean =

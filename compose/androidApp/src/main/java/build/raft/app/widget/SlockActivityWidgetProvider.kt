@@ -3,7 +3,7 @@ package build.raft.app.widget
 import build.raft.app.MainActivity
 import build.raft.app.R
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.network.RealSlockNetworkClientFactory
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -139,7 +139,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                 runCatching {
                     RealChannelRepository(sessionStore, networkClient).getHome(serverId)
                 }.getOrElse { throwable ->
-                    SlockDiagnosticsLogger.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}")
+                    SlockAppLog.w(TAG, "home refresh failed: ${throwable.javaClass.simpleName}")
                     return previous.asStale("Could not refresh")
                 }
             val home = when (homeResult) {

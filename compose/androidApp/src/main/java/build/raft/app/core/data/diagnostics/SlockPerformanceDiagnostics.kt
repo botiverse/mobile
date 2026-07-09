@@ -48,7 +48,7 @@ object SlockPerformanceDiagnostics {
                     if (!frameData.isJank) return@createAndTrack
                     val total = jankFrameCount.incrementAndGet()
                     updateLongestFrame(durationMs)
-                    SlockDiagnosticsLogger.w(
+                    SlockAppLog.w(
                             Tag,
                             "jank_frame route=${route.get()} operation=${operation.get()} " +
                                     "durationMs=$durationMs totalJank=$total " +
@@ -57,13 +57,13 @@ object SlockPerformanceDiagnostics {
                     )
                 }
         jankStats?.isTrackingEnabled = true
-        SlockDiagnosticsLogger.d(Tag, "jankstats_enabled")
+        SlockAppLog.d(Tag, "jankstats_enabled")
     }
 
     fun updateRoute(view: View, nextRoute: String) {
         val sanitized = nextRoute.takeIf { it.isNotBlank() } ?: "unknown"
         if (route.getAndSet(sanitized) != sanitized) {
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                     Tag,
                     "route route=$sanitized operation=${operation.get()} " +
                             "jank=${jankFrameCount.get()} longestFrameMs=${longestFrameMs.get()}"
@@ -134,7 +134,7 @@ object SlockPerformanceDiagnostics {
         }
         updateRoute(view, sanitizedRoute)
         updateOperation(view, sanitizedPhase)
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
                 Tag,
                 buildString {
                     append("marker route=")
@@ -162,7 +162,7 @@ object SlockPerformanceDiagnostics {
     fun beginTrace(operationName: String): ActiveTrace {
         val traceName = operationName.take(TraceNameLimit)
         Trace.beginSection(traceName)
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
                 Tag,
                 "operation_start operation=$operationName route=${route.get()}"
         )
@@ -181,7 +181,7 @@ object SlockPerformanceDiagnostics {
                     } else {
                         "operation_finish"
                     }
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                     Tag,
                     "$level operation=$operationName route=${route.get()} durationMs=$durationMs " +
                             "jank=${jankFrameCount.get()} longestFrameMs=${longestFrameMs.get()}"
@@ -191,7 +191,7 @@ object SlockPerformanceDiagnostics {
     }
 
     fun summary(reason: String) {
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
                 Tag,
                 "summary reason=$reason route=${route.get()} operation=${operation.get()} " +
                         "jank=${jankFrameCount.get()} longestFrameMs=${longestFrameMs.get()}"
@@ -213,7 +213,7 @@ object SlockPerformanceDiagnostics {
                 return
             }
             val eventIndex = ThreadHostTraversalTraceCount - pending.remainingEvents + 1
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                     Tag,
                     "thread_host_traversal marker=${pending.markerPhase} event=$eventIndex " +
                             "stage=$stage durationUs=$durationMicros width=$width height=$height " +
@@ -259,7 +259,7 @@ object SlockPerformanceDiagnostics {
                 return
             }
             val frameIndex = TabSwitchFrameTraceCount - pending.remainingFrames + 1
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                     Tag,
                     "tab_switch_frame route=${pending.route} operation=${pending.operation} " +
                             "frame=$frameIndex durationMs=$durationMs isJank=$isJank states=$states"
@@ -284,7 +284,7 @@ object SlockPerformanceDiagnostics {
                 return
             }
             val frameIndex = ThreadHostFrameTraceCount - pending.remainingFrames + 1
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                     Tag,
                     "thread_host_frame marker=${pending.markerPhase} frame=$frameIndex " +
                             "durationMs=$durationMs isJank=$isJank states=$states " +

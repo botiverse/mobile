@@ -594,7 +594,7 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 - 06-25: 06-24 publish `2057eb39-20260624065206` (52 / 50 different / 2 basic-pass)
 
 **Gap**:
-- 06-23: Diagnostics page polish (KMP `AndroidAppScopeRealtimeOwner` + `SlockDiagnosticsLogger` 链)
+- 06-23: Diagnostics page polish (KMP `AndroidAppScopeRealtimeOwner` + `SlockAppLog` 链)
 - 06-25:
   - P0 status resolution (per spec v2 #68)
   - P0 freshness reconcile (per spec v2 #68)

@@ -1,7 +1,7 @@
 package build.raft.app.core.data.network
 
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.createSlockNetworkClient
@@ -19,7 +19,7 @@ object RealSlockNetworkClientFactory {
         createSlockNetworkClient(
             sessionStore = store,
             baseUrl = baseUrl,
-            warningLogger = { message -> SlockDiagnosticsLogger.w(TAG, message) }
+            warningLogger = { message -> SlockAppLog.w(TAG, message) }
         )
 
     private const val TAG = "SlockNetworkClient"

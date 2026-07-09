@@ -449,26 +449,6 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 
-    private fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
-        val entriesJson = optJSONArray("entries")
-        val entries =
-            buildList {
-                if (entriesJson != null) {
-                    for (index in 0 until entriesJson.length()) {
-                        val entry = entriesJson.optJSONObject(index) ?: continue
-                        add(
-                            SharedSettingsDiagnosticsEntry(
-                                timestampLabel = entry.optString("timestampLabel"),
-                                tag = entry.optString("tag"),
-                                message = entry.optString("message")
-                            )
-                        )
-                    }
-                }
-            }
-        return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
-    }
-
     private fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
         val optionsJson = optJSONArray("options")
         val options =
@@ -589,6 +569,30 @@ internal class BridgeSettingsPlatformCapabilities(
             message = optString("message")
         )
     }
+}
+
+internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
+    val entriesJson =
+        optJSONArray("entries")
+            ?: optString("entriesJson")
+                .takeIf { it.isNotBlank() }
+                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+    val entries =
+        buildList {
+            if (entriesJson != null) {
+                for (index in 0 until entriesJson.length()) {
+                    val entry = entriesJson.optJSONObject(index) ?: continue
+                    add(
+                        SharedSettingsDiagnosticsEntry(
+                            timestampLabel = entry.optString("timestampLabel"),
+                            tag = entry.optString("tag"),
+                            message = entry.optString("message")
+                        )
+                    )
+                }
+            }
+        }
+    return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
 }
 
 internal fun CoroutineScope.kuiklyBridgeCallContext(): CoroutineContext =

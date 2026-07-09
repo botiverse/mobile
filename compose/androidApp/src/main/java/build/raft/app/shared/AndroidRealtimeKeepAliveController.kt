@@ -2,7 +2,7 @@ package build.raft.app.shared
 
 import android.content.Context
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.data.NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.SlockLocalPreferenceStore
 import com.tencent.mmkv.MMKV
@@ -14,7 +14,7 @@ internal object AndroidRealtimeKeepAliveController {
         val appContext = context.applicationContext
         if (!isForegroundKeepAliveEnabled(appContext)) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("preference_disabled")
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                 LOG_TAG,
                 "start_skipped_preference_disabled source=$source"
             )
@@ -22,7 +22,7 @@ internal object AndroidRealtimeKeepAliveController {
         }
         if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext)) {
             AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                 LOG_TAG,
                 "start_skipped_no_session source=$source"
             )
@@ -51,7 +51,7 @@ internal object AndroidRealtimeKeepAliveController {
                 ) ?: store.decodeString(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false")
             value == "true"
         }.getOrElse { error ->
-            SlockDiagnosticsLogger.w(
+            SlockAppLog.w(
                 LOG_TAG,
                 "preference_read_failed message=${error.message.orEmpty()}"
             )

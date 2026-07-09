@@ -7,7 +7,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.network.AndroidNetworkPrewarmController
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -76,9 +76,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 )
                 networkCallbackInstalled = true
                 publishCurrentNetworkStatus(appContext, source = "network_callback_initial")
-                SlockDiagnosticsLogger.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
+                SlockAppLog.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
             }.onFailure { error ->
-                SlockDiagnosticsLogger.w(
+                SlockAppLog.w(
                     LOG_TAG,
                     "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
                 )
@@ -95,7 +95,7 @@ internal object AndroidAppScopeRealtimeOwner {
         lastHiddenAtMillis = null
         appVisibility = AppVisibility.Foreground
         realtimeRuntime?.onAppShown()
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
@@ -107,7 +107,7 @@ internal object AndroidAppScopeRealtimeOwner {
             val runtime = realtimeRuntime
             val ownedSession = runtime?.ownedSession()
             if (runtime != null && ownedSession != null) {
-                SlockDiagnosticsLogger.d(
+                SlockAppLog.d(
                     LOG_TAG,
                     "foreground_reconnect_request reason=long_background source=$source " +
                         "backgroundMs=${shownAtMillis - (hiddenAtMillis ?: shownAtMillis)} " +
@@ -132,7 +132,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
         realtimeRuntime?.onAppHidden()
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
@@ -144,7 +144,7 @@ internal object AndroidAppScopeRealtimeOwner {
         source: String = "unknown"
     ) {
         backgroundKeepAliveEnabled = true
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
         )
@@ -171,7 +171,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun disableBackgroundKeepAlive(reason: String = "unknown") {
         if (!backgroundKeepAliveEnabled) return
         backgroundKeepAliveEnabled = false
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
         )
@@ -210,7 +210,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         )
                     var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
-                        SlockDiagnosticsLogger.w(
+                        SlockAppLog.w(
                             LOG_TAG,
                             "connect_skip reason=missing_selected_server retry=$missingSelectedServerRetryCount"
                         )
@@ -223,7 +223,7 @@ internal object AndroidAppScopeRealtimeOwner {
                                 )
                             serverId = session?.currentServerId?.let(::ServerId)
                             if (serverId == null) {
-                                SlockDiagnosticsLogger.w(
+                                SlockAppLog.w(
                                     LOG_TAG,
                                     "connect_skip reason=missing_selected_server retry=${missingSelectedServerRetryCount + 1}"
                                 )
@@ -234,7 +234,7 @@ internal object AndroidAppScopeRealtimeOwner {
                     val accessToken =
                         session?.accessToken?.takeIf { it.isNotBlank() }
                             ?: run {
-                                SlockDiagnosticsLogger.w(
+                                SlockAppLog.w(
                                     LOG_TAG,
                                     "connect_skip reason=missing_access_token serverId=${serverId.value}"
                                 )
@@ -261,14 +261,14 @@ internal object AndroidAppScopeRealtimeOwner {
         forceReconnect: Boolean
     ) {
         if (serverId.value.isBlank() || accessToken.isBlank()) {
-            SlockDiagnosticsLogger.w(
+            SlockAppLog.w(
                 LOG_TAG,
                 "connect_skip reason=blank_request serverId=${serverId.value} has_access_token=${accessToken.isNotBlank()}"
             )
             connectFromStoredSession(context, requestedLastSeq)
             return
         }
-        SlockDiagnosticsLogger.w(
+        SlockAppLog.w(
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
         )
@@ -291,7 +291,7 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     fun onNetworkAvailable(context: Context) {
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
@@ -324,7 +324,7 @@ internal object AndroidAppScopeRealtimeOwner {
     }
 
     fun onNetworkLost(context: Context) {
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=network_lost visibility=$appVisibility"
         )
@@ -342,7 +342,7 @@ internal object AndroidAppScopeRealtimeOwner {
         reason: String
     ) {
         if (appVisibility != AppVisibility.Foreground && !allowBackground) {
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_skip reason=app_background trigger=$reason"
             )
@@ -352,7 +352,7 @@ internal object AndroidAppScopeRealtimeOwner {
         val runtime = realtimeRuntime
         val ownedSession = runtime?.ownedSession()
         if (client == null || ownedSession == null) {
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_missing_owner_session trigger=$reason"
             )
@@ -361,7 +361,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         val serverId = ownedSession.serverId
         if (client.checkHeartbeatSilence()) {
-            SlockDiagnosticsLogger.d(
+            SlockAppLog.d(
                 LOG_TAG,
                 "realtime_health_check_reconnect reason=heartbeat_silent trigger=$reason serverId=${serverId.value}"
             )
@@ -372,13 +372,13 @@ internal object AndroidAppScopeRealtimeOwner {
             is RealtimeConnectionState.Failed -> reconnectOwnedSession(context, serverId, ownedSession.accessToken, state)
             RealtimeConnectionState.Connected,
             RealtimeConnectionState.RoomsJoined -> {
-                SlockDiagnosticsLogger.d(
+                SlockAppLog.d(
                     LOG_TAG,
                     "realtime_health_check_skip reason=already_connected trigger=$reason state=${state::class.simpleName} serverId=${serverId.value}"
                 )
             }
             RealtimeConnectionState.Connecting ->
-                SlockDiagnosticsLogger.d(
+                SlockAppLog.d(
                     LOG_TAG,
                     "realtime_health_check_skip reason=connecting trigger=$reason serverId=${serverId.value}"
                 )
@@ -388,7 +388,7 @@ internal object AndroidAppScopeRealtimeOwner {
     fun disconnectForSessionEnd(reason: String) {
         val cleanReason = reason.takeIf { it.isNotBlank() } ?: "shared_disconnect"
         if (!SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason(cleanReason)) {
-            SlockDiagnosticsLogger.w(
+            SlockAppLog.w(
                 LOG_TAG,
                 "disconnect_ignored reason=$cleanReason"
             )
@@ -436,7 +436,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             requestedLastSeq = runtime.lastSeq,
                             forceReconnect = true
                         )
-                    SlockDiagnosticsLogger.d(
+                    SlockAppLog.d(
                         LOG_TAG,
                         "foreground_reconnect_result state=${state::class.simpleName} serverId=${serverId.value} result=${result::class.simpleName}"
                     )
@@ -454,7 +454,7 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         if (!force && hostNetworkOnline == online) return
         hostNetworkOnline = online
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "app_scope_lifecycle event=host_network_status online=$online source=$source"
         )
@@ -537,12 +537,12 @@ internal object AndroidAppScopeRealtimeOwner {
                 SlockAuthApiClient(
                     SharedSlockAuthTransport(
                         baseUrl = apiBaseUrl,
-                        warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                        warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
                     )
                 ),
             clockMillis = { System.currentTimeMillis() },
-            logger = { message -> SlockDiagnosticsLogger.d(LOG_TAG, message) },
-            warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+            logger = { message -> SlockAppLog.d(LOG_TAG, message) },
+            warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
         )
     }
 }

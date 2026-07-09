@@ -76,8 +76,9 @@ import build.raft.app.core.data.auth.AndroidMobileOAuthPendingRequest
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
-import build.raft.app.core.data.diagnostics.SlockAndroidAppDiagnostics
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAndroidLocalDiagnostics
+import build.raft.app.core.data.diagnostics.SlockAuthCriticalJournal
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.diagnostics.SlockPerformanceDiagnostics
 import build.raft.app.core.data.storage.StorageClearTarget
 import build.raft.app.core.data.storage.StorageManagementRepository
@@ -251,13 +252,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
-        SlockAndroidAppDiagnostics.reportAppFullLaunch()
+        SlockAndroidLocalDiagnostics.reportAppFullLaunch()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockKuiklyActivity",
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
         )
@@ -392,7 +393,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         executeMode: KuiklyRenderCoreExecuteModeBase
     ) {
         super.onUnhandledException(throwable, errorReason, executeMode)
-        SlockAndroidAppDiagnostics.reportCaughtException(
+        SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyUnhandledException",
             throwable = throwable,
             extraData =
@@ -412,7 +413,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     ) {
         super.onPageLoadComplete(isSucceed, errorReason, executeMode)
         if (isSucceed) return
-        SlockDiagnosticsLogger.e(
+        SlockAppLog.e(
             "SlockKuiklyHost",
             "page_load_failed reason=${errorReason?.name ?: "unknown"} mode=${executeMode.mode}"
         )
@@ -645,7 +646,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun handleThreadAttachmentPickerResult(uris: List<Uri>, persistable: Boolean = false) {
         val pending = pendingThreadAttachmentUpload ?: return
         pendingThreadAttachmentUpload = null
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockKuiklyAttachment",
                 "picker_result uriCount=${uris.size}"
         )
@@ -659,7 +660,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         lifecycleScope.launch(Dispatchers.IO) {
             val result = readThreadPlatformPickedFiles(uris)
             withContext(Dispatchers.Main) {
-                SlockDiagnosticsLogger.record(
+                SlockAppLog.record(
                         "SlockKuiklyAttachment",
                         "picker_callback_deliver code=${result["code"]} thread=${Thread.currentThread().name}"
                 )
@@ -677,7 +678,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         )
                     }
                     .onFailure { throwable ->
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockKuiklyAttachment",
                                 "picker_persist_permission_failed uriScheme=${uri.scheme.orEmpty()} error=${throwable.javaClass.simpleName}"
                         )
@@ -703,7 +704,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                         .put("errorCode", "attachment_read_failed")
                                         .put("message", throwable.message ?: "Attachment read failed")
                         )
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockKuiklyAttachment",
                                 "picker_file_read_failed index=$index uriScheme=${uri.scheme.orEmpty()} error=${throwable.javaClass.simpleName}"
                         )
@@ -730,7 +731,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             .put("source", "platform_picker")
             )
         }
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockKuiklyAttachment",
                 "picker_files_ready fileCount=${files.size} bytes=${files.sumOf { it.sizeBytes ?: 0L }}"
         )
@@ -788,7 +789,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             runCatching { targetFile.delete() }
             throw IOException("Unable to read attachment")
         }
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockKuiklyAttachment",
                 "picker_cached_file uriScheme=${uri.scheme.orEmpty()} fileName=${fileName.take(80)} bytes=${targetFile.length()}"
         )
@@ -988,14 +989,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             "enter" -> {
                 SlockPerformanceDiagnostics.updateRoute(container, cleanScene)
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_enter")
-                SlockAndroidAppDiagnostics.enterScene(cleanScene)
+                SlockAndroidLocalDiagnostics.enterScene(cleanScene)
             }
             "exit" -> {
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_exit")
-                SlockAndroidAppDiagnostics.exitScene(cleanScene)
+                SlockAndroidLocalDiagnostics.exitScene(cleanScene)
             }
             else ->
-                    SlockDiagnosticsLogger.w(
+                    SlockAppLog.w(
                             "SlockPerfScene",
                             "unknown_action action=$action scene=$cleanScene"
                     )
@@ -1210,7 +1211,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                     KEY_DIAGNOSTICS_DEEP_LINK_AUTO_CLOSE_MS,
                                     intent?.getLongExtra("auto_close_ms", 0L)?.coerceAtLeast(0L) ?: 0L
                             )
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockDiagnostics",
                     "diagnostics_deeplink_received " +
                             "enableProfiler=${pageData.optBoolean(KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER, false)} " +
@@ -1348,7 +1349,7 @@ internal object SlockKuiklyAdapters {
         installAndroidAppScopeEventBus(context)
         SlockAndroidSqlDatabaseContext.init(context)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
-            SlockDiagnosticsLogger.record(tag, message)
+            SlockAppLog.record(tag, message)
         }
         if (initialized) {
             return
@@ -1464,7 +1465,7 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
 private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
     override fun uncaughtException(throwable: Throwable) {
         Log.e("SlockKuikly", "Kuikly render error", throwable)
-        SlockAndroidAppDiagnostics.reportCaughtException(
+        SlockAndroidLocalDiagnostics.reportCaughtException(
             name = "KuiklyRenderException",
             throwable = throwable,
             extraData =
@@ -1677,7 +1678,7 @@ private class SlockKuiklyImageAdapter(
                         // Bundled asset paths carry no user data, so log the path itself:
                         // a missing/broken packaged asset is otherwise invisible (task #335
                         // reaction atlas debugging on artin's device hit exactly this).
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockImageLoad",
                                 "source=assets status=failed type=${throwable::class.java.simpleName} " +
                                         "path=${imageLoadOption.src.removePrefix(HRImageLoadOption.SCHEME_ASSETS)} " +
@@ -1784,7 +1785,7 @@ private class SlockKuiklyImageAdapter(
                     return null
                 }
         cacheNetworkBitmap(imageLoadOption.src, bitmap)
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=network status=decoded bytes=${bytes.size} contentType=${contentType ?: "unknown"} " +
                         "bitmapWidth=${bitmap.width} bitmapHeight=${bitmap.height} " +
@@ -1878,7 +1879,7 @@ private class SlockKuiklyImageAdapter(
             byteCount: Int,
             contentType: String?
     ) {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=network status=bytes bytes=$byteCount contentType=${contentType ?: "unknown"} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
@@ -1891,7 +1892,7 @@ private class SlockKuiklyImageAdapter(
             byteCount: Int,
             contentType: String?
     ) {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=network status=decode_failed bytes=$byteCount contentType=${contentType ?: "unknown"} " +
                         "requestWidth=${imageLoadOption.requestWidth} requestHeight=${imageLoadOption.requestHeight} " +
@@ -1900,7 +1901,7 @@ private class SlockKuiklyImageAdapter(
     }
 
     private fun recordImageLoadFailure(sourceKind: String, imageLoadOption: HRImageLoadOption, throwable: Throwable) {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockImageLoad",
                 "source=$sourceKind status=failed type=${throwable::class.java.simpleName} " +
                         "message=${throwable.safeImageLoadMessage()} " +
@@ -2082,7 +2083,7 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
-                SlockAndroidAppDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
+                SlockAndroidLocalDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
                 null
             }
             "copyToPasteboard" -> {
@@ -2199,7 +2200,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun kuiklyPerformanceSnapshot(params: String?) {
-        SlockAndroidAppDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
+        SlockAndroidLocalDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
 
     private fun toast(params: String?): Any? {
@@ -2540,7 +2541,7 @@ internal class SlockKuiklyBridgeModule(
                                     checkQuiverUpdate(install = install)
                                 }
                                 .getOrElse { throwable ->
-                                    SlockDiagnosticsLogger.record(
+                                    SlockAppLog.record(
                                             "SlockQuiverUpdate",
                                             "check_failed action=$action base=${BuildConfig.QUIVER_BASE_URL} " +
                                                     "error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
@@ -2556,7 +2557,7 @@ internal class SlockKuiklyBridgeModule(
             return
         }
         if (action == "sendFeedback" || action == "submitFeedback") {
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockDiagnostics",
                     "settings_capability_feedback_action action=$action hasMessage=${request.optString("message").isNotBlank()} " +
                             "fileCount=${request.optJSONArray("files")?.length() ?: 0}"
@@ -2564,7 +2565,7 @@ internal class SlockKuiklyBridgeModule(
             val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
             scope.launch {
                 val result = submitFeedbackToQuiver(request.takeIf { action == "submitFeedback" })
-                SlockDiagnosticsLogger.record(
+                SlockAppLog.record(
                         "SlockDiagnostics",
                         "settings_capability_feedback_result action=$action status=${result["status"]} code=${result["code"] ?: "-"}"
                 )
@@ -2582,7 +2583,7 @@ internal class SlockKuiklyBridgeModule(
             scope.launch(Dispatchers.IO) {
                 val startedAt = System.currentTimeMillis()
                 val cached = SlockReleaseNotesDocumentCache(appContext).prefetch(url)
-                SlockDiagnosticsLogger.record(
+                SlockAppLog.record(
                         "SlockReleaseNotes",
                         "prefetch_result cached=$cached durationMs=${System.currentTimeMillis() - startedAt} " +
                                 binaryDownloadUrlDiagnostics(url)
@@ -2604,7 +2605,7 @@ internal class SlockKuiklyBridgeModule(
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
-                            SlockDiagnosticsLogger.record(
+                            SlockAppLog.record(
                                     "SlockDiagnostics",
                                     "shared_recomposition_profiler_enabled=$enabled"
                             )
@@ -2612,7 +2613,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                         "copyDiagnostics" -> {
                             copyText("Raft diagnostics", buildMergedSettingsDiagnosticsExportText())
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_diagnostics")
+                            SlockAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
                             mapOf("status" to "ok")
                         }
                         "shareDiagnostics" -> {
@@ -2620,12 +2621,12 @@ internal class SlockKuiklyBridgeModule(
                                     subject = "Raft diagnostics",
                                     text = buildMergedSettingsDiagnosticsExportText()
                             )
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_share_diagnostics")
+                            SlockAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
                             mapOf("status" to "ok")
                         }
                         "clearDiagnostics" -> {
-                            SlockAndroidAppDiagnostics.clearLocalDiagnosticsFiles(appContext)
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_logs_cleared")
+                            SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
+                            SlockAppLog.record("SlockDiagnostics", "shared_logs_cleared")
                             mapOf("status" to "ok")
                         }
                         "prepareDiagnosticsFeedback" -> {
@@ -2814,7 +2815,7 @@ internal class SlockKuiklyBridgeModule(
         val repository = StorageManagementRepository(appContext)
         val snapshot = repository.clear(clearTarget)
         if (clearTarget == StorageClearTarget.TemporaryAndLogs) {
-            SlockAndroidAppDiagnostics.clearLocalDiagnosticsFiles(appContext)
+            SlockAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
         }
         val feedback =
                 when (clearTarget) {
@@ -2822,7 +2823,7 @@ internal class SlockKuiklyBridgeModule(
                     StorageClearTarget.AttachmentDownloads -> "Downloaded files cleared."
                     StorageClearTarget.TemporaryAndLogs -> "Temporary files and diagnostics logs cleared."
                 }
-        SlockDiagnosticsLogger.record("SlockStorage", "shared_clear target=$target")
+        SlockAppLog.record("SlockStorage", "shared_clear target=$target")
         return loadSettingsStorage(snapshot = snapshot, feedback = feedback)
     }
 
@@ -2952,7 +2953,7 @@ internal class SlockKuiklyBridgeModule(
                     REQUEST_NOTIFICATIONS_CODE
             )
         }
-        SlockDiagnosticsLogger.record("SlockSettingsNotification", "permission_request_dialog_opened")
+        SlockAppLog.record("SlockSettingsNotification", "permission_request_dialog_opened")
         return true
     }
 
@@ -3034,7 +3035,7 @@ internal class SlockKuiklyBridgeModule(
                             }
                         }
                         .getOrElse { throwable ->
-                            SlockDiagnosticsLogger.record(
+                            SlockAppLog.record(
                                     "SlockSettings",
                                     "open_source_licenses_load_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                             )
@@ -3046,7 +3047,7 @@ internal class SlockKuiklyBridgeModule(
         val payload =
                 runCatching { JSONObject(payloadText) }
                         .getOrElse { throwable ->
-                            SlockDiagnosticsLogger.record(
+                            SlockAppLog.record(
                                     "SlockSettings",
                                     "open_source_licenses_parse_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                             )
@@ -3110,7 +3111,7 @@ internal class SlockKuiklyBridgeModule(
                                 filetype = "apk",
                                 deviceId = HandsDeviceId.get(appContext)
                         )
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockQuiverUpdate",
                 "check status=ok slug=${BuildConfig.QUIVER_APP_SLUG} channel=${BuildConfig.QUIVER_CHANNEL} " +
                         "current=${BuildConfig.VERSION_CODE} latest=${response.latest?.version_code ?: response.latest_version_code ?: 0} available=${response.requireUpdate() != null}"
@@ -3180,7 +3181,7 @@ internal class SlockKuiklyBridgeModule(
                     }
                 }
                 .getOrElse { error ->
-                    SlockDiagnosticsLogger.record(
+                    SlockAppLog.record(
                             "SlockQuiverUpdate",
                             "install_failed slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} error=${error.javaClass.simpleName}"
                     )
@@ -3229,7 +3230,7 @@ internal class SlockKuiklyBridgeModule(
                         val status = quiverDownloadStatus(downloadManager, completedId)
                         if (status == DownloadManager.STATUS_SUCCESSFUL) {
                             quiverUpdateDownloads[key]?.completed = true
-                            SlockDiagnosticsLogger.record(
+                            SlockAppLog.record(
                                     "SlockQuiverUpdate",
                                     "download_ready downloadId=$completedId latest=${latest.version_code}"
                             )
@@ -3242,7 +3243,7 @@ internal class SlockKuiklyBridgeModule(
                             }
                         } else {
                             quiverUpdateDownloads[key]?.failed = true
-                            SlockDiagnosticsLogger.record(
+                            SlockAppLog.record(
                                     "SlockQuiverUpdate",
                                     "download_failed downloadId=$completedId status=$status"
                             )
@@ -3307,7 +3308,7 @@ internal class SlockKuiklyBridgeModule(
                 quiverUpdateDownloads[key]
                         ?: run {
                             if (quiverUpdateDownloads.isNotEmpty()) {
-                                SlockDiagnosticsLogger.record(
+                                SlockAppLog.record(
                                         "SlockQuiverUpdate",
                                         "download_state_miss key=$key tracked=${quiverUpdateDownloads.size}"
                                 )
@@ -3322,7 +3323,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun QuiverUpdateDownload.toDownloadingInstallResult(response: UpdateCheckResponse): QuiverInstallResult {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockQuiverUpdate",
                 "download_queued slug=${BuildConfig.QUIVER_APP_SLUG} latest=${response.latest?.version_code ?: 0} assetSize=${response.asset?.size_bytes ?: 0} downloadId=$downloadId"
         )
@@ -3435,7 +3436,7 @@ internal class SlockKuiklyBridgeModule(
                 )
             }
             AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockDeveloper",
                     "api_environment_changed from=${before.key} to=${after.key}"
             )
@@ -3452,7 +3453,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun onApiEnvironmentChanged(request: JSONObject): Map<String, Any> {
         AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockDeveloper",
                 "api_environment_changed from=${request.optString("beforeEnvironmentKey")} to=${request.optString("afterEnvironmentKey")}"
         )
@@ -3462,17 +3463,25 @@ internal class SlockKuiklyBridgeModule(
     private fun loadSettingsDiagnostics(): Map<String, Any> {
         val entries =
                 JSONArray().also { array ->
-                    array.put(
-                            JSONObject()
-                                    .put("timestampLabel", System.currentTimeMillis().toString())
-                                    .put("tag", "SlockDiagnostics")
-                                    .put(
-                                            "message",
-                                            "App diagnostics log is disabled. Send diagnostics exports app-owned JSONL logs."
-                                    )
-                    )
+                    val journalEntries = SlockAuthCriticalJournal.recentEntries(appContext)
+                    journalEntries.forEach { entry ->
+                        array.put(
+                                JSONObject()
+                                        .put("timestampLabel", entry.timestampLabel)
+                                        .put("tag", "${entry.tag}/${entry.event}")
+                                        .put("message", entry.message)
+                        )
+                    }
+                    if (journalEntries.isEmpty()) {
+                        array.put(
+                                JSONObject()
+                                        .put("timestampLabel", System.currentTimeMillis().toString())
+                                        .put("tag", "SlockAuth")
+                                        .put("message", "No auth critical events have been recorded yet.")
+                        )
+                    }
                 }
-        return mapOf("status" to "ok", "entries" to entries)
+        return mapOf("status" to "ok", "entriesJson" to entries.toString())
     }
 
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
@@ -3483,7 +3492,7 @@ internal class SlockKuiklyBridgeModule(
      * created so the settings UI can confirm.
      */
     private suspend fun submitFeedbackToQuiver(request: JSONObject? = null): Map<String, Any> {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockDiagnostics",
                 "quiver_feedback_submit_enter source=${if (request != null) "shared" else "native_prompt"} " +
                         "messageLength=${request?.optString("message")?.length ?: 0} " +
@@ -3492,7 +3501,7 @@ internal class SlockKuiklyBridgeModule(
         val description = request?.optString("message")?.trim()?.takeIf { it.isNotBlank() }
             ?: promptFeedbackDescription()
             ?: return mapOf("status" to "cancelled").also {
-                SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submit_cancelled reason=blank_or_cancelled")
+                SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submit_cancelled reason=blank_or_cancelled")
             }
         val userFilesResult =
                 withContext(Dispatchers.IO) {
@@ -3500,7 +3509,7 @@ internal class SlockKuiklyBridgeModule(
                 }
         val userFiles =
                 userFilesResult.getOrElse { throwable ->
-                    SlockDiagnosticsLogger.record(
+                    SlockAppLog.record(
                             "SlockDiagnostics",
                             "quiver_feedback_attachment_prepare_failed error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                     )
@@ -3517,7 +3526,7 @@ internal class SlockKuiklyBridgeModule(
                     null
                 }
         val attachments = (userFiles + listOfNotNull(diagnosticsFile)).take(QUIVER_FEEDBACK_MAX_ATTACHMENTS)
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 "SlockDiagnostics",
                 "quiver_feedback_submit_prepared messageLength=${description.length} " +
                         "userAttachmentCount=${userFiles.size} diagnosticsAttached=${diagnosticsFile != null} " +
@@ -3543,10 +3552,10 @@ internal class SlockKuiklyBridgeModule(
                 copyText("Hands feedback", shareText)
                 Toast.makeText(appContext, "Copied — paste it in the community.", Toast.LENGTH_LONG).show()
             }
-            SlockDiagnosticsLogger.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
+            SlockAppLog.record("SlockDiagnostics", "quiver_feedback_submitted ticket=${ticketId.take(8)}")
             mapOf<String, Any>("status" to "ok", "ticketId" to ticketId, "shareText" to shareText)
         }.getOrElse {
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockDiagnostics",
                     "quiver_feedback_submit_failed error=${it.javaClass.simpleName} message=${it.message ?: "-"}"
             )
@@ -3626,8 +3635,8 @@ internal class SlockKuiklyBridgeModule(
 
     private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
         val summaryText = buildMergedSettingsDiagnosticsExportText()
-        val archive = SlockAndroidAppDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
-        SlockAndroidAppDiagnostics.uploadDiagnostics(
+        val archive = SlockAndroidLocalDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
+        SlockAndroidLocalDiagnostics.uploadDiagnostics(
                 context = appContext,
                 attachment = archive,
                 summary = "settings_feedback"
@@ -3638,7 +3647,7 @@ internal class SlockKuiklyBridgeModule(
     private fun prepareOptionalDiagnosticsFeedbackFile(): File? {
         return runCatching { writeDiagnosticsFeedbackFile().file }
                 .getOrElse { throwable ->
-                    SlockDiagnosticsLogger.record(
+                    SlockAppLog.record(
                             "SlockDiagnostics",
                             "quiver_feedback_diagnostics_prepare_skipped error=${throwable.javaClass.simpleName} message=${throwable.message ?: "-"}"
                     )
@@ -3647,7 +3656,7 @@ internal class SlockKuiklyBridgeModule(
                 ?.takeIf { file ->
                     val fits = file.length() in 1..QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES
                     if (!fits) {
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockDiagnostics",
                                 "quiver_feedback_diagnostics_attachment_skipped bytes=${file.length()} max=$QUIVER_FEEDBACK_MAX_ATTACHMENT_BYTES"
                         )
@@ -3775,16 +3784,16 @@ internal class SlockKuiklyBridgeModule(
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
-        val recentLogs = SlockAndroidAppDiagnostics.exportRecentDiagnosticsText(appContext)
+        val recentLogs = SlockAndroidLocalDiagnostics.exportRecentDiagnosticsText(appContext)
         return formatMergedSettingsDiagnosticsExportText(
                 about = about,
                 recentLogs = recentLogs,
-                hasFallbackDiagnosticsLogs = SlockAndroidAppDiagnostics.hasFallbackDiagnosticsLogs(appContext)
+                hasFallbackDiagnosticsLogs = SlockAndroidLocalDiagnostics.hasFallbackDiagnosticsLogs(appContext)
         )
     }
 
     private fun recordSettingsDiagnosticsEnvironment(about: Map<String, Any>) {
-        SlockAndroidAppDiagnostics.recordLog(
+        SlockAndroidLocalDiagnostics.recordLog(
                 "info",
                 "SlockDiagnostics",
                 "environment app=${about.stringValue("appName").ifBlank { "Raft" }} " +
@@ -3886,7 +3895,7 @@ internal class SlockKuiklyBridgeModule(
                                         }
                         )
                     }.getOrElse { throwable ->
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockAttachmentOpen",
                                 "attachmentId=${request.optString("attachmentId").take(8)} status=failed type=${throwable::class.java.simpleName} durationMs=${System.currentTimeMillis() - startedAt}"
                         )
@@ -4037,7 +4046,7 @@ internal class SlockKuiklyBridgeModule(
         val handlers = appContext.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         if (handlers.isEmpty() && !isPackageArchive) {
             showToast("No app can open this attachment")
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=no_app mimeType=$openMimeType durationMs=${System.currentTimeMillis() - startedAt}"
             )
@@ -4072,7 +4081,7 @@ internal class SlockKuiklyBridgeModule(
                         }
                 appContext.startActivity(chooser)
             }
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${!needsDownload} durationMs=${System.currentTimeMillis() - startedAt}"
             )
@@ -4475,7 +4484,7 @@ internal class SlockKuiklyBridgeModule(
             if (!canRequestPackageInstalls(context)) {
                 pendingQuiverAutoInstallKey = download.key
                 openUnknownAppSourcesSettings(context)
-                SlockDiagnosticsLogger.record(
+                SlockAppLog.record(
                         "SlockQuiverUpdate",
                         "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
                 )
@@ -4488,7 +4497,7 @@ internal class SlockKuiklyBridgeModule(
                         QUIVER_INSTALL_OPENED
                     }
                     .getOrElse { error ->
-                        SlockDiagnosticsLogger.record(
+                        SlockAppLog.record(
                                 "SlockQuiverUpdate",
                                 "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
                         )
@@ -4517,7 +4526,7 @@ internal class SlockKuiklyBridgeModule(
                         putExtra(Intent.EXTRA_RETURN_RESULT, false)
                     }
             context.startActivity(installIntent)
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockQuiverUpdate",
                     "install_intent_opened downloadId=$downloadId uriScheme=${downloadedUri.scheme.orEmpty()}"
             )
@@ -4696,7 +4705,7 @@ private enum class SlockBridgeLogLevel {
 }
 
 private fun logSharedAuthDiagnostics(message: String) {
-    SlockDiagnosticsLogger.d("SlockKuikly", "shared_auth $message")
+    SlockAppLog.d("SlockKuikly", "shared_auth $message")
 }
 
 internal fun JSONObject.toMap(): Map<String, Any> {

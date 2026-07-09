@@ -14,13 +14,17 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 
-object SlockFileDiagnosticsLogger {
+private const val DiagnosticsLogMaxTotalMiB = 30L
+
+/** Ordinary persistent JSONL sink. Routing and auth-critical classification happen upstream. */
+object SlockGeneralLogRing {
     private const val LogDirName = "slock_diagnostics_logs"
     private const val LogFileName = "slock-diagnostics.jsonl"
     private const val LegacyLogFileName = "slock-diagnostics.log"
-    private const val LogMaxBytes = 512L * 1024L
-    private const val LogMaxFiles = 12
-    private const val LogExportMaxFiles = 12
+    private const val LogMaxBytes = 1L * 1024L * 1024L
+    private const val LogMaxFiles = 30
+    private const val LogMaxTotalBytes = DiagnosticsLogMaxTotalMiB * 1024L * 1024L
+    private const val LogExportMaxFiles = LogMaxFiles
     private const val MemoryEntryLimit = 512
     private const val MessageMaxChars = 2_048
     private const val RecentDiagnosticsMaxChars = 120_000
@@ -116,7 +120,7 @@ object SlockFileDiagnosticsLogger {
         val header =
             buildString {
                 appendLine("App-owned recent diagnostics")
-                appendLine("Files: ${files.size} (last 2 days)")
+                appendLine(diagnosticsRetentionLabel(files.size))
             }
         val memoryJsonl = exportRecentJsonl(maxChars / 2)
         val fileBudget = (maxChars - header.length - memoryJsonl.length).coerceAtLeast(1_000)
@@ -245,3 +249,6 @@ object SlockFileDiagnosticsLogger {
                 .toString()
     }
 }
+
+internal fun diagnosticsRetentionLabel(fileCount: Int): String =
+    "Files: $fileCount (up to $DiagnosticsLogMaxTotalMiB MiB, max age 2 days)"

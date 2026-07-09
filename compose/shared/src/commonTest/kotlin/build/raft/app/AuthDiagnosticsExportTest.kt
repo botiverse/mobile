@@ -30,6 +30,11 @@ class AuthDiagnosticsExportTest {
                             timestampLabel = "1000",
                             tag = "SlockAuthNetwork",
                             message = "refresh_token=refresh-token-123 password=secret user=artin@slock.ai"
+                        ),
+                        SharedSettingsDiagnosticsEntry(
+                            timestampLabel = "1001",
+                            tag = "SlockAuth/auth_session_clear",
+                            message = "auth_session_clear reason=unauthorized source=current_user fingerprint=len:32:tail4:abcd:hash:1234"
                         )
                     ),
                 errorMessage = "diagnostics error: settings_diagnostics_exception"
@@ -39,6 +44,8 @@ class AuthDiagnosticsExportTest {
         assertContains(text, "Platform: HarmonyOS")
         assertContains(text, "Source: abc1234")
         assertContains(text, "SlockAuthNetwork")
+        assertContains(text, "auth_session_clear")
+        assertContains(text, "fingerprint=len:32:tail4:abcd:hash:1234")
         assertContains(text, "[redacted]")
         assertFalse(text.contains("refresh-token-123"))
         assertFalse(text.contains("secret"))
