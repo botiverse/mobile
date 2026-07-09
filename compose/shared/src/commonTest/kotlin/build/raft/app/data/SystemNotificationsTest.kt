@@ -151,6 +151,8 @@ class SystemNotificationsTest {
 
         requireNotNull(request)
         assertEquals(SystemUnreadNotificationCategory.ChannelUnread, request.category)
+        assertEquals(ConversationKind.Channel, request.conversationKind)
+        assertEquals("channel", request.conversationKindWireValue())
         assertEquals("#general", request.title)
         assertEquals("Ada: Hello team", request.body)
         assertEquals("unread:server-1:channel-1:message-1", request.notificationKey)
@@ -208,6 +210,8 @@ class SystemNotificationsTest {
             )
 
         requireNotNull(request)
+        assertEquals(ConversationKind.Thread, request.conversationKind)
+        assertEquals("thread", request.conversationKindWireValue())
         assertEquals("thread-message-1", request.threadId)
         assertEquals("thread-message-1", request.channelId)
         assertEquals("channel-1", request.parentChannelId)
