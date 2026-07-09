@@ -257,6 +257,40 @@ internal fun membersAgentServerRoleOptions(
         )
     }
 
+private fun String?.normalizedMembersServerRole(): String =
+    this?.trim()?.lowercase().orEmpty()
+
+internal fun membersCanRemoveHumanMember(
+    actorRole: String?,
+    targetRole: String?,
+    targetMembershipStatus: String?,
+    targetMemberId: String,
+    currentUserId: String?,
+    targetServerId: String?,
+    currentServerId: String?,
+    ownerCount: Int? = null
+): Boolean {
+    if (targetMembershipStatus != "active") return false
+    val normalizedTargetId = targetMemberId.trim()
+    if (normalizedTargetId.isBlank()) return false
+    if (currentUserId?.trim() == normalizedTargetId) return false
+    val normalizedCurrentServerId = currentServerId?.trim().orEmpty()
+    val normalizedTargetServerId = targetServerId?.trim().orEmpty()
+    if (normalizedTargetServerId.isNotBlank() && normalizedTargetServerId != normalizedCurrentServerId) {
+        return false
+    }
+
+    return when (actorRole.normalizedMembersServerRole()) {
+        "owner" -> when (targetRole.normalizedMembersServerRole()) {
+            "owner" -> ownerCount != null && ownerCount > 1
+            "admin", "member", "" -> true
+            else -> false
+        }
+        "admin" -> targetRole.normalizedMembersServerRole() == "member"
+        else -> false
+    }
+}
+
 internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
@@ -1261,6 +1295,8 @@ private sealed interface MemberDetailRouteState {
         val currentUserId: String?
     ) : MemberDetailRouteState
     data class Human(
+        val server: ServerSummary,
+        val currentUserId: String?,
         val member: MemberProfile
     ) : MemberDetailRouteState
 }
@@ -1327,7 +1363,7 @@ private class MemberDetailRouteProvider(
                 ?.let(::ServerId)
                 ?: ServerId(serverId)
         if (expectedKind == MemberKind.Human) {
-            return loadHumanMember(selectedId, profileServerId)
+            return loadHumanMember(selectedId, profileServerId, server, session.user.id)
         }
         val state = agentDetailStore.state.value
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
@@ -1347,7 +1383,7 @@ private class MemberDetailRouteProvider(
             }
             is DataResult.Empty -> {
                 return if (expectedKind == null) {
-                    loadHumanMember(selectedId, profileServerId)
+                    loadHumanMember(selectedId, profileServerId, server, session.user.id)
                 } else {
                     agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
                     MemberDetailRouteState.Error("member_not_found")
@@ -1387,12 +1423,17 @@ private class MemberDetailRouteProvider(
         }
     }
 
-    private suspend fun loadHumanMember(selectedId: MemberId, profileServerId: ServerId): MemberDetailRouteState {
+    private suspend fun loadHumanMember(
+        selectedId: MemberId,
+        profileServerId: ServerId,
+        server: ServerSummary,
+        currentUserId: String?
+    ): MemberDetailRouteState {
         agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
         return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId, profileServerId)) {
             is DataResult.Content -> {
                 serverMembersStore.seedProfiles(profileServerId, listOf(memberResult.data))
-                MemberDetailRouteState.Human(memberResult.data)
+                MemberDetailRouteState.Human(server, currentUserId, memberResult.data)
             }
             is DataResult.Empty ->
                 MemberDetailRouteState.Error("member_not_found")
@@ -1972,6 +2013,24 @@ private fun MemberDetailPageContent() {
             }
         }
         is MemberDetailRouteState.Human -> {
+            val serverMembersState by provider.serverMembersStore.state.collectAsState()
+            val serverMembers = serverMembersState.entryFor(current.server.id)?.members.orEmpty()
+            val ownerCount = serverMembers.count {
+                it.kind == MemberKind.Human &&
+                    it.membershipStatus == "active" &&
+                    it.serverRole.normalizedMembersServerRole() == "owner"
+            }
+            val canRemoveHumanMember =
+                membersCanRemoveHumanMember(
+                    actorRole = current.server.role,
+                    targetRole = current.member.serverRole,
+                    targetMembershipStatus = current.member.membershipStatus,
+                    targetMemberId = current.member.id.value,
+                    currentUserId = current.currentUserId,
+                    targetServerId = current.member.serverId?.value,
+                    currentServerId = current.server.id.value,
+                    ownerCount = ownerCount.takeIf { it > 0 }
+                )
             MembersDetailContent(
                 member = current.member,
                 agentDetailState = MembersAgentDetailLoadState.Idle,
@@ -1991,9 +2050,9 @@ private fun MemberDetailPageContent() {
                 onCopyMemberId = {
                     provider.copyMemberId(current.member)
                 },
-                onRemoveMember = {
+                onRemoveMember = if (canRemoveHumanMember) ({
                     provider.bridge.toast("Remove member is available from Settings administration.")
-                },
+                }) else null,
                 onOpenUrl = { provider.bridge.openUrl(it) },
                 onOpenReminderMessage = { permalink ->
                     pager.openMembersReminderMessage(
@@ -2058,7 +2117,6 @@ private fun MemberDetailVisualSeedContent(
         onBack = {},
         onOpenDirectMessage = {},
         onCopyMemberId = {},
-        onRemoveMember = {},
         onOpenUrl = {},
         onUpdateAgentProfile = { DataResult.Content(seed.member) },
         onUploadAgentAvatar = null,

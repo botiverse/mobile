@@ -55,6 +55,141 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
+    fun humanRemoveActionFollowsReactServerRoleGate() {
+        assertTrue(
+            membersCanRemoveHumanMember(
+                actorRole = "admin",
+                targetRole = "member",
+                targetMembershipStatus = "active",
+                targetMemberId = "member-1",
+                currentUserId = "admin-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "member",
+                targetRole = "admin",
+                targetMembershipStatus = "active",
+                targetMemberId = "admin-1",
+                currentUserId = "member-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "admin",
+                targetRole = "admin",
+                targetMembershipStatus = "active",
+                targetMemberId = "admin-2",
+                currentUserId = "admin-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "admin",
+                targetRole = "owner",
+                targetMembershipStatus = "active",
+                targetMemberId = "owner-1",
+                currentUserId = "admin-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+    }
+
+    @Test
+    fun humanRemoveActionBlocksSelfRemovedRemoteAndLastOwner() {
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "member",
+                targetMembershipStatus = "active",
+                targetMemberId = "owner-1",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "member",
+                targetMembershipStatus = "removed",
+                targetMemberId = "member-1",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "member",
+                targetMembershipStatus = "active",
+                targetMemberId = "member-1",
+                currentUserId = "owner-1",
+                targetServerId = "remote-server",
+                currentServerId = "server-1"
+            )
+        )
+        assertFalse(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "owner",
+                targetMembershipStatus = "active",
+                targetMemberId = "owner-2",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1",
+                ownerCount = 1
+            )
+        )
+    }
+
+    @Test
+    fun ownerCanRemoveNonLastOwnersAdminsAndMembers() {
+        assertTrue(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "owner",
+                targetMembershipStatus = "active",
+                targetMemberId = "owner-2",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1",
+                ownerCount = 2
+            )
+        )
+        assertTrue(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "admin",
+                targetMembershipStatus = "active",
+                targetMemberId = "admin-1",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+        assertTrue(
+            membersCanRemoveHumanMember(
+                actorRole = "owner",
+                targetRole = "member",
+                targetMembershipStatus = "active",
+                targetMemberId = "member-1",
+                currentUserId = "owner-1",
+                targetServerId = "server-1",
+                currentServerId = "server-1"
+            )
+        )
+    }
+
+    @Test
     fun agentRuntimeEditorUsesSelectedMachineRuntimes() {
         val runtimes =
             membersAgentMachineRuntimeIds(
