@@ -539,7 +539,12 @@ jobs:
     # (OHOS_SDK_HOME/LLVM from command-line-tools 6.1.1.280) — no per-run
     # setup-ohos-sdk download, and the SDK version matches ohos-host and the
     # KuiklyBase-components CI instead of the previous 6.0 pin.
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # 8vcpu: kspKotlinOhosArm64 (the heaviest K/N JVM step) OOM'd fleet-wide
+    # on 4vcpu VMs after moving into the container — killed mid-task with no
+    # compile error. The job sat too close to the VM memory ceiling; doubling
+    # the VM beats per-daemon heap tuning (docker create shows no --memory
+    # cap, so the VM itself is the boundary).
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     needs: [kuikly-artifacts, fork-deps]
