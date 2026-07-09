@@ -9,7 +9,7 @@
               "crop": {
                 "mode": "manual-rect",
                 "contract": "full-height",
-                "rect": { "x": 0, "y": 0, "width": 390, "height": 2566 }
+                "rect": { "x": 0, "y": 0, "width": 390, "height": 2595 }
               },
               "capture": {
                 "method": "app-window-root-draw-full-height-density-resize",
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 4
 },
               "clampedToShortWindow": true,
-              "capturedAt": "1783585735656"
+              "capturedAt": "1783606872776"
             }
