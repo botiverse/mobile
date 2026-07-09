@@ -93,6 +93,10 @@ static const NSInteger SlockKuiklyKeyCodeTab = 9;
 
 - (NSDictionary *)p_mergeExtParamsWithOriditalParam:(NSDictionary *)pageParam {
     NSMutableDictionary *mParam = [(pageParam ?: @{}) mutableCopy];
+    // iOS Kuikly pageData safeAreaInsets are reported in native pixels, while
+    // shared Compose layout uses dp. Mark the unit so shared safe-area helpers
+    // convert through LocalDensity instead of treating 102px as 102dp.
+    mParam[@"slockNativeSafeAreaInsetsArePixels"] = @YES;
 
     return mParam;
 }

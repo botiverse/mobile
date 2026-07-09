@@ -20,4 +20,26 @@ class SlockSafeAreaTest {
     fun resolveSlockSafeAreaPxClampsNegativeValues() {
         assertEquals(0f, resolveSlockSafeAreaPx(primaryPx = -1f, fallbackPx = -4f))
     }
+
+    @Test
+    fun resolveSlockNativeSafeAreaDpConvertsIosPixelInsets() {
+        assertEquals(
+            34f,
+            resolveSlockNativeSafeAreaDp(
+                nativeInsetsArePixels = true,
+                primary = 102f,
+                fallback = 0f,
+                density = 3f
+            )
+        )
+        assertEquals(
+            48f,
+            resolveSlockNativeSafeAreaDp(
+                nativeInsetsArePixels = false,
+                primary = 48f,
+                fallback = 0f,
+                density = 3f
+            )
+        )
+    }
 }
