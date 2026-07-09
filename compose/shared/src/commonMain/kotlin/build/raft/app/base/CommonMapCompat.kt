@@ -18,6 +18,12 @@ package build.raft.app.base
  * tests pin the contract on the impl functions instead.
  *
  * `getOrDefault` needs no twin: the common stdlib `Map` already declares it.
+ *
+ * Coverage boundary: `computeIfAbsent`/`merge` require non-null values
+ * (`V : Any`) — on a `MutableMap<K, V?>` the JVM member still applies but the
+ * K/N extension does not match, so native compilation fails LOUDLY
+ * (Unresolved) instead of misbehaving. Nullable-value maps should use
+ * `getOrPut` or spell the logic out. `putIfAbsent` has no such constraint.
  */
 
 /**
