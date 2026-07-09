@@ -35,6 +35,10 @@ class DataResultErrorCopyTest {
             PermissionBlocker("server_admin_required").userFacingMessage()
         )
         assertEquals(
+            "You do not have permission to view this page.",
+            PermissionBlocker("server_forbidden").userFacingMessage()
+        )
+        assertEquals(
             "These settings are not available right now.",
             EmptyReason.NoSettingsAvailable.userFacingMessage()
         )

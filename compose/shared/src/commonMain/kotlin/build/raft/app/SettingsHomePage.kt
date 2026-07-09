@@ -9960,7 +9960,7 @@ private fun settingsConnectedAppsPermissionCopy(blocker: PermissionBlocker): Str
     if (blocker.code == "server_admin_required" || blocker.requiredCapability == "manage_integrations") {
         "Only server owners and admins can manage connected apps."
     } else {
-        blocker.code
+        blocker.settingsUserFacingMessage()
     }
 
 private fun build.raft.app.data.SharedSettingsActionState?.isServerConfirmation(
