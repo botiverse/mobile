@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-09T14:32:20.843Z",
+  "generatedAt": "2026-07-09T14:43:54.968Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 68,
-    "pending": 21
+    "ready": 85,
+    "pending": 4
   },
   "cases": [
     {
@@ -808,7 +808,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:12.558Z",
+      "generatedAt": "2026-07-09T14:43:44.711Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -892,7 +892,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:12.656Z",
+      "generatedAt": "2026-07-09T14:43:44.808Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1591,7 +1591,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:14.684Z",
+      "generatedAt": "2026-07-09T14:43:47.332Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1740,171 +1740,443 @@
     },
     {
       "id": "components.settings.page.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffc5ff78ffc7ff7bffc07f787f80fe78808000780047e37a63c823783fc83f783fc009780fc41f7a3fc7307a7fc7f07bffc7ff7c7c04307a7c05d07be006ff7e1fc61f780008007cffffff7afff0ff78fe07ff78fc0000780400002ffffffff",
-      "generatedAt": "2026-07-09T14:32:15.769Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:12.284Z",
+      "severity": "high",
+      "summary": [
+        "Account section header label differs: React shows 'ACCOUNT' (uppercase), Android shows 'Profile'",
+        "Google connected-account state is inverted: React shows 'Connected as artin@slock.ai' with no button, Android shows 'Not connected' with a 'Connect' button",
+        "GitHub row has a 'Connect' button on Android but none on React (React still shows 'Not connected')",
+        "Section labels are styled in uppercase/letter-spaced on React but sentence case on Android (e.g., 'NAME', 'DISPLAY NAME', 'SESSION')",
+        "Form field labels sit closer to fields on Android, increasing vertical density"
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from React baseline on state copy and section titles",
+        "Connected accounts component is rendering the disconnected state on Android while React renders the connected state for Google",
+        "Label styling (uppercase + tracking) not ported to Android Compose theme",
+        "Form spacing tokens differ between React and Android implementations",
+        "Android viewport bottom inset/padding not accounted for, causing Log out button to clip"
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Rename Android section header back to 'ACCOUNT' (or align copy with React baseline)",
+        "Fix Google/GitHub connection state rendering so Google shows 'Connected as artin@slock.ai' without a Connect button when linked",
+        "Apply uppercase + letter-spacing to section labels (NAME, DISPLAY NAME, SESSION) on Android to match React",
+        "Align form field vertical rhythm (label-to-input gap) to React spacing tokens",
+        "Add bottom padding/scroll padding so the 'Log out' button is not clipped at the viewport edge"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20540432886404447
     },
     {
       "id": "components.settings.account.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffc5ff78ffc7ff7bffc07f787f80fe78808000780047e37a63c823783fc83f783fc009780fc41f7a3fc7307a7fc7f07bffc7ff7c7c04307a7c05d07be006ff7e1fc61f780008007cffffff7afff0ff78fe07ff78fc0000780400002ffffffff",
-      "generatedAt": "2026-07-09T14:32:16.179Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:13.047Z",
+      "severity": "medium",
+      "summary": [
+        "Section header label differs: React shows 'ACCOUNT' while Android shows 'Profile' (lowercase, not all-caps)",
+        "Field label capitalization differs: React uses 'Name' / 'Display Name' (title case) while Android uses 'NAME' / 'DISPLAY NAME' (uppercase tracked)",
+        "Field input order/styling differs: React renders Name input as a plain outlined box, while Android renders it as a filled gray box and swaps visual emphasis onto the Display Name input which has a thicker black border",
+        "Google connected-account state diverges: React shows Google as connected ('Connected as artin@slock.ai') with no Connect button, Android shows Google as 'Not connected' with an active Connect button",
+        "'Save Profile' button is disabled/muted pink on React and active solid pink on Android, indicating differing form-dirty state"
+      ],
+      "likelyCauses": [
+        "Android implementation re-uses a different section/title component that defaults to sentence case and uppercase-tracked labels for form fields",
+        "Form dirty/dirty-state tracking is not mirrored between platforms, so Save Profile button enabled state and Google connection status reflect divergent runtime state",
+        "Android layout uses a denser spacing scale (smaller vertical paddings on list rows and card sections) than the React design tokens",
+        "Profile header copy was updated on Android ('Profile' / 'Session') but not propagated to the React build, or vice versa"
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Unify section and field label typography tokens: pick one casing convention (title case vs uppercase tracked) and apply it via the shared design token on both React and Android",
+        "Align connected-account order and source-of-truth for connection status so both platforms render the same Google connected/disconnected state for the same user",
+        "Sync Save Profile button enabled/disabled logic with a shared dirty-form contract so visual state matches across platforms",
+        "Increase Android vertical spacing on Account/Connected accounts/Change password cards to match React rhythm, or apply responsive bottom safe-area padding so the Log out button is not clipped",
+        "Adopt consistent 'Change password' (sentence case) or 'Change Password' (title case) on both sides, and decide whether the section eyebrow should read 'Account' or 'Profile'"
+      ],
+      "intentional": [
+        "Log out copy differs by platform: React uses 'Sign out of this browser' while Android uses 'Sign out on this device' in both the subtitle and the confirm message — intentional per task #381 / PR #147"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20540432886404447
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffc5ff78ffc7ff7bffc07f787f80fe78808000780047e37a63c823783fc83f783fc001780fc41f7a3fc7307a7fc7f97bffc7ff7c7c04307a7c05d07be006ff7e1fc61f780008007cffffff7afff0ff78fe07ff78fc0000780400002ffffffff",
-      "generatedAt": "2026-07-09T14:32:16.335Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:13.159Z",
+      "severity": "medium",
+      "summary": [
+        "Section header reads 'ACCOUNT' (React) vs 'Profile' (Android); same region, different label.",
+        "Profile layout is reordered on Android: Name and Display Name fields appear above the Email/Verified row, whereas React shows Name → Display Name → Email (Email displayed as plain text, not an input).",
+        "React renders 'artine@slock.ai' as plain text on its own line; Android splits it with 'Verified' badge onto the same row using green VERIFIED pill plus appears to omit the optional cropping of the email.",
+        "Heading/label typography differs: Android uses 'NAME' and 'DISPLAY NAME' in uppercase; React uses 'Name' and 'Display Name' in title case.",
+        "Form input styling differs: React inputs have light gray fills and thinner borders, Android inputs have white fills and thicker black borders around the active Display Name field."
+      ],
+      "likelyCauses": [
+        "Android Settings screen implements a generic 'Profile' header instead of the section-specific 'Account' label used in React.",
+        "Field order, casing (uppercase vs title case), and read-only vs input treatment of fields were not aligned between the two implementations.",
+        "Component primitives differ: Android uses heavy black-bordered inputs/cards and uppercase labels, React uses lighter borders and title-case labels.",
+        "Connected accounts row was re-implemented as discrete cards with explicit Connect/Connected badges on Android.",
+        "Destructive Log out button color (orange vs red) was chosen independently per platform."
+      ],
+      "suggestedOwner": "android-settings",
+      "suggestedFixes": [
+        "Rename Android section header to 'Account' to match React, or update the React baseline to 'Profile' if intentional and align both.",
+        "Reorder Android fields to Name → Display Name → Email and render the email as plain text (not an input) to mirror React.",
+        "Use title case for 'Name', 'Display Name', 'Email', 'Change Password' labels on Android, matching React typography conventions.",
+        "Soften Android input/button borders to match React's lighter gray treatment, except where a focused/bordered state is intentional.",
+        "Unify the Connected accounts layout: either keep React's inline list OR keep Android's card list, but match the status badge placement (React has no 'Connected' pill)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20623067471408707
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:2ffe2ffe80009fffde3c83ff823cffff83fccfffc3fc8ff781fc83f7f7fc8ff7e7fcdff7fffc7ff7c7c087f7ffc09fe7e8148007e1fcfe37c3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff0780007ff7ffff61f7ffff01f78fc0bfe7cfc08007a3c097f7801d0007ffff0112ffffffff",
-      "generatedAt": "2026-07-09T14:32:16.398Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:13.316Z",
+      "severity": "high",
+      "summary": [
+        "Android renders the full Account screen from the top including header, avatar, name, display-name fields, and Profile section; React baseline crops to the component bounds starting at the Email field only.",
+        "React shows 'Change Password' expanded with Current/New/Confirm password inputs and a pink 'Change Password' submit button; Android shows the section only partially expanded (heading + Current/New/Confirm labels) with submit button below the visible viewport.",
+        "Android renders labels and buttons in UPPERCASE (NAME, DISPLAY NAME, CURRENT PASSWORD, NEW PASSWORD, CONFIRM PASSWORD, Save Profile, Connect) while React uses sentence case ('Name', 'Display name', 'Current Password', 'Save profile', 'Connect').",
+        "Android Google and GitHub rows both display 'Not connected' with a 'Connect' button; React shows Google already connected ('Connected as artin@slock.ai') with no button and GitHub as 'Not connected' with a 'Connect' button.",
+        "Android includes a top 'Profile' section with avatar tile (purple), '@artin' handle, Name and Display Name text inputs — none of these exist in the React baseline crop."
+      ],
+      "likelyCauses": [
+        "Different crop contracts were applied — baseline captured the password-expanded component bounds, while current captured full viewport, so unrelated screen sections (header, avatar, Profile) leaked into the Android side.",
+        "Platform-specific text-transform or label styling (sentence case in web vs uppercase/small-caps in Android Material) was not normalized in the design tokens.",
+        "Connected-account mock data differs between snapshots (Google connected vs not connected).",
+        "Section heading text-case was translated/transformed differently between web and native builds."
+      ],
+      "suggestedOwner": "android-settings-account",
+      "suggestedFixes": [
+        "Align crop contracts: capture identical component bounds (the password-expanded accordion area) for both baseline and current runs to eliminate header/Profile/session leakage.",
+        "Normalize label/button casing across web and Android via shared design tokens (uppercase or sentence case should be a single decision).",
+        "Re-seed or sync connected-account mock state so Google reflects the same connection status on both platforms.",
+        "Verify the password-expanded snapshot opens the accordion fully and the page is scrolled so the 'Change Password' submit button is in frame before capture.",
+        "Confirm Section headers ('Change password' vs 'Change Password', 'Connected accounts') use identical copy across React and Android."
+      ],
+      "intentional": [
+        "Header bar with back arrow and 'Account' title on Android is native/expected.",
+        "Uppercase labels may be intentional Material-style typography on Android — confirm with design."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23098054306585114
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8597bffc00078ffc0ff7bffc7ff787f847f7880007f780048807803c401780007e37800083f783fc83f780fc100781fc0007a7fc01f7b7fc73e7bffc5307c7c07f17bfc04307fffc4b07e0fc80e780000027cfff40078ffc61f78fc001f2ffffffff",
-      "generatedAt": "2026-07-09T14:32:16.409Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:13.249Z",
+      "severity": "high",
+      "summary": [
+        "Section heading reads 'ACCOUNT' on React vs 'Profile' on Android — label/copy mismatch.",
+        "Error alert placement differs: React shows one error ('Avatar upload failed') below Email; Android shows 'Avatar upload failed' inline next to avatar AND an additional 'Profile save failed: server_unavailable' alert plus a Retry button.",
+        "Primary CTA differs: React shows 'Save Profile' (appears disabled/muted); Android shows a pink 'Retry' button.",
+        "Google connection state differs: React shows 'Connected as artin@slock.ai'; Android shows 'Not connected' with a 'Connect' button.",
+        "Form labels use different casing: React uses sentence case ('Name', 'Display Name', 'Email'); Android uses UPPERCASE ('NAME', 'DISPLAY NAME', 'Email')."
+      ],
+      "likelyCauses": [
+        "Android implementation diverged from the shared design spec for the error-state screen.",
+        "Different copy/strings used for section header ('Profile' vs 'ACCOUNT') and button labels ('Retry' vs 'Save Profile').",
+        "Connected-accounts fixture/state diverges between platforms (Google connected in React, not connected in Android).",
+        "Expandable 'Change password' uses different default-collapsed state across platforms.",
+        "Text-transform style (uppercase) applied inconsistently between web and Android text styles."
+      ],
+      "suggestedOwner": "android-settings-account",
+      "suggestedFixes": [
+        "Align section header copy to 'Account' (or match shared spec) instead of 'Profile' on Android.",
+        "Normalize form-label text-transform to sentence case to match React baseline.",
+        "Remove the extra 'Profile save failed: server_unavailable' alert and Retry button, or merge into a single combined error state per spec.",
+        "Set the Google row to 'Connected as artin@slock.ai' (no Connect button) for parity with baseline, or update baseline fixture if intentional.",
+        "Collapse 'Change password' by default with a right-chevron and single summary row, matching React."
+      ],
+      "intentional": [
+        "If the 'Retry' button and additional 'Profile save failed' banner are intentional for Android's error-state coverage, mark as known divergence and update baseline fixture.",
+        "'Change password' expanded by default on Android may be an intentional platform affordance."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.30917723228149774
     },
     {
       "id": "components.settings.server.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffc9fff9ffe81fe80ff8ffe3fffbfff0ff7807c0013847c000787fc0003bffc1ff383f80ff3800803f3800000038ffc800783fc07f783fc060780000207ffff0e0380fc80078700ffffa100ffff8100ffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-09T14:32:16.795Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:13.628Z",
+      "severity": "high",
+      "summary": [
+        "React renders a server avatar/icon (black tile with yellow 'V') and a large profile title ('Visual Server' with monospace '/visual' subtitle) above the Name/Slug fields; Android omits the avatar and profile title entirely, jumping directly to Name/Slug inputs.",
+        "React uses stacked labels above inputs ('Name', 'Slug') in sentence case; Android uses uppercase tracked labels ('NAME *', 'SLUG') inline above each input.",
+        "Slug field differs: React shows a leading '/' prefix segment in a yellow tile plus 'visual'; Android shows no prefix and lower opacity placeholder 'visual'.",
+        "Section header styling differs: React shows 'DANGER ZONE' as uppercase tracked label with warning icon above the card; Android shows 'Danger Zone' in title case mixed-weight label with inline warning icon and no card border around the section.",
+        "Form spacing/alignment differs: React's Name/Slug inputs are left-aligned with comfortable spacing inside a bordered card; Android's fields appear tighter, full-width, and inside a card with thicker visible outline that clips slightly at edges."
+      ],
+      "likelyCauses": [
+        "Android implementation skipped the server avatar/profile header block present in the React version.",
+        "Different typography scales/casing rules applied per platform (Sentence case vs UPPERCASE labels).",
+        "Inconsistent field label rendering between React and native Android components (uppercase tracking applied on Android).",
+        "Missing '/' prefix affordance on the Slug input on Android.",
+        "Component bound/padding values not normalized across platforms, causing different card sizing and content clipping."
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Add the server avatar tile and 'Visual Server' / '/visual' header block to the Android Profile screen to match React.",
+        "Normalize label casing and weight: use sentence-case bold labels (React style) or document the Android uppercase style as intentional.",
+        "Restore the '/' prefix segment on the Slug input on Android with the same yellow tile styling.",
+        "Reconcile card padding, border weight, and input widths so Profile and Danger Zone cards have consistent bounds on both platforms.",
+        "Verify Danger Zone layout: ensure description and Delete button align consistently and no content is clipped on Android."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.21286574580413442
     },
     {
       "id": "components.settings.administration.admins",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe0ffccffe07fe800080fe83fc1f0e83f800d680000012800000068000000280001ff2a0000ff283fc03f28bfc000280000006c00307f6ffff0602ffff0206ffff0e02ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-09T14:32:16.912Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:22.849Z",
+      "severity": "high",
+      "summary": [
+        "The two screens show completely different content despite sharing the same component ID (components.settings.administration.admins): React renders an 'Owners & Admins' management panel, while Android renders an 'Administration' screen with Profile and Danger Zone sections.",
+        "React shows an 'Add owner/admin' card with member select dropdown, role select ('Admin'), pink 'Update Role' button, and an existing admin row (martin/artina@slock.ai · owner · Last owner).",
+        "Android shows a back arrow + 'Administration' title, a Profile section with Name ('Visual Server') and Slug ('visual') text inputs plus a pink 'Save Profile' button, and a Danger Zone card with red 'Delete Server' button.",
+        "The heading typography differs: React uses uppercase letter-spaced section heading 'OWNERS & ADMINS 1' with shield icon, while Android uses a larger, bolder 'Administration' title with a back navigation arrow.",
+        "No overlapping UI elements exist between the two screens — they are entirely separate flows being compared as if they were the same component."
+      ],
+      "likelyCauses": [
+        "Test is wired against the wrong route/screen on Android; Android is rendering the parent Administration/Profile screen instead of the Admins sub-screen.",
+        "Navigation regression: tapping into Admins on Android no longer routes to the admins panel, or the Admins tab/route is missing.",
+        "Component ID mismatch: the snapshot baseline was captured on a different screen than the Android render target.",
+        "State/auth context on Android is defaulting to a different sub-view (Profile/Danger Zone) instead of the admin management view."
+      ],
+      "suggestedOwner": "android-admin-settings",
+      "suggestedFixes": [
+        "Verify the Android navigation graph routes to the admins sub-screen for this component ID and that the back arrow on 'Administration' correctly drills down into 'Owners & Admins'.",
+        "Confirm the Android screen being snapshotted matches the React baseline route (settings/administration/admins), not the parent Administration screen.",
+        "Align the visual contract: either update the React baseline to the Administration overview screen or update the Android capture to drill into the admins panel before snapshotting.",
+        "Add a route/ID assertion in the visual test so a navigation regression (showing the wrong screen) fails loudly rather than producing a low-similarity diff.",
+        "If these are intentionally separate screens, split them into distinct test IDs (e.g., components.settings.administration vs components.settings.administration.admins) instead of comparing them as one."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19083627010167292
     },
     {
       "id": "components.settings.administration.invites",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc0ffc83fe00fe800000fe01f00f0601f0000607f000020000000280000002fffe1ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0202fffe0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-09T14:32:16.986Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:23.590Z",
+      "severity": "high",
+      "summary": [
+        "Completely different screens rendered: React shows 'Pending Invites' list with two email entries (designer@slock.ai Jun 18, qa@slock.ai Jun 19) and dismiss (X) buttons; Android shows an 'Administration' screen with Profile form (Name 'Visual Server', Slug 'visual'), Save Profile button, Danger Zone with 'Delete Server' action and red destructive button.",
+        "Android is missing the entire 'Pending Invites' component that the React baseline is supposed to render at this route.",
+        "Android renders a back-arrow icon next to 'Administration' title that has no counterpart on the React side.",
+        "Form input styling differs: Android shows underlined single-line text inputs with pink/asterisk required indicator and a disabled-looking pink 'Save Profile' button; React shows boxed list rows with right-aligned dates and X icons.",
+        "Color accents differ: Android uses pink/red filled buttons (Save Profile in pink, Delete Server in salmon/red); React uses no accent buttons in this view."
+      ],
+      "likelyCauses": [
+        "Android implementation is rendering the wrong route/screen (Administration > Profile + Danger Zone) instead of the Invites screen.",
+        "Component mismatch: the Android 'Invites' component is missing or wired to a different navigation target.",
+        "Different navigation stack: Android drilled into Administration sub-screen while React remained on the Invites listing.",
+        "State seeding differs: Android test fixture initialized with a selected server context triggering Administration, while React opened the parent Invites view."
+      ],
+      "suggestedOwner": "android-admin-invites",
+      "suggestedFixes": [
+        "Verify the Android navigation entry point for 'components.settings.administration.invites' lands on the Invites screen, not the Administration detail screen.",
+        "Implement the Pending Invites list component on Android matching React: list rows with email, date (Jun 18 / Jun 19), and dismiss (X) affordance per invite.",
+        "Remove or hide the back-arrow + 'Administration' header on this route, or ensure it is only shown at a child route.",
+        "Align input visual style (boxed rows vs underlined fields) and button color tokens (pink Save Profile, red Delete Server) with the design system used on React.",
+        "Confirm the test/seed data: both platforms should start from the same server/invite state so the same screen is captured."
+      ],
+      "intentional": [
+        "Differences in navigation header (back arrow on Android) may be platform-conventional but should not appear on this specific route if React lacks it.",
+        "Color and shape of destructive 'Delete Server' button may intentionally differ per platform, but the screen content itself must match."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.12220500668367962
     },
     {
       "id": "components.settings.administration.join-links",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcd7fe07fe800080fe8ffc1f0e800000d68000001280f800068000000280041ff280fc0ff2800003f280000002adc08006800007f680010602ffff0206ffff0e02ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-09T14:32:16.969Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:23.697Z",
+      "severity": "high",
+      "summary": [
+        "Android renders the parent Administration screen with Profile and Danger Zone sections, while React renders the targeted Join Links subsection — the crops do not match the same UI surface.",
+        "Android shows a back-arrow + 'Administration' header with a divider; React shows a chain-link icon + 'INVITE LINKS 1' header with no divider.",
+        "Android displays Name ('Visual Server'), Slug ('visual'), Save Profile button, and a Delete Server danger button; React displays Max Uses ('Unlimited'), Expires At date input, Create Invite Link button, and an existing invite link row (http://127.0.0.1:4173/join…) with copy and delete icons and '8/25 uses · expires Jun 19, 12:24 PM' metadata.",
+        "Save Profile button on Android appears in a disabled/light-pink state (filled but low contrast), unlike React's solid pink Create Invite Link button with a '+' icon and clear contrast.",
+        "Label typography differs: Android uses uppercase tracked labels ('NAME *', 'SLUG') with a red asterisk indicator; React uses title-case labels ('Max Uses', 'Expires At') without asterisks."
+      ],
+      "likelyCauses": [
+        "Wrong navigation state captured for the Android snapshot — Join Links screen was not opened before screenshot, so the parent Administration view was captured instead.",
+        "Crop mismatch: baseline crop targets the Join Links component bounds (mode 'element'), while current crop uses 'manual-rect' / viewport, so the Android side shows the surrounding Administration chrome rather than the focused component.",
+        "Possible missing/navigation wiring for the Invite Links route on Android, or the Join Links panel is nested below the visible viewport on the 390×844 capture."
+      ],
+      "suggestedOwner": "android-admin-settings",
+      "suggestedFixes": [
+        "Re-capture the Android screenshot after navigating into the Join Links subview so the component matches the React baseline's crop target.",
+        "Adjust the Android crop contract to component-bounds targeting the Join Links container, or scroll so Max Uses / Expires At / Create Invite Link are in frame.",
+        "If Join Links is implemented as a separate screen on Android, ensure the route is reachable from Administration and the back-arrow returns to the list shown on React.",
+        "Unify label and typography styling across platforms (uppercase tracked vs title-case, required-field asterisk convention) to reduce cross-platform drift.",
+        "Verify the Save Profile enabled/disabled visual states match the design system tokens used for Create Invite Link on React."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.14461693738944925
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fe03fcf1fe13fe80f080ff800c1fffa00c0bf7bffc00129ffc00068008000280001ff280000ff2800803f287f80002bff88007bff807f780000602bffc02068ffc0e02800c8007805cffffbffcffffbdfcffff87fcffff87fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
-      "generatedAt": "2026-07-09T14:32:17.393Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:24.157Z",
+      "severity": "high",
+      "summary": [
+        "Android renders the wrong screen: shows 'Administration' with Profile and Danger Zone sections instead of the 'Pre-Join Agreement' screen.",
+        "React (baseline) shows the expected Pre-Join Agreement content: 'Require agreement before joining' toggle, Title and Body fields, Preview block, and Save button.",
+        "Android is missing the entire Pre-Join Agreement component, including checkbox, Title input, Body textarea, character counter (81/5000), Preview panel, and Save action.",
+        "Header titles differ: React uses the page/setting title 'Settings Administration Pre-Join Agreement' with a 'PRE-JOJOIN AGREEMENT' section header; Android shows a back arrow + 'Administration' as the screen title."
+      ],
+      "likelyCauses": [
+        "Android implementation may be rendering the wrong route/screen or the Pre-Join Agreement component is not wired into the Administration navigation.",
+        "Navigation regression on Android: tapping into Administration lands on the parent Administration/Profile screen instead of drilling into the Pre-Join Agreement sub-screen.",
+        "Component contract mismatch: baseline crop targets the Pre-Join Agreement element bounds, but Android crop is viewport-bounds, exposing that the Android screen never mounts the target component.",
+        "Possible deep-link/route id mismatch (components.settings.administration.pre-join-agreement) not mapped on Android."
+      ],
+      "suggestedOwner": "android",
+      "suggestedFixes": [
+        "Verify the Android route for 'Settings > Administration > Pre-Join Agreement' resolves to the correct screen and that navigation drills into it (not the parent Administration screen).",
+        "Ensure the Pre-Join Agreement component is mounted on Android and renders the checkbox toggle, Title field, Body textarea, Preview, and Save button as in React.",
+        "Align header pattern on Android with React (section title 'Pre-Join Agreement') instead of showing a generic 'Administration' header with back button, unless intentionally different.",
+        "Re-run the visual diff after the fix using the same element-bounds crop on both sides to validate parity.",
+        "Add a regression screenshot test for the Administration > Pre-Join Agreement route on Android."
+      ],
+      "intentional": [
+        "Different crop modes between baseline (element) and current (viewport) may exaggerate the mismatch, but the missing screen content remains a real divergence."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2552878708091978
     },
     {
       "id": "components.settings.administration.onboarding",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fcc7fe07fe830080fe807c1f06807c0016800800128000000680fc0002809c1ff2800407d29ff803f28000000287fc0006800007f6ffff0602ffff0206ffff0602fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066002fffe3fff",
-      "generatedAt": "2026-07-09T14:32:17.520Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:40:33.616Z",
+      "severity": "high",
+      "summary": [
+        "Completely different screens rendered: React shows Onboarding settings (Human Onboarding Agent, New Agent Greeting) while Android shows Administration settings (Profile name/slug, Danger Zone/Delete Server).",
+        "No matching components or layout between the two views.",
+        "Android shows a back arrow and 'Administration' header; React shows an 'ONBOARDING' section label with a robot icon.",
+        "Action buttons differ entirely: React 'Save' (pink) vs Android 'Save Profile' (pink) and 'Delete Server' (red/destructive).",
+        "Form field types differ: React uses two select dropdowns; Android uses text inputs (Name, Slug)."
+      ],
+      "likelyCauses": [
+        "Wrong route or screen mounted on Android for the 'onboarding' settings view — Android is rendering the Administration screen instead.",
+        "Navigation/state mismatch: Android component receives the Administration context rather than the Onboarding context.",
+        "Test harness pointed at the wrong component ID or Android equivalent is not implemented and falls back to a sibling screen.",
+        "React baseline crop targeted an onboarding sub-component while Android captured the full Administration viewport, exaggerating mismatch."
+      ],
+      "suggestedOwner": "android-settings-admin",
+      "suggestedFixes": [
+        "Verify the Android route mapping for components.settings.administration.onboarding points to the Onboarding screen, not Administration.",
+        "Implement (or reuse) the Onboarding settings layout on Android: 'Human Onboarding Agent' selector and 'New Agent Greeting' Yes/No selector with a Save button.",
+        "Ensure consistent header: replace 'Administration + back arrow' with the 'ONBOARDING' section header and icon when on this screen.",
+        "Align input affordances: use dropdown selects (matching React) instead of text inputs for agent selection and greeting toggle.",
+        "Use identical crop contract (element vs viewport) on both sides so the comparison is apples-to-apples; current Android uses viewport-bounds while React uses component-bounds."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.14656803175760524
     },
     {
       "id": "components.settings.administration.member-permissions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc03fcc0fe01fe800000fe80000f0623f40006200c000287fc00028000000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe07f2fffe0602fffe0206fffe0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:17.564Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:28.563Z",
+      "severity": "high",
+      "summary": [
+        "Android screen shows the entire Administration page (Profile + Danger Zone) instead of the scoped Member Permissions component",
+        "Member Permissions section heading, hide-from-members toggle, description, and Save button are absent on Android",
+        "Page-level content (Name/Slug profile form, Save Profile, Delete Server) is visible on the Android capture but not in the React baseline's component-bounds crop"
+      ],
+      "likelyCauses": [
+        "Android capture uses 'viewport-bounds' (full screen) while React baseline uses 'element' crop of the Member Permissions component only, producing a fundamentally different region",
+        "Possible navigation/state mismatch: Android build is rendering the Administration parent screen rather than the nested Member Permissions settings panel",
+        "Member Permissions section may not be rendered on Android due to a missing route, missing tab, or component not yet implemented in the Android client"
+      ],
+      "suggestedOwner": "android-admin-settings",
+      "suggestedFixes": [
+        "Crop the Android screenshot to the same 'component-bounds' contract as React so both sides compare equivalent UI regions",
+        "Verify the Android app navigates into the Member Permissions sub-screen before capturing; ensure the back arrow matches the expected depth",
+        "Implement the Member Permissions section (toggle, description, Save button) on Android to mirror the React scope, or confirm it is intentionally out of scope and adjust the test contract",
+        "Re-run the visual diff after fixing capture bounds/scope; expect RGB similarity to rise above 0.99"
+      ],
+      "intentional": [
+        "Back arrow icon visible only on Android may be a legitimate platform navigation pattern"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1320941521178488
     },
     {
       "id": "components.settings.administration.translation",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcc7fe01fe800000fe80040f0627fc00062004000207ec000287fc000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe07f2fffe0602fffe0206fffe0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:17.578Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:29.720Z",
+      "severity": "high",
+      "summary": [
+        "Android view shows an entirely different screen (Administration with Profile, Name/Slug fields, Danger Zone, Delete Server) while React view shows the Translation settings screen with an 'Enable message translation for this server' toggle and Save button.",
+        "Both screens render different page content — navigation/routing is misaligned between platforms for the 'translation' admin view.",
+        "Header on Android includes a back button and 'Administration' title; React header is absent and shows only a translation icon + label.",
+        "Both views share the same pink Save-style buttons but Android additionally renders a red 'Delete Server' button not present in the React Translation view."
+      ],
+      "likelyCauses": [
+        "Android and React implementations routed to different admin sub-routes for the 'translation' test case.",
+        "Inconsistent navigation deep-linking or screen mapping between web and mobile for administration/translation settings.",
+        "Test fixture/screenshot captured the wrong screen on the Android side (e.g., Profile/Administration instead of Translation).",
+        "Page-level component mismatch — Android rendered the parent Administration screen while React rendered the child Translation tab."
+      ],
+      "suggestedOwner": "mobile-platform (Android settings/admin team)",
+      "suggestedFixes": [
+        "Verify the Android route resolves to the Translation settings screen, not the parent Administration screen, and align it with the React deep-link target.",
+        "Add a contract/paparazzi/screenshot test asserting that 'components.settings.administration.translation' maps to the Translation panel on both platforms.",
+        "Sync navigation entry points so both React and Android land on the same sub-screen for the translation admin setting.",
+        "Remove or hide the Profile and Danger Zone sections when the user is on the Translation settings page on Android.",
+        "Ensure the back button on Android corresponds to the same breadcrumb behavior as React's settings entry."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.13099539568733887
     },
     {
@@ -1943,41 +2215,109 @@
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc97ff9ffe807e803f8ffe3fff87ff03f781fc03f3817c201383fc007383fc00038ffc001384040bf380010213d7ff0ff787fc00078ffc07f3803800078000800f82040ff781fc7ff380fc0fd787fc03e787fc000780003ff3ffff00f3ffff00f3ffff07f3ffff0007fffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-09T14:32:18.103Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:31.617Z",
+      "severity": "medium",
+      "summary": [
+        "Android (right) adds a 'Preferred Language' section with a dropdown (showing 'English') and a Save button, which is missing in React (left).",
+        "React (left) uses title-case 'Translation mode' / 'Timezone' / 'Time format'; Android (right) uses uppercase 'TRANSLATION MODE' / 'TIMEZONE' / 'TIME FORMAT'.",
+        "React has only two translation mode options ('Auto', 'Off'); Android has three options ('Automatic', 'Manual', 'Original') with 'Manual' selected and each prefixed by an icon.",
+        "React header label reads 'LANGUAGE'; Android header label is 'Language' in title case with smaller/mixed weight styling.",
+        "Timezone dropdown text differs: React shows 'UTC+08:00 Asia/Shanghai'; Android shows only 'Asia/Shanghai' (no UTC offset)."
+      ],
+      "likelyCauses": [
+        "Feature drift between web and Android builds — Preferred Language and Manual translation mode were added on Android but not in the React component.",
+        "Inconsistent capitalization tokens (UPPERCASE vs Title Case) applied separately in web vs Android style sheets.",
+        "Different translation key sets or copy variations (option labels and timezone formatting) between platforms.",
+        "React component is missing the language selector UI and additional translation mode options present in Android."
+      ],
+      "suggestedOwner": "android-settings-component-owner",
+      "suggestedFixes": [
+        "Update the React Language & Region page to add the 'Preferred Language' select with an English default and a Save action.",
+        "Add 'Manual' to the translation mode segmented control on React so it matches Android's three-option set.",
+        "Align section header capitalization across platforms (pick either UPPERCASE or Title Case) and apply a consistent typography token.",
+        "Match the timezone dropdown display format on both platforms (include UTC offset or drop it on both).",
+        "Normalize Save button styling: same color, weight, and whether to include the floppy-disk icon, or remove the icon from Android."
+      ],
+      "intentional": [
+        "Icon prefixes on Android segmented controls may be a platform-specific affordance but should be reviewed for parity."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.17550701448805717
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe00020a068000001601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2012807c00028004800631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:18.140Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:31.753Z",
+      "severity": "medium",
+      "summary": [
+        "Android renders the APPEARANCE section heading as lowercased 'appearance' while React uses uppercase 'APPEARANCE'",
+        "Android omits the 'Saved on this device.' hint text that appears below the size selector on React",
+        "Preview card content differs: React shows a 'Cindy' chat message with timestamp and inline code/markup chips, Android shows 'Onboarding Assistant' content without timestamp",
+        "Android segment buttons include a 'T' icon prefix next to Small/Medium/Large labels; React segment buttons are text-only",
+        "Android section label reads 'Message font size' in regular weight; React uses bold 'Message font size' heading"
+      ],
+      "likelyCauses": [
+        "Native Android implementation diverges from the React design spec for the appearance sub-section",
+        "Android renders the section title with a different typography style (non-bold, smaller weight) than the web baseline",
+        "Android was not built with the 'Saved on this device' local-storage affordance copy",
+        "Preview component swapped from a personal-message mock to an onboarding-assistant mock between React and Android",
+        "Segmented control on Android adds an extra leading glyph (text-style 'T') that React does not render"
+      ],
+      "suggestedOwner": "android-settings-appearance-owner",
+      "suggestedFixes": [
+        "Match the 'Message font size' title to the React baseline: bold weight, same size, and uppercase 'APPEARANCE' section eyebrow",
+        "Add the 'Saved on this device.' subtext beneath the size selector on Android",
+        "Reconcile the Preview block content with React: restore 'Cindy' message with timestamp, @Joy mention, #proj-uiux chip, and inline-code highlighting",
+        "Remove the leading 'T' icon from Android segment buttons so they match React's text-only Small/Medium/Large",
+        "Align segmented control button padding/min-width across platforms so button bounds are consistent"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18260926803580835
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffc9fff9ffe81fe80ff9cfe3f7f80ff0007807c00078060080780607ff3bffc0ff3bffc0c93bffc34f3a01c1ed3807c00f3807c007381fc7c93e2740213fff000f3bfe0007380010053ffff0073ffff0073ffff0307ffff1f07ffff0713ffff0007ffff03f7ffff0073ffff00f3ffff0007fffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-09T14:32:18.160Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:35.190Z",
+      "severity": "high",
+      "summary": [
+        "React shows a single 'PUSH NOTIFICATIONS' section with web-push explanation, 'UNAVAILABLE' status, 'Enable Push Notifications' CTA (pink/disabled), and 'Mute this server' with checkbox + Save button.",
+        "Android shows a materially different, OS-level notifications control surface: 'Notification permission / Allowed' panel, 'Enabled/Disabled' toggle, 'Keep alive / Normal' toggle, 'Manage notifications' deep link, 'Test notification / Ready' panel, and 'Workspace mute / Unmuted/Muted' toggle.",
+        "React layout is compact (~half the viewport) and padded at top; Android layout fills more vertical space with multiple stacked cards/groups.",
+        "Header row (back arrow + 'Notifications' title + divider) is visually consistent across both sides.",
+        "React uses a muted/disabled pink button affordance for 'Enable Push Notifications' and 'Save'; Android uses yellow-highlighted button states with outlined (filled white) buttons for primary actions."
+      ],
+      "likelyCauses": [
+        "React (web) uses Web Push API which is unavailable in the test browser, so the page renders the web-push fallback state with 'UNAVAILABLE' banner and disabled CTA.",
+        "Android uses platform-native APIs (NotificationManager, foreground services, system channels) and exposes OS-level controls (permission panel, tray notifications, keep-alive, manage-in-system, workspace mute) that don't exist on web.",
+        "The same Settings page is implemented as two separate platform-specific surfaces rather than a single cross-platform component, leading to divergent copy and control sets.",
+        "Crop mismatch (component-bounds vs viewport-bounds) inflates pixel mismatch beyond what is caused by UI alone."
+      ],
+      "suggestedOwner": "Platform notifications / settings feature owner (mobile + web)",
+      "suggestedFixes": [
+        "Confirm whether the divergence is intentional: if Android should expose OS-level settings (permission, tray, keep-alive, manage, test, workspace mute) and web should expose web-push equivalents, mark the page as platform-acceptable and adjust tolerances or comparison contract accordingly.",
+        "Normalize crop contracts: switch both sides to viewport-bounds (or both to component-bounds) so Slock isn't comparing an element-cropped React frame against a full-frame Android shot.",
+        "Add a shared spec for the Notifications page that lists required controls per platform; if a control only exists on one platform, document it in component metadata so visual tests don't flag it.",
+        "On the web side, redesign the 'PUSH NOTIFICATIONS' empty/unavailable state to still match the card/divider structure used on Android (e.g., outlined cards with consistent padding) so layout pattern is comparable.",
+        "Ensure disabled-button styling is consistent: React uses pink/disabled whereas Android uses yellow-outlined — align the design tokens for 'primary disabled' across platforms."
+      ],
+      "intentional": [
+        "React 'PUSH NOTIFICATIONS' unavailable state is a legitimate web platform fallback.",
+        "Android 'Notification permission / Allowed' panel and 'Manage notifications' deep link are OS-level affordances unique to mobile.",
+        "Android 'Keep alive / Normal' toggle corresponds to a foreground service behavior that does not exist on web.",
+        "'Workspace mute / Unmuted / Muted' on Android is a native mute affordance and may not have an exact web equivalent."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18358380254114848
     },
     {
@@ -2090,7 +2430,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:18.117Z",
+      "generatedAt": "2026-07-09T14:43:51.572Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2480,15 +2820,36 @@
     },
     {
       "id": "components.thread.message-row.rich-content",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc0ffc03fe07fcfffefffe07fefffe160287fe000287e6e0028000e002f000e003e000e002e006e002e006e003f000e03ee000fffef3f2e03ee3fef07efffefffef03ee0fefffefffefffefffef0fee03ef7fef2fefffefffef01efffefffefffefffee002f3fee002fffeeffee000fffee00200000e00fff81fffffffffff",
-      "generatedAt": "2026-07-09T14:32:20.077Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:37.940Z",
+      "severity": "high",
+      "summary": [
+        "Message row text and attachments are clipped at the right edge on Android (timestamp '23', file names '…visual-testing', 'ta…', 'body', 'sta…' all cut off)",
+        "Android attachment cards lack padding/spacing; the 'Document preview' / 'Text preview' labels sit flush against the card edges with no inner gutter",
+        "'thread-screen-preview…' filename on React is rendered as 'thread-screen-preview.h…' on Android with a different truncation point and a smaller avatar indicator dot",
+        "The '7 replies · 2 new' and thumbs-up '3' pills on Android appear smaller and the '+' add button is repositioned to the far right instead of below",
+        "Avatar online-status dot on React is yellow/orange; Android renders it green, and the avatar tile alignment relative to the name row is offset slightly lower on Android"
+      ],
+      "likelyCauses": [
+        "Android Compose/RecyclerView not honoring the same horizontal padding/inset tokens as the React baseline (missing start/end content insets on the message bubble and attachment cards)",
+        "Text composable not applying maxLines/ellipsize correctly, or the parent constraint width is too narrow, causing right-side cropping of timestamp and URLs",
+        "Attachment card implementation uses no internal padding (different surface variant or missing 16dp content padding)",
+        "Color token for online status indicator maps to a different accent on Android (yellow on web vs green on Android)",
+        "Bottom action row uses different chip sizing/typography scale between platforms"
+      ],
+      "suggestedOwner": "android-ui",
+      "suggestedFixes": [
+        "Add the same 16dp horizontal content padding to the message body container so timestamps and URLs are not clipped",
+        "Apply consistent 16dp internal padding to attachment/file preview cards to match React's gutter",
+        "Align maxLines + ellipsize behavior on the timestamp, URL, and filename text so truncation points match React",
+        "Update online-status dot color token on Android to the yellow/amber accent used by the web baseline",
+        "Standardize bottom action pill sizes (replies, reactions, plus button) with the React typography/spacing scale"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23209662151241994
     },
     {

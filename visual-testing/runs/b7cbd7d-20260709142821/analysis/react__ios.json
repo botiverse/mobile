@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-09T14:32:40.284Z",
+  "generatedAt": "2026-07-09T14:44:19.328Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 55,
-    "pending": 34
+    "ready": 78,
+    "pending": 11
   },
   "cases": [
     {
@@ -803,7 +803,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:32.144Z",
+      "generatedAt": "2026-07-09T14:44:09.420Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -889,7 +889,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:32.392Z",
+      "generatedAt": "2026-07-09T14:44:09.702Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1049,41 +1049,105 @@
     },
     {
       "id": "components.thread.message-menu.default",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01fe01fc80007ffe800e07fe800000062000e006803ce07efc1e001efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-09T14:32:33.801Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:55.551Z",
+      "severity": "high",
+      "summary": [
+        "iOS menu includes an extra 'Select Text' option not present in the React baseline",
+        "iOS groups 'Open Thread', 'Save Message', and 'Follow Thread' in a separate section below a divider, while React keeps them in the main group",
+        "iOS uses an info/info-circle icon for 'Convert to Task' instead of React's clipboard/checkbox icon",
+        "iOS header shows '5 replies · 2 new' and an emoji reaction count '+' affordance, React shows only '3 replies'",
+        "React menu overlays the message bubble in a popover style; iOS renders the menu as a full-width inline block under the message"
+      ],
+      "likelyCauses": [
+        "iOS implementation added a 'Select Text' row not specified in shared component contract",
+        "iOS rearranged menu items into grouped sections with dividers that differ from the React web menu structure",
+        "iOS uses SF Symbols for the 'Convert to Task' icon while React uses a clipboard/checkbox icon from its icon set",
+        "iOS displays a richer thread/reply header with new-reply indicator and reaction affordance missing on React",
+        "Platform-specific menu styling (full-width, inline) on iOS vs. floating popover on React"
+      ],
+      "suggestedOwner": "iOS engineering",
+      "suggestedFixes": [
+        "Remove the 'Select Text' row on iOS or add it to the React menu to align the menu item set",
+        "Reorder/group menu items on iOS to match the React order: Copy Link, Copy Markdown, Select Message, Open Thread, Save Message, Follow Thread, Convert to Task",
+        "Replace the info-circle icon on iOS 'Convert to Task' with the clipboard/checkbox icon used on React",
+        "Simplify iOS thread header to match React's '3 replies' treatment, or update React to include '2 new' and reaction count",
+        "Convert the iOS menu to a popover/sheet anchored to the message bubble, matching React's overlay layout"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09366603205465762
     },
     {
       "id": "components.thread.message-menu.task",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01fe01fc80087ffe802207fe800000062000e0068020e006fc1e001efc0e001efc0c009efc140fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff009effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-09T14:32:33.817Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:55.617Z",
+      "severity": "medium",
+      "summary": [
+        "iOS context menu inserts an extra 'Select Text' item between 'Copy Markdown' and 'Select Message' that is absent in React",
+        "React menu has tighter vertical spacing; iOS menu items use noticeably larger row height and padding",
+        "Reaction emoji row width and item gaps are larger on iOS than React",
+        "iOS menu uses a single full-width container divided by thin dividers, while React uses compact rows with no dividers in the top reaction group",
+        "Menu shadow/elevation offset differs: iOS shadow is softer and larger, giving the menu a wider visual footprint"
+      ],
+      "likelyCauses": [
+        "iOS implementation renders an additional 'Select Text' native menu action via UIMenuController/UIEditMenuInteraction that was not added to the React list",
+        "Row padding and font metrics differ between web (React) and native (UIKit) context menu items",
+        "Reaction row uses fixed-width spacing on iOS vs. compact CSS flex layout on React",
+        "iOS applies default UIKit context-menu styling (dividers, shadow radius) not matched in the React design"
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Remove the 'Select Text' item on iOS or add it to the React menu spec to keep the action list identical",
+        "Normalize vertical padding and font line-height for menu rows so React and iOS use the same dp values",
+        "Match reaction emoji row gap and container width across platforms",
+        "Align shadow/elevation (offset, blur, opacity) between React popover and iOS context menu",
+        "Align divider rendering: either add dividers to React or remove them from iOS for parity"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.10530306099026476
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe801e0162c0024002f0fe7002f1fe7f7e83fe01fe80024002f8fe7002fffe4006fffe0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe7ffe7ffe00007ffe00000000fffe1fff",
-      "generatedAt": "2026-07-09T14:32:33.933Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:55.900Z",
+      "severity": "high",
+      "summary": [
+        "Selection action bar missing on React (left) – appears only on iOS (right) as a yellow sticky bar with '2 selected' label and action buttons",
+        "React bottom bar shows only 4 actions (Cancel, Forward, Copy, More) while iOS shows 5 actions (X close, All, Forward, Copy, Download) – React lacks the 'All' select-all and 'Download' actions",
+        "iOS has an additional 'All' button between Cancel and Forward for bulk select",
+        "React selection checkboxes are circular while iOS uses square checkboxes with different border style",
+        "iOS avatar/checkbox is positioned inline with text header (no separate checkbox column) whereas React uses a dedicated left column for circular selection indicators"
+      ],
+      "likelyCauses": [
+        "Platform-specific component implementation – iOS and React render different selection toolbar components",
+        "Feature gap: iOS supports message download and bulk 'select all' while React/web does not",
+        "Different design system applied per platform (iOS HIG vs web/React design)",
+        "Selection state UI not implemented in React component for message-share flow",
+        "Inconsistent selection indicator style – circle (web) vs square (iOS)"
+      ],
+      "suggestedOwner": "components-thread (frontend)",
+      "suggestedFixes": [
+        "Implement a shared selection action bar component that renders identically across platforms with configurable actions",
+        "Add 'Select All' and 'Download' actions to the React selection toolbar to match iOS capability",
+        "Unify selection indicator shape – standardize on one checkbox style (circle or square) across platforms",
+        "Verify feature parity matrix: confirm whether download/select-all are intended to be cross-platform or iOS-only",
+        "Inspect the message-share selection portal z-index/positioning on React – the bottom bar may be missing due to a render condition or CSS portal issue"
+      ],
+      "intentional": [
+        "Different selection indicator shape per platform may be intentional to match native conventions (iOS square, web circle)"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1432025627523258
     },
     {
@@ -1539,7 +1603,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:35.039Z",
+      "generatedAt": "2026-07-09T14:44:13.111Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1697,171 +1761,449 @@
     },
     {
       "id": "components.settings.page.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffcdff7affc7ff7fffc87f787f88ff78988800780047e37a63c823783fc83f783fcc0f780fc41f7a7fc7307a7fc7f07bffc7ff7c7c04307efc05f07bf046ff7e1fc61f780008007cffffff7efff0ff78fe07ff79fc0000781c00006ffffffff",
-      "generatedAt": "2026-07-09T14:32:36.610Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:59.020Z",
+      "severity": "medium",
+      "summary": [
+        "Section header differs: React shows 'ACCOUNT' (uppercase letter-spaced) while iOS shows 'Profile' (title case, no spacing)",
+        "Field label casing differs: React uses 'Name'/'Display Name'/'Email' (title case), iOS uses 'NAME'/'DISPLAY NAME'/'EMAIL' (uppercase letter-spaced)",
+        "Google connected-account state inverted: React shows 'Connected as artin@slock.ai' with no Connect button; iOS shows 'Not connected' with a Connect button",
+        "Save Profile button position differs: React is full-width below email, iOS is left-aligned compact",
+        "Section header 'SESSION' present in React but iOS shows 'Session' (title case) with different icon/treatment"
+      ],
+      "likelyCauses": [
+        "Section/field label uppercase transform applied inconsistently between React and iOS components",
+        "Connected-account component branching on connection state not aligned across platforms",
+        "Bottom Log out button not accounted for in iOS scrollable content insets, causing clipping"
+      ],
+      "suggestedOwner": "mobile-eng",
+      "suggestedFixes": [
+        "Normalize section and field labels to a single casing convention (match iOS title-case or apply uppercase+letter-spacing in both)",
+        "Align connected-account card logic so both platforms render the same state (connected vs not connected) and show/hide the Connect button consistently",
+        "Add bottom safe-area padding / scroll content insets on iOS so the Log out button is not clipped",
+        "Audit typography tokens (weight, size, letter-spacing) for labels across platforms to match design system",
+        "Verify Save Profile button width and alignment tokens are shared between React and iOS"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2053040736690026
     },
     {
       "id": "components.settings.account.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffcdff7affc7ff7fffc87f787f88ff78988800780047e37a63c823783fc83f783fcc0f780fc41f7a7fc7307a7fc7f07bffc7ff7c7c04307efc05f07bf046ff7e1fc61f780008007cffffff7efff0ff78fe07ff79fc0000781c00006ffffffff",
-      "generatedAt": "2026-07-09T14:32:36.700Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:58.953Z",
+      "severity": "medium",
+      "summary": [
+        "Section heading differs: React shows 'ACCOUNT' (uppercase, letter-spaced), iOS shows 'Profile' (title case, no letter spacing)",
+        "Form field labels use different casing/weight: React uses 'Name', 'Display Name', 'Email' (title case, regular weight); iOS uses 'NAME', 'DISPLAY NAME' (uppercase, letter-spaced, heavier appearance)",
+        "Connected accounts section diverges: React has Google connected ('Connected as artin@slock.ai') and GitHub not connected; iOS has both Google and GitHub as 'Not connected' with 'Connect' buttons",
+        "'Save Profile' button styling differs: React renders a lighter/pinkish hue; iOS renders a more saturated pink/red fill with a dark border outline",
+        "'Change password' row label casing differs: React uses 'Change Password' (title case); iOS uses 'Change password' (sentence case)"
+      ],
+      "likelyCauses": [
+        "Independent design implementations per platform (web React vs native iOS) diverging on label casing conventions and capitalization style",
+        "State difference in connected accounts fixture (Google connection status) between the two captured runs",
+        "iOS render canvas height insufficient for the current scroll/zoom causing the Log out button to be clipped at the bottom",
+        "Design token or theme not shared across platforms, causing button colors (Save Profile, Log out) to drift",
+        "Section heading semantics differ: 'ACCOUNT' group label vs 'Profile' page title treated as different elements"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Unify section/label casing rules (e.g., all-caps tracked headers vs sentence case) in the shared design system and apply consistently across React and iOS",
+        "Sync the connected-accounts test fixture so both renders show the same connection state for a fair visual diff",
+        "Increase the iOS capture canvas height (or scroll the page) so the Log out button is fully visible, or shrink vertical spacing in the iOS variant to fit within the existing bounds",
+        "Align 'Save Profile' and 'Log out' button color tokens to a single source of truth across platforms",
+        "Standardize the 'Change password' row label casing across platforms"
+      ],
+      "intentional": [
+        "Log out copy divergence: React 'Sign out of this browser' vs iOS 'Sign out on this device' — platform-appropriate wording, not a defect"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2053040736690026
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc8ff7bffcdff7affc7ff7fffc87f787f88ff78988800780047e37a63c823783fc83f783fcc0d780fc41f7a7fc7307a7fc7f97bffc7ff7c7c04307efc05f07bf046ff7e1fc61f780008007cffffff7efff0ff78fe07ff79fc0000781c00006ffffffff",
-      "generatedAt": "2026-07-09T14:32:36.740Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:36:59.117Z",
+      "severity": "medium",
+      "summary": [
+        "Section header label differs: React shows 'ACCOUNT' (uppercase), iOS shows 'Profile' (title case).",
+        "Field labels typography differs: React uses sentence case ('Name', 'Display Name', 'Email') while iOS uses uppercase tracked labels ('NAME', 'DISPLAY NAME', 'Email').",
+        "Form field order reordered: iOS places 'Display Name' before 'Email' in the form flow, React places 'Name' then 'Display Name' then 'Email'.",
+        "Save Profile button styling differs: React renders a light pink/disabled-look button, iOS renders a solid saturated pink/magenta active button.",
+        "Connected state pill differs: React shows no visible status indicator on Google row (only 'Connected as' text), iOS shows a teal 'Connected' pill with link icon."
+      ],
+      "likelyCauses": [
+        "iOS implementation is using a different design token set for label case (uppercase vs sentence case) than the React baseline.",
+        "iOS view is not using the same component variants (disabled vs active Save Profile state).",
+        "iOS layout is not respecting the same vertical padding/section grouping, causing the Session/Log out section to overflow the viewport crop.",
+        "Truncation of 'Connected as' suggests the iOS row layout is not reserving enough horizontal space for the subtitle."
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Align iOS section/label text case with the React baseline (sentence case for field labels, matching 'Account' section header).",
+        "Reuse the React Save Profile button variant/disabled state on iOS or update the baseline to match if iOS is the new spec.",
+        "Increase iOS bottom safe-area / scroll padding so the Log out section is fully visible within the component bounds.",
+        "Give the Connected accounts row a flexible-width subtitle area so 'Connected as <email>' doesn't truncate on iOS.",
+        "Standardize the 'Connected' indicator (pill vs none) across platforms in the design system."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2059930327702839
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:2ffe2ffe80009fffde3c83ff823cffff83fccfffc3fc8ff781fc83f7f7fc8ff7e7fcdff7fffc7ff7c7c087f7ffc09ff7e8148007e1fcfe37c3fc8237bff883f78000c0f787fce1f780007307c3fc7f0797f87ff78000430780fcff0780006ff7ffff61f7ffff01f78fc0bff7cfc08007a3c097f7801d0007ffff0012ffffffff",
-      "generatedAt": "2026-07-09T14:32:36.918Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:06.588Z",
+      "severity": "high",
+      "summary": [
+        "iOS version includes a profile/avatar block, Name and Display Name input fields, and an Account header with back chevron that React baseline lacks in this crop",
+        "Google and GitHub connection states differ: React shows Google as 'Connected as artin@slock.ai' while iOS shows both Google and GitHub as 'Not connected'",
+        "Email field with 'Verified' badge appears at different vertical positions and is partially clipped at the top in the React baseline",
+        "iOS uses uppercase labels for password sections ('CURRENT PASSWORD', 'NEW PASSWORD', 'CONFIRM PASSWORD') and 'Change password' (sentence case + chevron) while React uses title case labels ('Current Password', 'New Password', 'Confirm Password') and 'Change Password'",
+        "iOS is missing the bottom 'SESSION' / 'Log out' section visible in the React baseline (likely below the fold)"
+      ],
+      "likelyCauses": [
+        "Different page scope captured between platforms (React includes session/logout section, iOS starts higher with back nav and profile)",
+        "Independent iOS implementation not mirroring React component hierarchy and form labels",
+        "Different default data/connection state used for the screenshot (connected vs not connected for OAuth providers)",
+        "Inconsistent label casing conventions between React (Title Case) and iOS (UPPERCASE) design systems",
+        "Missing name/display-name fields and profile header in React implementation"
+      ],
+      "suggestedOwner": "design-system / cross-platform parity owner (Account Settings)",
+      "suggestedFixes": [
+        "Align iOS Account screen layout to match React: add Session/Log out section and ensure Email, Save Profile, Connected accounts, and Change Password appear in the same vertical order",
+        "Normalize label casing across platforms—pick either Title Case or UPPERCASE for form field labels and section chevron headers",
+        "Render Google and GitHub connected-account cards with identical connection states in test fixtures",
+        "Ensure React baseline crop captures the full Account page including top (back/header) and bottom (Session) regions for fair comparison",
+        "Add Name and Display Name inputs to the React implementation if they are part of the intended design, or remove them from iOS if not"
+      ],
+      "intentional": [
+        "iOS navigation back chevron is platform-specific and may be intentional",
+        "UPPERCASE field labels on iOS may follow Apple HIG conventions intentionally"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2355473866137373
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff87ff83ff9ffe7fffc7ffcfff87fc8ff783fc83f787fc87f7bffc8017affc8ff7fffc7ff787f847f7898887f780348007823cc00780007e37800083f783fc83f780fc901781fc8007b7fc81f7b7fc73f7bffc5307c7c07f17ffe04307fffc4f07e1fc80f780000037cfff40178ffc61f78fc00012ffffffff",
-      "generatedAt": "2026-07-09T14:32:37.094Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:06.959Z",
+      "severity": "high",
+      "summary": [
+        "iOS renders an additional inline error banner (\"Avatar upload failed\") directly below the avatar/header, while React places that same error lower, below the Email field.",
+        "React section header is \"ACCOUNT\" (uppercased); iOS uses mixed-case \"Profile\".",
+        "Field label casing differs: React uses \"Name\", \"Display Name\", \"Email\" (mixed case); iOS uses \"NAME\", \"DISPLAY NAME\", \"Email\" (all-caps except Email).",
+        "iOS shows a pink/magenta \"Retry\" button below the email; React shows a lighter, lower-contrast \"Save Profile\" button in a muted gray-pink tone.",
+        "iOS displays an extra \"Profile save failed: server_unavailable\" error banner beneath the Retry button; React has no equivalent."
+      ],
+      "likelyCauses": [
+        "Different branching of error-state copy between React and iOS — iOS surfaces three inline error banners (avatar, save, provider) while React surfaces only one (avatar).",
+        "Inconsistent section/label text-style tokens: React applies an uppercase tracked style to \"ACCOUNT\" header and field labels; iOS does not.",
+        "Connected-account loading/connected state mismatch — React snapshot captured Google in connected state with the email sub-line; iOS captured it in a disconnected state with an action button.",
+        "Possible intentional platform adaptation that was not propagated to the React baseline (or vice versa)."
+      ],
+      "suggestedOwner": "Design Systems / Settings feature owner",
+      "suggestedFixes": [
+        "Align header copy: pick one casing (\"Account\" vs \"ACCOUNT\") and apply identically on both platforms via the shared token.",
+        "Standardize field-label typography (case + weight) across React and iOS so \"Name\"/\"Display Name\"/\"Email\" match.",
+        "Decide on a single connected-account presentation (with email sub-line + no button when connected vs. \"Not connected\" + \"Connect\" button) and pin it in the component contract.",
+        "Ensure error-state coverage is symmetric: if iOS shows Retry + save-failed banner and provider-link-failed banner, mirror those in React; remove duplicates.",
+        "Render Change Password with the same expand/collapse affordance (or both as a static row) on both platforms."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.31215518288978006
     },
     {
       "id": "components.settings.server.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9ffe81fe80ff8ffe3fffbfff0ff7807c07d3847c000787fc0007bffc3ff383f80ff3800803f3800000038ffc800783fc07f783fc060780000a07ffff060380fc80078700ffffa100ffff8100ffff8000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe781effffffff",
-      "generatedAt": "2026-07-09T14:32:37.337Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:12.777Z",
+      "severity": "high",
+      "summary": [
+        "React baseline shows a server avatar/badge with a black square and yellow 'V' alongside the 'Visual Server' heading and '/visual' slug; iOS is missing the avatar block entirely.",
+        "React renders form fields with placeholder-style labels ('Name', 'Slug') inside the input area, while iOS uses uppercase field labels above the inputs ('NAME *', 'SLUG').",
+        "React's Slug field has a yellow '/' prefix adornment; iOS shows just a plain gray placeholder 'visual' with no adornment.",
+        "Save Profile button is pink with darker text on React and a lighter pink with white text on iOS (different state/disabled styling).",
+        "Danger Zone block is positioned below the profile card on React, but on iOS the layout order/flow places Danger Zone much closer to the profile card and the description wraps differently ('Permanently remove this / server and all its data' vs 'Permanently remove Visual Server and all of its data')."
+      ],
+      "likelyCauses": [
+        "Different form component implementations across platforms (React vs iOS native UIKit/SwiftUI form fields).",
+        "Inconsistent design token mapping: label placement, button color tokens, and avatar block omitted in iOS implementation.",
+        "Slug field adornment (leading '/') is a React-only affordance not ported to iOS.",
+        "Button disabled vs enabled state token swapped between platforms (pink palette inverted).",
+        "Section header typography token (uppercase + tracked vs sentence-case) not unified across platforms."
+      ],
+      "suggestedOwner": "Design Systems / Cross-platform UI Engineer",
+      "suggestedFixes": [
+        "Add the server avatar tile (black background, yellow 'V') to the iOS Profile card to match the React baseline.",
+        "Standardize label pattern: either move to uppercase tracked labels on both platforms or placeholder-internal labels on both.",
+        "Restore the leading '/' adornment in the iOS Slug TextField or remove it on React for parity.",
+        "Align Save Profile button color/state tokens (primary pink with dark text for enabled, lighter for disabled) across platforms.",
+        "Unify section header typography (weight + casing + letter-spacing) for 'Profile' and 'Danger Zone' headings."
+      ],
+      "intentional": [
+        "The iOS home-indicator bar at the bottom is platform-native and expected.",
+        "Different canvas sizes (390x844 vs 1170x2532) explain absolute pixel differences but not layout/structural mismatches."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2167112245311298
     },
     {
       "id": "components.settings.administration.admins",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe0ffecffe07fe800080fe83fc1f0e83f8081680000012800000068000000280001ff2a00007f283fc03f28bfc000280000006c00307f6ffff0602ffff0206ffff0202ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe781efffe7fff",
-      "generatedAt": "2026-07-09T14:32:37.376Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:13.130Z",
+      "severity": "high",
+      "summary": [
+        "iOS renders the Administration screen (Profile form + Danger Zone with Delete Server) while React renders the OWNERS & ADMINS management screen — completely different component/route is being captured.",
+        "React shows 'Owners & Admins' heading with shield icon, 'Add owner/admin' card, member select dropdown, role select dropdown ('Admin'), 'Update Role' button, and an admin list row ('artin / artina@slock.ai · owner · Last owner'). iOS has none of these.",
+        "iOS adds a back-arrow header ('Administration'), Profile card (Name=Visual Server, Slug=visual) with Save Profile button, and a Danger Zone section with a red 'Delete Server' button — all absent on React.",
+        "Typography weights and sizes differ: iOS uses larger, bolder headers ('Administration', 'Profile', 'Danger Zone', 'Delete Server') whereas React uses lighter uppercase tracked label style ('OWNERS & ADMINS 1').",
+        "Layout structure differs: React uses stacked bordered card containers with drop shadows; iOS uses full-width input fields separated by underline dividers and a divider line under the header."
+      ],
+      "likelyCauses": [
+        "iOS implementation is on a different navigation route (Administration / Server Settings) than React (Owners & Admins sub-screen) — ID 'components.settings.administration.admins' is being resolved to two different routes per platform.",
+        "React web app and iOS native app map the same settings ID to different screens in their respective routers/navigation graphs.",
+        "Screenshot capture timing or deep-link mismatch caused two different screens to be captured under the same component ID."
+      ],
+      "suggestedOwner": "iOS engineering (navigation/route mapping for settings)",
+      "suggestedFixes": [
+        "Verify the iOS route for ID 'settings/administration/admins' points to the Owners & Admins screen, not the general Administration screen.",
+        "Align web and iOS navigation hierarchy so 'settings.administration.admins' resolves to the same screen on both platforms.",
+        "If iOS intentionally exposes admins from a different screen, split the visual test IDs or add a dedicated route and ensure the admins list renders inside the Administration screen on iOS.",
+        "Re-run the visual test after fixing the route mapping and confirm RGB/pixel-perfect similarity returns to >0.95.",
+        "Cross-check the navigation breadcrumb: iOS currently shows a single 'Administration' back-arrow header — the admins list should likely live one level deeper with matching styling."
+      ],
+      "intentional": [
+        "Different header typography (uppercase tracked vs. title case bold) may be a platform-specific design language and could be accepted if documented.",
+        "Larger touch-friendly input heights on iOS are typically intentional for HIG compliance."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19450520516871228
     },
     {
       "id": "components.settings.administration.invites",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc0ffc83fe01fe800000fe01f00f0601f0000607f000120000000680000002fffe1ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:37.553Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:13.593Z",
+      "severity": "high",
+      "summary": [
+        "React shows the 'Pending Invites' screen with two invite rows (designer@slock.ai, qa@slock.ai) and dismiss (×) buttons, while iOS renders the broader 'Administration' screen with Profile, Name/Slug fields, Save Profile, and Danger Zone / Delete Server sections.",
+        "The component under test (Invites) is entirely missing on iOS; the iOS build is showing a different screen/state instead of the invites list.",
+        "Save Profile button on iOS appears in a faded/disabled pink state, suggesting an unsaved-changes or invalid-form disabled visual state not present in the React baseline.",
+        "Title hierarchy differs: React uses an all-caps 'PENDING INVITES 2' heading with a mail icon; iOS uses a larger bold 'Administration' title with a back arrow.",
+        "Layout densities differ: iOS packs more content (form fields, danger zone, footer home indicator) into a taller 1170×2532 canvas, while React leaves large empty space below the invites card on a 390×844 canvas."
+      ],
+      "likelyCauses": [
+        "iOS route or navigation state is incorrect, landing on the Administration index instead of the Administration → Invites sub-screen.",
+        "Invites component was not ported to iOS or is hidden behind an additional navigation step not exercised in the test.",
+        "Baseline crop uses element bounds (390×844) while iOS has no crop defined, causing the comparison to include the full Administration screen.",
+        "Disabled button styling differs between platforms (faded pink vs baseline not showing the button at all)."
+      ],
+      "suggestedOwner": "mobile-ios",
+      "suggestedFixes": [
+        "Navigate iOS test harness to the Invites sub-route so the matching component is rendered before snapshotting.",
+        "If the Invites screen exists on iOS, verify it is reachable from the Administration screen and expose it in the visual-test suite with the same component-bounds crop used by React.",
+        "Align button disabled/enabled visual tokens across web and iOS so Save Profile matches the baseline's active styling when valid.",
+        "Standardize the page-title pattern (icon + uppercase label + count on web) versus the iOS bold title + back button so both platforms show equivalent headers for the invites screen.",
+        "Re-run the comparison with matching crop mode (component-bounds) on iOS to ensure fair bounds comparison."
+      ],
+      "intentional": [
+        "Different page titles ('Pending Invites' vs 'Administration') reflect platform-specific navigation hierarchy and may be intentional."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.12628778979489885
     },
     {
       "id": "components.settings.administration.join-links",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fed7fe07fe800080fe8ffc1f0e800008168000001280f800068000000280041ff280fc07f2800003f280000002adc08006800007f680010602ffff0206ffff0202ffff0006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe781efffe7fff",
-      "generatedAt": "2026-07-09T14:32:37.647Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:14.732Z",
+      "severity": "high",
+      "summary": [
+        "iOS screen renders the Administration root view (Profile + Danger Zone sections) instead of the expected Join Links child screen",
+        "Join Links heading, Max Uses input, Expires At date picker, Create Invite Link button, and the existing invite URL row are all missing on iOS",
+        "Title typography differs: iOS shows bold 'Administration' header with back-chevron, React shows lighter 'INVITE LINKS 1' header with link icon",
+        "Button styling differs: React uses a pink filled Create Invite Link button; iOS Save Profile button is a faded/disabled pink and Delete Server uses a coral/red destructive button",
+        "iOS includes an extra home-indicator bar at the bottom not present in React baseline"
+      ],
+      "likelyCauses": [
+        "iOS navigation is one level too shallow — the component is mounted at Administration root rather than pushed into Join Links route",
+        "Missing implementation of the Join Links screen in the iOS client (Max Uses, Expires At, Create Invite Link, invite list item)",
+        "Form labels rendered with uppercase/letter-spacing styling on React (NAME, SLUG) but not consistently on iOS section headers",
+        "No matching design tokens for the destructive (red) button variant on iOS or for disabled state styling of the Save Profile button"
+      ],
+      "suggestedOwner": "iOS client team (Administration/Join Links feature owner)",
+      "suggestedFixes": [
+        "Push the Join Links screen onto the navigation stack on iOS so the Administration child view is shown instead of the root",
+        "Implement Join Links UI on iOS matching React: link icon header, Max Uses input, Expires At date picker, pink Create Invite Link CTA, and invite URL list row with copy/remove actions",
+        "Align header typography: use consistent weight/size between 'Administration' (iOS) and 'Invite Links 1' (React) section headers",
+        "Unify button color tokens — confirm pink primary and red destructive variants exist on iOS and apply correct enabled/disabled states",
+        "Normalize label casing/letter-spacing for form fields and section headers across both platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.14817312755701384
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fe03fef1fe13fe80f080ff800c1fffa00c08d7bffc00129ffc00068008000680001ff280000ff2800803f287f80002bff88007bff807f780000606bffc02068ffc0202800c8007805cffffbffcffffbdfcffff87fcffff87fcffff8000ffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe781effffffff",
-      "generatedAt": "2026-07-09T14:32:37.923Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:15.875Z",
+      "severity": "high",
+      "summary": [
+        "iOS screen shows the parent 'Administration' screen (Profile, Danger Zone) rather than the Pre-Join Agreement child component shown in React",
+        "React displays 'Pre-Join Agreement' card with checkbox 'Require agreement before joining', Title input, Body textarea, character counter (81/5000), Preview block, and Save button",
+        "iOS completely omits the Pre-Join Agreement card, checkbox, Title/Body fields, Preview, character counter, and Save button",
+        "Navigation differs: React has no back arrow; iOS shows a back-chevron next to the 'Administration' header",
+        "Header typography differs: React uses small uppercase 'PRE-JOIN AGREEMENT' with a document icon; iOS uses large bold 'Administration' title text"
+      ],
+      "likelyCauses": [
+        "iOS build navigated to the wrong route or parent screen (Administration index instead of Pre-Join Agreement detail/sub-screen)",
+        "Pre-Join Agreement route/component not implemented or not registered on iOS",
+        "Component-name mismatch: baseline spec 'pre-join-agreement' is not wired into iOS navigation stack",
+        "Possible regression where tapping 'Pre-Join Agreement' navigates up to 'Administration' instead of drilling into the agreement editor"
+      ],
+      "suggestedOwner": "iOS engineer",
+      "suggestedFixes": [
+        "Verify the Pre-Join Agreement route exists in the iOS navigation hierarchy and is reachable from the Administration screen",
+        "Ensure the tap target labelled Pre-Join Agreement pushes the correct detail view rather than dismissing back to the parent Administration screen",
+        "Render the 'Require agreement before joining' checkbox, Title input, Body textarea, 81/5000 counter, and Preview block on iOS to match React",
+        "Remove the misplaced back-chevron and 'Administration' header on the agreement screen, or replace with an uppercase 'PRE-JOIN AGREEMENT' section title and document icon to match baseline",
+        "Confirm Save/Delete button color tokens map consistently across web and iOS so disabled vs. destructive states render identically"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.26003159557661926
     },
     {
       "id": "components.settings.administration.onboarding",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fec7fe07fe830080fe807c1f06807c0016800800128000000680fc0002809c1ff2800403d29ff803f28000000287fc0006800007f6ffff0602ffff0206ffff0202fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffefffefffe7ffe00066812fffe3fff",
-      "generatedAt": "2026-07-09T14:32:37.997Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:17.015Z",
+      "severity": "high",
+      "summary": [
+        "Different screen content: React shows 'Settings Administration Onboarding' with Human Onboarding Agent and New Agent Greeting fields; iOS shows 'Administration' with Profile (Name/Slug) and Danger Zone (Delete Server).",
+        "Header layout differs: React has 'ONBOARDING' label with briefcase icon only; iOS has a back arrow + 'Administration' title and a horizontal rule divider.",
+        "iOS shows extra sections not present in React baseline: Profile card with Name and Slug inputs, Save Profile button, and a Danger Zone with a destructive red 'Delete Server' button.",
+        "Save button color/state differs: React 'Save' appears light pink/disabled; iOS 'Save Profile' appears lighter pink/disabled, while 'Delete Server' is a prominent red destructive button.",
+        "Form controls differ: React uses labeled dropdown selects (@cindy (Cindy), Yes); iOS uses labeled text inputs (Name='Visual Server', Slug='visual') with required-field asterisk on Name."
+      ],
+      "likelyCauses": [
+        "Wrong route/screen captured for the iOS baseline — the comparison element rendered the Administration/Profile screen instead of the Onboarding settings screen.",
+        "iOS app implements onboarding under a different navigation path than React, or navigation state differs (e.g., pushed Administration instead of Onboarding).",
+        "Possible product divergence where iOS app exposes Profile + Danger Zone while React Settings/Administration exposes only Onboarding toggles.",
+        "Mismatched test selector or component-bounds contract capturing the parent Administration container instead of the Onboarding child."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Verify the iOS navigation flow: tap into Settings → Administration → Onboarding and confirm the Onboarding screen renders the Human Onboarding Agent and New Agent Greeting dropdowns.",
+        "Update iOS component to render the Onboarding card with 'Human Onboarding Agent' select and 'New Agent Greeting' select matching React baseline, or intentionally surface Profile/Danger Zone as a separate test.",
+        "Align Slock test target selector to the Onboarding child element (matching React's element-bounds contract) instead of the parent Administration container.",
+        "If Profile and Danger Zone are intentionally separate, add dedicated visual tests for each and exclude the Onboarding snapshot from this comparison.",
+        "Re-run pixel-perfect comparison after aligning screens; expect RGB similarity ≥99% and mismatch <2%."
+      ],
+      "intentional": [
+        "iOS uses a navigation header with back arrow; React shows a static ONBOARDING label — either platform-specific pattern could be intentional.",
+        "iOS 'Delete Server' destructive button has higher visual prominence than React equivalents — may be intentional product design for native iOS.",
+        "Profile section (Name, Slug) may be intentionally only on iOS if account editing is mobile-specific."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1514062732072211
     },
     {
       "id": "components.settings.administration.member-permissions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc03fcc0fe01fe800000fe80000f0623f40006200c001287fc00068000000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:38.194Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:21.034Z",
+      "severity": "high",
+      "summary": [
+        "iOS render shows an entirely different screen: 'Administration' with Profile (Name/Slug fields, Save Profile) and Danger Zone (Delete Server) — not the 'Member Permissions' toggle card.",
+        "React baseline shows a single 'Member Permissions' card with checkbox 'Hide human directory and counts from members', description text, and a pink 'Save' button.",
+        "Component mismatch: the iOS capture is of a different route/component than the React baseline's Member Permissions view.",
+        "Missing element on iOS: checkbox, descriptive paragraph, and 'Save' button for member permissions are absent.",
+        "iOS includes extra UI not present in baseline: back chevron header, Profile form, Danger Zone delete panel, and a home indicator bar."
+      ],
+      "likelyCauses": [
+        "iOS screenshot was taken on the wrong screen or wrong navigation state (Administration instead of Member Permissions).",
+        "Component-bound crop targeted the Administration screen rather than the Member Permissions component.",
+        "Route name collision or shared 'Administration' landing screen shown before Member Permissions tab is selected.",
+        "iOS implementation missing the Member Permissions section entirely, or it lives under a different tab not captured."
+      ],
+      "suggestedOwner": "iOS Engineer",
+      "suggestedFixes": [
+        "Re-capture the iOS screenshot on the Member Permissions screen matching the React route.",
+        "Verify iOS Settings → Administration → Member Permissions navigation exposes the toggle card.",
+        "Add the 'Hide human directory and counts from members' checkbox + description + Save button to the iOS Member Permissions view.",
+        "If Member Permissions lives on a different tab/segment in iOS, adjust the capture contract to target that component bounds.",
+        "Confirm component-bounds crop regex/selector matches the Member Permissions header on iOS, not the Administration root."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.13680175801028882
     },
     {
       "id": "components.settings.administration.translation",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcc7fe01fe800000fe80040f0627fc00062004001207ec000687fc000280001ff2fffe0012fffe03f2fffe0002fffe0006fffe03f2fffe0602fffe0206fffe0002fffe0006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
-      "generatedAt": "2026-07-09T14:32:38.250Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:21.482Z",
+      "severity": "high",
+      "summary": [
+        "The two panels show entirely different screens: React shows a 'Translation' settings card with a checkbox toggle and Save button, while iOS shows an 'Administration' screen with Profile (Name/Slug fields, Save Profile button) and Danger Zone (Delete Server) sections.",
+        "The iOS view is missing the Translation feature entirely — no checkbox, no description text, no Translation heading/icon, and no Save button for translation settings.",
+        "iOS adds a back arrow navigation control and an 'Administration' page title that are absent in the React baseline.",
+        "iOS shows two card sections (Profile, Danger Zone) with form inputs, while React shows only one card (Translation) with a toggle.",
+        "A home indicator bar is visible at the bottom of the iOS canvas but absent on the React canvas, consistent with iOS chrome."
+      ],
+      "likelyCauses": [
+        "The iOS build is rendering the wrong route or screen — it appears to be showing Administration/Profile/Delete Server instead of the Translation settings component.",
+        "Translation settings component was not implemented or not wired into the iOS navigation stack.",
+        "Possible navigation regression where the deep link or tab target resolves to the Administration screen rather than Translation.",
+        "React baseline screenshot may have been captured against a different component than the iOS target, causing an apples-to-oranges comparison."
+      ],
+      "suggestedOwner": "iOS engineering — settings/administration feature owner",
+      "suggestedFixes": [
+        "Verify the iOS target route/component identifier for 'Settings Administration Translation' matches the React implementation; ensure the Translation screen is registered in the iOS navigation graph.",
+        "Implement the missing Translation UI (heading, enable checkbox, descriptive copy, Save button) on iOS to match the React card.",
+        "Remove the unexpected Profile/Danger Zone sections from this comparison target if they belong to a different screen, or split them into a separate Slock case.",
+        "Confirm the Slock baseline/current targets resolve to the same feature; re-capture React baseline if it was taken from the wrong screen.",
+        "If differences are intentional (different platform scope), mark this comparison as expected and split Translation vs Administration into distinct test cases."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1356378525809805
     },
     {
@@ -1899,74 +2241,185 @@
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe97ff9fff807e803f8ffe3fff87ff03f781fc03f3817c001383fc007383fc00038ffc0013840403f3800102d3d7ff0ff787fc00078ffc07f3803800078000800f82040ff781fc1ff380fc0ff787fc03e787fc0007800007f3ffff00f3ffff00f3ffff07f3ffff0007fffffffffffffffffffffffffffe781effffffff",
-      "generatedAt": "2026-07-09T14:32:38.624Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:22.797Z",
+      "severity": "high",
+      "summary": [
+        "React shows only 2 segmented controls (Auto/Off, 12-hour/24-hour); iOS shows 3 controls plus a Preferred Language select with its own Save — a Preferred Language section is missing from React",
+        "React Translation mode toggle is 2-state (Auto/Off); iOS Translation mode is 3-state (Automatic/Manual/Original) with leading icons — divergence is structural, not just styling",
+        "React Timezone select displays 'UTC+08:00 Asia/Shanghai'; iOS shows 'Asia/Shanghai' only — leading UTC offset prefix is missing on iOS",
+        "React uses Title Case labels with sentence-case body text and section headings rendered in uppercase tracked-out text; iOS uses ALL CAPS small-style labels and uppercase eyebrows inconsistent with React's hierarchy",
+        "iOS adds icons (translate, pencil, document, clock) inside toggle/segmented controls and on the Save button; React renders plain text/no icons, breaking the visual control par"
+      ],
+      "likelyCauses": [
+        "React implementation never received the Preferred Language panel — partial feature parity",
+        "iOS added a third translation option (Manual) without updating the React Translation Mode contract from 2 to 3 values",
+        "iOS Timezone option formatter strips the 'UTC±HH:MM ' prefix that React renders",
+        "Independent theming: typography case, icon usage, and section-header styling were not codified in a shared design token set",
+        "Different selected-state highlighting: iOS uses yellow fill as a distinct on-color while React uses yellow identically — visual semantics diverge"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Add the Preferred Language section (label 'PREFERRED LANGUAGE', descriptive copy, language dropdown, Save) to the React component to match iOS parity",
+        "Update React Translation Mode segmented control to 3 options (Automatic / Manual / Original) with matching icons and labels",
+        "Unify Timezone dropdown formatting: agree on whether 'UTC±HH:MM ' prefix is shown, then apply consistently on both platforms",
+        "Adopt a shared uppercase eyebrow / section-heading style and consistent icon-plus-label pattern for segment controls and Save buttons",
+        "Tokenize the selected (yellow) vs unselected (white) segment state so React and iOS express the same on/off affordance"
+      ],
+      "intentional": [
+        "Bottom home-indicator bar on iOS is platform-correct and should remain only on iOS",
+        "Tracked-out uppercase section headings on iOS may be an intentional platform typographic style pending design review",
+        "3-state translation mode may be the intended new contract; React 2-state would then be the bug to fix"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1769170008506501
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe00020a068000001601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2002807c00028004c00631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
-      "generatedAt": "2026-07-09T14:32:38.739Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:22.970Z",
+      "severity": "high",
+      "summary": [
+        "Section header label differs: React shows 'APPEARANCE' (uppercase tracked) while iOS shows 'Message font size' (title case).",
+        "iOS is missing the descriptive paragraph explaining what the font size setting affects ('Adjust rendered message text on this device…').",
+        "iOS segment buttons include a 'T' icon prefix that is absent on the React version; React buttons only show text labels.",
+        "iOS preview avatar is a purple square with generic person glyph, whereas React shows a pixelated green 'Cindy' avatar with green online dot.",
+        "React preview shows a timestamp '02:12 PM' and a 'Saved on this device.' caption; both are missing on iOS."
+      ],
+      "likelyCauses": [
+        "Design divergence: iOS uses a simplified header that omits the long-form descriptive copy.",
+        "Component spec inconsistency between platforms — iconography ('T' prefix), avatar asset, and author identity differ across React vs iOS implementations.",
+        "Layout/scale differences from canvas resolution mismatch (390×844 vs 1170×2532) producing a larger effective font size and differing avatar styling.",
+        "iOS-specific chrome (home indicator) not stripped from screenshot.",
+        "Onboarding/sample data differs per platform, changing preview author and avatar."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Add the 'Adjust rendered message text…' description paragraph to the iOS Appearance page or confirm with design that it should be removed.",
+        "Decide on a single section header style and align React 'APPEARANCE' with iOS 'Message font size' (or vice versa).",
+        "Standardize the segment control: either add the 'T' icon to React or remove it from iOS.",
+        "Align preview avatar assets and author identity across platforms, or parameterize them in the visual test baseline.",
+        "Restore the 'Saved on this device.' status caption and timestamp on the iOS preview, or remove from React if intentional."
+      ],
+      "intentional": [
+        "The 'T' icon prefix on segment buttons may be an intentional iOS affordance.",
+        "The home indicator at the bottom of iOS is platform chrome, not a UI regression."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.18443850339584933
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff81fe80ff9cfe3fff80ff0007807c000780600c0780607ff3bffc0ff3bffc0c13bffc34f3a01c0fd3807c00f3807c007381fc7f93e2740613fff000f3bfe0007380010053ffff0073ffff0073ffff0207ffff3f07ffff0ff3ffff0007ffff2ff7ffff00f3ffff0073ffff0007fffffffffffe781effffffff",
-      "generatedAt": "2026-07-09T14:32:38.868Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:26.692Z",
+      "severity": "high",
+      "summary": [
+        "Completely different layouts: React shows a single 'Push Notifications' card with primary enable button and mute checkbox; iOS shows three separate cards (Notification permission, Test notification, Workspace mute) with segmented toggle buttons",
+        "React uses yellow 'UNAVAILABLE' badge and pink primary 'Enable Push Notifications' button; iOS uses yellow segmented toggle buttons (Enabled/Disabled, Keep alive/Normal, Unmuted/Muted) and a 'Ready' send button",
+        "React's heading is 'PUSH NOTIFICATIONS' (all caps, letter-spaced) while iOS adds a 'Show system notifications' subheader and uses sentence case labels",
+        "iOS adds extra controls absent from React: 'Request permission' button, 'Manage notifications' button, 'Test notification' with send button, and explicit keep-alive/background mode toggle",
+        "Save button placement differs: React right-aligns at bottom of card; iOS has no Save button, instead using segmented controls and 'Ready' send button"
+      ],
+      "likelyCauses": [
+        "Platform-specific UI variants (web vs iOS native) have not been unified in the Slock fixture",
+        "iOS build exposes richer notification controls not present in the React web version",
+        "Design parity between React baseline and iOS implementation was not enforced for this component"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Decide whether the two implementations should be visually parity-aligned; if so, harmonize the notification permission, keep-alive, test-notification and workspace-mute controls across web and iOS",
+        "Standardize button styles: replace React's pink primary CTA with the yellow segmented toggle pattern used on iOS (or vice-versa) to ensure consistent interaction model",
+        "Remove or add the 'UNAVAILABLE' badge and 'Request permission' button across both platforms",
+        "Align section header treatment (caps vs sentence case) and add consistent section dividers on both sides",
+        "Verify pixel mismatch (~18%) is acceptable or raise tolerance after intentional divergence is confirmed"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1831729925331821
     },
     {
       "id": "components.settings.connected-apps.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffeffffdfff80ff807ffe01ffffdc00b3f7ffc18207c03ece07fffefff7fffefff7c00efff7800e87f78001bb378ffcbb37800c8007807c800f807cbfff87fc8017bff89ff7bfe0ff078001ff0787fdff1780008007800487178001bff780fe80078ffea7f7fffe8007fff087d787e1ff078001df3780fc8017ffffffff",
-      "generatedAt": "2026-07-09T14:32:39.127Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:27.414Z",
+      "severity": "high",
+      "summary": [
+        "Layout is vertically split into two independent cards on iOS (Third-party apps and Built-in) while React places them stacked with a shared 'Available to all Raft users' context.",
+        "iOS introduces extra in-card stat tiles (3 Marketplace, 2 Installed, 1 My apps) inside the Third-party card, plus an 'EXPERIMENTAL' badge that is not shown in that card on React.",
+        "Tab order on iOS is rearranged: icon-prefixed tabs (Marketplace / Installed / My) appear below the stat tiles, whereas React renders a single 'CONNECTED APPS' label above the card.",
+        "'Marketplace 3' / 'Installed 2' / 'My apps 1' chip style on React becomes large numeric tiles with truncated label ('Marketplac…') on iOS — text is clipped.",
+        "iOS loses the green 'BUILT-IN' pill on the GitHub row, replaces descriptive text with a list ('Available to all users & agents · Built-in source control integration · github.com'), and changes the action label from 'Open' to 'Open' with an external-link icon."
+      ],
+      "likelyCauses": [
+        "React and iOS implementations were built from different design specs; iOS port appears to follow a card-based refactor not back-applied to web.",
+        "Stat-count tiles and tab bar were introduced on iOS without an equivalent update on React.",
+        "iOS component library renders icons by default (marketplace/installed/key, external-link, eye) where React uses text-only badges.",
+        "Truncation on 'Marketplace' tile caused by insufficient fixed width / lack of Text ellipsis handling.",
+        "Missing 'BUILT-IN' and 'PRODUCTIVILITY' tags on iOS suggest tag/badge component was not ported or was conditionally suppressed."
+      ],
+      "suggestedOwner": "design-systems",
+      "suggestedFixes": [
+        "Align the page structure between web and iOS: pick either stacked sections or split cards and apply consistently.",
+        "Add the missing tags/badges on iOS: green 'BUILT-IN' pill on GitHub row, yellow 'PRODUCTIVITY' tag on Slack Bridge row, and the 'CONNECTED APPS' / 'EXPERIMENTAL' labels in their React positions.",
+        "Decide on tab style parity: if React uses chip-style counters, render them as chips on iOS; if numeric tiles are desired on iOS, ensure label width allows full text or add ellipsis tooltip.",
+        "Restore React's descriptive sub-header under 'Connected Apps' on iOS, or remove it on both.",
+        "Match CTA variants: use the same primary pink 'Open' / 'Install' buttons (no external-link or eye icon) on iOS, or update React to match the new iconography."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3264548817866353
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffe0000000000000000ffff0000ffff0000fffffffffffffe7ffe7ffe7ffe7ffe7ffe7fffffffffcbff9fffc00381fcc4038fffc03f9ffec0038000c0038001c0038001ffffdffbf81bffffc003b00c80038001c0038001fd9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff83fffffffff",
-      "generatedAt": "2026-07-09T14:32:39.189Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:28.365Z",
+      "severity": "medium",
+      "summary": [
+        "Yellow RAFT header banner height differs — iOS banner is taller/extends further down than React.",
+        "Sign In title and logo vertical positioning differs: iOS is shifted higher relative to the form than React.",
+        "iOS renders the iPhone home indicator bar at the bottom; React viewport has no home indicator.",
+        "Form spacing/vertical rhythm differs: iOS has tighter gaps between Email field, Password field, and the pink 'Signing in…' button vs React.",
+        "Typography weight/size of labels (Email, Password) and body text appears slightly larger on iOS (higher pixel density scaling)."
+      ],
+      "likelyCauses": [
+        "Missing normalization of the yellow header banner height between web and native implementations.",
+        "iOS safe-area / home-indicator not accounted for in the React baseline render contract.",
+        "Different default font scales and form spacing tokens between web (CSS) and iOS (SwiftUI) styling systems.",
+        "Viewport scaling differences — React snapshot at 390×844 vs iOS native at 1170×2532 without a consistent DP contract."
+      ],
+      "suggestedOwner": "design-system / cross-platform UI lead",
+      "suggestedFixes": [
+        "Unify the yellow banner height and the Sign In logo/title vertical offset in the shared design tokens.",
+        "Standardize safe-area handling: reserve bottom inset for the iOS home indicator in both web preview and native.",
+        "Audit Email/Password label and input typography tokens so weight and size match across React and iOS.",
+        "Align vertical spacing rhythm between Email, Password, 'Signing in…' button, OR divider, and social buttons.",
+        "Use a single logical DP/pixel ratio contract so component bounds are compared proportionally rather than in raw pixels."
+      ],
+      "intentional": [
+        "Pink 'Signing in…' loading button state is consistent on both sides — intentional loading indicator."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2890600315955766
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1979,7 +2432,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1992,7 +2445,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2005,7 +2458,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2018,7 +2471,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2031,7 +2484,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:38.549Z",
+      "generatedAt": "2026-07-09T14:44:17.057Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2252,15 +2705,38 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffc3ffc000000000000000000000400dffecffecffe4ffecffecffe8ffe4ffecffec7fe87fe9ffebffe9ffebffe9ffebffe9ffebffebffe83fec1ff81fe9ffebffe9ffebffe9ffebffefffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe000000000101000100000000fffeffff",
-      "generatedAt": "2026-07-09T14:32:40.202Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:30.612Z",
+      "severity": "medium",
+      "summary": [
+        "Vertical spacing between top nav items (Search/Activity/Saved) is tighter on the React baseline than on the iOS variant, where gaps are more pronounced.",
+        "The CHANNELS and DIRECT MESSAGES section headers render at a slightly larger font size on iOS, with more vertical padding around them.",
+        "Channel/DM list rows (circle + placeholder bar) are taller on iOS and the circular avatars appear marginally larger, increasing row density vs. React.",
+        "Bottom tab bar on iOS shows visible icon labels (HOME, TASKS, MEMBERS, SETTINGS) in addition to icons, while the React baseline labels appear visually thinner/smaller and more tightly spaced; the iOS tab bar also includes a home indicator pill.",
+        "Banner/crop label badge in the top-right differs: React shows 'REACT' on a yellow tag, iOS shows 'iOS' on a yellow tag — different text but same styling."
+      ],
+      "likelyCauses": [
+        "Native iOS component uses default iOS dynamic type / system spacing constants that scale fonts and paddings larger than the React web baseline.",
+        "iOS tab bar implementation renders labels by default while the React variant may suppress or shrink them, or vice versa.",
+        "Different skeleton/placeholder dimensions defined in platform-specific style sheets.",
+        "Independent implementation of the server header (yellow banner with black label) rather than shared design tokens."
+      ],
+      "suggestedOwner": "Design Systems / Mobile Engineering",
+      "suggestedFixes": [
+        "Audit shared spacing tokens (search/activity/saved vertical rhythm, section header padding, list-row height, avatar size) and align iOS values to the React baseline where intended.",
+        "Unify section header (CHANNELS, DIRECT MESSAGES) font size and vertical padding across platforms via a shared token.",
+        "Normalize bottom tab bar label presence/size and ensure icon-only vs label layout matches across React and iOS (or accept as documented platform difference).",
+        "Verify the top banner badge text ('React' vs 'iOS') is configuration-driven rather than hardcoded so visual diffs only reflect actual UI, not meta labels.",
+        "Confirm home indicator pill on iOS is expected and suppress it from screenshots or document it as intentional."
+      ],
+      "intentional": [
+        "Server header crop-region label differing between 'React' and 'iOS' badges is a tooling/test artifact, not a product UI difference.",
+        "iOS home indicator pill is platform-standard and expected."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1518194461322423
     },
     {
@@ -2301,22 +2777,46 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffeffff1fffffff07ff9fffffff9d5feffff3ffefffe2efec3fe3ffe001e01fe0cfefffc039e187e1ffe083ebffe103e07fe45fefffe7ffe3ffe7ffe163e003e007e013e003e3ffe003e003e003e001e003e001e007e001e003e001e003e001efffe1ffe01fe001e003e001e001e001e001e001e001e00fe03ff81fffffffff",
-      "generatedAt": "2026-07-09T14:32:40.280Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-09T14:37:33.217Z",
+      "severity": "medium",
+      "summary": [
+        "Inline code spans render at a slightly different base size/leading on iOS causing the long-path block to overflow the canvas at the right edge (last few characters clipped) and the gradlew command to wrap onto an extra line.",
+        "Long inline code blocks on iOS appear to render in a slightly heavier weight and the yellow frame extends edge-to-edge, differing from the React baseline which has visible right-margin.",
+        "On iOS the rightmost portion of long inline-code lines (e.g., '…identity-…', '…KmpVisualScreenshot…', '…MessageRowLongInlineCode') is clipped/cropped at the canvas right edge, whereas React wraps cleanly within bounds.",
+        "Tag chip widths (#markdown专修, #markdown专修:692d9e88, @artin, #42, #43) measure slightly wider on iOS, pushing subsequent tokens onto different line breaks vs. React.",
+        "Header meta row (Keeps vis… vs Keeps visual testing 06/25 05:55) truncates differently: React shows ellipsis-cropped 'vis…' with timestamp on a new horizontal segment, iOS keeps the channel name fully but still aligns timestamp on the same row with different spacing."
+      ],
+      "likelyCauses": [
+        "iOS WebView/text engine uses a different monospace font metrics than React, so each inline-code span occupies more horizontal space and the existing max-width/word-break CSS does not constrain it the same way.",
+        "Right padding or available content width on the iOS message row is smaller relative to text size, so long unbreakable tokens exceed the row and get clipped rather than wrapping.",
+        "Inline-code chip styling (yellow background + border) is applied at a slightly larger padding/font-size on iOS, expanding chip width.",
+        "Differences in how bold and CN glyphs are rendered across platforms shift line-break points, cascading into different wrap positions for long inline codes."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Normalize monospace font-family and font-size for inline code spans across platforms so measured widths match.",
+        "Reduce inline-code horizontal padding or add a small right-margin so long paths render fully within row bounds on iOS.",
+        "Ensure the message row's content area width and right padding are consistent with React; add overflow-wrap/word-break rules for long unbreakable tokens.",
+        "Tighten header meta truncation rules so the channel-name + timestamp layout produces identical ellipsis behavior on both platforms.",
+        "Verify the yellow-fill code-chip background does not extend to the canvas edge on iOS by adding a max-width or inset consistent with React."
+      ],
+      "intentional": [
+        "@artin mention appears styled (yellow chip) on iOS but as plain text on React for this fixture - intentional platform-difference per known divergence (Android/iOS tag-everything behavior, React gates on known refs).",
+        "#520 appears as a plain task chip on iOS and as plain text on React - same intentional platform-difference noted in metadata (#416, artin keep-android-style).",
+        "#markdown专修 renders with the resolved-channel pink/blue split chip styling on iOS for both occurrences, while React only styles the known one - intentional divergence, not a defect."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4833478483952418
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:39.757Z",
+      "generatedAt": "2026-07-09T14:44:18.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2329,7 +2829,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T14:32:39.757Z",
+      "generatedAt": "2026-07-09T14:44:18.680Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

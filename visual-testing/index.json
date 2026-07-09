@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-09T14:33:13.238Z",
+  "generatedAt": "2026-07-09T14:45:00.170Z",
   "latestRunId": "b7cbd7d-20260709142821",
   "latest": {
     "runId": "b7cbd7d-20260709142821",
     "commit": "b7cbd7d-20260709142821",
     "commitSubject": "feat(ios): bump kuikly gitlink to staging2 w/ rich-text chip chrome (task #439) (#445)",
-    "generatedAt": "2026-07-09T14:33:13.238Z",
+    "generatedAt": "2026-07-09T14:45:00.170Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 89,
-      "ready": 68,
-      "pending": 21
+      "ready": 85,
+      "pending": 4
     },
     "comparisons": [
       "react__android",
@@ -117,7 +117,7 @@
       "runId": "b7cbd7d-20260709142821",
       "commit": "b7cbd7d-20260709142821",
       "commitSubject": "feat(ios): bump kuikly gitlink to staging2 w/ rich-text chip chrome (task #439) (#445)",
-      "generatedAt": "2026-07-09T14:33:13.238Z",
+      "generatedAt": "2026-07-09T14:45:00.170Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -130,8 +130,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 68,
-        "pending": 21
+        "ready": 85,
+        "pending": 4
       },
       "comparisons": [
         "react__android",

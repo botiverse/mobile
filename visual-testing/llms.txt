@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 14:33:13 UTC
+Generated: 2026-07-09 14:45:00 UTC
 Latest run: b7cbd7d-20260709142821
 Latest commit: b7cbd7d-20260709142821
 Commit subject: feat(ios): bump kuikly gitlink to staging2 w/ rich-text chip chrome (task #439) (#445)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-AI analysis: ready 68 / total 89, pending 21
+AI analysis: ready 85 / total 89, pending 4
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

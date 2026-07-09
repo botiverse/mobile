@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-09T14:33:13.238Z",
+  "generatedAt": "2026-07-09T14:45:00.170Z",
   "runId": "b7cbd7d-20260709142821",
   "commit": "b7cbd7d-20260709142821",
   "commitSubject": "feat(ios): bump kuikly gitlink to staging2 w/ rich-text chip chrome (task #439) (#445)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 68,
-        "pending": 21
+        "ready": 85,
+        "pending": 4
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 55,
-        "pending": 34
+        "ready": 78,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 0,
-        "pending": 89
+        "ready": 81,
+        "pending": 8
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 89,
-    "ready": 68,
-    "pending": 21
+    "ready": 85,
+    "pending": 4
   },
   "componentMatrixSummary": {
     "total": 109,
