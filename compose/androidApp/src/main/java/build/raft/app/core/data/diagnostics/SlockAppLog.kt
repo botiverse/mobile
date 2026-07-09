@@ -3,7 +3,8 @@ package build.raft.app.core.data.diagnostics
 import build.raft.app.BuildConfig
 import java.util.concurrent.atomic.AtomicBoolean
 
-object SlockDiagnosticsLogger {
+/** Caller-facing log facade. Applies verbosity gates before delegating to Android local diagnostics. */
+object SlockAppLog {
     private val verboseLoggingEnabled = AtomicBoolean(BuildConfig.DEBUG)
 
     fun setVerboseLoggingEnabled(enabled: Boolean) {
@@ -11,21 +12,21 @@ object SlockDiagnosticsLogger {
     }
 
     fun d(tag: String, message: String) {
-        if (!verboseLoggingEnabled.get()) return
-        SlockAndroidAppDiagnostics.recordLog("debug", tag, message)
+        if (!verboseLoggingEnabled.get() && !SlockAuthCriticalJournal.isCritical(message)) return
+        SlockAndroidLocalDiagnostics.recordLog("debug", tag, message)
     }
 
     fun i(tag: String, message: String) {
         if (!verboseLoggingEnabled.get()) return
-        SlockAndroidAppDiagnostics.recordLog("info", tag, message)
+        SlockAndroidLocalDiagnostics.recordLog("info", tag, message)
     }
 
     fun w(tag: String, message: String) {
-        SlockAndroidAppDiagnostics.recordLog("warn", tag, message)
+        SlockAndroidLocalDiagnostics.recordLog("warn", tag, message)
     }
 
     fun e(tag: String, message: String) {
-        SlockAndroidAppDiagnostics.recordLog("error", tag, message)
+        SlockAndroidLocalDiagnostics.recordLog("error", tag, message)
     }
 
     fun record(tag: String, message: String) {

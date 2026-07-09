@@ -1,6 +1,6 @@
 package build.raft.app.push
 
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.shared.AndroidUnreadNotificationPoster
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -9,7 +9,7 @@ import org.json.JSONObject
 class SlockFirebaseMessagingService : FirebaseMessagingService() {
     override fun onRegistered(installationId: String) {
         super.onRegistered(installationId)
-        SlockDiagnosticsLogger.i(TAG, "fcm_registered installationIdPresent=${installationId.isNotBlank()}")
+        SlockAppLog.i(TAG, "fcm_registered installationIdPresent=${installationId.isNotBlank()}")
         // Server registration is intentionally left for the native push contract follow-up.
     }
 
@@ -17,13 +17,13 @@ class SlockFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         val data = message.data
         if (data.isEmpty()) {
-            SlockDiagnosticsLogger.i(TAG, "fcm_message_received type=empty_data")
+            SlockAppLog.i(TAG, "fcm_message_received type=empty_data")
             return
         }
 
         val request = data.toUnreadNotificationRequest()
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
-        SlockDiagnosticsLogger.i(
+        SlockAppLog.i(
             TAG,
             "fcm_message_handled dataKeys=${data.keys.sorted().joinToString(",")} status=${result["status"]} code=${result["code"]}"
         )

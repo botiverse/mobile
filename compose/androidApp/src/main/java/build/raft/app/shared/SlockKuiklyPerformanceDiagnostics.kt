@@ -1,6 +1,6 @@
 package build.raft.app.shared
 
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import com.tencent.kuikly.core.render.android.performace.KRMonitorType
 import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
 import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
@@ -13,7 +13,7 @@ internal object SlockKuiklyPerformanceDiagnostics {
             listOf(KRMonitorType.LAUNCH, KRMonitorType.FRAME, KRMonitorType.MEMORY)
 
     fun recordLaunch(source: String, pageName: String, data: KRLaunchData) {
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 TAG,
                 "launch source=$source page=$pageName firstFrameMs=${data.firstFramePaintCost} " +
                         "buildMs=${data.pageBuildCost} layoutMs=${data.pageLayoutCost} " +
@@ -26,7 +26,7 @@ internal object SlockKuiklyPerformanceDiagnostics {
         val pageName = data.pageName.takeUnless { it.isBlank() } ?: fallbackPageName
         val frameData = data.frameData
         val memoryData = data.memoryData
-        SlockDiagnosticsLogger.record(
+        SlockAppLog.record(
                 TAG,
                 "perf source=$source page=$pageName spentMs=${data.spentTime} " +
                         "cold=${data.isColdLaunch} pageCold=${data.isPageColdLaunch} " +

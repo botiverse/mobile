@@ -3071,7 +3071,7 @@ class KmpVisualScreenshotCaptureTest {
         // the shard.
         private const val REACTION_ATLAS_READY_TOKEN = "thread_reaction_atlas_ready"
         // Kuikly bridge host tag the token rides (SlockKuiklyActivity ->
-        // SlockAndroidAppDiagnostics.recordLog(level, "SlockKuikly", content)).
+        // SlockAndroidLocalDiagnostics.recordLog(level, "SlockKuikly", content)).
         private const val REACTION_ATLAS_LOG_TAG = "SlockKuikly"
         private const val REACTION_ATLAS_TIMEOUT_MS = 20_000L
         private const val REACTION_ATLAS_POLL_MS = 250L

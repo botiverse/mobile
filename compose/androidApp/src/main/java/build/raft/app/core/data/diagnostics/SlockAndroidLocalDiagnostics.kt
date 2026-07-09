@@ -11,14 +11,14 @@ import java.util.zip.ZipOutputStream
 import org.json.JSONObject
 
 /**
- * App diagnostics: an on-device JSONL log ring + feedback-archive builder.
+ * Android local-diagnostics coordinator: logcat routing, persistent sinks, and feedback exports.
  *
  * External crash reporting moved (crash/native/ANR reporting is handled by the Quiver SDK;
  * telemetry/scene/user-context reporting is dropped). This object keeps its
  * public API so callers are unchanged, but the reporting methods are now
  * no-ops; only local logging and the feedback archive remain.
  */
-object SlockAndroidAppDiagnostics {
+object SlockAndroidLocalDiagnostics {
     private const val Tag = "SlockAndroidDiagnostics"
     private const val FeedbackDirName = "slock-feedback"
     private const val FeedbackFilePrefix = "slock-feedback-"
@@ -28,8 +28,9 @@ object SlockAndroidAppDiagnostics {
     private const val MaxValueLength = 512
 
     fun init(context: Context) {
-        SlockFileDiagnosticsLogger.init(context.applicationContext)
-        SlockDiagnosticsLogger.d(
+        SlockGeneralLogRing.init(context.applicationContext)
+        SlockAuthCriticalJournal.init(context.applicationContext)
+        SlockAppLog.d(
             Tag,
             "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} backend=jsonl quiver=crash"
         )
@@ -41,13 +42,17 @@ object SlockAndroidAppDiagnostics {
     fun isDiagnoseInitialized(): Boolean = false
 
     fun hasFallbackDiagnosticsLogs(context: Context): Boolean =
-        SlockFileDiagnosticsLogger.hasFiles(context.applicationContext)
+        SlockGeneralLogRing.hasFiles(context.applicationContext) ||
+            SlockAuthCriticalJournal.hasFiles(context.applicationContext)
 
     fun recordLog(level: String, tag: String, message: String) {
         val cleanTag = tag.valueOrNull() ?: return
         val cleanMessage = DiagnosticsSanitizer.sanitize(message).takeIf { it.isNotBlank() } ?: return
         writeLogcat(level, cleanTag, cleanMessage)
-        SlockFileDiagnosticsLogger.record(level, cleanTag, cleanMessage)
+        val routedToAuthJournal = SlockAuthCriticalJournal.record(level, cleanTag, cleanMessage)
+        if (!routedToAuthJournal && SlockPersistentDiagnosticsPolicy.shouldPersist(level, cleanMessage)) {
+            SlockGeneralLogRing.record(level, cleanTag, cleanMessage)
+        }
     }
 
     private fun writeLogcat(level: String, tag: String, message: String) {
@@ -63,7 +68,8 @@ object SlockAndroidAppDiagnostics {
 
     fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
         val appContext = context.applicationContext
-        SlockFileDiagnosticsLogger.flush()
+        SlockGeneralLogRing.flush()
+        SlockAuthCriticalJournal.flush()
         val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
         pruneFeedbackArchives(feedbackDir)
         val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
@@ -73,13 +79,13 @@ object SlockAndroidAppDiagnostics {
             zip.closeEntry()
 
             val seenNames = mutableSetOf<String>()
-            val recentJsonl = SlockFileDiagnosticsLogger.exportRecentJsonl()
+            val recentJsonl = SlockGeneralLogRing.exportRecentJsonl()
             if (recentJsonl.isNotBlank()) {
                 zip.putNextEntry(ZipEntry("app_logs/recent-memory.jsonl".uniqueZipEntryName(seenNames)))
                 zip.write(recentJsonl.toByteArray(StandardCharsets.UTF_8))
                 zip.closeEntry()
             }
-            SlockFileDiagnosticsLogger.logFiles(appContext).forEach { file ->
+            SlockGeneralLogRing.logFiles(appContext).forEach { file ->
                 if (file.isFile && file.length() > 0L) {
                     val entryName = "app_logs/${file.name}".uniqueZipEntryName(seenNames)
                     zip.putNextEntry(ZipEntry(entryName))
@@ -87,17 +93,30 @@ object SlockAndroidAppDiagnostics {
                     zip.closeEntry()
                 }
             }
+            SlockAuthCriticalJournal.logFiles(appContext).forEach { file ->
+                val entryName = "auth_logs/${file.name}".uniqueZipEntryName(seenNames)
+                zip.putNextEntry(ZipEntry(entryName))
+                file.inputStream().buffered().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
         }
         recordLog(
             "info",
             Tag,
-            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} app_log_files=${SlockFileDiagnosticsLogger.logFiles(appContext).size}"
+            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} app_log_files=${SlockGeneralLogRing.logFiles(appContext).size}"
         )
         return archive
     }
 
     fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
-        val text = SlockFileDiagnosticsLogger.exportRecentText(context.applicationContext, maxChars)
+        val appContext = context.applicationContext
+        val authText = SlockAuthCriticalJournal.exportRecentText(appContext, maxChars / 2)
+        val generalText = SlockGeneralLogRing.exportRecentText(appContext, maxChars - authText.length)
+        val text =
+            buildString {
+                if (authText.isNotBlank()) appendLine(authText)
+                if (generalText.isNotBlank()) append(generalText)
+            }.takeLast(maxChars)
         return text.ifBlank { "No local diagnostics log files are currently available." }
     }
 
@@ -113,7 +132,8 @@ object SlockAndroidAppDiagnostics {
                 ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) }
                 ?.forEach { it.delete() }
         }
-        SlockFileDiagnosticsLogger.clearFiles(appContext)
+        SlockGeneralLogRing.clearFiles(appContext)
+        SlockAuthCriticalJournal.clearFiles(appContext)
         recordLog("info", Tag, "diagnostics_local_files_clear_requested")
     }
 
@@ -132,7 +152,7 @@ object SlockAndroidAppDiagnostics {
         selectedServerSlug: String?
     ) {
         // No external reporting backend; keep a local breadcrumb only.
-        SlockDiagnosticsLogger.d(Tag, "user_context user=${!userId.isNullOrBlank()}")
+        SlockAppLog.d(Tag, "user_context user=${!userId.isNullOrBlank()}")
     }
 
     fun reportAppFullLaunch() {}
@@ -151,7 +171,7 @@ object SlockAndroidAppDiagnostics {
     }
 
     fun testCrash(kind: String = "java"): Boolean {
-        SlockDiagnosticsLogger.d(Tag, "test_crash kind=$kind ignored=quiver_only")
+        SlockAppLog.d(Tag, "test_crash kind=$kind ignored=quiver_only")
         return false
     }
 
@@ -161,7 +181,7 @@ object SlockAndroidAppDiagnostics {
 
     fun reportKuiklySnapshot(payload: JSONObject) {
         val summary = payload.optString("summary").ifBlank { "route=unknown reason=unknown status=unknown" }
-        SlockDiagnosticsLogger.d("SlockKuiklyPerfSnapshot", summary)
+        SlockAppLog.d("SlockKuiklyPerfSnapshot", summary)
     }
 
     // ---- helpers ------------------------------------------------------------

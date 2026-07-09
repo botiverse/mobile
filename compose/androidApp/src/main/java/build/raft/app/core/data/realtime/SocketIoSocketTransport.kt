@@ -19,7 +19,7 @@ class SocketIoSocketTransport(
     private var socket: Socket? = null
 
     override fun connect(auth: Map<String, String>) {
-        build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger.d(
+        build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
             "transport_connect_start serverId=${auth["serverId"].orEmpty()} hasToken=${auth["token"].isNullOrBlank().not()}"
         )
@@ -42,12 +42,12 @@ class SocketIoSocketTransport(
     }
 
     override fun disconnect() {
-        build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger.d("SlockRealtime", "transport_disconnect")
+        build.raft.app.core.data.diagnostics.SlockAppLog.d("SlockRealtime", "transport_disconnect")
         socket?.disconnect()
     }
 
     override fun emit(eventName: String, payload: Map<String, Any>) {
-        build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger.d(
+        build.raft.app.core.data.diagnostics.SlockAppLog.d(
             "SlockRealtime",
             "transport_emit eventName=$eventName keys=${payload.keys.joinToString("|")}"
         )
@@ -68,7 +68,7 @@ class SocketIoSocketTransport(
         unbindListener(eventName, listener)
         val emitter = socket.emitterFor(eventName)
         val socketListener = Emitter.Listener { args ->
-            build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger.d(
+            build.raft.app.core.data.diagnostics.SlockAppLog.d(
                 "SlockRealtime",
                 "transport_event eventName=$eventName payloadType=${args.firstOrNull()?.javaClass?.simpleName.orEmpty()}"
             )

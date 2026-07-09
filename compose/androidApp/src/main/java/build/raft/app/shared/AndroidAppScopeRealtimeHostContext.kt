@@ -4,7 +4,7 @@ import android.content.Context
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.core.data.realtime.SocketIoSocketTransport
@@ -82,7 +82,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         }
 
     override fun log(message: String) {
-        SlockDiagnosticsLogger.d(LOG_TAG, message)
+        SlockAppLog.d(LOG_TAG, message)
     }
 
     override fun fanOutRawRealtimeEvent(
@@ -131,7 +131,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 SocketIoRealtimeClient(
                     transport = SocketIoSocketTransport(socketUrl = socketUrl),
                     logger = { message ->
-                        SlockDiagnosticsLogger.d(LOG_TAG, message)
+                        SlockAppLog.d(LOG_TAG, message)
                     }
                 )
             val repository =
@@ -145,12 +145,12 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                                 SlockAuthApiClient(
                                     SharedSlockAuthTransport(
                                         baseUrl = apiBaseUrl,
-                                        warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                                        warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
                                     )
                                 ),
                             clockMillis = { System.currentTimeMillis() },
-                            logger = { message -> SlockDiagnosticsLogger.d(LOG_TAG, message) },
-                            warningLogger = { message -> SlockDiagnosticsLogger.w(LOG_TAG, message) }
+                            logger = { message -> SlockAppLog.d(LOG_TAG, message) },
+                            warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
                         )
                 )
             return AndroidAppScopeRealtimeHostContext(
@@ -199,12 +199,12 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         ) {
             val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
             val hasAttachedConsumers = false
-            SlockDiagnosticsLogger.w(
+            SlockAppLog.w(
                 LOG_TAG,
                 "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.messageId.value} preference_enabled=$preferenceEnabled foreground=$isAppInForeground"
             )
             if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
-                SlockDiagnosticsLogger.w(
+                SlockAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
@@ -217,14 +217,14 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     isAppInForeground = isAppInForeground
                 )
             if (request == null) {
-                SlockDiagnosticsLogger.w(
+                SlockAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.messageId.value}"
                 )
                 return
             }
             val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
-            SlockDiagnosticsLogger.w(
+            SlockAppLog.w(
                 LOG_TAG,
                 "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.messageId.value}"
             )
@@ -254,7 +254,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
                 value == "true"
             }.getOrElse { error ->
-                SlockDiagnosticsLogger.w(
+                SlockAppLog.w(
                     LOG_TAG,
                     "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
                 )

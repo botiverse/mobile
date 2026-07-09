@@ -8,7 +8,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.inputmethod.EditorInfo
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
@@ -149,7 +149,7 @@ internal open class SlockKuiklyTextFieldView(
     }
 
     private fun logState(message: String) {
-        SlockDiagnosticsLogger.d(
+        SlockAppLog.d(
             LOG_TAG,
             "$message enabled=$systemNewlineActionEnabled multiline=$allowsMultipleLines " +
                 "maxLines=$maxLines singleLine=$isSingleLine selection=$selectionStart..$selectionEnd"

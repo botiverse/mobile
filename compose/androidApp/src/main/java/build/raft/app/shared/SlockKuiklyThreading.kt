@@ -1,6 +1,6 @@
 package build.raft.app.shared
 
-import build.raft.app.core.data.diagnostics.SlockDiagnosticsLogger
+import build.raft.app.core.data.diagnostics.SlockAppLog
 import com.tencent.kuikly.core.render.android.adapter.IKRThreadAdapter
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -25,7 +25,7 @@ internal object SlockKuiklyThreadAdapter : IKRThreadAdapter {
 
     fun execute(label: String, task: () -> Unit) {
         executor.execute {
-            SlockDiagnosticsLogger.record(
+            SlockAppLog.record(
                     "SlockKuiklyThreading",
                     "native_task_start label=$label thread=${Thread.currentThread().name}"
             )
