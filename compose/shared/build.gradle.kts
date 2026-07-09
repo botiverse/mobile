@@ -39,6 +39,14 @@ multiplatformResources {
 }
 
 kotlin {
+    // kmmresource generates MR as expect/actual classes; Kotlin 2.x marks
+    // expect/actual CLASSES (not functions) Beta and warns once per generated
+    // declaration, flooding CI logs. This is the officially suggested
+    // suppression (KT-61573) — zero behavior change.
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
