@@ -7,6 +7,46 @@
 static const NSInteger SlockKuiklyKeyEventTypeDown = 2;
 static const NSInteger SlockKuiklyKeyCodeTab = 9;
 
+static UIWindow *SlockKuiklyCurrentKeyWindow(void) {
+    NSSet<UIScene *> *connectedScenes = UIApplication.sharedApplication.connectedScenes;
+    for (UIScene *scene in connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) {
+            continue;
+        }
+        UIWindowScene *windowScene = (UIWindowScene *)scene;
+        if (windowScene.activationState != UISceneActivationStateForegroundActive &&
+            windowScene.activationState != UISceneActivationStateForegroundInactive) {
+            continue;
+        }
+        for (UIWindow *window in windowScene.windows) {
+            if (window.isKeyWindow) {
+                return window;
+            }
+        }
+    }
+    for (UIWindow *window in UIApplication.sharedApplication.windows) {
+        if (window.isKeyWindow) {
+            return window;
+        }
+    }
+    return UIApplication.sharedApplication.windows.firstObject;
+}
+
+static CGFloat SlockKuiklyStatusBarHeight(UIWindow *window) {
+    if (@available(iOS 13.0, *)) {
+        CGRect statusBarFrame = window.windowScene.statusBarManager.statusBarFrame;
+        if (!CGRectIsEmpty(statusBarFrame)) {
+            return CGRectGetHeight(statusBarFrame);
+        }
+    }
+    return CGRectGetHeight(UIApplication.sharedApplication.statusBarFrame);
+}
+
+static NSString *SlockKuiklyPixelString(CGFloat points, CGFloat scale) {
+    CGFloat pixels = MAX(0, points) * MAX(1, scale);
+    return [NSString stringWithFormat:@"%.3f", pixels];
+}
+
 #define HRWeakSelf __weak typeof(self) weakSelf = self;
 @interface KuiklyRenderViewController()<KuiklyRenderViewControllerBaseDelegatorDelegate>
 
@@ -97,6 +137,13 @@ static const NSInteger SlockKuiklyKeyCodeTab = 9;
     // shared Compose layout uses dp. Mark the unit so shared safe-area helpers
     // convert through LocalDensity instead of treating 102px as 102dp.
     mParam[@"slockNativeSafeAreaInsetsArePixels"] = @YES;
+    UIWindow *window = SlockKuiklyCurrentKeyWindow();
+    CGFloat scale = window.screen.scale ?: UIScreen.mainScreen.scale;
+    UIEdgeInsets safeAreaInsets = window.safeAreaInsets;
+    CGFloat statusBarHeight = SlockKuiklyStatusBarHeight(window);
+    mParam[@"safeAreaTop"] = SlockKuiklyPixelString(safeAreaInsets.top, scale);
+    mParam[@"safeAreaBottom"] = SlockKuiklyPixelString(safeAreaInsets.bottom, scale);
+    mParam[@"statusBarHeight"] = SlockKuiklyPixelString(statusBarHeight, scale);
 
     return mParam;
 }

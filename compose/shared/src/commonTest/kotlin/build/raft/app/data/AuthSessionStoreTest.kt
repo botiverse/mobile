@@ -46,7 +46,8 @@ class AuthSessionStoreTest {
     @Test
     fun mmkvAuthSessionStorePersistsThroughAuthNamespaceOnly() = runBlocking {
         val keyValueStore = InMemorySlockKeyValueStore()
-        val store = KeyValueAuthSessionStore(keyValueStore)
+        val logs = mutableListOf<String>()
+        val store = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
 
         store.saveSession(sampleSession())
         assertEquals("server-1", store.readSession()?.currentServerId)
@@ -58,8 +59,13 @@ class AuthSessionStoreTest {
             store.readRememberedServerSelection(sampleSession().user)
         )
 
-        store.clearSession()
+        store.clearSession(reason = "api environment changed!", source = "settings store")
         assertNull(store.readSession())
+        assertTrue(
+            logs.any {
+                it == "auth_session_clear reason=api_environment_changed_ source=settings_store hadSession=true"
+            }
+        )
         assertEquals(
             StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
             store.readRememberedServerSelection(sampleSession().user)

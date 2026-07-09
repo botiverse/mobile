@@ -200,8 +200,20 @@ jobs:
           PROFILE_PATH="${RUNNER_TEMP}/slock-ios.mobileprovision"
           PROFILE_PLIST="${RUNNER_TEMP}/slock-ios-profile.plist"
 
-          echo "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" | base64 --decode > "${CERT_PATH}"
-          echo "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" | base64 --decode > "${PROFILE_PATH}"
+          # Decode a base64 secret robustly: tolerate whitespace/newline wrapping
+          # (e.g. secrets created with `base64` without -b0), and fail with a
+          # clear, secret-named error if the value is empty or not valid base64
+          # — instead of the opaque "base64: stdin: (null): error decoding
+          # base64 input stream" that gives no clue which secret is wrong.
+          decode_secret() {
+            local value="$1" out="$2" name="$3"
+            if ! printf '%s' "${value}" | tr -d '[:space:]' | base64 --decode > "${out}" 2>/dev/null || [ ! -s "${out}" ]; then
+              echo "::error::${name} is empty or not valid base64. Re-create it from the raw file, e.g. \`base64 -i <file> | pbcopy\` then \`gh secret set ${name}\` — do not store the raw binary."
+              exit 1
+            fi
+          }
+          decode_secret "${SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64}" "${CERT_PATH}" "SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64"
+          decode_secret "${SLOCK_IOS_PROVISIONING_PROFILE_BASE64}" "${PROFILE_PATH}" "SLOCK_IOS_PROVISIONING_PROFILE_BASE64"
 
           security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
           security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"

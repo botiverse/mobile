@@ -237,7 +237,8 @@ data class SlockHomeConversationItem(
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false,
-    val activityMuted: Boolean = false
+    val activityMuted: Boolean = false,
+    val activityMuteSupported: Boolean = false
 )
 
 @Serializable
@@ -306,6 +307,8 @@ data class SlockHomeShellLabels(
     val unpin: String = "Unpin",
     val markAsRead: String = "Mark as Read",
     val markAsUnread: String = "Mark as Unread",
+    val mute: String = "Mute",
+    val unmute: String = "Unmute",
     val closeChat: String = "Close Chat",
     val archive: String = "Archive",
     val sortChannels: String = "Sort",
@@ -533,6 +536,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         },
         onReadToggle = { conversationId, markUnread ->
             unsupportedStandaloneHomeAction(if (markUnread) "markUnread" else "markRead", conversationId)
+        },
+        onChannelActivityMuteToggle = { conversationId, muted ->
+            standaloneHomeStore.dispatch(SharedHomeIntent.SetChannelActivityMuted(conversationId, muted))
         },
         onCloseDirectMessage = { conversationId ->
             unsupportedStandaloneHomeAction("closeDm", conversationId)
@@ -800,6 +806,7 @@ internal fun SlockStructuralHomeShell(
     onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
     onCloseDirectMessage: (String) -> Unit = {},
     onArchiveChannel: (String) -> Unit = {},
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -1513,53 +1520,23 @@ internal fun SlockStructuralHomeShell(
                     !activeConversation.archived &&
                     canArchiveChannels
             val pinTargetIsPinned = activeConversationId != null && activeConversationId in pinnedIdSet
-            val pinMenuItems = activeConversation?.let { conversation ->
-                buildList {
-                    val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
-                    add(
-                        SlockBaseMenuItem(
-                            id = if (hasUnread) "mark-read" else "mark-unread",
-                            label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
-                            icon = if (hasUnread) SlockLucideIconName.MailOpen else SlockLucideIconName.Mail
-                        )
-                    )
-                    add(
-                        SlockBaseMenuItem(
-                            id = "toggle-pin",
-                            label = if (pinTargetIsPinned) labels.unpin else labels.pin,
-                            icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
-                        )
-                    )
-                    val sortableFromMenu =
-                        when (activeMenuSection) {
-                            SlockHomeSortSection.Pinned -> pinnedItemsForSort.size > 1
-                            SlockHomeSortSection.Channels -> sortableDisplayedChannels.size > 1
-                            SlockHomeSortSection.JointChannels -> displayedJointChannels.size > 1
-                            SlockHomeSortSection.DirectMessages -> displayedDirectMessages.size > 1
-                            null -> false
-                        }
-                    if (sortableFromMenu && sortOverlaySection == null) {
-                        add(
-                            SlockBaseMenuItem(
-                                id = "sort-channels",
-                                label = labels.sortChannels,
-                                icon = SlockLucideIconName.ArrowUpDown
-                            )
-                        )
-                    }
-                    if (activeIsDirectMessage) {
-                        add(SlockBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = SlockLucideIconName.X))
-                    } else if (activeCanArchive) {
-                        add(
-                            SlockBaseMenuItem(
-                                id = "archive-channel",
-                                label = labels.archive,
-                                icon = SlockLucideIconName.Archive,
-                                dividerBefore = true
-                            )
-                        )
-                    }
+            val sortableFromMenu =
+                when (activeMenuSection) {
+                    SlockHomeSortSection.Pinned -> pinnedItemsForSort.size > 1
+                    SlockHomeSortSection.Channels -> sortableDisplayedChannels.size > 1
+                    SlockHomeSortSection.JointChannels -> displayedJointChannels.size > 1
+                    SlockHomeSortSection.DirectMessages -> displayedDirectMessages.size > 1
+                    null -> false
                 }
+            val pinMenuItems = activeConversation?.let { conversation ->
+                slockHomeConversationMenuItems(
+                    conversation = conversation,
+                    labels = labels,
+                    pinTargetIsPinned = pinTargetIsPinned,
+                    sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
+                    activeIsDirectMessage = activeIsDirectMessage,
+                    activeCanArchive = activeCanArchive
+                )
             }
             if (activeConversationId != null && pinMenuItems != null) {
                 SlockBaseMenuOverlay(
@@ -1574,6 +1551,8 @@ internal fun SlockStructuralHomeShell(
                         when (actionId) {
                             "mark-read" -> onReadToggle(activeConversationId, false)
                             "mark-unread" -> onReadToggle(activeConversationId, true)
+                            "mute-channel" -> onChannelActivityMuteToggle(activeConversationId, true)
+                            "unmute-channel" -> onChannelActivityMuteToggle(activeConversationId, false)
                             "toggle-pin" -> onPinToggle(activeConversationId)
                             "close-dm" -> onCloseDirectMessage(activeConversationId)
                             "archive-channel" -> onArchiveChannel(activeConversationId)
@@ -1722,6 +1701,62 @@ internal fun homeLazyItemCount(
 }
 
 private enum class SlockHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
+
+internal fun slockHomeConversationMenuItems(
+    conversation: SlockHomeConversationItem,
+    labels: SlockHomeShellLabels = SlockHomeShellLabels(),
+    pinTargetIsPinned: Boolean,
+    sortableFromMenu: Boolean,
+    activeIsDirectMessage: Boolean,
+    activeCanArchive: Boolean
+): List<SlockBaseMenuItem> =
+    buildList {
+        val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
+        add(
+            SlockBaseMenuItem(
+                id = if (hasUnread) "mark-read" else "mark-unread",
+                label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
+                icon = if (hasUnread) SlockLucideIconName.MailOpen else SlockLucideIconName.Mail
+            )
+        )
+        if (conversation.activityMuteSupported) {
+            add(
+                SlockBaseMenuItem(
+                    id = if (conversation.activityMuted) "unmute-channel" else "mute-channel",
+                    label = if (conversation.activityMuted) labels.unmute else labels.mute,
+                    icon = if (conversation.activityMuted) SlockLucideIconName.Bell else SlockLucideIconName.BellOff
+                )
+            )
+        }
+        add(
+            SlockBaseMenuItem(
+                id = "toggle-pin",
+                label = if (pinTargetIsPinned) labels.unpin else labels.pin,
+                icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
+            )
+        )
+        if (sortableFromMenu) {
+            add(
+                SlockBaseMenuItem(
+                    id = "sort-channels",
+                    label = labels.sortChannels,
+                    icon = SlockLucideIconName.ArrowUpDown
+                )
+            )
+        }
+        if (activeIsDirectMessage) {
+            add(SlockBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = SlockLucideIconName.X))
+        } else if (activeCanArchive) {
+            add(
+                SlockBaseMenuItem(
+                    id = "archive-channel",
+                    label = labels.archive,
+                    icon = SlockLucideIconName.Archive,
+                    dividerBefore = true
+                )
+            )
+        }
+    }
 
 enum class SlockSidebarSortTarget { Channels, JointChannels, DirectMessages, Pinned }
 

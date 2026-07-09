@@ -1209,7 +1209,7 @@ class AuthDataSourceTest {
 
         override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
 
-        override suspend fun clearSession() = Unit
+        override suspend fun clearSession(reason: String, source: String) = Unit
     }
 
     private class ThrowingReadSessionStore(
@@ -1225,6 +1225,6 @@ class AuthDataSourceTest {
 
         override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) = Unit
 
-        override suspend fun clearSession() = Unit
+        override suspend fun clearSession(reason: String, source: String) = Unit
     }
 }

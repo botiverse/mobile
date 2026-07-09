@@ -40,9 +40,9 @@ import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
-    private val slockInlineCodeAnnotationTag = "raft.build.markdown.inlineCode"
-    private val slockInlineCodeTrailingMarginAnnotationTag = "raft.build.markdown.inlineCodeTrailingMargin"
-    private val inlineCodePadding = "\u00A0"
+    private val slockInlineCodeAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
+    private val slockInlineCodeTrailingMarginAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+    private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
@@ -411,6 +411,11 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.AccentCyan.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
         assertEquals(SlockColor.BrandYellow, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
+        assertEquals("channel", SlockRichTextChromeKind.Channel.styleToken.id)
+        assertEquals(SlockRichTextColorToken.AccentPink30, SlockRichTextChromeKind.Channel.styleToken.chipFill)
+        assertEquals(SlockRichTextColorToken.AccentCyan30, SlockRichTextChromeKind.Thread.styleToken.chipFill)
+        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.Task.styleToken.chipFill)
+        assertEquals(SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP, SlockRichTextChromeKind.Channel.styleToken.horizontalChromeSp)
 
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.BrandYellow)
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.AccentCyan)
@@ -458,6 +463,9 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.BrandYellow, activeMentionStyle.background)
         assertEquals(null, activeMentionStyle.textDecoration)
         assertEquals(Color.Unspecified, activeMentionStyle.textDecorationColor)
+        assertEquals(SlockRichTextTextDecorationToken.Underline, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecoration)
+        assertEquals(2f, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecorationThicknessSp)
+        assertEquals(2f, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecorationOffsetSp)
     }
 
     @Test
@@ -603,11 +611,12 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun ordinaryMentionBeforeTaskReferenceKeepsCompactUnderlineAndVisibleText() {
+    fun visualFixtureUnknownMentionAndTaskReferenceStayPlainText() {
         val body = "@KMP-专家 #520 Phase 5: delete remaining ConversationSummary launch compatibility helpers"
         val validator =
             validThreadMarkdownTags(
-                knownMentions = setOf("KMP-专家")
+                knownMentions = setOf("artin"),
+                knownTaskNumbers = setOf(42, 43)
             )
         val annotated =
             buildSlockMarkdownParagraphAnnotatedString(
@@ -621,14 +630,8 @@ class SlockMarkdownTest {
 
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
-        assertEquals(setOf("slock:0", "slock:8"), annotated.slockMarkdownClickableTags())
-        assertEquals(
-            listOf(
-                SlockRichTextChromeKind.OrdinaryMention.wireValue,
-                SlockRichTextChromeKind.Task.wireValue
-            ),
-            annotated.slockMarkdownTagChromeAnnotations()
-        )
+        assertEquals(emptySet(), annotated.slockMarkdownClickableTags())
+        assertEquals(emptyList(), annotated.slockMarkdownTagChromeAnnotations())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
@@ -689,6 +692,10 @@ class SlockMarkdownTest {
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
+        assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
+        assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
+        assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
+        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.InlineCode.styleToken.background)
     }
 
     @Test
@@ -1320,13 +1327,15 @@ class SlockMarkdownTest {
 
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),
-        knownMentions: Set<String> = emptySet()
+        knownMentions: Set<String> = emptySet(),
+        knownTaskNumbers: Set<Int>? = null
     ): (ThreadMarkdownTag) -> Boolean {
         val channelKeys = knownChannels.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val mentionKeys = knownMentions.mapTo(mutableSetOf()) { it.trim().removePrefix("@").lowercase() }
         return { tag ->
             when (tag.kind) {
-                ThreadMarkdownTagKind.Task -> true
+                ThreadMarkdownTagKind.Task ->
+                    knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
                 ThreadMarkdownTagKind.Channel,

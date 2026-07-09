@@ -31,13 +31,11 @@ import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
+import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
+import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
+import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING
+import build.raft.app.markdown.SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.slockInlineCodeCharWrapBridgeThreshold
-
-private const val SLOCK_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
-private const val SLOCK_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
-    "raft.build.markdown.inlineCodeTrailingMargin"
-private const val SLOCK_INLINE_CODE_EDGE_PADDING = '\u00A0'
-private const val SLOCK_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
 
 // task #401 A-bridge: interleave zero-width spaces into non-whitespace runs
 // longer than [threshold] so renders without native inline-code atomization
@@ -62,7 +60,7 @@ internal fun String.withSlockInlineCodeCharWrapBreaks(threshold: Int): String {
         if (run.length > threshold) {
             run.forEachIndexed { runIndex, runChar ->
                 if (runIndex > 0 && !runChar.isLowSurrogate()) {
-                    result.append(SLOCK_INLINE_CODE_CHAR_WRAP_BREAK)
+                    result.append(SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK)
                 }
                 result.append(runChar)
             }
@@ -370,7 +368,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         // chrome, same gate as the char-wrap bridge) keep the
                         // NBSP as their only visual padding.
                         if (charWrapThreshold != null) {
-                            append(SLOCK_INLINE_CODE_EDGE_PADDING)
+                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
                         }
                         if (charWrapThreshold != null) {
                             // task #401 A-bridge (see the expect in
@@ -393,11 +391,11 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                             buildMarkdownAnnotatedString(content, child.children.innerList(), annotatorSettings)
                         }
                         if (charWrapThreshold != null) {
-                            append(SLOCK_INLINE_CODE_EDGE_PADDING)
+                            append(SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING)
                         }
                         pop()
                         addStringAnnotation(
-                            tag = SLOCK_INLINE_CODE_ANNOTATION_TAG,
+                            tag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
                             annotation = "true",
                             start = codeStart,
                             end = length
@@ -450,7 +448,7 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                         append(' ')
                         if (children.getOrNull(childIndex - 1)?.type == MarkdownElementTypes.CODE_SPAN) {
                             addStringAnnotation(
-                                tag = SLOCK_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG,
+                                tag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG,
                                 annotation = "true",
                                 start = whitespaceStart,
                                 end = length

@@ -12224,6 +12224,9 @@ private fun SharedHomeScreen(
                         }
                     )
                 },
+                onChannelActivityMuteToggle = { conversationId, muted ->
+                    onIntent(SharedHomeIntent.SetChannelActivityMuted(conversationId, muted))
+                },
                 onCloseDirectMessage = { conversationId ->
                     onIntent(SharedHomeIntent.CloseDirectMessage(conversationId))
                 },
@@ -14992,7 +14995,8 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackDescription: String? = null,
     val fallbackJoined: Boolean = true,
     val fallbackArchived: Boolean = false,
-    val fallbackActivityMuted: Boolean = false
+    val fallbackActivityMuted: Boolean = false,
+    val fallbackActivityMuteSupported: Boolean = false
 )
 
 internal data class SharedHomeConversationRowProjector(
@@ -15022,7 +15026,8 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
         fallbackJoined = joined && permissions.canRead,
         fallbackArchived = archived,
-        fallbackActivityMuted = activityMuted
+        fallbackActivityMuted = activityMuted,
+        fallbackActivityMuteSupported = activityMuteSupported
     )
 
 private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
@@ -15056,7 +15061,8 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         hasDraft = draftProjection.hasRootDraft(id),
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived,
-        activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted
+        activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,
+        activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported
     )
 }
 

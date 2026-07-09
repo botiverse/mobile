@@ -1482,12 +1482,7 @@ private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
         inlineCodeText = SlockColor.TextBlack,
         linkText = SlockMarkdownLinkBlue,
         codeBackground = SlockMarkdownCodeBlockBackground,
-        // Canonical inline-code fill, confirmed against react's true source
-        // (MarkdownContent.tsx `bg-soft-signal/40`, --color-brutal-yellow
-        // #FFD440 → 0x66FFD440). OHOS/iOS draw this span background directly;
-        // Android's chrome suppresses it and draws its own fill — its drawer
-        // constant (0x66FFD84D) is the outlier being aligned to this value.
-        inlineCodeBackground = SlockColor.BrandYellow.copy(alpha = 0.4f),
+        inlineCodeBackground = SlockRichTextChromeKind.InlineCode.styleToken.background.toSlockMarkdownColor(),
         dividerColor = SlockColor.BorderBlack,
         tableText = SlockColor.TextBlack,
         tableBackground = SlockColor.SurfaceWhite,
@@ -1542,13 +1537,6 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
     )
 }
 
-private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alpha = 0.3f)
-private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
-private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
-private val SlockMarkdownPlainMentionUnderlineColor = SlockColor.BorderBlack.copy(alpha = 0.3f)
-private val SlockMarkdownPlainMentionUnderlineThickness = 2.sp
-private val SlockMarkdownPlainMentionUnderlineOffset = 2.sp
-
 internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
     Channel("channel"),
     Thread("thread"),
@@ -1579,7 +1567,7 @@ internal fun slockMarkdownInlineChipWidthSp(
 ) =
     (label.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() +
         label.slockInlineChipWidthSafetySp(kind) +
-        SlockMarkdownInlineChipHorizontalChromeSp)
+        SlockRichTextChromeKind.Channel.styleToken.horizontalChromeSp.orZero())
         .coerceAtLeast(40f)
         .sp
 
@@ -1589,12 +1577,7 @@ internal fun slockMarkdownInlineChipWidthSp(
 // back then FontFamily.Monospace meant the platform Roboto Mono, so pinning
 // the body font was the lesser evil. Space Mono exists now; use it.
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    base.copy(
-        fontFamily = slockMonoFamilyForWeight(FontWeight.Normal),
-        fontWeight = FontWeight.Normal
-    )
-
-private const val SlockMarkdownInlineChipHorizontalChromeSp = 12f
+    SlockRichTextChromeKind.InlineCode.styleToken.applyToTextStyle(base)
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
@@ -1662,12 +1645,10 @@ private fun Char.slockPlainMentionWidthSp(): Float =
     }
 
 internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
-    when (kind) {
-        ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownThreadChipBackground
-        ThreadMarkdownTagKind.Channel -> SlockMarkdownChannelChipBackground
-        ThreadMarkdownTagKind.Task -> SlockMarkdownTaskChipBackground
-        ThreadMarkdownTagKind.UserMention -> if (highlighted) SlockColor.BrandYellow else SlockMarkdownTaskChipBackground
-    }
+    slockRichTextChromeKind(kind, highlighted = highlighted)
+        .styleToken
+        .chipFill
+        .toSlockMarkdownColor()
 
 internal fun slockMarkdownTagChromeKind(
     kind: ThreadMarkdownTagKind,
@@ -1686,7 +1667,7 @@ internal fun slockMarkdownTagChromeKind(
         }
     }
 
-internal val SlockMarkdownTagFontSize = 14.sp
+internal val SlockMarkdownTagFontSize = SlockRichTextChromeKind.OrdinaryMention.styleToken.fontSizeSp.orZero().sp
 
 internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
     buildString {
@@ -1707,9 +1688,7 @@ private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
     SlockType.ButtonBold
         .withSlockFontWeight(FontWeight.SemiBold)
         .toSpanStyle()
-        .copy(
-            fontSize = SlockMarkdownTagFontSize
-        )
+        .copy(fontSize = SlockMarkdownTagFontSize)
 
 // Mention/ref visual styling mirrors react (packages/web/src/components/message/MentionLink.tsx):
 // every non-self reference — a normal @mention, a #channel, a channel-thread and a task
@@ -1736,23 +1715,10 @@ internal fun slockMarkdownTagSpanStyle(
 }
 
 private fun slockMarkdownTagUnderlineSpanStyle(): SpanStyle =
-    slockMarkdownTagBaseSpanStyle()
-        .copy(
-            color = SlockColor.TextBlack,
-            textDecoration = TextDecoration.Underline,
-            textDecorationColor = SlockMarkdownPlainMentionUnderlineColor,
-            textDecorationThickness = SlockMarkdownPlainMentionUnderlineThickness,
-            textDecorationOffset = SlockMarkdownPlainMentionUnderlineOffset,
-            background = Color.Unspecified
-        )
+    SlockRichTextChromeKind.OrdinaryMention.styleToken.toTagSpanStyle()
 
 private fun slockMarkdownSelfMentionChipSpanStyle(): SpanStyle =
-    slockMarkdownTagBaseSpanStyle()
-        .copy(
-            color = SlockColor.TextBlack,
-            textDecoration = null,
-            background = SlockColor.SoftSignal
-        )
+    SlockRichTextChromeKind.SelfMention.styleToken.toTagSpanStyle()
 
 internal fun slockMarkdownTagLinkStyles(
     kind: ThreadMarkdownTagKind,
@@ -1782,13 +1748,76 @@ internal fun slockMarkdownRichTextTagLinkStyles(
 private fun slockMarkdownRichTextTagSpanStyle(
     chromeKind: SlockRichTextChromeKind?
 ): SpanStyle =
-    when (chromeKind) {
-        SlockRichTextChromeKind.Active,
-        SlockRichTextChromeKind.SelfMention -> slockMarkdownSelfMentionChipSpanStyle()
-        SlockRichTextChromeKind.Channel,
-        SlockRichTextChromeKind.Thread,
-        SlockRichTextChromeKind.Task,
-        SlockRichTextChromeKind.OrdinaryMention,
-        SlockRichTextChromeKind.InlineCode,
-        null -> slockMarkdownTagUnderlineSpanStyle()
+    (chromeKind ?: SlockRichTextChromeKind.OrdinaryMention)
+        .styleToken
+        .toTagSpanStyle()
+
+private fun slockRichTextChromeKind(
+    kind: ThreadMarkdownTagKind,
+    highlighted: Boolean = false,
+    active: Boolean = false
+): SlockRichTextChromeKind =
+    when {
+        active -> SlockRichTextChromeKind.Active
+        kind == ThreadMarkdownTagKind.UserMention && highlighted -> SlockRichTextChromeKind.SelfMention
+        kind == ThreadMarkdownTagKind.UserMention -> SlockRichTextChromeKind.OrdinaryMention
+        kind == ThreadMarkdownTagKind.ChannelThread -> SlockRichTextChromeKind.Thread
+        kind == ThreadMarkdownTagKind.Channel -> SlockRichTextChromeKind.Channel
+        kind == ThreadMarkdownTagKind.Task -> SlockRichTextChromeKind.Task
+        else -> SlockRichTextChromeKind.OrdinaryMention
     }
+
+private fun SlockRichTextChromeStyleToken.applyToTextStyle(base: TextStyle): TextStyle =
+    base.copy(
+        fontFamily = fontFamily.toSlockFontFamily(fontWeight.toSlockFontWeight()),
+        fontWeight = fontWeight.toSlockFontWeight()
+    )
+
+private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle =
+    slockMarkdownTagBaseSpanStyle()
+        .copy(
+            color = foreground.toSlockMarkdownColor(),
+            textDecoration = textDecoration.toComposeTextDecoration(),
+            textDecorationColor = textDecorationColor.toSlockMarkdownColorOrUnspecified(),
+            textDecorationThickness = textDecorationThicknessSp.toSpOrUnspecified(),
+            textDecorationOffset = textDecorationOffsetSp.toSpOrUnspecified(),
+            background = background.toSlockMarkdownColorOrUnspecified()
+        )
+
+private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
+    requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
+        .toSlockMarkdownColorOrUnspecified()
+
+private fun SlockRichTextColorToken?.toSlockMarkdownColorOrUnspecified(): Color =
+    when (this) {
+        SlockRichTextColorToken.TextBlack -> SlockColor.TextBlack
+        SlockRichTextColorToken.BrandYellow -> SlockColor.BrandYellow
+        SlockRichTextColorToken.BrandYellow40 -> SlockColor.BrandYellow.copy(alpha = 0.4f)
+        SlockRichTextColorToken.AccentPink30 -> SlockColor.AccentPink.copy(alpha = 0.3f)
+        SlockRichTextColorToken.AccentCyan30 -> SlockColor.AccentCyan.copy(alpha = 0.3f)
+        SlockRichTextColorToken.SoftSignal -> SlockColor.SoftSignal
+        SlockRichTextColorToken.BorderBlack30 -> SlockColor.BorderBlack.copy(alpha = 0.3f)
+        null -> Color.Unspecified
+    }
+
+private fun SlockRichTextFontFamilyToken.toSlockFontFamily(weight: FontWeight): FontFamily =
+    when (this) {
+        SlockRichTextFontFamilyToken.SlockMono -> slockMonoFamilyForWeight(weight)
+        SlockRichTextFontFamilyToken.SlockUi -> slockFontFamilyForWeight(weight)
+    }
+
+private fun SlockRichTextFontWeightToken.toSlockFontWeight(): FontWeight =
+    when (this) {
+        SlockRichTextFontWeightToken.Normal -> FontWeight.Normal
+        SlockRichTextFontWeightToken.SemiBold -> FontWeight.SemiBold
+    }
+
+private fun SlockRichTextTextDecorationToken?.toComposeTextDecoration(): TextDecoration? =
+    when (this) {
+        SlockRichTextTextDecorationToken.Underline -> TextDecoration.Underline
+        null -> null
+    }
+
+private fun Float?.orZero(): Float = this ?: 0f
+
+private fun Float?.toSpOrUnspecified(): TextUnit = this?.sp ?: TextUnit.Unspecified

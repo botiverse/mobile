@@ -107,6 +107,72 @@ class SharedSlockNetworkClientTest {
     }
 
     @Test
+    fun authTransportLogsRequestIdHeaderOnFailedRefresh() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                SlockHttpExecutorResponse(
+                    code = 401,
+                    bodyText = null,
+                    errorBodyText = """{"error":"invalid_refresh"}""",
+                    responseHeaders = mapOf("x-request-id" to listOf("req_auth_refresh_123"))
+                )
+            }
+        val transport =
+            SharedSlockAuthTransport(
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                warningLogger = logs::add
+            )
+
+        val response = transport.refresh("""{"refreshToken":"secret-refresh-token"}""")
+
+        assertEquals(401, response.code)
+        val finishLog = logs.single { it.startsWith("slock_auth_transport_finish") }
+        assertContains(finishLog, "path=auth/refresh")
+        assertContains(finishLog, "code=401")
+        assertContains(finishLog, "requestId=req_auth_refresh_123")
+        logs.forEach { log ->
+            assertEquals(false, log.contains("secret-refresh-token"), "auth transport diagnostics must not log request bodies")
+        }
+    }
+
+    @Test
+    fun rawAuthMeFailureLogsRequestIdHeader() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor =
+            RecordingExecutor {
+                SlockHttpExecutorResponse(
+                    code = 401,
+                    bodyText = null,
+                    errorBodyText = """{"error":"unauthorized"}""",
+                    responseHeaders = mapOf("X-Request-Id" to listOf("req_auth_me_456"))
+                )
+            }
+        val client =
+            SharedSlockNetworkClient(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                baseUrl = "https://api.slock.test/api",
+                warningLogger = logs::add,
+                executor = executor
+            )
+
+        val response =
+            client.requestRawAbsoluteUrl(
+                priority = DataRequestPriority.Foreground,
+                url = "https://api.slock.test/api/auth/me",
+                method = "GET",
+                headers = emptyMap(),
+                bodyText = null
+            )
+
+        assertEquals(401, response.code)
+        val endpointLog = logs.single { it.startsWith("endpoint category=raw_absolute_url") }
+        assertContains(endpointLog, "path=https://api.slock.test/api/auth/me")
+        assertContains(endpointLog, "requestId=req_auth_me_456")
+    }
+
+    @Test
     fun authTransportTimeoutReturnsNetworkFailureAndLogsPath() = runBlocking {
         val logs = mutableListOf<String>()
         val executor =

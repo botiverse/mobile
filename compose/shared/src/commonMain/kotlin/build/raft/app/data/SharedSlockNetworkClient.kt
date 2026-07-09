@@ -27,7 +27,9 @@ internal class SharedSlockNetworkClient(
     private fun authMiddleware(): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger))
+            authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger)),
+            logger = warningLogger,
+            warningLogger = warningLogger
         )
 
     override suspend fun request(
@@ -48,7 +50,7 @@ internal class SharedSlockNetworkClient(
                 reason = method.uppercase()
             ) {
                 val response =
-                    authMiddleware().request(serverIdOverride) { auth ->
+                    authMiddleware().request(serverIdOverride, caller = "shared_network:$normalizedPath") { auth ->
                         executor.execute(
                             priority = priority.toNetworkPriority(),
                             url = absoluteUrl(path, query),
@@ -72,6 +74,7 @@ internal class SharedSlockNetworkClient(
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                         "result=${response.networkDiagnosticsResult()}" +
                         response.errorBodyLogSuffix() +
+                        response.requestIdLogSuffix() +
                         response.transportDiagnosticsLogSuffix()
                 )
                 response
@@ -118,7 +121,8 @@ internal class SharedSlockNetworkClient(
                         "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                         "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                        "result=${response.networkDiagnosticsResult()}"
+                        "result=${response.networkDiagnosticsResult()}" +
+                        response.requestIdLogSuffix()
                 )
                 response
             }
@@ -260,7 +264,7 @@ internal class SharedSlockNetworkClient(
                 reason = "multipart"
             ) {
                 val response =
-                    authMiddleware().request { auth ->
+                    authMiddleware().request(caller = "shared_network:$diagnosticPath") { auth ->
                         executor.executeMultipart(
                             priority = priority.toNetworkPriority(),
                             url = absoluteUrl(path),
@@ -283,6 +287,7 @@ internal class SharedSlockNetworkClient(
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                         "result=${response.networkDiagnosticsResult()}" +
                         response.errorBodyLogSuffix() +
+                        response.requestIdLogSuffix() +
                         response.transportDiagnosticsLogSuffix()
                 )
                 response
@@ -431,7 +436,8 @@ class SharedSlockAuthTransport internal constructor(
                 "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                 "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                 "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none")
+                (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none") +
+                response.requestIdLogSuffix()
         )
         if (response.code == 0) {
             warningLogger(
@@ -440,7 +446,8 @@ class SharedSlockAuthTransport internal constructor(
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                     "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
-                    (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none")
+                    (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none") +
+                    response.requestIdLogSuffix()
             )
         }
         return response.toAuthNetworkResponse()
@@ -470,7 +477,8 @@ private fun SlockHttpExecutorResponse.toHomeNetworkResponse(): HomeNetworkRespon
         code = code,
         bodyText = bodyText,
         errorBodyText = errorBodyText,
-        transportDiagnostics = transportDiagnostics
+        transportDiagnostics = transportDiagnostics,
+        responseHeaders = responseHeaders
     )
 
 private fun SlockRequestTimeoutException.toTimeoutNetworkResponse(
@@ -620,6 +628,30 @@ private fun HomeNetworkResponse.networkDiagnosticsResult(): String =
 private fun HomeNetworkResponse.transportDiagnosticsLogSuffix(): String {
     val diagnostics = transportDiagnostics?.takeIf { it.isNotBlank() } ?: return ""
     return " $diagnostics"
+}
+
+private fun HomeNetworkResponse.requestIdLogSuffix(): String =
+    if (isSuccessful) {
+        ""
+    } else {
+        responseHeaders.requestIdLogSuffix()
+    }
+
+private fun SlockHttpExecutorResponse.requestIdLogSuffix(): String =
+    if (isSuccessful) {
+        ""
+    } else {
+        responseHeaders.requestIdLogSuffix()
+    }
+
+private fun Map<String, List<String>>.requestIdLogSuffix(): String {
+    val requestId =
+        entries.firstOrNull { (name, _) -> name.equals("x-request-id", ignoreCase = true) }
+            ?.value
+            ?.firstOrNull { it.isNotBlank() }
+            ?.toSafeDiagnosticsToken()
+            ?: return ""
+    return " requestId=$requestId"
 }
 
 private fun HomeNetworkResponse.errorBodyLogSuffix(): String {
