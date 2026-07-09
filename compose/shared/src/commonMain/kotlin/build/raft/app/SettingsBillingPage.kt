@@ -263,8 +263,6 @@ private fun SettingsBillingScreen() {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (bodyReady) {
                 SettingsBillingScreenBody(pager)
-            } else {
-                SettingsBillingLoadingContent()
             }
         }
     }
@@ -324,7 +322,7 @@ internal fun SettingsBillingContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         when (payload.status) {
-            "loading" -> item { SettingsBillingLoadingContent() }
+            "loading" -> Unit
             "error" -> item { SettingsBillingStatusPanel(payload.labels.error) }
             "noPermission" ->
                 item {
@@ -379,7 +377,7 @@ internal fun SettingsBillingWebViewContent(
     val webUrl = remember(session, webBaseUrl) { settingsBillingWebViewUrl(webBaseUrl, session) }
     val injectedJavaScript = remember(session) { settingsBillingWebViewInjectedJavaScript(session) }
     if (session == null) {
-        SettingsBillingLoadingContent()
+        Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite))
         return
     }
     SlockWebView(
@@ -716,41 +714,6 @@ internal fun SettingsBillingActionSnapshot.toBillingActionPayload(
         errorCode = actionState?.errorCode?.takeIf { isCurrentAction },
         inProgress = actionState?.inProgress == true && isCurrentAction
     )
-}
-
-@Composable
-private fun SettingsBillingLoadingContent() {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Plan & Billing")
-        HardShadowCard {
-            repeat(4) { index ->
-                Box(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .height(if (index == 0) 28.dp else 18.dp)
-                            .background(if (index == 0) SlockColor.EmptyStateGray else SlockColor.SurfaceCream)
-                            .border(1.dp, SlockColor.BorderBlack)
-                )
-            }
-        }
-        SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Plans")
-        repeat(3) {
-            Box(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .height(112.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(14.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth().height(18.dp).background(SlockColor.EmptyStateGray))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
-                    Box(Modifier.fillMaxWidth().height(14.dp).background(SlockColor.SurfaceCream))
-                }
-            }
-        }
-    }
 }
 
 @Composable
