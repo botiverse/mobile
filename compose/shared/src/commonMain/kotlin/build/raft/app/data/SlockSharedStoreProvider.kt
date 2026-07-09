@@ -102,6 +102,12 @@ internal class SlockSharedStoreProvider private constructor(
     val sharedHomeStore: SharedHomeStore?
         get() = homeStore
 
+    fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
+        createSharedAuthDataSourceForCurrentEnvironment(
+            apiEnvironmentStore = apiEnvironmentStore,
+            authStore = authStore
+        )
+
     fun updateEventBus(nextEventBus: SlockEventBus, source: String) {
         eventBus.update(nextEventBus)
         authSessionEvents.updateEventBus(eventBus, source)
@@ -313,7 +319,6 @@ internal class SlockSharedStoreProvider private constructor(
                 SharedApiEnvironmentStore(
                     apiEnvironmentKeyValueStore
                 )
-            val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl
             val platformFileResolverBinding = SlockSharedPlatformFileResolverProvider.createBinding()
             val platformFileResolver = platformFileResolverBinding.resolver
             bridge.logSharedAuthDiagnostic(
@@ -321,20 +326,14 @@ internal class SlockSharedStoreProvider private constructor(
                 "storage_scope=${platformFileResolverBinding.scope}"
             )
             val authDataSource =
-                SharedAuthDataSource(
-                    transport = SharedSlockAuthTransport(
-                        baseUrl = apiBaseUrl,
-                        warningLogger = { message ->
-                            slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
-                        }
-                    ),
-                    sessionStore = authStore,
-                    diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
+                createSharedAuthDataSourceForCurrentEnvironment(
+                    apiEnvironmentStore = apiEnvironmentStore,
+                    authStore = authStore
                 )
             val networkClient =
                 SharedSlockNetworkClient(
                     sessionStore = authStore,
-                    baseUrl = apiBaseUrl,
+                    baseUrlProvider = { apiEnvironmentStore.current().apiBaseUrl },
                     warningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network"),
                     platformFileResolver = platformFileResolver
                 )
@@ -443,6 +442,25 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 }
+
+internal fun createSharedAuthDataSourceForCurrentEnvironment(
+    apiEnvironmentStore: SharedApiEnvironmentStore,
+    authStore: SlockAuthSessionStore,
+    transportFactory: (String) -> SlockAuthTransport = { baseUrl ->
+        SharedSlockAuthTransport(
+            baseUrl = baseUrl,
+            warningLogger = { message ->
+                slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
+            }
+        )
+    },
+    diagnosticsLogger: (String) -> Unit = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
+): SharedAuthDataSource =
+    SharedAuthDataSource(
+        transport = transportFactory(apiEnvironmentStore.current().apiBaseUrl),
+        sessionStore = authStore,
+        diagnosticsLogger = diagnosticsLogger
+    )
 
 internal interface RealtimeDomainEventOwner {
     fun registerSinks(sinks: RealtimeDomainEventSinks)

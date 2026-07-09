@@ -4,6 +4,7 @@ import { picker, fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { http } from '@kit.NetworkKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { promptAction } from '@kit.ArkUI';
 import { KRAny } from '@kuikly-open/render';
 import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
@@ -108,7 +109,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         break;
       }
       case KRBridgeModule.TOAST: {
-        this.toast();
+        this.toast(params);
         break;
       }
       case KRBridgeModule.OPEN_URL: {
@@ -201,8 +202,13 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  // TODO open toast
-  private toast() {
+  private toast(params: KRAny) {
+    const payload = this.parseRecord(params);
+    const content = payload["content"] as string | undefined;
+    if (content === undefined || content.length === 0) {
+      return;
+    }
+    promptAction.showToast({ message: content, duration: 2000 });
   }
 
   private openUrl(params: KRAny) {

@@ -1654,6 +1654,8 @@ class SharedSettingsStoreTest {
         assertEquals("Staging", updated.environmentLabel)
         assertEquals("https://api-aws-staging.botiverse.dev/api/", updated.apiBaseUrl)
         assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "staging", inProgress = false), store.state.value.actionState)
+        val effect = assertIs<SharedSettingsEffect.ApiEnvironmentChanged>(store.state.value.effect)
+        assertEquals("API server switched to Staging. Sign in again to continue.", effect.message)
         assertEquals(listOf("developer", "environment:staging"), capabilities.calls)
         scope.cancel()
     }
@@ -1684,7 +1686,35 @@ class SharedSettingsStoreTest {
         assertEquals("staging", updated.environmentKey)
         assertEquals("Staging", updated.environmentLabel)
         assertNull(sessionStore.readSession())
+        val effect = assertIs<SharedSettingsEffect.ApiEnvironmentChanged>(store.state.value.effect)
+        assertEquals("API server switched to Staging. Sign in again to continue.", effect.message)
         assertEquals(listOf("environmentChanged:production:staging"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun developerEnvironmentDoesNotRestartWhenAlreadySelected() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(SharedSettingsIntent.SetApiEnvironment("production"))
+
+        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("production", updated.environmentKey)
+        assertNull(store.state.value.effect)
+        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "production", inProgress = false), store.state.value.actionState)
+        assertEquals(emptyList(), capabilities.calls)
         scope.cancel()
     }
 

@@ -18,15 +18,16 @@ import kotlin.time.TimeSource
 internal class SharedSlockNetworkClient(
     private val sessionStore: SlockAuthSessionStore,
     private val baseUrl: String = SLOCK_API_BASE_URL,
+    private val baseUrlProvider: () -> String = { baseUrl },
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler(),
     private val platformFileResolver: SlockPlatformFileResolver? = null,
     private val executor: SlockHttpExecutor = createPlatformSlockHttpExecutor(warningLogger)
 ) : SlockNetworkClient {
-    private val authMiddleware =
+    private fun authMiddleware(): SlockNetworkAuthMiddleware =
         SlockNetworkAuthMiddleware(
             sessionStore = sessionStore,
-            authApi = SlockAuthApiClient(SharedSlockAuthTransport(baseUrl, executor, warningLogger))
+            authApi = SlockAuthApiClient(SharedSlockAuthTransport(currentBaseUrl(), executor, warningLogger))
         )
 
     override suspend fun request(
@@ -47,7 +48,7 @@ internal class SharedSlockNetworkClient(
                 reason = method.uppercase()
             ) {
                 val response =
-                    authMiddleware.request(serverIdOverride) { auth ->
+                    authMiddleware().request(serverIdOverride) { auth ->
                         executor.execute(
                             priority = priority.toNetworkPriority(),
                             url = absoluteUrl(path, query),
@@ -259,7 +260,7 @@ internal class SharedSlockNetworkClient(
                 reason = "multipart"
             ) {
                 val response =
-                    authMiddleware.request { auth ->
+                    authMiddleware().request { auth ->
                         executor.executeMultipart(
                             priority = priority.toNetworkPriority(),
                             url = absoluteUrl(path),
@@ -298,8 +299,11 @@ internal class SharedSlockNetworkClient(
         }
     }
 
+    private fun currentBaseUrl(): String =
+        baseUrlProvider().ifBlank { baseUrl }
+
     private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
-        val url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
+        val url = "${currentBaseUrl().trimEnd('/')}/${path.trimStart('/')}"
         if (query.isEmpty()) return url
         return "$url?${query.joinToString("&") { (key, value) -> "${key.percentEncode()}=${value.percentEncode()}" }}"
     }

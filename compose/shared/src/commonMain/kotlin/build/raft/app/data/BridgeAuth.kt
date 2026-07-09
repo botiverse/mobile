@@ -34,6 +34,10 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.toast("Copied")
     }
 
+    fun bridgeToast(content: String) {
+        bridge.toast(content)
+    }
+
     fun openUrl(url: String) {
         bridge.openUrl(url)
     }
