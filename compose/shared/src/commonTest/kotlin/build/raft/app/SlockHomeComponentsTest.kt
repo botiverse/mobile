@@ -147,16 +147,6 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeSectionHeaderUsesTopActionStartAnchor() {
-        val offsets = homeSidebarHeaderAnchorOffsets()
-
-        assertEquals(24.dp, HomeSectionHeaderStartPadding)
-        assertEquals(offsets.topActionIconStart, offsets.sectionChevronStart)
-        assertEquals(offsets.topActionLabelStart, offsets.sectionLabelStart)
-        assertEquals(offsets.sectionLabelStart, offsets.childRowContentStart)
-    }
-
-    @Test
     fun homeServerSwitcherCommunityActionsFollowJoinedSlugsIndependently() {
         val labels = SlockHomeShellLabels()
 

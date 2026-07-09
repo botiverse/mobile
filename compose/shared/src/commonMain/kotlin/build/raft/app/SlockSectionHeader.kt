@@ -37,7 +37,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
-internal val SectionChevronSize = 12.dp
+private val SectionChevronSize = 12.dp
 private val LoadingSpinnerSize = 14.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
