@@ -12,12 +12,12 @@ internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ios"
 
-// iOS native render owns inline-code chrome/padding, but TextKit still needs
-// markdown-layer U+200B break opportunities for #58 character-level wrapping.
-internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = 16
+// iOS atomizes inline code into one native attachment per grapheme. TextKit can
+// therefore wrap at atom boundaries without shared U+200B compatibility chars.
+internal actual fun slockInlineCodeCharWrapBridgeThreshold(): Int? = null
 
-// #439 landed native iOS chip chrome. Do not also inject U+00A0 edge padding:
-// KRLabel would paint those compatibility characters inside the yellow fill.
+// Native atom-chain bounds own the same 4/15 inner + 2/15 outer geometry as
+// reference-chip attachments, so shared must not synthesize NBSP padding.
 internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
 
 // Hands iOS SDK ios-v0.2.x uploads >10MB attachments via presigned R2 PUT.
