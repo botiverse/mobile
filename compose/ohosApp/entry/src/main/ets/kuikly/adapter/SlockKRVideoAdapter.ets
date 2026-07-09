@@ -28,6 +28,11 @@ struct SlockVideoView {
     })
       .muted(this.muted)
       .objectFit(this.imageFit)
+      // OHOS phase 2: the shared side hides its minimal overlay
+      // (slockPlatformUsesNativeVideoController = true), so the native ArkUI
+      // control bar (play/scrub/fullscreen) owns the surface. Pin it on
+      // explicitly rather than rely on the platform default.
+      .controls(true)
       .onStart(() => {
         this.videoViewController?.onPlayStateDidChanged(KRVideoPlayState.Playing);
       })

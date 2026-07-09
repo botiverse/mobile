@@ -4,8 +4,12 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
-// No native controller on the OHOS video host yet; shared controls stay.
-internal actual fun slockPlatformUsesNativeVideoController(): Boolean = false
+// OHOS phase 2 (video controller line, after Android #556 / iOS #11): the
+// ArkUI `Video` host has its own mature native control bar (play/scrub/±/
+// fullscreen, `controls` on) and seek is wired (seekToTimeMs → VideoController).
+// Flip true so the shared minimal overlay is hidden and the HarmonyOS native
+// player owns the surface — no more overlay-over-native-bar double controls.
+internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 
 internal actual fun slockReleaseNotesAppSlug(): String = "raft-ohos"
 
