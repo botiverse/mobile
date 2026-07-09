@@ -147,6 +147,9 @@ private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
 private val HomeListHorizontalPadding = SlockSpacing.Md
+internal val HomeSectionHeaderStartPadding = HomeListHorizontalPadding + SidebarRowHorizontalPadding
+internal val HomeSectionLabelStartPadding = HomeSectionHeaderStartPadding + SectionChevronSize + SlockSpacing.Xs + SlockSpacing.Xs
+internal val HomeSidebarChildRowContentPadding = HomeSectionLabelStartPadding - HomeListHorizontalPadding
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -165,6 +168,26 @@ private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMaxBeyondBoundsItemCount = 6
+
+internal data class HomeSidebarHeaderAnchorOffsets(
+    val topActionIconStart: Dp,
+    val sectionChevronStart: Dp,
+    val topActionLabelStart: Dp,
+    val sectionLabelStart: Dp,
+    val childRowContentStart: Dp
+)
+
+internal fun homeSidebarHeaderAnchorOffsets(): HomeSidebarHeaderAnchorOffsets {
+    val topActionIconStart = HomeListHorizontalPadding + SidebarRowHorizontalPadding
+    val sectionChevronStart = HomeSectionHeaderStartPadding
+    return HomeSidebarHeaderAnchorOffsets(
+        topActionIconStart = topActionIconStart,
+        sectionChevronStart = sectionChevronStart,
+        topActionLabelStart = topActionIconStart + SidebarActionIconBoxSize + SidebarActionLabelGap,
+        sectionLabelStart = HomeSectionLabelStartPadding,
+        childRowContentStart = HomeListHorizontalPadding + HomeSidebarChildRowContentPadding
+    )
+}
 
 internal enum class HomeSidebarBadgeTone {
     Loud,
@@ -1155,7 +1178,9 @@ internal fun SlockStructuralHomeShell(
                                                 sortMenuAnchor = anchor
                                             }
                                         },
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        modifier =
+                                            Modifier
+                                                .padding(start = HomeSectionHeaderStartPadding, end = HomeListHorizontalPadding)
                                     )
                                 }
                                 if (pinnedExpanded) {
@@ -1197,6 +1222,7 @@ internal fun SlockStructuralHomeShell(
                                                 agentStatusResolver = agentStatusResolver,
                                                 memberAvatarResolver = memberAvatarResolver,
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                contentStartPadding = HomeSidebarChildRowContentPadding,
                                                 hasDraft = pinned?.hasDraft == true,
                                                 muted = pinned?.activityMuted == true,
                                                 badge = badgeProjection?.label,
@@ -1231,6 +1257,7 @@ internal fun SlockStructuralHomeShell(
                                                 badge = badgeProjection.label,
                                                 badgeTone = badgeProjection.tone,
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                contentStartPadding = HomeSidebarChildRowContentPadding,
                                                 interactionState = rowInteractionState,
                                                 captureLongPressAnchor = captureRowAnchors,
                                                 onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(pinned.id) }) else null,
@@ -1257,7 +1284,9 @@ internal fun SlockStructuralHomeShell(
                                         sortMenuAnchor = anchor
                                     }
                                 },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                modifier =
+                                    Modifier
+                                        .padding(start = HomeSectionHeaderStartPadding, end = HomeListHorizontalPadding)
                             ) {
                                 SlockSectionHeaderIconAction(SlockLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
                             }
@@ -1281,6 +1310,7 @@ internal fun SlockStructuralHomeShell(
                                     badge = badgeProjection.label,
                                     badgeTone = badgeProjection.tone,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    contentStartPadding = HomeSidebarChildRowContentPadding,
                                     interactionState = channelInteractionState,
                                     captureLongPressAnchor = captureRowAnchors,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
@@ -1298,7 +1328,10 @@ internal fun SlockStructuralHomeShell(
                         }
                         if (channelsExpanded && showLoadingSkeletons) {
                             items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
-                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                HomeSidebarSkeletonRow(
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    contentStartPadding = HomeSidebarChildRowContentPadding
+                                )
                             }
                         }
                         if (displayedJointChannels.isNotEmpty()) {
@@ -1310,7 +1343,9 @@ internal fun SlockStructuralHomeShell(
                                     expanded = jointChannelsExpanded,
                                     onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                     showCollapsedUnreadDot = jointChannelSectionHasUnread,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                    modifier =
+                                        Modifier
+                                            .padding(start = HomeSectionHeaderStartPadding, end = HomeListHorizontalPadding)
                                 )
                             }
                             if (jointChannelsExpanded) {
@@ -1331,6 +1366,7 @@ internal fun SlockStructuralHomeShell(
                                         badge = badgeProjection.label,
                                         badgeTone = badgeProjection.tone,
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        contentStartPadding = HomeSidebarChildRowContentPadding,
                                         interactionState = jointInteractionState,
                                         captureLongPressAnchor = captureRowAnchors,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
@@ -1362,7 +1398,9 @@ internal fun SlockStructuralHomeShell(
                                         sortMenuAnchor = anchor
                                     }
                                 },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                modifier =
+                                    Modifier
+                                        .padding(start = HomeSectionHeaderStartPadding, end = HomeListHorizontalPadding),
                                 trailingContent = null
                             )
                         }
@@ -1384,6 +1422,7 @@ internal fun SlockStructuralHomeShell(
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    contentStartPadding = HomeSidebarChildRowContentPadding,
                                     hasDraft = dm.hasDraft,
                                     muted = dm.activityMuted,
                                     badge = badgeProjection.label,
@@ -1405,7 +1444,10 @@ internal fun SlockStructuralHomeShell(
                         }
                         if (directMessagesExpanded && showLoadingSkeletons) {
                             items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
-                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                HomeSidebarSkeletonRow(
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    contentStartPadding = HomeSidebarChildRowContentPadding
+                                )
                             }
                         }
                         item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
@@ -3079,7 +3121,7 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, contentStartPadding: Dp = ChannelRowHorizontalPadding, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
@@ -3223,7 +3265,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
                     .height(ChannelRowHeight)
                     .background(rowBackground)
                     .border(SlockStroke.Default, borderColor)
-                    .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+                    .padding(start = contentStartPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (positionPrefix != null) {
@@ -3319,13 +3361,13 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
 // replaces the skeletons in place. SlockSkeleton is fully static (no
 // shimmer), which keeps visual captures deterministic.
 @Composable
-private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier) {
+private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier, contentStartPadding: Dp = ChannelRowHorizontalPadding) {
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(ChannelRowHeight)
-                .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+                .padding(start = contentStartPadding, end = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockSkeleton(modifier = Modifier.size(ChannelAvatarSize), variant = SlockSkeletonVariant.Circle)
@@ -3606,7 +3648,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, contentStartPadding: Dp = ChannelRowHorizontalPadding, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -3707,7 +3749,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .height(ChannelRowHeight)
                     .background(rowBackground)
                     .border(SlockStroke.Default, borderColor)
-                    .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+                    .padding(start = contentStartPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
