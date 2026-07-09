@@ -322,6 +322,61 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeConversationMenuAddsMuteActionOnlyWhenSupported() {
+        val unsupported =
+            SlockHomeConversationItem(
+                id = "channel-unsupported",
+                name = "unsupported",
+                activityMuted = false,
+                activityMuteSupported = false
+            )
+        val unmuted =
+            SlockHomeConversationItem(
+                id = "channel-unmuted",
+                name = "unmuted",
+                activityMuted = false,
+                activityMuteSupported = true
+            )
+        val muted =
+            SlockHomeConversationItem(
+                id = "channel-muted",
+                name = "muted",
+                activityMuted = true,
+                activityMuteSupported = true
+            )
+
+        assertFalse(
+            slockHomeConversationMenuItems(
+                conversation = unsupported,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = false,
+                activeCanArchive = false
+            ).any { it.id == "mute-channel" || it.id == "unmute-channel" }
+        )
+        assertEquals(
+            SlockBaseMenuItem(id = "mute-channel", label = "Mute", icon = SlockLucideIconName.BellOff),
+            slockHomeConversationMenuItems(
+                conversation = unmuted,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = false,
+                activeCanArchive = false
+            ).single { it.id == "mute-channel" }
+        )
+        assertEquals(
+            SlockBaseMenuItem(id = "unmute-channel", label = "Unmute", icon = SlockLucideIconName.Bell),
+            slockHomeConversationMenuItems(
+                conversation = muted,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = false,
+                activeCanArchive = false
+            ).single { it.id == "unmute-channel" }
+        )
+    }
+
+    @Test
     fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
         assertEquals(
             HomeActivitySidebarProjection(unreadLabel = "99+", totalLabel = null),
