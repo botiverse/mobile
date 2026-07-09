@@ -53,6 +53,7 @@ import com.tencent.kuikly.compose.ui.text.input.KeyboardType
 import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
 import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -62,6 +63,16 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
+
+internal fun settingsAccountInputTextStyle(
+    color: Color = SlockColor.TextBlack
+): TextStyle =
+    SlockType.Input.copy(
+        fontFamily = SlockMonoFamily,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        color = color
+    )
 
 @Page(SETTINGS_ACCOUNT_PAGE, supportInLocal = true)
 internal class ComposeSettingsAccountPage : build.raft.app.base.BasePager() {
@@ -341,14 +352,17 @@ private fun SettingsAccountProfileCard(
         }
         SlockBrutalReadOnlyField(
             label = "Name",
-            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") }
+            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+            textStyle = settingsAccountInputTextStyle(SlockColor.TextMutedGray),
+            textColor = SlockColor.TextMutedGray
         )
         SlockBrutalTextField(
             label = "Display Name",
             value = displayName,
             placeholder = payload.displayNamePlaceholder,
             onValueChange = { displayNameState.value = it },
-            enabled = payload.canEditProfile && !payload.saveInProgress
+            enabled = payload.canEditProfile && !payload.saveInProgress,
+            textStyle = settingsAccountInputTextStyle()
         )
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
         SettingsProfileSaveButton(
@@ -471,7 +485,7 @@ private fun SettingsEmailField(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 value.ifBlank { placeholder },
-                style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                style = settingsAccountInputTextStyle().copy(fontSize = 15.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -559,6 +573,7 @@ private fun SettingsPasswordForm(
             placeholder = "",
             onValueChange = onCurrentPasswordChange,
             enabled = !payload.passwordInProgress,
+            textStyle = settingsAccountInputTextStyle(),
             password = true
         )
         SlockBrutalTextField(
@@ -567,6 +582,7 @@ private fun SettingsPasswordForm(
             placeholder = payload.newPasswordPlaceholder,
             onValueChange = onNewPasswordChange,
             enabled = !payload.passwordInProgress,
+            textStyle = settingsAccountInputTextStyle(),
             password = true
         )
         SlockBrutalTextField(
@@ -575,6 +591,7 @@ private fun SettingsPasswordForm(
             placeholder = "",
             onValueChange = onConfirmPasswordChange,
             enabled = !payload.passwordInProgress,
+            textStyle = settingsAccountInputTextStyle(),
             password = true
         )
         draftError?.let { SettingsAccountWarning(it) }

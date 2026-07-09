@@ -15984,7 +15984,7 @@ internal fun SettingsPageVisualContent() {
     ) {
         SettingsDetailShell(
             title = spec.title,
-            subtitle = spec.subtitle,
+            subtitle = settingsVisualHeaderSubtitle(spec.variant),
             iconName = spec.iconName,
             applyTopSafeArea = false,
             onBack = {}
@@ -16000,6 +16000,8 @@ private data class SettingsVisualSpec(
     val subtitle: String,
     val iconName: SlockLucideIconName
 )
+
+internal fun settingsVisualHeaderSubtitle(variant: String): String = ""
 
 private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
     when (variant) {
