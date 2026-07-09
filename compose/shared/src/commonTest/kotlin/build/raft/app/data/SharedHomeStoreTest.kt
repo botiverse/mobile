@@ -18,6 +18,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.Presence
@@ -2748,8 +2749,10 @@ class SharedHomeStoreTest {
         assertEquals(listOf("channel-1"), after?.pinnedChannelIds)
         assertEquals(listOf("channel-1"), after?.pinnedOrder)
         assertEquals(1, updateCalls.size)
-        assertEquals(listOf("channel-1"), updateCalls.first().pinnedChannelIds)
-        assertEquals(listOf("channel-1"), updateCalls.first().pinnedOrder)
+        assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")), updateCalls.first().pinned)
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedAgentIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
         scope.cancel()
     }
 
@@ -2795,9 +2798,10 @@ class SharedHomeStoreTest {
         assertEquals(listOf("agent-1"), after?.pinnedAgentIds)
         assertEquals(listOf("agent-1"), after?.pinnedOrder)
         assertEquals(1, updateCalls.size)
-        assertEquals(emptyList(), updateCalls.first().pinnedChannelIds)
-        assertEquals(listOf("agent-1"), updateCalls.first().pinnedAgentIds)
-        assertEquals(listOf("agent-1"), updateCalls.first().pinnedOrder)
+        assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")), updateCalls.first().pinned)
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedAgentIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
         scope.cancel()
     }
 
@@ -2844,14 +2848,15 @@ class SharedHomeStoreTest {
         assertEquals(emptyList(), after?.pinnedAgentIds)
         assertEquals(emptyList(), after?.pinnedOrder)
         assertEquals(1, updateCalls.size)
-        assertEquals(emptyList(), updateCalls.first().pinnedChannelIds)
-        assertEquals(emptyList(), updateCalls.first().pinnedAgentIds)
-        assertEquals(emptyList(), updateCalls.first().pinnedOrder)
+        assertEquals(emptyList(), updateCalls.first().pinned)
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedAgentIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
         scope.cancel()
     }
 
     @Test
-    fun togglePinnedHumanDirectMessageStillPatchesPinnedChannelIds() = runBlocking {
+    fun togglePinnedHumanDirectMessagePatchesTypedHumanPinnedItem() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(
             pinnedChannelIds = emptyList(),
@@ -2861,8 +2866,8 @@ class SharedHomeStoreTest {
         )
         val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
         val updatedSnapshot = initial.copy(
-            pinnedChannelIds = listOf("dm-user-1"),
-            pinnedOrder = listOf("dm-user-1")
+            pinned = listOf(SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")),
+            pinnedOrder = listOf("user-1")
         )
         val home =
             sampleHome(ServerId("server-1")).copy(
@@ -2888,13 +2893,14 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.TogglePinned("dm-user-1"))
 
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
-        assertEquals(listOf("dm-user-1"), after?.pinnedChannelIds)
+        assertEquals(emptyList(), after?.pinnedChannelIds)
         assertEquals(emptyList(), after?.pinnedAgentIds)
-        assertEquals(listOf("dm-user-1"), after?.pinnedOrder)
+        assertEquals(listOf("user-1"), after?.pinnedOrder)
         assertEquals(1, updateCalls.size)
-        assertEquals(listOf("dm-user-1"), updateCalls.first().pinnedChannelIds)
-        assertEquals(emptyList(), updateCalls.first().pinnedAgentIds)
-        assertEquals(listOf("dm-user-1"), updateCalls.first().pinnedOrder)
+        assertEquals(listOf(SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")), updateCalls.first().pinned)
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedAgentIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
         scope.cancel()
     }
 
@@ -3000,7 +3006,16 @@ class SharedHomeStoreTest {
         assertEquals(listOf("channel-2", "channel-1"), after?.pinnedChannelIds, "must include existing pinned channel-2 plus new channel-1")
         assertEquals(listOf("channel-2", "channel-1"), after?.pinnedOrder)
         assertEquals(1, updateCalls.size)
-        assertEquals(listOf("channel-2", "channel-1"), updateCalls.first().pinnedChannelIds)
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-2"),
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1")
+            ),
+            updateCalls.first().pinned
+        )
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedAgentIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
         scope.cancel()
     }
 
@@ -3221,7 +3236,15 @@ class SharedHomeStoreTest {
         assertEquals(listOf("channel-2", "channel-1", "agent-1"), after?.pinnedOrder)
         assertEquals("manual", after?.pinnedSortMode)
         assertEquals(1, updateCalls.size)
-        assertEquals(listOf("channel-2", "channel-1", "agent-1"), updateCalls.first().pinnedOrder)
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-2"),
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1"),
+                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")
+            ),
+            updateCalls.first().pinned
+        )
+        assertEquals(null, updateCalls.first().pinnedOrder)
         assertEquals("manual", updateCalls.first().pinnedSortMode)
         assertEquals(null, updateCalls.first().channelOrder)
         scope.cancel()
@@ -3826,6 +3849,98 @@ class SharedHomeStoreTest {
 
         val stale = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(listOf("channel-2", "channel-1"), stale?.channelOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePinnedUpdatedUsesUserGlobalVersionGateAndFeedsSidebarProjection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            sidebarOrder =
+                                SettingsServerSidebarOrderSnapshot(
+                                    pinnedChannelIds = listOf("channel-1"),
+                                    pinnedOrder = listOf("channel-1"),
+                                    pinned = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1"))
+                                )
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverPinnedChanged(
+                        serverId = ServerId("server-1"),
+                        pinned =
+                            listOf(
+                                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                                SettingsServerSidebarPinnedItem(kind = "human", id = "user-2")
+                            ),
+                        pinnedVersion = 6
+                    )
+            )
+        )
+
+        val updated = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                SettingsServerSidebarPinnedItem(kind = "human", id = "user-2")
+            ),
+            updated?.pinned
+        )
+        assertEquals(emptyList(), updated?.pinnedChannelIds)
+        assertEquals(listOf("agent-1"), updated?.pinnedAgentIds)
+        assertEquals(listOf("agent-1", "user-2"), updated?.pinnedOrder)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverPinnedChanged(
+                        serverId = ServerId("server-1"),
+                        pinned = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-2")),
+                        pinnedVersion = 5
+                    )
+            )
+        )
+
+        val stale = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                SettingsServerSidebarPinnedItem(kind = "human", id = "user-2")
+            ),
+            stale?.pinned
+        )
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverPinnedChanged(
+                        serverId = ServerId("server-1"),
+                        pinned = emptyList(),
+                        pinnedVersion = 7
+                    )
+            )
+        )
+
+        val emptyPinned = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(emptyList(), emptyPinned?.pinned)
+        assertEquals(emptyList(), emptyPinned?.pinnedChannelIds)
+        assertEquals(emptyList(), emptyPinned?.pinnedAgentIds)
+        assertEquals(emptyList(), emptyPinned?.pinnedOrder)
         scope.cancel()
     }
 

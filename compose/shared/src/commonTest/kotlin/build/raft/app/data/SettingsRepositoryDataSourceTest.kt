@@ -610,7 +610,7 @@ class SettingsRepositoryDataSourceTest {
                 agreementUpdateJson = """{"enabled":true,"agreement":{"title":"Rules","bodyMarkdown":"Be excellent."}}""",
                 onboardingJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":null,"agentAllChannelGreetingEnabled":true}""",
                 translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
-                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"pinned":[{"kind":"channel","id":"channel-1"},{"kind":"agent","id":"agent-1"},{"kind":"human","id":"user-1"},{"kind":"invalid","id":"ignored"},{"kind":"agent","id":"agent-1"}],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
+                sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"pinned":[{"kind":"channel","id":"channel-1"},{"kind":"agent","id":"agent-1"},{"kind":"human","id":"user-1"},{"kind":"invalid","id":"ignored"}],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
                 serverOrderJson = """{"serverOrder":["server-2","server-1"]}""",
                 onboardingUpdateJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
                 translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
@@ -686,6 +686,14 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(updatedSidebar is DataResult.Content)
         assertEquals(listOf("channel-2"), updatedSidebar.data.channelOrder)
         assertEquals("""{"channelOrder":["channel-2"],"channelSortMode":"az","channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""", network.sidebarBodies.single())
+        val updatedTypedPinned =
+            repository.updateServerSidebarOrder(
+                SettingsServerSidebarOrderUpdateRequest(
+                    pinned = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"))
+                )
+            )
+        assertTrue(updatedTypedPinned is DataResult.Content)
+        assertEquals("""{"pinned":[{"kind":"agent","id":"agent-1"}]}""", network.sidebarBodies.last())
         assertTrue(updatedServerOrder is DataResult.Content)
         assertEquals(listOf("server-1", "server-2"), updatedServerOrder.data.serverOrder)
         assertEquals("""{"serverOrder":["server-1","server-2"]}""", network.serverOrderBodies.single())

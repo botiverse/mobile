@@ -2199,7 +2199,7 @@ internal fun pinnedRowsForSidebar(
                 }
                 else -> null
             }
-        }.distinctBy { it.conversation?.id ?: it.key }
+        }.distinctBy { row -> row.conversation?.id ?: row.member?.memberId ?: row.key }
     if (typedRows.isNotEmpty()) {
         return typedRows.sortedPinnedRows(mode)
     }

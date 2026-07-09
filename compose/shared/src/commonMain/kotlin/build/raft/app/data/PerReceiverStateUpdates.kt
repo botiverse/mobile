@@ -27,3 +27,10 @@ data class PerReceiverServerOrderUpdate(
     val version: Long,
     val sidebarOrder: SettingsServerSidebarOrderSnapshot
 )
+
+data class PerReceiverPinnedUpdate(
+    val serverId: ServerId,
+    val memberId: MemberId,
+    val version: Long,
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot
+)

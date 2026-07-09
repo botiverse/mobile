@@ -20,6 +20,7 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.ThreadUpdated
@@ -438,6 +439,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is Heartbeat -> "heartbeat"
     is PerReceiverReadStateChanged -> "read_state_updated"
     is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
+    is PerReceiverPinnedChanged -> "pinned_updated"
     is NotificationPushReceived -> "notification_push"
 }
 
@@ -470,6 +472,8 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
             "firstScopeId=${scopes.firstOrNull()?.scopeId?.value.orEmpty()} firstVersion=${scopes.firstOrNull()?.readStateVersion ?: -1L}"
     is PerReceiverNotificationPrefsChanged ->
         "serverId=${serverId?.value.orEmpty()} scopeId=${scopeId.value} version=$prefsVersion muted=${preference.activityMuted}"
+    is PerReceiverPinnedChanged ->
+        "serverId=${serverId?.value.orEmpty()} version=$pinnedVersion pinned=${pinned.size}"
     is NotificationPushReceived ->
         "serverId=${serverId.value} kind=${kind.name} messageId=${messageId.value} " +
             "channelId=${channelId?.value.orEmpty()} threadId=${threadId?.value.orEmpty()}"

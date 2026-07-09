@@ -584,6 +584,7 @@ data class SettingsServerSidebarOrderUpdateRequest(
     val channelSortMode: String? = null,
     val dmSortMode: String? = null,
     val pinnedSortMode: String? = null,
+    val pinned: List<SettingsServerSidebarPinnedItem>? = null,
     val pinnedChannelIds: List<String>? = null,
     val pinnedAgentIds: List<String>? = null,
     val pinnedOrder: List<String>? = null,

@@ -1,5 +1,6 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -10,6 +11,7 @@ import build.raft.app.model.MessageType
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
+import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeRefreshRequired
@@ -782,6 +784,48 @@ class RealtimeEventMapperTest {
         assertEquals(900L, changed.preference.muteFromSeq)
         assertTrue(changed.preference.activityMuteSupported)
         assertEquals(2L, changed.prefsVersion)
+    }
+
+    @Test
+    fun pinnedUpdatedMapsTypedPinnedAndVersion() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.PinnedUpdated,
+                """
+                {
+                  "serverId": "server-1",
+                  "pinned": [
+                    { "kind": "channel", "id": "channel-1" },
+                    { "kind": "agent", "id": "agent-1" },
+                    { "kind": "human", "id": "user-1" }
+                  ],
+                  "pinnedVersion": 12
+                }
+                """.trimIndent()
+            )
+
+        val changed = assertIs<PerReceiverPinnedChanged>(event)
+        assertEquals("server-1", changed.serverId?.value)
+        assertEquals(
+            listOf(
+                SettingsServerSidebarPinnedItem(kind = "channel", id = "channel-1"),
+                SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
+                SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")
+            ),
+            changed.pinned
+        )
+        assertEquals(12L, changed.pinnedVersion)
+    }
+
+    @Test
+    fun pinnedUpdatedWithoutVersionIsIgnored() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.PinnedUpdated,
+                """{ "serverId": "server-1", "pinned": [{ "kind": "channel", "id": "channel-1" }] }"""
+            )
+
+        assertNull(event)
     }
 
     // task #459: server-qualified notification stream (server PR #4233).
