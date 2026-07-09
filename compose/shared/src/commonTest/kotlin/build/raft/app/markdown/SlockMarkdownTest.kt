@@ -40,9 +40,9 @@ import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
     private val expectedLinkBlue = Color(0xFF1D4ED8)
-    private val slockInlineCodeAnnotationTag = "raft.build.markdown.inlineCode"
-    private val slockInlineCodeTrailingMarginAnnotationTag = "raft.build.markdown.inlineCodeTrailingMargin"
-    private val inlineCodePadding = "\u00A0"
+    private val slockInlineCodeAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
+    private val slockInlineCodeTrailingMarginAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
+    private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
@@ -411,6 +411,11 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.AccentCyan.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
         assertEquals(SlockColor.BrandYellow, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
+        assertEquals("channel", SlockRichTextChromeKind.Channel.styleToken.id)
+        assertEquals(SlockRichTextColorToken.AccentPink30, SlockRichTextChromeKind.Channel.styleToken.chipFill)
+        assertEquals(SlockRichTextColorToken.AccentCyan30, SlockRichTextChromeKind.Thread.styleToken.chipFill)
+        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.Task.styleToken.chipFill)
+        assertEquals(SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP, SlockRichTextChromeKind.Channel.styleToken.horizontalChromeSp)
 
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.BrandYellow)
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.AccentCyan)
@@ -458,6 +463,9 @@ class SlockMarkdownTest {
         assertEquals(SlockColor.BrandYellow, activeMentionStyle.background)
         assertEquals(null, activeMentionStyle.textDecoration)
         assertEquals(Color.Unspecified, activeMentionStyle.textDecorationColor)
+        assertEquals(SlockRichTextTextDecorationToken.Underline, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecoration)
+        assertEquals(2f, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecorationThicknessSp)
+        assertEquals(2f, SlockRichTextChromeKind.OrdinaryMention.styleToken.textDecorationOffsetSp)
     }
 
     @Test
@@ -689,6 +697,10 @@ class SlockMarkdownTest {
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
         assertEquals(slockMonoFamilyForWeight(FontWeight.Normal), inlineCodeStyleFromBoldText.fontFamily)
         assertEquals(FontWeight.Normal, inlineCodeStyleFromBoldText.fontWeight)
+        assertEquals("inlineCode", SlockRichTextChromeKind.InlineCode.styleToken.id)
+        assertEquals(SlockRichTextFontFamilyToken.SlockMono, SlockRichTextChromeKind.InlineCode.styleToken.fontFamily)
+        assertEquals(SlockRichTextFontWeightToken.Normal, SlockRichTextChromeKind.InlineCode.styleToken.fontWeight)
+        assertEquals(SlockRichTextColorToken.BrandYellow40, SlockRichTextChromeKind.InlineCode.styleToken.background)
     }
 
     @Test

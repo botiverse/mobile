@@ -28,6 +28,7 @@ data class SlockRichTextInlineToken(
     val text: String,
     val sourceText: String,
     val chrome: SlockRichTextChromeKind? = null,
+    val styleTokenId: String? = chrome?.styleToken?.id,
     val actionId: String? = null,
     val refKind: SlockRichTextRefKind? = null
 )
@@ -47,6 +48,126 @@ enum class SlockRichTextChromeKind(val wireValue: String) {
     OrdinaryMention("ordinaryMention"),
     Active("active")
 }
+
+val SlockRichTextChromeKind.styleToken: SlockRichTextChromeStyleToken
+    get() =
+        when (this) {
+            SlockRichTextChromeKind.InlineCode -> SlockRichTextChromeStyleTokens.InlineCode
+            SlockRichTextChromeKind.Channel -> SlockRichTextChromeStyleTokens.Channel
+            SlockRichTextChromeKind.Thread -> SlockRichTextChromeStyleTokens.Thread
+            SlockRichTextChromeKind.Task -> SlockRichTextChromeStyleTokens.Task
+            SlockRichTextChromeKind.SelfMention -> SlockRichTextChromeStyleTokens.SelfMention
+            SlockRichTextChromeKind.OrdinaryMention -> SlockRichTextChromeStyleTokens.OrdinaryMention
+            SlockRichTextChromeKind.Active -> SlockRichTextChromeStyleTokens.Active
+        }
+
+data class SlockRichTextChromeStyleToken(
+    val id: String,
+    val foreground: SlockRichTextColorToken = SlockRichTextColorToken.TextBlack,
+    val background: SlockRichTextColorToken? = null,
+    val chipFill: SlockRichTextColorToken? = background,
+    val fontFamily: SlockRichTextFontFamilyToken = SlockRichTextFontFamilyToken.SlockUi,
+    val fontWeight: SlockRichTextFontWeightToken = SlockRichTextFontWeightToken.SemiBold,
+    val fontSizeSp: Float? = 14f,
+    val textDecoration: SlockRichTextTextDecorationToken? = null,
+    val textDecorationColor: SlockRichTextColorToken? = null,
+    val textDecorationThicknessSp: Float? = null,
+    val textDecorationOffsetSp: Float? = null,
+    val horizontalChromeSp: Float? = null
+)
+
+enum class SlockRichTextColorToken(val wireValue: String) {
+    TextBlack("textBlack"),
+    BrandYellow("brandYellow"),
+    BrandYellow40("brandYellow40"),
+    AccentPink30("accentPink30"),
+    AccentCyan30("accentCyan30"),
+    SoftSignal("softSignal"),
+    BorderBlack30("borderBlack30")
+}
+
+enum class SlockRichTextFontFamilyToken(val wireValue: String) {
+    SlockUi("slockUi"),
+    SlockMono("slockMono")
+}
+
+enum class SlockRichTextFontWeightToken(val wireValue: String) {
+    Normal("normal"),
+    SemiBold("semiBold")
+}
+
+enum class SlockRichTextTextDecorationToken(val wireValue: String) {
+    Underline("underline")
+}
+
+object SlockRichTextChromeStyleTokens {
+    val InlineCode =
+        SlockRichTextChromeStyleToken(
+            id = "inlineCode",
+            foreground = SlockRichTextColorToken.TextBlack,
+            background = SlockRichTextColorToken.BrandYellow40,
+            chipFill = SlockRichTextColorToken.BrandYellow40,
+            fontFamily = SlockRichTextFontFamilyToken.SlockMono,
+            fontWeight = SlockRichTextFontWeightToken.Normal
+        )
+    val Channel =
+        referenceUnderline(
+            id = "channel",
+            chipFill = SlockRichTextColorToken.AccentPink30
+        )
+    val Thread =
+        referenceUnderline(
+            id = "thread",
+            chipFill = SlockRichTextColorToken.AccentCyan30
+        )
+    val Task =
+        referenceUnderline(
+            id = "task",
+            chipFill = SlockRichTextColorToken.BrandYellow40
+        )
+    val OrdinaryMention =
+        referenceUnderline(
+            id = "ordinaryMention",
+            chipFill = SlockRichTextColorToken.BrandYellow40
+        )
+    val SelfMention =
+        referenceChip(
+            id = "selfMention"
+        )
+    val Active =
+        referenceChip(
+            id = "active"
+        )
+
+    private fun referenceUnderline(
+        id: String,
+        chipFill: SlockRichTextColorToken
+    ): SlockRichTextChromeStyleToken =
+        SlockRichTextChromeStyleToken(
+            id = id,
+            chipFill = chipFill,
+            textDecoration = SlockRichTextTextDecorationToken.Underline,
+            textDecorationColor = SlockRichTextColorToken.BorderBlack30,
+            textDecorationThicknessSp = 2f,
+            textDecorationOffsetSp = 2f,
+            horizontalChromeSp = SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP
+        )
+
+    private fun referenceChip(id: String): SlockRichTextChromeStyleToken =
+        SlockRichTextChromeStyleToken(
+            id = id,
+            background = SlockRichTextColorToken.SoftSignal,
+            chipFill = SlockRichTextColorToken.SoftSignal,
+            horizontalChromeSp = SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP
+        )
+}
+
+const val SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inlineCode"
+const val SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
+    "raft.build.markdown.inlineCodeTrailingMargin"
+const val SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING = '\u00A0'
+const val SLOCK_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
+const val SLOCK_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP = 12f
 
 enum class SlockRichTextRefKind(val wireValue: String) {
     Channel("channel"),
@@ -76,6 +197,10 @@ data class SlockRichTextRange(
 data class SlockRichTextContext(
     val knownChannels: Set<String> = emptySet(),
     val knownMentions: Set<String> = emptySet(),
+    // Viewer identity is render-context data, not a stable message fact.
+    // The same @mention can be self chrome for one viewer and ordinary
+    // mention chrome for another.
+    val viewerUserId: String? = null,
     val highlightedMentions: Set<String> = emptySet(),
     val knownTaskNumbers: Set<Int>? = null,
     val activeTagKey: String? = null,
@@ -119,7 +244,7 @@ fun buildSlockRichTextDocument(
     val plan =
         SlockMarkdownInlineTokenRegistry.plan(
             parserContent,
-            highlightedMentions = context.highlightedMentions,
+            highlightedMentions = context.viewerScopedHighlightedMentions(),
             isTagValid = validator,
             inlineContentScope = context.inlineContentScope
         )
@@ -268,6 +393,12 @@ private fun SlockRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) -
     }
 }
 
+private fun SlockRichTextContext.viewerScopedHighlightedMentions(): Set<String> =
+    buildSet {
+        addAll(highlightedMentions)
+        viewerUserId?.takeIf { it.isNotBlank() }?.let(::add)
+    }
+
 private fun String.textToken(start: Int, endExclusive: Int): SlockRichTextInlineToken =
     SlockRichTextInlineToken(
         id = "text:$start-$endExclusive",
@@ -347,6 +478,10 @@ private fun SlockRichTextInlineToken.toGoldenJson(): String =
         chrome?.let {
             append(",")
             appendJsonField("chrome", it.wireValue)
+        }
+        styleTokenId?.let {
+            append(",")
+            appendJsonField("styleTokenId", it)
         }
         actionId?.let {
             append(",")
