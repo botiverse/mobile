@@ -46,7 +46,7 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 45
     defaults:
       run:
@@ -600,7 +600,7 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     # AI analysis moved to the ai-analysis job (images publish first, per
     # artin 2026-07-09); without it diff/report/site fits well inside 30.
     timeout-minutes: 30
@@ -772,7 +772,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner

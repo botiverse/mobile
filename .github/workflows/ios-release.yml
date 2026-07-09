@@ -514,7 +514,7 @@ jobs:
 
   upload_testflight:
     name: Upload to TestFlight
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-latest
     timeout-minutes: 30
     needs: [resolve, build_ios_release, publish_hands]
     if: |

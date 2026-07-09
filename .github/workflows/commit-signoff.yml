@@ -13,7 +13,7 @@ permissions:
 jobs:
   signoff:
     name: Signed-off-by policy
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:
       - name: Checkout
