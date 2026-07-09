@@ -8572,9 +8572,11 @@ private fun SharedQuiverFeedbackContent(
                     }
                 },
                 contentPaddingTop = 10.dp,
-                contentPaddingBottom = 8.dp
+                contentPaddingBottom = 8.dp,
+                hostPaddingHorizontal = SlockSpacing.Sm,
+                hostPaddingTop = 12.dp,
+                keyboardLiftBottomContentPadding = bottomContentPadding
             )
-            Spacer(Modifier.height(bottomContentPadding))
         }
     }
 }

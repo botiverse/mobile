@@ -69,6 +69,7 @@ import kotlin.time.TimeSource
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
+private val ThreadComposerHostKeyboardBasePadding = 12.dp
 private val ThreadComposerVisualInputWidth = 321.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerTextFieldMaxHeight = 80.dp
@@ -891,6 +892,18 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         hookLabels = hookLabels
     )
 
+internal fun threadComposerHostKeyboardLiftBottomPadding(
+    keyboardInsetDp: Float,
+    bottomContentPadding: Dp
+): Dp {
+    val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
+    return if (keyboardInsetDp > 0f) {
+        ThreadComposerHostKeyboardBasePadding + keyboardInset
+    } else {
+        bottomContentPadding
+    }
+}
+
 internal fun KuiklyThreadScreenPayload.resolveThreadComposer(displayName: String = title): KuiklyThreadComposerPayload {
     val resolvedSurfaceKind =
         if (composer.surfaceKind == KuiklyThreadSurfaceKind.Channel && surfaceKind != KuiklyThreadSurfaceKind.Channel) {
@@ -990,7 +1003,10 @@ internal fun ThreadComposerContent(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
-    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
+    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
+    hostPaddingHorizontal: Dp = 0.dp,
+    hostPaddingTop: Dp = 0.dp,
+    keyboardLiftBottomContentPadding: Dp? = null
 ) {
     ThreadComposerContent(
         surface =
@@ -1001,7 +1017,10 @@ internal fun ThreadComposerContent(
         onEvent = onEvent,
         onKeyboardHeightChange = onKeyboardHeightChange,
         contentPaddingTop = contentPaddingTop,
-        contentPaddingBottom = contentPaddingBottom
+        contentPaddingBottom = contentPaddingBottom,
+        hostPaddingHorizontal = hostPaddingHorizontal,
+        hostPaddingTop = hostPaddingTop,
+        keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding
     )
 }
 
@@ -1013,6 +1032,9 @@ internal fun ThreadComposerContent(
     onKeyboardHeightChange: (Float) -> Unit = {},
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding,
+    hostPaddingHorizontal: Dp = 0.dp,
+    hostPaddingTop: Dp = 0.dp,
+    keyboardLiftBottomContentPadding: Dp? = null,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver
 ) {
     // #192 trace scope extension: wrap the full composer render. IME-lift / state
@@ -1029,6 +1051,7 @@ internal fun ThreadComposerContent(
     var lastAcceptedLocalText by remember(state.instanceId) { mutableStateOf(state.seedText) }
     var lastAcceptedLocalAsTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
     var staleCallbackGuard by remember(state.instanceId) { mutableStateOf<ThreadComposerStaleCallbackGuard?>(null) }
+    var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
@@ -1223,8 +1246,25 @@ internal fun ThreadComposerContent(
         }
     }
 
+    val hostPaddingBottom =
+        keyboardLiftBottomContentPadding?.let { bottomContentPadding ->
+            threadComposerHostKeyboardLiftBottomPadding(
+                keyboardInsetDp = keyboardInsetDp,
+                bottomContentPadding = bottomContentPadding
+            )
+        } ?: 0.dp
+
     Box(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .padding(
+                    start = hostPaddingHorizontal,
+                    top = hostPaddingTop,
+                    end = hostPaddingHorizontal,
+                    bottom = hostPaddingBottom
+                ),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
@@ -1345,7 +1385,11 @@ internal fun ThreadComposerContent(
                             lineHeight = 20.sp
                         ),
                         keyboardHeightChange = { params ->
-                            onKeyboardHeightChange(params.height.coerceAtLeast(0f))
+                            val nextInset = params.height.coerceAtLeast(0f)
+                            if (nextInset != keyboardInsetDp) {
+                                keyboardInsetDp = nextInset
+                            }
+                            onKeyboardHeightChange(nextInset)
                         },
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
