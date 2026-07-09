@@ -33,6 +33,7 @@ object GeneratedRealtimeContract {
         const val AuthInvalid = "auth_invalid"
         const val Logout = "logout"
         const val ProcessTeardown = "process_teardown"
+        const val ApiEnvironmentChanged = "api_environment_changed"
         const val ServerDeleted = "server_deleted"
         const val ServerMembershipRemoved = "server_membership_removed"
         const val ServerRemoved = "server_removed"
@@ -41,6 +42,7 @@ object GeneratedRealtimeContract {
             AuthInvalid,
             Logout,
             ProcessTeardown,
+            ApiEnvironmentChanged,
             ServerDeleted,
             ServerMembershipRemoved,
             ServerRemoved,

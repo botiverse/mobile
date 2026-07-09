@@ -23,6 +23,7 @@ class GeneratedRealtimeDisconnectReasonContract {
   readonly AuthInvalid: string = "auth_invalid";
   readonly Logout: string = "logout";
   readonly ProcessTeardown: string = "process_teardown";
+  readonly ApiEnvironmentChanged: string = "api_environment_changed";
   readonly ServerDeleted: string = "server_deleted";
   readonly ServerMembershipRemoved: string = "server_membership_removed";
   readonly ServerRemoved: string = "server_removed";
@@ -80,6 +81,6 @@ export class GeneratedRealtimeContract {
   static readonly RoomAction: GeneratedRealtimeRoomActionContract = new GeneratedRealtimeRoomActionContract();
   static readonly PayloadKey: GeneratedRealtimePayloadKeyContract = new GeneratedRealtimePayloadKeyContract();
   static readonly DisconnectReason: GeneratedRealtimeDisconnectReasonContract = new GeneratedRealtimeDisconnectReasonContract();
-  static readonly SessionEndDisconnectReasons: Array<string> = ["auth_invalid", "logout", "process_teardown", "server_deleted", "server_membership_removed", "server_removed", "server_switch"];
+  static readonly SessionEndDisconnectReasons: Array<string> = ["auth_invalid", "logout", "process_teardown", "api_environment_changed", "server_deleted", "server_membership_removed", "server_removed", "server_switch"];
   static readonly SocketEvent: GeneratedRealtimeSocketEventContract = new GeneratedRealtimeSocketEventContract();
 }
