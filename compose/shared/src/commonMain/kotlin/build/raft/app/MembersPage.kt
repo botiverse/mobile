@@ -547,7 +547,13 @@ data class KuiklyMembersPayload(
      * When false, the agents "+" is hidden. When null/true, the "+" is rendered.
      * Field was added by #43 to address QA-2 from #42 review.
      */
-    val canCreateAgents: Boolean = true
+    val canCreateAgents: Boolean = true,
+    /**
+     * Whether the active session can invite human members. Driven by the host
+     * from server capabilities. When false, the humans "+" is hidden and the
+     * invite dialog cannot be opened from this page.
+     */
+    val canInviteHumans: Boolean = true
 )
 
 data class KuiklyMemberDetailPayload(
@@ -1187,7 +1193,7 @@ internal fun MembersPageContent() {
             }
         }
     }
-    val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+    val inviteHumanSubmitHandler: suspend (List<String>) -> DataResult<Unit> =
         remember(membersDataSource, serverId) {
             { emails ->
                 if (serverId.isBlank()) {
@@ -1216,6 +1222,8 @@ internal fun MembersPageContent() {
                 }
             }
         }
+    val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+        inviteHumanSubmitHandler.takeIf { payload.canInviteHumans }
 
     val agentPanelTabOrder =
         if (agentPanelTabOrderState.serverId == serverId) {
@@ -2346,6 +2354,7 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
+        canInviteHumans = (payload.opt("canInviteHumans") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
             humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },
@@ -2603,6 +2612,13 @@ internal fun MembersListContent(
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     var inviteHumanSubmitting by remember { mutableStateOf(false) }
     var inviteHumanError by remember { mutableStateOf<String?>(null) }
+    val canInviteHumans = payload.canInviteHumans && inviteHumanSubmit != null
+    LaunchedEffect(canInviteHumans) {
+        if (!canInviteHumans) {
+            activeInviteHuman = false
+            inviteHumanError = null
+        }
+    }
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -2725,11 +2741,13 @@ internal fun MembersListContent(
                     onExpandedChange = { humansExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        SlockSectionHeaderIconAction(
-                            icon = SlockLucideIconName.Plus,
-                            contentDescription = stringResource(MR.strings.member_action_invite_human),
-                            onClick = { activeInviteHuman = true }
-                        )
+                        if (canInviteHumans) {
+                            SlockSectionHeaderIconAction(
+                                icon = SlockLucideIconName.Plus,
+                                contentDescription = stringResource(MR.strings.member_action_invite_human),
+                                onClick = { activeInviteHuman = true }
+                            )
+                        }
                     }
                 )
             }
