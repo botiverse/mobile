@@ -14,6 +14,14 @@ internal class ComposeHomeTitlebarVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_titlebar_resize_visual", supportInLocal = true)
+internal class ComposeHomeTitlebarResizeVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeTitlebarResizeVisualScreen() }
+    }
+}
+
 // #372 screens.home.loading: pins the post-sign-in Loading-with-session home
 // state (session restored, channels / directMessages not yet fetched). This
 // renders exactly what SharedHomeSessionShell renders for

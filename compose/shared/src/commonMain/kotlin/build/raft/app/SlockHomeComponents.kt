@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -121,6 +122,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -713,6 +715,30 @@ internal fun HomeTitlebarVisualScreen() {
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+    }
+}
+
+@Composable
+internal fun HomeTitlebarResizeVisualScreen() {
+    var useLongServerName by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(300)
+        useLongServerName = true
+        delay(300)
+        useLongServerName = false
+        delay(300)
+        useLongServerName = true
+    }
+    Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
+        HomeTitlebar(
+            serverName = if (useLongServerName) "Raft Android Workspace" else "Raft",
+            hasOtherServerUnread = true,
+            notifications = emptyList(),
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = { useLongServerName = !useLongServerName },
             onNotificationToggle = {}
         )
     }
@@ -2513,28 +2539,30 @@ private fun SlockTiltedLogoBadge(
 ) {
     // Render the chrome as final vector geometry, then tilt the complete
     // foreground as one layer so text, icon, and unread marker share the angle.
-    Box(modifier = modifier) {
-        TiltedBadgeChrome(modifier = Modifier.matchParentSize())
-        Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
-                com.tencent.kuikly.compose.foundation.layout.Row(
-                    modifier = Modifier.padding(
-                        horizontal = HomeServerBadgeHorizontalInset,
-                        vertical = HomeServerBadgeVerticalInset
-                    ),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                    if (showDropdown) {
-                        Spacer(Modifier.width(HomeServerBadgeContentGap))
-                        SlockLucideIcon(
-                            SlockLucideIconName.ChevronDown,
-                            Modifier.size(HomeServerBadgeChevronSize),
-                            color = SlockColor.BrandYellowArgb
-                        )
+    key(text, showDropdown) {
+        Box(modifier = modifier) {
+            TiltedBadgeChrome(modifier = Modifier.matchParentSize())
+            Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+                Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
+                    com.tencent.kuikly.compose.foundation.layout.Row(
+                        modifier = Modifier.padding(
+                            horizontal = HomeServerBadgeHorizontalInset,
+                            vertical = HomeServerBadgeVerticalInset
+                        ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                        if (showDropdown) {
+                            Spacer(Modifier.width(HomeServerBadgeContentGap))
+                            SlockLucideIcon(
+                                SlockLucideIconName.ChevronDown,
+                                Modifier.size(HomeServerBadgeChevronSize),
+                                color = SlockColor.BrandYellowArgb
+                            )
+                        }
                     }
+                    if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
                 }
-                if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
             }
         }
     }
