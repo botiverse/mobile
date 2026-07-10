@@ -377,14 +377,22 @@ scripts/sync_kuikly_ai_skills.sh
 ## KuiklyUI Fork
 
 - We maintain a fork at `https://github.com/bytemain/KuiklyUI` checked out as a
-  git submodule at `third_party/kuikly-ui/` (branch `staging`).
-- Patches that fix Kuikly upstream bugs land on `staging` first, then a PR is
-  submitted to `Tencent-TDS/KuiklyUI`.
-- Current `staging` may sit ahead of the latest public Kuikly tag. Treat the
+  git submodule at `third_party/kuikly-ui/` (branch `staging2` — see
+  `.gitmodules`; older notes saying `staging` are obsolete).
+- Patches that fix Kuikly upstream bugs land on the fork branch first, then a
+  PR is submitted to `Tencent-TDS/KuiklyUI`.
+- The committed gitlink is the source of truth for which fork revision a build
+  uses. When debugging a "my fix does not show up" pixel mystery, verify the
+  gitlink and the locally published artifact revision before suspecting the
+  code.
+- To pull a fork ref and refresh every local consumer in one step (MavenLocal
+  for Android/iOS shared and OHOS shared, iOS CocoaPods state, OHOS render
+  HAR + entry lockfile), use `scripts/publish_kuikly_staging2_all.sh`.
+- The fork branch may sit ahead of the latest public Kuikly tag. Treat the
   fork `git describe` as part of the dependency version evidence. For example,
   a build pinned to public `2.21.0` may still need fork artifacts from
   `2.21.0-33-gea0788c8` in mavenLocal.
-- Current staging patches include font-family serialization/input fixes,
+- Current fork-branch patches include font-family serialization/input fixes,
   reverse lazy-list behavior, and OHOS/Compose cancellation/runtime fixes that
   may not exist in the public Maven artifacts for the same release line.
 - When a fix is accepted upstream and released as a new Kuikly version, update
@@ -418,7 +426,7 @@ scripts/sync_kuikly_ai_skills.sh
 - Do not use `includeBuild` for the fork. The KuiklyUI project includes
   androidApp/demo/ohosApp/h5App/iosApp in its settings, causing composite
   builds to configure the entire project tree on every Gradle sync and
-  timing out.""
+  timing out.
 
 ## OHOS Kuikly Workflow
 
@@ -666,9 +674,46 @@ Key invariants:
   shared changes directly through the project dependency.
 - Step 2 must pass even if you only changed commonMain; Kotlin/Native catches
   expect/actual mismatches, missing `ohosArm64` source sets, and
-  platform-incompatible dependencies.
+  platform-incompatible dependencies. It is also what catches JVM-only APIs in
+  commonMain (e.g. `Map.putIfAbsent`/`Map.merge`) that compile fine for
+  Android but break the iOS and OHOS builds — never push a commonMain change
+  that has only been validated by step 1. Do not count on CI to catch this
+  after push: the CI-side OHOS shared compile is a non-blocking lane (red
+  does not stop a merge; failures are fixed forward), so this local step is
+  the real gate until the pre-merge JVM-only-Map grep gate lands on main.
 - Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
   comments; treat them as warnings unless Hvigor reports a hard compile error.
+
+## Visual Testing (Cross-Provider Parity)
+
+React web is the visual baseline; Android/iOS/OHOS captures are compared
+against it (and against each other) by
+`.github/workflows/visual-testing.yml`. The data model, CLI, and report site
+live in the React repo under `packages/visual-testing/` — read its README and
+`docs/provider-pair-first.md` there before changing capture or report
+behavior. `scripts/slock-visual-testing.mjs` here is a compatibility shim
+around that CLI.
+
+Pipeline contracts:
+
+- Comparisons are provider pairs (`--pairs react__android,react__ios,android__ios`
+  when iOS capture runs; `react__android` otherwise). Pair keys normalize by
+  provider precedence react > android > ios > ohos.
+- The report job publishes images first with analysis seeded from the previous
+  gh-pages state; AI analysis runs as a separate job with a cancel-in-progress
+  concurrency group and a generation guard (it republishes only if the
+  gh-pages latest run is still its own run). Do not re-couple analysis into
+  the report job, and do not remove the generation guard.
+- Renderer capability facts travel as a single-line
+  `SLOCK_RICHTEXT_CAPS {json}` marker printed after first frame; CI collects
+  it into per-case metadata via `scripts/collect_richtext_caps.py`. On
+  Android it surfaces through logcat (`System.out:I` must be in the captured
+  tags). A missing marker or key means unknown — never default a capability
+  to true.
+- Known intentional platform differences are declared in the case manifest
+  (`declaredDivergences` objects); the site shows them as attribution badges
+  and they are never subtracted from Different counts. Fix the render or
+  declare the divergence — do not tune tolerances to make a case pass.
 
 ## Quiver Release & Feedback Diagnostics
 
