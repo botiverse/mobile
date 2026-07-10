@@ -80,6 +80,52 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun atomicTokenRotationPreservesProcessSelectionAndReturnsShellSelection() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val shellStore =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        processStore.updateSelectedServer("server-3", "three")
+
+        val rotated =
+            shellStore.rotateTokensIfMatch(
+                expectedAccessToken = "access",
+                expectedRefreshToken = "refresh",
+                newAccessToken = "access-next",
+                newRefreshToken = "refresh-next"
+            )
+
+        assertEquals("server-2", rotated?.selectedServerId)
+        assertEquals("access-next", rotated?.accessToken)
+        assertEquals("server-3", processStore.readSession()?.selectedServerId)
+        assertEquals("access-next", processStore.readSession()?.accessToken)
+    }
+
+    @Test
+    fun atomicMetadataUpdatePreservesTokensAndProcessSelection() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val shellStore =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        processStore.updateSelectedServer("server-3", "three")
+
+        shellStore.updateMetadata(expectedAccountId = "user-1") { current ->
+            assertEquals("server-2", current.selectedServerId)
+            current.copy(user = current.user.copy(email = "updated@example.com"))
+        }
+
+        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
+        assertEquals("server-3", processStore.readSession()?.selectedServerId)
+        assertEquals("updated@example.com", processStore.readSession()?.user?.email)
+        assertEquals("access", processStore.readSession()?.accessToken)
+        assertEquals("refresh", processStore.readSession()?.refreshToken)
+    }
+
+    @Test
     fun disposedRuntimeStopsMatchingActiveServer() {
         val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
 

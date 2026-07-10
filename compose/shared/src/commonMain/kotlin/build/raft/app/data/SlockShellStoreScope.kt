@@ -101,30 +101,81 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun saveSession(session: StoredAuthSession) {
-        resolveSelection(session)
-        val persistedSession = delegate.readSession()
-        val sameUserPersistedSession = persistedSession?.takeIf { it.user.id == session.user.id }
-        val persistedSelection =
-            if (sameUserPersistedSession != null) {
-                sameUserPersistedSession.selectedServerId
-                    ?.takeIf { selected -> session.servers.any { it.id == selected } }
-            } else {
-                session.selectedServerId
-                    ?.takeIf { selected -> session.servers.any { it.id == selected } }
-            }
-        val persistedSelectionSlug =
-            persistedSelection
-                ?.let { selected -> session.servers.firstOrNull { it.id == selected }?.slug }
-        delegate.saveSession(
-            session.copy(
-                selectedServerId = persistedSelection,
-                selectedServerSlug = persistedSelectionSlug
-            )
-        )
+        replaceAuthenticatedSession(session)
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        delegate.updateTokens(accessToken, refreshToken)
+        val current = delegate.readSession() ?: return
+        delegate.rotateTokensIfMatch(
+            expectedAccessToken = current.accessToken,
+            expectedRefreshToken = current.refreshToken,
+            newAccessToken = accessToken,
+            newRefreshToken = refreshToken
+        )
+    }
+
+    override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
+        delegate.replaceAuthenticatedSession(session.withProcessSelectionPreserved())
+    }
+
+    override suspend fun rotateTokensIfMatch(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        newAccessToken: String,
+        newRefreshToken: String
+    ): StoredAuthSession? =
+        delegate.rotateTokensIfMatch(
+            expectedAccessToken = expectedAccessToken,
+            expectedRefreshToken = expectedRefreshToken,
+            newAccessToken = newAccessToken,
+            newRefreshToken = newRefreshToken
+        )?.withShellSelection()
+
+    override suspend fun updateMetadata(
+        expectedAccountId: String?,
+        transform: (StoredAuthSession) -> StoredAuthSession
+    ) {
+        val shellSession = readSession() ?: return
+        delegate.updateMetadata(expectedAccountId) { processSession ->
+            val transformed =
+                transform(
+                    processSession.copy(
+                        selectedServerId = shellSession.selectedServerId,
+                        selectedServerSlug = shellSession.selectedServerSlug
+                    )
+                )
+            transformed.copy(
+                selectedServerId = processSession.selectedServerId,
+                selectedServerSlug = processSession.selectedServerSlug
+            )
+        }
+        delegate.readSession()?.let { resolveSelection(it) }
+    }
+
+    private suspend fun StoredAuthSession.withProcessSelectionPreserved(): StoredAuthSession {
+        resolveSelection(this)
+        val persistedSession = delegate.readSession()
+        val sameUserPersistedSession = persistedSession?.takeIf { it.user.id == user.id }
+        val persistedSelection =
+            if (sameUserPersistedSession != null) {
+                sameUserPersistedSession.selectedServerId
+                    ?.takeIf { selected -> servers.any { it.id == selected } }
+            } else {
+                selectedServerId
+                    ?.takeIf { selected -> servers.any { it.id == selected } }
+            }
+        val persistedSelectionSlug =
+            persistedSelection
+                ?.let { selected -> servers.firstOrNull { it.id == selected }?.slug }
+        return copy(
+            selectedServerId = persistedSelection,
+            selectedServerSlug = persistedSelectionSlug
+        )
+    }
+
+    private suspend fun StoredAuthSession.withShellSelection(): StoredAuthSession {
+        val selection = resolveSelection(this)
+        return copy(selectedServerId = selection.serverId, selectedServerSlug = selection.serverSlug)
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
