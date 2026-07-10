@@ -5,6 +5,7 @@ import build.raft.app.HomeConversationBadgeInput
 import build.raft.app.homeLazyItemCount
 import build.raft.app.homeConversationBadgeProjection
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.data.realtime.PerReceiverStateScope
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -3975,7 +3976,8 @@ class SharedHomeStoreTest {
                             channelId = channelId,
                             activityMuted = muted,
                             muteFromSeq = 88,
-                            activityMuteSupported = true
+                            activityMuteSupported = true,
+                            prefsVersion = 1
                         )
                     )
                 }
@@ -3989,6 +3991,274 @@ class SharedHomeStoreTest {
         assertEquals(true, channel.activityMuted)
         assertEquals(88, channel.muteFromSeq)
         assertEquals(true, channel.activityMuteSupported)
+        scope.cancel()
+    }
+
+    @Test
+    fun notificationPrefsResponseThenSameVersionEchoFoldsOnlyOnce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val diagnostics = mutableListOf<String>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                diagnosticsLogger = diagnostics::add,
+                setChannelActivityMuted = { channelId, muted ->
+                    DataResult.Content(
+                        ChannelActivityMuteSettings(
+                            channelId = channelId,
+                            activityMuted = muted,
+                            muteFromSeq = 88,
+                            activityMuteSupported = true,
+                            prefsVersion = 8
+                        )
+                    )
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverNotificationPrefsChanged(
+                        serverId = ServerId("server-1"),
+                        scopeId = ChannelId("channel-1"),
+                        preference =
+                            ChannelActivityNotificationPreference(
+                                activityMuted = false,
+                                muteFromSeq = null,
+                                activityMuteSupported = true
+                            ),
+                        prefsVersion = 8
+                    )
+            )
+        )
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(true, channel.activityMuted)
+        assertEquals(88, channel.muteFromSeq)
+        assertEquals(
+            8,
+            versionStore.readVersion(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("user-1"),
+                scope = PerReceiverStateScope.NotificationPrefs,
+                scopeId = ChannelId("channel-1")
+            )
+        )
+        assertTrue(diagnostics.any { it.contains("per_receiver_notification_prefs_response_apply") && it.endsWith("result=applied") })
+        assertTrue(diagnostics.any { it.contains("per_receiver_notification_prefs_apply") && it.endsWith("result=skipped") })
+        scope.cancel()
+    }
+
+    @Test
+    fun notificationPrefsEchoThenSameVersionResponseFoldsOnlyOnce() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val requestStarted = CompletableDeferred<Unit>()
+        val releaseResponse = CompletableDeferred<Unit>()
+        val responseReturned = CompletableDeferred<Unit>()
+        val diagnostics = mutableListOf<String>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                diagnosticsLogger = diagnostics::add,
+                setChannelActivityMuted = { channelId, muted ->
+                    requestStarted.complete(Unit)
+                    releaseResponse.await()
+                    responseReturned.complete(Unit)
+                    DataResult.Content(
+                        ChannelActivityMuteSettings(
+                            channelId = channelId,
+                            activityMuted = muted,
+                            muteFromSeq = 88,
+                            activityMuteSupported = true,
+                            prefsVersion = 8
+                        )
+                    )
+                }
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+        withTimeout(1_000) { requestStarted.await() }
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverNotificationPrefsChanged(
+                        serverId = ServerId("server-1"),
+                        scopeId = ChannelId("channel-1"),
+                        preference =
+                            ChannelActivityNotificationPreference(
+                                activityMuted = true,
+                                muteFromSeq = 99,
+                                activityMuteSupported = true
+                            ),
+                        prefsVersion = 8
+                    )
+            )
+        )
+        releaseResponse.complete(Unit)
+        withTimeout(1_000) { responseReturned.await() }
+        yield()
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertEquals(true, channel.activityMuted)
+        assertEquals(99, channel.muteFromSeq)
+        assertEquals(
+            8,
+            versionStore.readVersion(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("user-1"),
+                scope = PerReceiverStateScope.NotificationPrefs,
+                scopeId = ChannelId("channel-1")
+            )
+        )
+        assertTrue(diagnostics.any { it.contains("per_receiver_notification_prefs_apply") && it.endsWith("result=applied") })
+        assertTrue(diagnostics.any { it.startsWith("per_receiver_notification_prefs_response_superseded") })
+        scope.cancel()
+    }
+
+    @Test
+    fun newerNotificationPrefsEchoClearsMutedStateOnEchoOnlyDevice() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-1", "general").copy(
+                                        activityNotificationPreference =
+                                            ChannelActivityNotificationPreference(
+                                                activityMuted = true,
+                                                muteFromSeq = 90,
+                                                activityMuteSupported = true
+                                            )
+                                    )
+                                )
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ApplyPerReceiverNotificationPrefs(
+                PerReceiverNotificationPrefsUpdate(
+                    serverId = ServerId("server-1"),
+                    memberId = MemberId("user-1"),
+                    channelId = ChannelId("channel-1"),
+                    version = 10,
+                    preference =
+                        ChannelActivityNotificationPreference(
+                            activityMuted = true,
+                            muteFromSeq = 90,
+                            activityMuteSupported = true
+                        )
+                )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverNotificationPrefsChanged(
+                        serverId = ServerId("server-1"),
+                        scopeId = ChannelId("channel-1"),
+                        preference =
+                            ChannelActivityNotificationPreference(
+                                activityMuted = false,
+                                muteFromSeq = null,
+                                activityMuteSupported = true
+                            ),
+                        prefsVersion = 11
+                    )
+            )
+        )
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertFalse(channel.activityMuted)
+        assertEquals(null, channel.muteFromSeq)
+        assertEquals(
+            11,
+            versionStore.readVersion(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("user-1"),
+                scope = PerReceiverStateScope.NotificationPrefs,
+                scopeId = ChannelId("channel-1")
+            )
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun setChannelActivityMutedFailsClosedForUnversionedSuccess() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val failureMessages = mutableListOf<String>()
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels = listOf(channel("channel-1", "general").copy(activityNotificationPreference = supportedActivityPreference()))
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore,
+                setChannelActivityMuted = { channelId, _ ->
+                    DataResult.Content(
+                        ChannelActivityMuteSettings(
+                            channelId = channelId,
+                            activityMuted = true,
+                            muteFromSeq = 88,
+                            activityMuteSupported = true
+                        )
+                    )
+                },
+                pinUpdateFailureCallback = failureMessages::add
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetChannelActivityMuted("channel-1", true))
+
+        val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
+        assertFalse(channel.activityMuted)
+        assertEquals(
+            0,
+            versionStore.readVersion(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("user-1"),
+                scope = PerReceiverStateScope.NotificationPrefs,
+                scopeId = ChannelId("channel-1")
+            )
+        )
+        assertEquals(listOf("Unable to update channel notifications"), failureMessages)
         scope.cancel()
     }
 
@@ -4051,7 +4321,8 @@ class SharedHomeStoreTest {
                                 channelId = channelId,
                                 activityMuted = muted,
                                 muteFromSeq = 202,
-                                activityMuteSupported = true
+                                activityMuteSupported = true,
+                                prefsVersion = 1
                             )
                         )
                     }
@@ -4085,7 +4356,12 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val firstStarted = CompletableDeferred<Unit>()
         val releaseFirst = CompletableDeferred<Unit>()
+        val firstResponseReturned = CompletableDeferred<Unit>()
+        val secondStarted = CompletableDeferred<Unit>()
+        val releaseSecond = CompletableDeferred<Unit>()
+        val secondResponseReturned = CompletableDeferred<Unit>()
         val calls = mutableListOf<Pair<ChannelId, Boolean>>()
+        val diagnostics = mutableListOf<String>()
         val store =
             SharedHomeStore(
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -4096,26 +4372,33 @@ class SharedHomeStoreTest {
                         )
                     ),
                 scope = scope,
+                diagnosticsLogger = diagnostics::add,
                 setChannelActivityMuted = { channelId, muted ->
                     calls += channelId to muted
                     if (muted) {
                         firstStarted.complete(Unit)
                         releaseFirst.await()
+                        firstResponseReturned.complete(Unit)
                         DataResult.Content(
                             ChannelActivityMuteSettings(
                                 channelId = channelId,
                                 activityMuted = true,
                                 muteFromSeq = 101,
-                                activityMuteSupported = true
+                                activityMuteSupported = true,
+                                prefsVersion = 1
                             )
                         )
                     } else {
+                        secondStarted.complete(Unit)
+                        releaseSecond.await()
+                        secondResponseReturned.complete(Unit)
                         DataResult.Content(
                             ChannelActivityMuteSettings(
                                 channelId = channelId,
                                 activityMuted = false,
                                 muteFromSeq = null,
-                                activityMuteSupported = true
+                                activityMuteSupported = true,
+                                prefsVersion = 2
                             )
                         )
                     }
@@ -4128,14 +4411,22 @@ class SharedHomeStoreTest {
         assertEquals(true, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().activityMuted)
 
         store.dispatch(SharedHomeIntent.SetChannelActivityMuted("channel-1", false))
-        withTimeout(1_000) {
-            while (calls.size < 2) {
-                yield()
-            }
-        }
+        withTimeout(1_000) { secondStarted.await() }
         assertEquals(false, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().activityMuted)
 
         releaseFirst.complete(Unit)
+        withTimeout(1_000) { firstResponseReturned.await() }
+        withTimeout(1_000) {
+            while (diagnostics.none { it.startsWith("per_receiver_notification_prefs_response_superseded") }) {
+                yield()
+            }
+        }
+        // The v1 mute response is superseded by the in-flight v2 unmute and
+        // must not visibly overwrite its newer optimistic prediction.
+        assertEquals(false, (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single().activityMuted)
+
+        releaseSecond.complete(Unit)
+        withTimeout(1_000) { secondResponseReturned.await() }
         yield()
         val channel = (store.state.value.content as SharedHomeContentState.Content).snapshot.channels.single()
         assertEquals(listOf(ChannelId("channel-1") to true, ChannelId("channel-1") to false), calls)

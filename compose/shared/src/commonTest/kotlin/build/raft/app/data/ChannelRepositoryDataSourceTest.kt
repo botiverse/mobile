@@ -184,7 +184,7 @@ class ChannelRepositoryDataSourceTest {
     fun setChannelActivityMutedUsesHumanNotificationSettingsEndpoint() = runBlocking {
         val network =
             FakeChannelNetworkClient(
-                responseBody = """{"activityMuted":true,"muteFromSeq":99,"activityMuteSupported":true}"""
+                responseBody = """{"activityMuted":true,"muteFromSeq":99,"activityMuteSupported":true,"prefsVersion":12}"""
             )
         val repository = RealChannelRepository(sampleStore(), network)
 
@@ -195,6 +195,7 @@ class ChannelRepositoryDataSourceTest {
         assertEquals(true, settings.activityMuted)
         assertEquals(99, settings.muteFromSeq)
         assertEquals(true, settings.activityMuteSupported)
+        assertEquals(12, settings.prefsVersion)
         assertEquals(
             listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1/notification-settings")),
             network.requests
