@@ -180,6 +180,56 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun authPageVisibleCopyResourcesAreGenerated() {
+        listOf(
+            MR.strings.auth_label_name,
+            MR.strings.auth_title_sign_in,
+            MR.strings.auth_action_sign_in,
+            MR.strings.auth_state_signing_in,
+            MR.strings.auth_link_forgot_password,
+            MR.strings.auth_prompt_no_account,
+            MR.strings.auth_action_create_one,
+            MR.strings.auth_title_create_account,
+            MR.strings.auth_action_create_account,
+            MR.strings.auth_state_creating_account,
+            MR.strings.auth_prompt_already_have_account,
+            MR.strings.auth_title_reset_password,
+            MR.strings.auth_hint_reset_password,
+            MR.strings.auth_fallback_your_email,
+            MR.strings.auth_state_sending,
+            MR.strings.auth_action_send_reset_link,
+            MR.strings.auth_link_back_to_sign_in,
+            MR.strings.auth_hint_legal_acceptance,
+            MR.strings.auth_state_continuing,
+            MR.strings.auth_action_continue,
+            MR.strings.auth_legal_notice_prefix,
+            MR.strings.auth_legal_notice_connector,
+            MR.strings.auth_legal_notice_suffix,
+            MR.strings.auth_terms_agreement_prefix,
+            MR.strings.auth_terms_agreement_connector,
+            MR.strings.auth_terms_agreement_acknowledgement,
+            MR.strings.auth_terms_agreement_suffix
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "auth page static copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.auth_action_continue_with_provider,
+            MR.strings.auth_action_opening_provider,
+            MR.strings.auth_notice_password_reset_sent,
+            MR.strings.auth_title_provider_sign_in
+        ).forEach { resource ->
+            assertTrue(
+                resource.format(listOf("Google")) is ResourceFormattedStringDesc,
+                "formatted auth page copy must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API
