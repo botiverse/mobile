@@ -15414,6 +15414,40 @@ internal fun ThreadAttachmentCommentsDialog(
     onResolve: (ThreadAttachmentCommentItem) -> Unit,
     onQuote: (ThreadAttachmentCommentItem) -> Unit
 ) {
+    SlockUnifiedDialog(
+        title = "COMMENTS",
+        onDismiss = onDismiss,
+        minWidth = 312.dp,
+        maxWidth = 360.dp,
+        contentPadding = 18.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        contentSpacing = 12.dp
+    ) {
+        ThreadAttachmentCommentsContent(
+            state = state,
+            onFilterChange = onFilterChange,
+            onDraftChange = onDraftChange,
+            onRetry = onRetry,
+            onSend = onSend,
+            onResolve = onResolve,
+            onQuote = onQuote
+        )
+    }
+}
+
+@Composable
+internal fun ThreadAttachmentCommentsContent(
+    state: ThreadAttachmentCommentsDialogState,
+    onFilterChange: (String) -> Unit,
+    onDraftChange: (String) -> Unit,
+    onRetry: () -> Unit,
+    onSend: () -> Unit,
+    onResolve: (ThreadAttachmentCommentItem) -> Unit,
+    onQuote: (ThreadAttachmentCommentItem) -> Unit,
+    containerTapRequestsFocus: Boolean = false,
+    compact: Boolean = false
+) {
     val page = state.page
     val comments =
         remember(state.filter, page?.comments) {
@@ -15425,83 +15459,84 @@ internal fun ThreadAttachmentCommentsDialog(
             }
         }
     val viewerCanComment = page?.viewer?.canComment ?: state.status == "loading"
-    SlockUnifiedDialog(
-        title = "COMMENTS",
-        onDismiss = onDismiss,
-        minWidth = 312.dp,
-        maxWidth = 360.dp,
-        contentPadding = 18.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        contentSpacing = 12.dp
-    ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            ThreadAttachmentCommentsHeader(state.attachment)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ThreadAttachmentCommentsFilterChip(
-                    label = "All",
-                    selected = state.filter != "unresolved",
-                    onClick = { onFilterChange("all") }
-                )
-                ThreadAttachmentCommentsFilterChip(
-                    label = "Unresolved",
-                    selected = state.filter == "unresolved",
-                    onClick = { onFilterChange("unresolved") }
-                )
+    val commentsListHeight =
+        if (compact) {
+            when {
+                comments.isEmpty() -> 84.dp
+                comments.size == 1 -> 150.dp
+                else -> 180.dp
             }
-            when (state.status) {
-                "loading" ->
-                    ThreadStateMessage("Loading comments...", null)
-                "error" ->
-                    ThreadStateActionMessage(
-                        title = "Failed to load comments",
-                        detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: "Something went wrong. Please try again.",
-                        actionLabel = "Retry",
-                        onClick = onRetry
-                    )
-                else ->
-                    SlockModalListShell(height = threadAttachmentCommentsListHeight(comments.size)) {
-                        if (comments.isEmpty()) {
-                            item {
-                                ThreadModalEmptyState(
-                                    title = stringResource(MR.strings.thread_state_no_comments),
-                                    detail = if (state.filter == "unresolved") "ALL COMMENTS ARE RESOLVED." else "START A COMMENT BELOW."
-                                )
-                            }
-                        } else {
-                            items(comments.size, key = { comments[it].id }) { index ->
-                                ThreadAttachmentCommentRow(
-                                    comment = comments[index],
-                                    canComment = viewerCanComment,
-                                    resolving = comments[index].id in state.resolvingCommentIds,
-                                    onResolve = { onResolve(comments[index]) },
-                                    onQuote = { onQuote(comments[index]) }
-                                )
-                            }
-                        }
-                    }
-            }
-            state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
-                Text(
-                    text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN.",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            ThreadAttachmentCommentComposer(
-                state = state,
-                canComment = page?.viewer?.canComment ?: true,
-                reason = page?.viewer?.reason,
-                onDraftChange = onDraftChange,
-                onSend = onSend
+        } else {
+            threadAttachmentCommentsListHeight(comments.size)
+        }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        ThreadAttachmentCommentsHeader(state.attachment)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ThreadAttachmentCommentsFilterChip(
+                label = "All",
+                selected = state.filter != "unresolved",
+                onClick = { onFilterChange("all") }
+            )
+            ThreadAttachmentCommentsFilterChip(
+                label = "Unresolved",
+                selected = state.filter == "unresolved",
+                onClick = { onFilterChange("unresolved") }
             )
         }
+        when (state.status) {
+            "loading" ->
+                ThreadStateMessage("Loading comments...", null)
+            "error" ->
+                ThreadStateActionMessage(
+                    title = "Failed to load comments",
+                    detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: "Something went wrong. Please try again.",
+                    actionLabel = "Retry",
+                    onClick = onRetry
+                )
+            else ->
+                SlockModalListShell(height = commentsListHeight) {
+                    if (comments.isEmpty()) {
+                        item {
+                            ThreadModalEmptyState(
+                                title = stringResource(MR.strings.thread_state_no_comments),
+                                detail = if (state.filter == "unresolved") "ALL COMMENTS ARE RESOLVED." else "START A COMMENT BELOW."
+                            )
+                        }
+                    } else {
+                        items(comments.size, key = { comments[it].id }) { index ->
+                            ThreadAttachmentCommentRow(
+                                comment = comments[index],
+                                canComment = viewerCanComment,
+                                resolving = comments[index].id in state.resolvingCommentIds,
+                                onResolve = { onResolve(comments[index]) },
+                                onQuote = { onQuote(comments[index]) }
+                            )
+                        }
+                    }
+                }
+        }
+        state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
+            Text(
+                text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN.",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        ThreadAttachmentCommentComposer(
+            state = state,
+            canComment = page?.viewer?.canComment ?: true,
+            reason = page?.viewer?.reason,
+            onDraftChange = onDraftChange,
+            onSend = onSend,
+            containerTapRequestsFocus = containerTapRequestsFocus,
+            compact = compact
+        )
     }
 }
 
@@ -15647,7 +15682,9 @@ private fun ThreadAttachmentCommentComposer(
     canComment: Boolean,
     reason: String?,
     onDraftChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    containerTapRequestsFocus: Boolean = false,
+    compact: Boolean = false
 ) {
     val enabled = canComment && state.status == "loaded" && !state.sending
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -15675,8 +15712,9 @@ private fun ThreadAttachmentCommentComposer(
             value = state.draft,
             placeholder = "ADD COMMENT",
             enabled = enabled,
-            maxLines = 4,
-            fieldMinHeight = 82.dp,
+            maxLines = if (compact) 3 else 4,
+            fieldMinHeight = if (compact) 64.dp else 82.dp,
+            containerTapRequestsFocus = containerTapRequestsFocus,
             onValueChange = onDraftChange
         )
         SlockModalFullWidthActionButton(
@@ -16233,17 +16271,17 @@ internal fun ThreadCommentAnchorVisualScreen() {
             onOpenUrl = {},
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
+        SlockFilePreviewAttachmentCommentsPanel(
+            state = state,
+            onClose = {},
+            onFilterChange = { state = state.copy(filter = it) },
+            onDraftChange = { state = state.copy(draft = it) },
+            onRetry = {},
+            onSend = {},
+            onResolve = {},
+            onQuote = {}
+        )
     }
-    ThreadAttachmentCommentsDialog(
-        state = state,
-        onDismiss = {},
-        onFilterChange = {},
-        onDraftChange = { state = state.copy(draft = it) },
-        onRetry = {},
-        onSend = {},
-        onResolve = {},
-        onQuote = {}
-    )
 }
 
 @Page("compose_thread_forward_bundle_visual", supportInLocal = true)

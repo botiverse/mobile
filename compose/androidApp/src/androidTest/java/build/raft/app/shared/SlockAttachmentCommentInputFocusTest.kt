@@ -1,6 +1,8 @@
 package build.raft.app.shared
 
 import android.content.Intent
+import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
@@ -14,7 +16,7 @@ import org.junit.Test
 
 class SlockAttachmentCommentInputFocusTest {
     @Test
-    fun filePreviewCommentInputAcceptsFocusAndText() {
+    fun filePreviewCommentContainerTapFocusesAndAcceptsText() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val intent =
@@ -31,19 +33,38 @@ class SlockAttachmentCommentInputFocusTest {
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             instrumentation.waitForIdleSync()
             Thread.sleep(1_500)
+            var tapX = 0f
+            var tapY = 0f
             scenario.onActivity { activity ->
                 val editText = activity.window.decorView.findFirstEditText()
                 assertNotNull("file preview comment EditText should be present", editText)
                 editText!!
-                assertTrue("file preview comment EditText should accept focus", editText.requestFocus())
-                editText.setText("Focused file preview comment")
+                editText.clearFocus()
+                val location = IntArray(2)
+                editText.getLocationOnScreen(location)
+                val tapInsetPx = 4f * activity.resources.displayMetrics.density
+                tapX = location[0] + editText.width + tapInsetPx
+                tapY = location[1] + editText.height / 2f
+                assertTrue("tap must land outside the native EditText", tapX > location[0] + editText.width)
+                assertTrue("tap must remain inside the window", tapX < activity.window.decorView.width)
             }
+            val downTime = SystemClock.uptimeMillis()
+            instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, tapX, tapY, 0))
+            instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime + 80L, MotionEvent.ACTION_UP, tapX, tapY, 0))
             instrumentation.waitForIdleSync()
             Thread.sleep(300)
             scenario.onActivity { activity ->
                 val editText = activity.window.decorView.findFirstEditText()
                 assertNotNull("file preview comment EditText should remain present", editText)
-                assertEquals("Focused file preview comment", editText!!.text.toString())
+                assertTrue("file preview comment container tap should focus EditText", editText!!.hasFocus())
+            }
+            instrumentation.sendStringSync("FocusedComment")
+            instrumentation.waitForIdleSync()
+            Thread.sleep(300)
+            scenario.onActivity { activity ->
+                val editText = activity.window.decorView.findFirstEditText()
+                assertNotNull("file preview comment EditText should remain present", editText)
+                assertEquals("FocusedComment", editText!!.text.toString())
                 assertTrue("file preview comment EditText should remain focused", editText.hasFocus())
             }
         }

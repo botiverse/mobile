@@ -691,39 +691,91 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
             )
         }
+        attachmentCommentsState?.let { state ->
+            SlockFilePreviewAttachmentCommentsPanel(
+                state = state,
+                onClose = { attachmentCommentsState = null },
+                onFilterChange = { filter ->
+                    attachmentCommentsState =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == state.attachment.id }
+                            ?.copy(filter = filter)
+                },
+                onDraftChange = { draft ->
+                    attachmentCommentsState =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == state.attachment.id }
+                            ?.copy(draft = draft, errorCode = null)
+                },
+                onRetry = ::reloadAttachmentComments,
+                onSend = ::sendAttachmentComment,
+                onResolve = ::resolveAttachmentComment,
+                onQuote = { comment ->
+                    attachmentCommentsState =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == state.attachment.id }
+                            ?.let { current ->
+                                current.copy(
+                                    draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
+                                    pendingQuoteLabel = comment.senderName,
+                                    pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
+                                    errorCode = null
+                                )
+                            }
+                }
+            )
+        }
     }
-    attachmentCommentsState?.let { state ->
-        ThreadAttachmentCommentsDialog(
+}
+
+@Composable
+internal fun SlockFilePreviewAttachmentCommentsPanel(
+    state: ThreadAttachmentCommentsDialogState,
+    onClose: () -> Unit,
+    onFilterChange: (String) -> Unit,
+    onDraftChange: (String) -> Unit,
+    onRetry: () -> Unit,
+    onSend: () -> Unit,
+    onResolve: (ThreadAttachmentCommentItem) -> Unit,
+    onQuote: (ThreadAttachmentCommentItem) -> Unit
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "COMMENTS",
+                style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.X,
+                onClick = onClose,
+                size = 28.dp,
+                shadowOffset = 2.dp
+            )
+        }
+        ThreadAttachmentCommentsContent(
             state = state,
-            onDismiss = { attachmentCommentsState = null },
-            onFilterChange = { filter ->
-                attachmentCommentsState =
-                    attachmentCommentsState
-                        ?.takeIf { it.attachment.id == state.attachment.id }
-                        ?.copy(filter = filter)
-            },
-            onDraftChange = { draft ->
-                attachmentCommentsState =
-                    attachmentCommentsState
-                        ?.takeIf { it.attachment.id == state.attachment.id }
-                        ?.copy(draft = draft, errorCode = null)
-            },
-            onRetry = ::reloadAttachmentComments,
-            onSend = ::sendAttachmentComment,
-            onResolve = ::resolveAttachmentComment,
-            onQuote = { comment ->
-                attachmentCommentsState =
-                    attachmentCommentsState
-                        ?.takeIf { it.attachment.id == state.attachment.id }
-                        ?.let { current ->
-                            current.copy(
-                                draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
-                                pendingQuoteLabel = comment.senderName,
-                                pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
-                                errorCode = null
-                            )
-                        }
-            }
+            onFilterChange = onFilterChange,
+            onDraftChange = onDraftChange,
+            onRetry = onRetry,
+            onSend = onSend,
+            onResolve = onResolve,
+            onQuote = onQuote,
+            containerTapRequestsFocus = true,
+            compact = true
         )
     }
 }

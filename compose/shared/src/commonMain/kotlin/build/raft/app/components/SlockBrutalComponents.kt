@@ -389,6 +389,7 @@ internal fun SlockBrutalTextField(
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
+    containerTapRequestsFocus: Boolean = false,
     /**
      * Task #43 QA-4 fix: when `true`, the text field uses a native password
      * visual transformation that masks the value with `•` while keeping
@@ -417,6 +418,7 @@ internal fun SlockBrutalTextField(
             maxLines = maxLines,
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
+            containerTapRequestsFocus = containerTapRequestsFocus,
             borderColor = if (hasError) SlockColor.AccentRed else SlockColor.BorderBlack,
             enabledBackgroundColor = if (hasError) Color(0xFFFFF4F4) else SlockColor.SurfaceWhite,
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
@@ -441,6 +443,7 @@ internal fun SlockBrutalInputField(
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
+    containerTapRequestsFocus: Boolean = false,
     horizontalPadding: Dp = 10.dp,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
@@ -492,7 +495,13 @@ internal fun SlockBrutalInputField(
                     .slockSquareCorners()
                     .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
-                    .clickable(enabled = enabled) { focusRequester.requestFocus() }
+                    .then(
+                        if (containerTapRequestsFocus && enabled) {
+                            Modifier.clickable { focusRequester.requestFocus() }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = fieldContentAlignment
         ) {
@@ -546,6 +555,7 @@ internal fun SlockBrutalInputField(
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
     fieldMinHeight: Dp = 42.dp,
+    containerTapRequestsFocus: Boolean = false,
     horizontalPadding: Dp = 10.dp,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
@@ -597,7 +607,13 @@ internal fun SlockBrutalInputField(
                     .slockSquareCorners()
                     .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
-                    .clickable(enabled = enabled) { focusRequester.requestFocus() }
+                    .then(
+                        if (containerTapRequestsFocus && enabled) {
+                            Modifier.clickable { focusRequester.requestFocus() }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = fieldContentAlignment
         ) {
