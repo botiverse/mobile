@@ -35,7 +35,7 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                // Missing or unreadable legacy state follows the system.
+                // Missing or unreadable state falls back to the app default.
                 AppLocale.Default
             }
         StringDesc.localeType = persisted.stringDescLocaleType

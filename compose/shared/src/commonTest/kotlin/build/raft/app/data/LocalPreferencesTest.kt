@@ -7,14 +7,14 @@ import kotlin.test.assertTrue
 
 class LocalPreferencesTest {
     @Test
-    fun localeDefaultsToSystemWhenNoPreferenceExists() = runBlocking {
+    fun localeDefaultsToEnglishWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentLocaleRepository(
             KeyValueLocalePreferenceStore(InMemorySlockKeyValueStore())
         )
 
         val snapshot = repository.getLocale()
 
-        assertEquals(AppLocale.System, snapshot.current)
+        assertEquals(AppLocale.English, snapshot.current)
         assertEquals(
             listOf(AppLocale.System, AppLocale.English, AppLocale.SimplifiedChinese),
             snapshot.supported
@@ -45,13 +45,17 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun localeRestoresLegacyExplicitChoicesAndFallsBackUnknownValuesToSystem() {
+    fun localeRestoresExplicitChoicesAndFallsBackUnknownValuesToEnglish() {
+        assertEquals(AppLocale.English, AppLocale.fromStorageKey(null))
+        assertEquals(AppLocale.English, AppLocale.fromStorageKey(""))
         assertEquals(AppLocale.English, AppLocale.fromStorageKey("en"))
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-Hans"))
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-CN"))
         assertEquals(AppLocale.SimplifiedChinese, AppLocale.fromStorageKey("zh-rCN"))
         assertEquals(AppLocale.System, AppLocale.fromStorageKey("auto"))
-        assertEquals(AppLocale.System, AppLocale.fromStorageKey("unknown"))
+        assertEquals(AppLocale.System, AppLocale.fromStorageKey("default"))
+        assertEquals(AppLocale.System, AppLocale.fromStorageKey("system"))
+        assertEquals(AppLocale.English, AppLocale.fromStorageKey("unknown"))
     }
 
     @Test
