@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T13:20:23.856Z",
+  "generatedAt": "2026-07-10T13:24:56.512Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 70,
-    "pending": 19
+    "ready": 78,
+    "pending": 11
   },
   "cases": [
     {
@@ -112,15 +112,37 @@
     },
     {
       "id": "components.ui.form-field.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc9ffc3ffe800007d2800100028001000780f803f28001000281fd0fff87fd1fffbff960128005000707fdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffefffafffe0002fffe000afffe000afffe0008fffe6008fffe0000fffe0000fffe0000fffe1c60fffe0800fffe0000fffe1fff",
-      "generatedAt": "2026-07-10T13:20:22.102Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:42.715Z",
+      "severity": "high",
+      "summary": [
+        "iOS capture shows the on-screen swipe/gesture keyboard tutorial overlay and a simulated keyboard area, which is not part of the form-field component and shouldn't appear in the snapshot.",
+        "iOS Email input is rendered at roughly 2x the height of the React baseline (much taller bounding box for the same field).",
+        "iOS Email/DESCRIPTION label typography uses a noticeably lighter/wider-weight font than the React bold condensed sans-serif labels.",
+        "Asterisk on required field in iOS is positioned to the right of the label with more whitespace, whereas React places it tight against the label.",
+        "SERVER NAME error state in iOS uses a thinner/lighter orange-red border and thinner error text compared to React's heavier red border and label-colored error text."
+      ],
+      "likelyCauses": [
+        "iOS Screenshot was captured with the system keyboard and its tutorial overlay visible instead of being dismissed before snapshot.",
+        "Native iOS UIKit rendering produces different default control heights, font metrics, and border weights than the React web baseline.",
+        "No keyboard-dismiss or screenshot-mask step in the iOS capture pipeline; the tutorial sheet is platform-rendered and not part of the component.",
+        "Component library does not normalize form-field min-height, label font weight, and error-state border thickness across platforms."
+      ],
+      "suggestedOwner": "ios",
+      "suggestedFixes": [
+        "Update the iOS capture script to dismiss the keyboard and the swipe-type tutorial overlay (or mask them out) before taking the snapshot.",
+        "Constrain form-field input height on iOS to match the React baseline (e.g., fix min-height around the baseline px value).",
+        "Map the native iOS label font to the same weight/letter-spacing used in the React design tokens (bold + tightened tracking).",
+        "Standardize the error-state border width and asterisk spacing via shared design tokens across platforms.",
+        "Add a visual-regression guard that fails when native keyboard/tutorial artifacts exceed N% of the captured canvas."
+      ],
+      "intentional": [
+        "The iOS device canvas is 1170x2532 vs React 342x296, so absolute pixel-perfect match is impossible; differences are expected to be density-scaled rather than identical."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4485316158301941
     },
     {
@@ -262,15 +284,37 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-10T13:20:22.271Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:42.883Z",
+      "severity": "low",
+      "summary": [
+        "Status dot colors and layout (green, orange, gray, blue, pink) match between React and iOS at the component region",
+        "Waiting pulse label renders with consistent typography weight, size, and color across both sides",
+        "No missing, clipped, or misaligned elements in the compared component bounds",
+        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating negligible visual differences",
+        "Differences are confined to expected platform-level antialiasing/rasterization at the canvas viewport scale (342x92 vs 1170x2532)"
+      ],
+      "likelyCauses": [
+        "Minor subpixel/antialiasing differences from rendering engines (browser vs iOS UIKit/SwiftUI) at different DPRs",
+        "Scale normalization across canvas sizes (342x92 vs 1170x2532) producing slight edge softening on iOS side",
+        "Ignoring antialiasing tolerance is likely the only contributor to the residual mismatch"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required—visual parity is within tolerance (RGB 97.95%, pixel-perfect 99.77%)",
+        "If desired, tighten dot stroke/border tokens to be identical across platforms to eliminate residual antialiasing variance",
+        "Confirm StatusDot component spec is used verbatim on iOS (tokens: sizes, colors, pulse animation curve)",
+        "Keep existing tolerance (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) — no adjustment needed",
+        "Re-run snapshot only if StatusDot props or layout API changes"
+      ],
+      "intentional": [
+        "Platform-level antialiasing differences between web and iOS rendering",
+        "Different raw canvas dimensions (342x92 vs 1170x2532) while component bounds remain equivalent"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022984431752204326
     },
     {
@@ -783,7 +827,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:22.459Z",
+      "generatedAt": "2026-07-10T13:24:55.172Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -866,7 +910,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:22.546Z",
+      "generatedAt": "2026-07-10T13:24:55.249Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1291,15 +1335,36 @@
     },
     {
       "id": "components.home.search.channel-dropdown",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe0ffe07e701f60007000700070007620f0007300010030002d1f2fe00f002fe1e8002008794f20000c63a00068002200f58039fff7fff83ff80f7403f800fffdf038fe3ff87ff41ff48ff7fff9fffffff807fffff49fffffff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-10T13:20:22.924Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:43.583Z",
+      "severity": "high",
+      "summary": [
+        "Channel dropdown opens at a different vertical position and width on iOS vs React (iOS dropdown shifted right and wider, overlapping filter chips and the result list)",
+        "React shows the dropdown with a 'CHANNELS' header only, while iOS adds a 'Clear' action on the right side of the header",
+        "iOS renders an extra row inside the dropdown ('@Product UX Designer' with a person icon) that is absent on React",
+        "Selected-channel state indicator differs: iOS shows a checkmark on the right of the active '#design' row; React uses a left orange accent bar on a separate selected item card ('android-artifacts') rendered outside the dropdown",
+        "Filter chip row differs: React exposes 'From', '@ Scope', 'Channel', 'Any Time', 'Relevant' chips (some clipped); iOS shows 'From: Me', '# #design', 'Last 7 days' as filled orange chips with full text"
+      ],
+      "likelyCauses": [
+        "iOS and React implementations share design tokens but diverge in component composition (e.g., iOS includes a Clear action and extra person row)",
+        "iOS applies a larger touch-target scale and SF-style typography, increasing row height and font weight vs React's web sizing",
+        "React layout is being rendered at 390px width with content overflow, suggesting missing responsive clipping or a narrower container contract",
+        "Dropdown anchor/positioning logic differs: iOS positions the popover from the search bar covering filters; React positions it below the channel chip",
+        "Selected-state visualization was re-implemented (checkmark on iOS vs accent bar on React) instead of using the shared component"
+      ],
+      "suggestedOwner": "mobile-design-systems",
+      "suggestedFixes": [
+        "Unify dropdown header: decide whether 'Clear' is part of the component and render it consistently on React",
+        "Remove or gate the extra '@Product UX Designer' row on iOS so the dropdown contents match the contract",
+        "Replace React's left accent-bar selection with the iOS checkmark, or vice versa, using a shared selection prop",
+        "Re-anchor the dropdown so it does not overlap the filter chip row; align to the search input or trigger element",
+        "Normalize filter chip rendering: same labels ('From' / 'From: Me'), same filled style, and same vertical spacing across platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.23439934648465455
     },
     {
@@ -1467,35 +1532,80 @@
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:8fff9fff000000003ffc2dfc2bf82df83e243ffc006c00fc3ffc2bfc27fc3ffc3ffc1ffc2dfc00040ffc01fc3dfc3ffc23fc3ffc03fc3ff42dec7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003ffcfe730ffcffff0ffcffff27fcfffe27fcfff82ffcbff82ffc0ff00ffc0ff03ffc80003ffc80003ffc8000ffffffff",
-      "generatedAt": "2026-07-10T13:20:23.095Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:43.769Z",
+      "severity": "high",
+      "summary": [
+        "The React baseline shows a full Create Agent dialog with a prominent peachy/coral warning banner ('Agent limit reached (2/2 on Free plan). Upgrade for more') and the complete form including Model, Reasoning, and Mode sections ending with a 'Fast mode' checkbox.",
+        "The iOS current rendering is missing the warning banner entirely; the dialog begins directly at the Computer field with no agent-limit notice above it.",
+        "The iOS view is obscured at the bottom by the iOS system keyboard, hiding the Model dropdown contents, the Reasoning field, the Mode/Fast mode checkbox, and all footer/CTA buttons that are visible in the React baseline.",
+        "Vertical spacing/padding between form fields (Computer→Name→Description→Runtime) is visibly tighter in iOS; labels sit closer to their inputs compared to the React baseline.",
+        "The 'Suggested computer: computer-mbp' helper text present beneath the Computer select in iOS has no counterpart in the React baseline."
+      ],
+      "likelyCauses": [
+        "iOS screenshot was captured with the on-screen keyboard up during form interaction (likely while editing Description), causing lower fields to be hidden.",
+        "The Create Agent iOS implementation may not be rendering the agent-limit warning banner / quota alert component that exists in the React version.",
+        "Different vertical spacing/density tokens or layout constraints used between React web and iOS native form rendering.",
+        "iOS scroll offset places the top of the form at a different y-position so the banner area scrolls above the viewport."
+      ],
+      "suggestedOwner": "iOS eng (Members / Agent dialog feature owner)",
+      "suggestedFixes": [
+        "Dismiss the iOS keyboard before capturing the screenshot (or capture a non-focused state) so all form fields and CTAs are visible.",
+        "Verify the iOS dialog renders the agent-limit/quota warning banner; add the equivalent component if missing on native.",
+        "Normalize vertical spacing between form fields and labels to match the React baseline tokens.",
+        "Ensure the iOS form scrolls so that when the keyboard appears, the active field stays in view without hiding required later fields; consider keyboardAvoidingView equivalent.",
+        "Add a stable visual-regression baseline for iOS using a keyboard-dismissed state to avoid spurious differences."
+      ],
+      "intentional": [
+        "iOS system keyboard overlay rendering is platform-native and expected."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4286611711967162
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:8fff8fff000000003ffc2dfc2bf82df83e243ffc006c00fc3ffc2bfc27fc3ffc3ffc1ffc2dfc00040ffc01fc3dfc3ffc23fc3ffc03fc3ff42dec7ffc3ffc3ffc27fc07fc3ffc3ffc3ffc3ffc0ffc80003bfcfe7327fcffff0ffcffff27acfffe3ffcfff83ffcbff80ffc0ff03ffc0ff027fc800007fc80003ffc8000ffffffff",
-      "generatedAt": "2026-07-10T13:20:23.109Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:43.777Z",
+      "severity": "high",
+      "summary": [
+        "iOS dialog does not show the peach 'Agent limit reached (2/2 on Free plan). Upgrade for more' warning banner that React renders at the top of the modal",
+        "iOS keyboard is open, occluding the MODEL field and all fields below it (Provider, Reasoning) that are visible in React",
+        "iOS RUNTIME value reads 'Codex CLI' instead of React's 'Claude Code'",
+        "React shows a 'Default leaves Claude Code provider settings untouched...' helper paragraph under Provider; iOS hides this copy because the keyboard covers that region",
+        "iOS adds a 'Suggested computer: computer-mbp' caption under the Computer field that is absent in React"
+      ],
+      "likelyCauses": [
+        "iOS baseline captured with the soft keyboard focused, while React baseline captured the keyboard closed (scroll/inset not normalized)",
+        "Different default form values between platforms (Runtime selection populated to Codex CLI on iOS)",
+        "Missing rendering of the agent-limit warning banner on the iOS implementation",
+        "Form layout/scroll position differs: iOS does not scroll to reveal Provider/Model/Reasoning when keyboard opens",
+        "Extra suggestion caption present only on iOS, indicating divergent source data or component markup"
+      ],
+      "suggestedOwner": "iOS engineer (members/create-agent Claude dialog component)",
+      "suggestedFixes": [
+        "Capture iOS screenshot with keyboard dismissed (tap outside field) so the layout matches the React baseline",
+        "Render the 'Agent limit reached' warning banner in iOS to match React",
+        "Default Runtime selection to 'Claude Code' on iOS to align with React",
+        "Ensure form scrolls so Provider helper text, Model and Reasoning fields are reachable above the keyboard (use keyboardLayoutGuide/adjustScrollView insets)",
+        "Remove or hide the 'Suggested computer: …' caption on iOS unless it is also present in React"
+      ],
+      "intentional": [
+        "Differences driven solely by iOS soft-keyboard appearance may be acceptable if dismissed-state shots are captured"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4311152293379782
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.002Z",
+      "generatedAt": "2026-07-10T13:24:55.695Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1791,15 +1901,38 @@
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe9fff9fff87ff83ffffffffffefffffff87fc8ff783fc83f787fc8ff7fffc8017bffcdff7fffcfff787fcfff789c897f7ce3c8007c23cc0078000fe37801c83f783fc83f7c3fc9c17c1fcc007f7fc00f6f7fc0b90fffc0000c7c02236ffe00000fffc3100e1fc066080010e60cfff0000affc00008fc00000ffffffff",
-      "generatedAt": "2026-07-10T13:20:23.291Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:44.578Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows an active on-screen keyboard occupying the bottom half of the screen, hiding Connected accounts list, Change Password row, Session section, and Log out; React baseline shows the full scrollable form",
+        "Error location differs: React places a single 'Avatar upload failed: upload_failed' banner below Email and uses a disabled-looking 'Save Profile' button; iOS places the avatar error above NAME, adds an additional 'Profile save failed: server_unavailable' banner, and renders a pink 'Retry' button next to the email",
+        "Section header label differs: React uses 'ACCOUNT' (uppercase, muted grey) with a person icon, iOS uses 'Profile' (sentence case, slightly darker)",
+        "Form labels are styled differently: React uses Title Case ('Name', 'Display Name', 'Email'); iOS uses ALL CAPS ('NAME', 'DISPLAY NAME', 'Email')",
+        "Verified badge styling differs: React renders a solid green pill with shield icon; iOS renders a green pill with a different shape/shade and icon glyph"
+      ],
+      "likelyCauses": [
+        "iOS capture was taken while a text field was focused, invoking the system keyboard and shifting visible viewport",
+        "React baseline uses Title Case section labels while iOS uses localizable uppercase / sentence-case variants, indicating separate label resources",
+        "Two different error messages are surfaced in iOS (avatar + profile save), suggesting iOS renders all active error states simultaneously rather than only the most recent",
+        "Retry button styled as filled pink on iOS vs. muted/disabled Save button on React indicates divergent error-recovery component specs or interaction state"
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Dismiss focus or blur all text fields before capturing the Settings Account error-state screenshot on iOS so the keyboard does not occlude the lower sections",
+        "Align section/field label casing between platforms (pick one casing convention in the shared design tokens)",
+        "Ensure only one error banner is visible at a time, or stagger them in a consistent vertical order across React and iOS",
+        "Reuse the same Verified badge component (color, icon, padding) across web and native",
+        "Make the retry/save action button styling consistent: same color, label, and disabled-treatment logic for the error recovery state"
+      ],
+      "intentional": [
+        "Possibly intentional iOS keyboard visibility if the test is capturing the inline-edit focused state",
+        "Possibly intentional difference in error-state copy between platforms if product spec allows platform-specific messaging"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4427255910668233
     },
     {
@@ -2286,7 +2419,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2299,7 +2432,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2312,7 +2445,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2325,7 +2458,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2338,7 +2471,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2351,7 +2484,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.496Z",
+      "generatedAt": "2026-07-10T13:24:56.161Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2362,15 +2495,32 @@
     },
     {
       "id": "screens.members.human.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00000000443e03fe7e7e00007ffe00007ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7e7e7ffe7e7e7ffe700e7ffe7c3e7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff00fff",
-      "generatedAt": "2026-07-10T13:20:23.665Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:49.363Z",
+      "severity": "medium",
+      "summary": [
+        "React (left) is stuck in a 'Loading…' state with no header chrome, while iOS (right) has rendered the full screen chrome (back button, 'Member / Profile' title, divider) and an error empty-state ('Could not load member' with 'member_id_missing' reason code).",
+        "The two screens show fundamentally different lifecycle states: loading vs. post-load error, so the comparison is not apples-to-apples even though similarity scores are high (99.25% RGB, 98.82% pixel-perfect).",
+        "No visible clipping or color issues; the mismatch is driven by state divergence and presence of the iOS header/back chevron element absent on React."
+      ],
+      "likelyCauses": [
+        "iOS navigated/resolved faster and entered its error/empty branch (member_id_missing) before the screenshot capture, while React's data fetch never resolved and remained on its initial loading indicator.",
+        "React may be missing the route parameter (member id) — the iOS error message 'member_id_missing' suggests the id was not propagated to the iOS view's loader, which could also indicate the screens were driven with different input params.",
+        "Different loading-state copy/styling between platforms (React uses centered 'Loading…' text; iOS has no equivalent placeholder and goes straight to header + empty-state)."
+      ],
+      "suggestedOwner": "mobile-platform (cross-platform profile screen owner)",
+      "suggestedFixes": [
+        "Synchronize the test harness so both React and iOS capture the same lifecycle state (e.g., force the same loading vs. error condition on both platforms before snapshotting).",
+        "Verify the member id route param is being supplied identically to both React and iOS builds; the iOS 'member_id_missing' error suggests a param plumbing difference.",
+        "Add a React-side equivalent of the iOS header (back button + 'Member / Profile' title + divider) so the chrome renders consistently during loading and loaded states.",
+        "Implement a shared empty/error component across platforms so 'Could not load member' + reason code renders identically on React as it does on iOS.",
+        "Treat high RGB/pixel similarity as a false positive here — add a state-aware comparison (load | loaded | error) to the visual test suite so loading vs. error states aren't scored as a pass."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.011766314254465948
     },
     {
@@ -2412,15 +2562,36 @@
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffec07b82fb87c18a81000000008fff001e81ff0bbf8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffd7ffffffffffffffffffc1ffc03bffffffffffffffffffffffff0fff8ffffffffffff9ffe7fff3fffffffffffefffffffeff8c3fffff8c3f88939c7f800189ffffffffff",
-      "generatedAt": "2026-07-10T13:20:23.687Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T13:22:52.184Z",
+      "severity": "medium",
+      "summary": [
+        "Avatar grid layout differs: React uses 3 centered rows (6+6+3), iOS uses 2 rows (8+7) with tighter packing.",
+        "React header shows a single solid teal avatar tile with a pencil/edit icon; iOS header shows a pixel-art avatar (no edit icon) and adds a 'Working' status line.",
+        "iOS adds a 'Capturing determ…' status line next to the name in the header area; React shows only the truncated name and subtitle.",
+        "Tab bar items truncate differently: React renders full 'Message' and 'Activity' labels; iOS truncates to 'Mess…' and 'Activ…' and adds an extra trailing icon on the right edge of the tab strip.",
+        "iOS collapses the Info rows (Computer/Created/Creator) into a denser two-column key-value layout; React stacks them with larger vertical spacing."
+      ],
+      "likelyCauses": [
+        "iOS render uses a different grid layout component (8-column vs 6-column wrap) for the avatar chooser.",
+        "iOS header composes the profile name + status into one block; React keeps status separate or omitted.",
+        "Tab labels in iOS are clipped by a fixed tab width without ellipsis handling logic matching React.",
+        "Info/Metadata section in iOS uses a compact two-column list component instead of React's stacked rows.",
+        "Runtime Config rendered as 2x2 grid in iOS vs flex row in React due to different container width assumptions."
+      ],
+      "suggestedOwner": "iOS",
+      "suggestedFixes": [
+        "Normalize the avatar grid to a consistent column count (e.g., 8) with equal tile sizes across both platforms.",
+        "Unify header layout: ensure the large avatar, name, handle, and status line render in the same order and spacing on both sides.",
+        "Align tab bar: ensure labels use the same truncation rules and remove the extra trailing icon on iOS or add the equivalent on React.",
+        "Match the Info section layout: use the same key-value stacking pattern and spacing tokens on both platforms.",
+        "Render Runtime Config using the same row/column strategy (and keep the 'Runtime Config' header label consistent)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2568895910128137
     },
     {
@@ -2638,7 +2809,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.760Z",
+      "generatedAt": "2026-07-10T13:24:56.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2651,7 +2822,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T13:20:23.760Z",
+      "generatedAt": "2026-07-10T13:24:56.415Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>6df430f-20260710131759</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-10T13:20:29.596Z" data-timestamp="2026-07-10T13:20:29.596Z" title="2026-07-10T13:20:29.596Z">2026-07-10 13:20:29 UTC</time></p>
+    <p class="runMeta"><code>6df430f-20260710131759</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-10T13:25:02.080Z" data-timestamp="2026-07-10T13:25:02.080Z" title="2026-07-10T13:25:02.080Z">2026-07-10 13:25:02 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <a href="react__ios.html">React vs iOS</a> · <strong>Android vs iOS</strong></p>
     <div class="summary">
       <span class="pill">Total 89</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 12</span>
       <span class="pill">Different 52</span>
       <span class="pill">Missing 8</span>
-      <span class="pill">AI 69/89 ready</span>
+      <span class="pill">AI 81/89 ready</span>
       <span class="pill">Matrix 90/109 active</span>
       <span class="pill">Components Parity 76/80 active</span><span class="pill">Screens Parity 14/29 active</span>
     </div>
@@ -260,7 +260,12 @@
       <p><code>RGB 89.2%</code><br/><code>Pixel 99.61%</code><br/><code>Mismatch 0.39%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.61% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-platform</summary>
+    <ul><li>Badge layout, colors, text content, and component order are visually isomorphic between Android (left) and iOS (right).</li><li>Top-right platform indicator pill differs in label only: 'ANDROID' (left) vs 'IOS' (right); color (yellow/amber) and position are equivalent.</li><li>Header typography ('COMPONENTS.UI.BADGE.STATES' / 'Raft UI Badge' / dimension text) is visually consistent in weight, size, alignment, and color across both sides.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required; the two ends are effectively isomorphic within the configured tolerance.</li><li>If a higher RGB similarity is desired, consider enabling stricter font-hinting parity or capturing both baselines under identical crop contracts.</li><li>Optionally tighten ignoreAntialiasing handling in the comparator to reduce noise from text rendering differences.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.badge.states.png" data-current-src="ios/components.ui.badge.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -319,7 +324,12 @@
       <p><code>RGB 87.5%</code><br/><code>Pixel 58.22%</code><br/><code>Mismatch 41.78%</code><br/><code>Raw 1026×678 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×226 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Kuikly UI platform / Form-field component owner</summary>
+    <ul><li>iOS side shows an iOS system keyboard with tutorial overlay ('Speed up your typing by sliding your finger across the letters to compose a word' and 'Continue' button) while the Android side does not show the soft keyboard or keyboard tutorial.</li><li>Server Name input on iOS is in error state with red border and 'Name is required' helper text rendered below the field; on Android the field also shows the red error border but the helper/error text is clipped/missing within the cropped bounds.</li><li>Email input on iOS shows a visible text caret (vertical cursor) after 'cindy@slock.ai'; Android shows no caret in the static rendering.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize form-field helper/error text positioning so it is always visible regardless of crop region; verify errorText vertical offset is within the component bounds on both ends.</li><li>Disable or suppress native soft keyboard and tutorial overlay during Slock visual capture, or capture both ends in identical states (keyboard hidden) for parity.</li><li>Strip or hide the text caret in static visual-test rendering to avoid non-semantic caret diffs between platforms.</li><li>Unify keyboard-avoidance / safe-area logic in the KuiklyFormField container so vertical layout is consistent when the keyboard is present.</li><li>Ensure the Server Name error state uses identical border color, border thickness, and message typography/weight on Android and iOS.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.form-field.states.png" data-current-src="ios/components.ui.form-field.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -634,7 +644,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.84%</code><br/><code>Mismatch 0.16%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.84% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · ui-components</summary>
+    <ul><li>Status dot colors, shapes, and arrangement are visually isomorphic between Android and iOS renders.</li><li>Waiting pulse label and pink dot are identical in color, size, and position relative to other elements.</li><li>Only difference is a minor font-weight rendering nuance on the platform tag (ANDROID vs iOS), which is expected platform chrome, not a component difference.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required — divergences are within platform font rendering tolerance.</li><li>If strict cross-platform typography parity is desired, explicitly set font-family on platform tags instead of relying on system defaults.</li><li>Confirm tolerance thresholds (pixelRatio 0.02, layoutDp 1) remain appropriate for status-dot component.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3207,7 +3222,12 @@
       <p><code>RGB 83.4%</code><br/><code>Pixel 60.70%</code><br/><code>Mismatch 39.30%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ui-mobile / Kuikly cross-platform team</summary>
+    <ul><li>iOS view is scrolled upward, causing lower fields (Model, Reasoning, Mode, Action buttons) to be occluded by the system keyboard; Android shows the full form including Model dropdown, Reasoning, Fast mode checkbox, Advanced row, and Cancel/Create Agent buttons.</li><li>Android-only error banner 'Failed to create agent' (peach background) is rendered at the top of the dialog; missing entirely on iOS.</li><li>Cancel and Create Agent action buttons are visible on Android at the bottom of the dialog but are not visible on iOS (hidden behind the keyboard).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the keyboard before capturing the dialog state, or ensure iOS screenshot capture is taken with no input focused so the full form is visible.</li><li>Verify keyboard avoidance: on iOS, when a text field is focused the dialog should scroll so the field stays visible and the action buttons remain reachable; add equivalent behavior on Android for parity.</li><li>Make the error banner ('Failed to create agent') render consistently across platforms regardless of focus/keyboard state, or include it in the iOS screenshot fixture.</li><li>Align top inset/padding of the dialog content so 'CREATE AGENT' header sits at the same offset on both platforms at scroll position 0.</li><li>Add a visual regression guard that captures the dialog with no keyboard present on both Android and iOS for direct comparison.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3266,7 +3286,12 @@
       <p><code>RGB 88.4%</code><br/><code>Pixel 68.52%</code><br/><code>Mismatch 31.48%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Kuikly mobile platform / dialog component owner</summary>
+    <ul><li>iOS end has the software keyboard covering the lower half of the dialog (Provider, Model, Reasoning fields and Cancel/Create buttons are hidden/occluded).</li><li>Runtime value differs: Android shows 'Claude Code', iOS shows 'Codex CLI'.</li><li>Name input field on iOS shows an active text caret ('Product-QA-Bot' with a cursor between P and r) while Android has no visible caret.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Wrap the dialog scroll view in a KeyboardAvoidingView equivalent (or apply bottom safe-area padding) so the keyboard pushes content rather than covering it.</li><li>Ensure the same initial Runtime value (e.g., 'Claude Code') is used in test fixtures on both platforms.</li><li>Reset/blur the Name field for parity in the visual test capture, or take the screenshot before focus.</li><li>Verify scroll container allows reaching the Cancel/Create Agent buttons when the keyboard is shown (add a footer that floats above the keyboard or ensure content scrolls past it).</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.claude-dialog.png" data-current-src="ios/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3325,7 +3350,12 @@
       <p><code>RGB 88.2%</code><br/><code>Pixel 68.51%</code><br/><code>Mismatch 31.49%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · kuikly-mobile-dialog</summary>
+    <ul><li>iOS (right) shows the system keyboard overlaying and obscuring the lower half of the form (Runtime, Provider, API URL, API KEY, action buttons are hidden or clipped behind the keyboard).</li><li>Android (left) renders the full form including Cancel and Create Agent buttons at the bottom; the form is not occluded by a keyboard.</li><li>iOS appears focused in the Name input field (visible caret in Product-QA-Bot) which triggered the keyboard, while Android shows a different Runtime selection ('Codex CLI' vs 'Claude Code').</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Wrap the dialog body in a scroll view and apply keyboard avoidance (e.g., KeyboardAvoidingView / adjustResize equivalent) so the focused input and primary actions remain visible on iOS.</li><li>Ensure the dialog has a max-height or scrolls internally so the Cancel/Create Agent buttons stay reachable when the keyboard is open.</li><li>Normalize the captured state across platforms for visual tests (blur inputs before screenshot) or capture with/without keyboard explicitly.</li><li>Verify field focus management so opening the dialog does not auto-focus an input on iOS.</li><li>Check that the Cancel button styling matches Android on iOS once it is visible.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.members.create-agent.claude-custom-provider-dialog.png" data-current-src="ios/components.members.create-agent.claude-custom-provider-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3774,7 +3804,12 @@
       <p><code>RGB 90.2%</code><br/><code>Pixel 68.66%</code><br/><code>Mismatch 31.34%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ui-engineering</summary>
+    <ul><li>iOS shows an on-screen keyboard occluding the lower half of the screen, while Android does not</li><li>iOS Display Name field is in focused/active state (cursor visible, heavier border) whereas Android is not</li><li>Connect buttons on Google/GitHub are partially clipped by the keyboard on iOS but fully visible on Android</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the keyboard (tap outside or call resignFirstResponder) before capturing iOS screenshots</li><li>Tap a non-input area before triggering the screenshot pipeline</li><li>Normalize focus state: blur the active input after the test interaction completes</li><li>Add a compare-time ignoreMask or region-exclusion for the system keyboard on iOS</li><li>Re-run the capture after applying the above and verify both ends show the full Account/Session/Log out scroll</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.page.states.png" data-current-src="ios/components.settings.page.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3833,7 +3868,12 @@
       <p><code>RGB 90.2%</code><br/><code>Pixel 68.66%</code><br/><code>Mismatch 31.34%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-qa</summary>
+    <ul><li>iOS (right) shows the soft keyboard overlaying the lower half of the screen, obscuring the GitHub Connect row, Change password row, Session section, and Log out section — Android (left) shows these in full</li><li>On iOS, the Display Name input field has a visible text caret/cursor ('|') inside it, indicating focus; Android shows the field without focus</li><li>Due to keyboard occlusion on iOS, the 'Log out' copy and button (the only platform-difference element in this case) cannot be visually verified in the right-side capture</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the soft keyboard (tap outside the input or call resignFirstResponder) before capturing the iOS screenshot</li><li>Ensure the test fixture deselects the active input field prior to snapshotting account/settings pages</li><li>Re-capture iOS side with keyboard hidden so the full page (Connected accounts, Change password, Session, Log out) is visible for comparison</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.account.page.png" data-current-src="ios/components.settings.account.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3892,7 +3932,12 @@
       <p><code>RGB 90.4%</code><br/><code>Pixel 68.72%</code><br/><code>Mismatch 31.28%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Kuikly cross-platform UI / Input component owner</summary>
+    <ul><li>iOS (right) shows the on-screen keyboard overlaying the lower half of the screen, while Android (left) has no keyboard visible — the iOS Display Name input appears to be focused, triggering keyboard presentation</li><li>Because of the keyboard, the iOS view cannot display Session section, Log out card, or its description text — these elements are clipped/hidden behind the keyboard, whereas Android shows them in full</li><li>iOS has no equivalent of the visible viewport-bounds manual crop overlay; the canvas is full-height (1170×2532) with the keyboard occupying the lower portion, while Android uses a cropped 390×844 viewport with the page fully laid out within it</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the soft keyboard before capturing the screenshot on iOS, or blur the active input to normalize the captured state</li><li>Align the iOS capture to use the same viewport-bounds crop as Android (390×844 equivalent) so the page layout region is comparable</li><li>Add keyboard-avoiding behavior and scroll-to-focused-input so focused fields remain visible above the keyboard on iOS</li><li>Ensure consistent autoFocus/focus styling rules between Android and iOS adapters for TextInput (caret color/position)</li><li>Re-run the comparison after normalizing keyboard and crop state; verify Session/Log out sections render identically once full layout is visible</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.account.provider-linked.png" data-current-src="ios/components.settings.account.provider-linked.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -3951,7 +3996,12 @@
       <p><code>RGB 91.2%</code><br/><code>Pixel 73.62%</code><br/><code>Mismatch 26.38%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · kuikly-runtime / mobile-platform (iOS focus &amp; keyboard avoidance)</summary>
+    <ul><li>iOS shows the system soft keyboard occupying the lower half of the screen, occluding the GitHub connect card, Change password section, and Confirm Password field — Android does not.</li><li>The keyboard push hides the New Password label's container; on iOS the form below 'Change password' is clipped/inaccessible while Android renders it fully.</li><li>Layout below the Connected accounts row is vertically shifted on iOS due to keyboard insets not being handled equivalently to Android (no scroll/dismissKeypad behavior parity).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Disable automatic focus on any password input in this Account screen, or guard with a user-gesture requirement so the keyboard is not invoked on mount.</li><li>Apply iOS keyboard-avoiding behavior (scroll/keyboardInset) equivalent to Android so the form scrolls up and Change password / New Password / Confirm Password remain reachable.</li><li>In the snapshot contract, dismiss/hide the iOS soft keyboard before capture (e.g., tap-to-dismiss or hardware keyboard simulation) so password inputs are not auto-focused during visual diffing.</li><li>Verify the 'Change password' accordion expanded state opens to the same scroll position on both platforms after dismissal.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.account.password-expanded.png" data-current-src="ios/components.settings.account.password-expanded.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4010,7 +4060,12 @@
       <p><code>RGB 91.0%</code><br/><code>Pixel 70.89%</code><br/><code>Mismatch 29.11%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · kuikly-platform-input</summary>
+    <ul><li>iOS shows the software keyboard open and focused on the DISPLAY NAME field, occluding the lower content (Connected accounts, Change password); Android renders the keyboard hidden so the full form including Google/GitHub providers and Change password section is visible.</li><li>DISPLAY NAME input has a black focus border with a caret inside on iOS; on Android the same field shows only the static outline without an active caret.</li><li>iOS layout is vertically compressed/shortened versus Android: the iOS viewport (844pt mapped to 2532px) loses vertical space to the keyboard and reflows the email line, error banner, and Retry button closer to the profile card.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Suppress auto-focus and force keyboard dismissal in test/preview mode, or expose a Kuikly flag to disable the iOS keyboard in baseline screenshots.</li><li>Apply consistent keyboard avoidance and safe-area insets on iOS so the form scrolls identically to Android when a field is focused.</li><li>Normalize TextField caret/focus-ring styling so Android and iOS show the same focus indicator.</li><li>Unify font metrics (size, line-height, letter-spacing) for input values and labels across platforms.</li><li>Re-snapshot iOS with the keyboard hidden to confirm the remaining 7% pixel mismatch is purely keyboard occlusion and not a true layout bug.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.account.error-state.png" data-current-src="ios/components.settings.account.error-state.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">
@@ -4645,7 +4700,12 @@
       <p><code>RGB 95.3%</code><br/><code>Pixel 91.92%</code><br/><code>Mismatch 8.08%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · Kuikly cross-platform component owner (settings/settings-page UI maintainer)</summary>
+    <ul><li>Save buttons in both the Language card and Date &amp; Time card render noticeably smaller and more compact on iOS (right) than on Android (left), with reduced padding and tighter bounds.</li><li>Translation Mode segmented control: iOS 'Automatic' option uses a lighter/white fill while Android uses a solid white fill with a heavier black border; selected 'Manual' fill looks slightly less saturated yellow on iOS.</li><li>Time Format segmented control: the '24-hour' selected pill on iOS appears slightly narrower with reduced horizontal padding relative to the Android version.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Explicitly set uniform minHeight/padding on the segmented control and Save Button components so they render identically on iOS and Android.</li><li>Verify the selected-state background and border tokens for the segmented control are not falling back to a platform default; pin to the shared design token.</li><li>Run the visual diff at normalized DPR to confirm whether the remaining mismatch collapses once sizing tokens are unified.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="android/components.settings.language-region.page.png" data-current-src="ios/components.settings.language-region.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · Android under iOS</summary>
     <div class="overlayControls">

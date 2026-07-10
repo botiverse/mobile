@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-10T13:20:29.596Z",
+  "generatedAt": "2026-07-10T13:25:02.080Z",
   "latestRunId": "6df430f-20260710131759",
   "latest": {
     "runId": "6df430f-20260710131759",
     "commit": "6df430f-20260710131759",
     "commitSubject": "fix(ohos): sync native runtimes before local run (#558)",
-    "generatedAt": "2026-07-10T13:20:29.596Z",
+    "generatedAt": "2026-07-10T13:25:02.080Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 89,
-      "ready": 71,
-      "pending": 18
+      "ready": 85,
+      "pending": 4
     },
     "comparisons": [
       "react__android",
@@ -117,7 +117,7 @@
       "runId": "6df430f-20260710131759",
       "commit": "6df430f-20260710131759",
       "commitSubject": "fix(ohos): sync native runtimes before local run (#558)",
-      "generatedAt": "2026-07-10T13:20:29.596Z",
+      "generatedAt": "2026-07-10T13:25:02.080Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -130,8 +130,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 71,
-        "pending": 18
+        "ready": 85,
+        "pending": 4
       },
       "comparisons": [
         "react__android",

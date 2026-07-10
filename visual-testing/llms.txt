@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-10 13:20:29 UTC
+Generated: 2026-07-10 13:25:02 UTC
 Latest run: 6df430f-20260710131759
 Latest commit: 6df430f-20260710131759
 Commit subject: fix(ohos): sync native runtimes before local run (#558)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 89, same 0, pass 0, basic-pass 6, different 79, missing 4
-AI analysis: ready 71 / total 89, pending 18
+AI analysis: ready 85 / total 89, pending 4
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
