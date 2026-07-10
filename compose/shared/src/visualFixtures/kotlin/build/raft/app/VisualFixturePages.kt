@@ -281,6 +281,14 @@ internal class ComposeAuthRegisterInputsVisualPage : BasePager() {
     }
 }
 
+@Page("compose_auth_forgot_password_sent_visual", supportInLocal = true)
+internal class ComposeAuthForgotPasswordSentVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthForgotPasswordSentVisualScreen() }
+    }
+}
+
 @Page("compose_create_agent_dialog_visual", supportInLocal = true)
 internal class ComposeCreateAgentDialogVisualPage : BasePager() {
     override fun willInit() {

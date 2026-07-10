@@ -1170,6 +1170,19 @@ internal fun AuthRegisterInputsVisualScreen() {
 }
 
 @Composable
+internal fun AuthForgotPasswordSentVisualScreen() {
+    ForgotPasswordContent(
+        email = "visual.reset@raft.build",
+        sending = false,
+        sent = true,
+        errorMessage = null,
+        onEmailChange = {},
+        onSubmit = {},
+        onBackToSignIn = {}
+    )
+}
+
+@Composable
 internal fun LoginContent(
     email: String,
     password: String,
