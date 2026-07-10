@@ -10,9 +10,28 @@ private enum SlockIosPushEnvironment: String {
 }
 
 private enum SlockIosPushHost {
+    private static let remoteNotificationsStateName = Notification.Name("slockIosRemoteNotificationsState")
     private static var installationId: String?
+    private static var remoteNotificationsObserver: NSObjectProtocol?
 
     static func install() {
+        if remoteNotificationsObserver == nil {
+            remoteNotificationsObserver = NotificationCenter.default.addObserver(
+                forName: remoteNotificationsStateName,
+                object: nil,
+                queue: nil
+            ) { notification in
+                guard let enabled = notification.userInfo?["enabled"] as? Bool else {
+                    SlockIosDiagnosticsRecord(
+                        "warn",
+                        "SlockIosPush",
+                        "remote_notifications_state_rejected reason=missing_enabled"
+                    )
+                    return
+                }
+                setRemoteNotificationsEnabled(enabled)
+            }
+        }
         let candidate = UUID().uuidString.lowercased()
         installationId = SlockIosPushRegistrationBridge.shared.install(candidateInstallationId: candidate)
         SlockIosPushRegistrationBridge.shared.retryPendingRegistration()
@@ -23,10 +42,23 @@ private enum SlockIosPushHost {
         )
     }
 
-    static func registerForRemoteNotifications() {
-        DispatchQueue.main.async {
-            UIApplication.shared.registerForRemoteNotifications()
-            SlockIosPushRegistrationBridge.shared.retryPendingRegistration()
+    private static func setRemoteNotificationsEnabled(_ enabled: Bool) {
+        let apply = {
+            if enabled {
+                UIApplication.shared.registerForRemoteNotifications()
+            } else {
+                UIApplication.shared.unregisterForRemoteNotifications()
+            }
+            SlockIosDiagnosticsRecord(
+                "info",
+                "SlockIosPush",
+                "remote_notifications_state_applied enabled=\(enabled)"
+            )
+        }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.sync(execute: apply)
         }
     }
 
@@ -94,14 +126,6 @@ private enum SlockIosPushHost {
 final class SlockIosAppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    ) -> Bool {
-        SlockIosPushHost.registerForRemoteNotifications()
-        return true
-    }
-
-    func application(
-        _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         SlockIosPushHost.didRegister(deviceToken: deviceToken)
@@ -139,7 +163,6 @@ private enum SlockIosSharedLogBridge {
 @main
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(SlockIosAppDelegate.self) private var appDelegate
-    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // task #423: point the kmmresource loader at the "shared" pod bundle so
@@ -161,11 +184,6 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-        }
-        .onChange(of: scenePhase) { phase in
-            if phase == .active {
-                SlockIosPushHost.registerForRemoteNotifications()
-            }
         }
     }
 }

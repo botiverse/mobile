@@ -821,6 +821,7 @@ class AuthDataSourceTest {
         SlockPushRegistrationLifecycle.install(
             object : SlockPushRegistrationLifecycleSink {
                 override fun onSessionSaved() = Unit
+                override fun onSessionInvalidated() = Unit
 
                 override suspend fun unbindBeforeLogout() {
                     assertTrue(store.readSession() != null)

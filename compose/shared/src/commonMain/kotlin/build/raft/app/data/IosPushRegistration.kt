@@ -4,8 +4,11 @@ import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -18,7 +21,6 @@ private const val INSTALLATION_ID_KEY = "installationId"
 private const val PENDING_REGISTRATION_KEY = "pendingRegistration"
 private const val LAST_REGISTERED_PAYLOAD_KEY = "lastRegisteredPayload"
 private const val LAST_BOUND_USER_ID_KEY = "lastBoundUserId"
-private const val LAST_BOUND_SERVER_ID_KEY = "lastBoundServerId"
 private const val PUSH_LOG_TAG = "SlockPushRegistration"
 
 private val pushRegistrationJson = Json {
@@ -62,6 +64,7 @@ internal class SlockPushRegistrationNetworkApi(
 
 internal interface SlockPushRegistrationLifecycleSink {
     fun onSessionSaved()
+    fun onSessionInvalidated()
     suspend fun unbindBeforeLogout()
 }
 
@@ -69,12 +72,49 @@ internal object SlockPushRegistrationLifecycle {
     @Volatile
     private var sink: SlockPushRegistrationLifecycleSink? = null
 
+    @Volatile
+    private var sessionChanges: SharedFlow<String>? = null
+
+    @Volatile
+    private var sessionInvalidations: SharedFlow<Unit>? = null
+
+    @Volatile
+    private var observerScope: CoroutineScope? = null
+
+    private var sessionChangesObserverJob: Job? = null
+    private var sessionInvalidationsObserverJob: Job? = null
+
     fun install(next: SlockPushRegistrationLifecycleSink) {
         sink = next
+        startObserversIfReady()
+    }
+
+    fun observeSessionChanges(source: SharedFlow<String>, scope: CoroutineScope) {
+        if (sessionChanges !== source) {
+            sessionChangesObserverJob?.cancel()
+            sessionChangesObserverJob = null
+        }
+        sessionChanges = source
+        observerScope = scope
+        startObserversIfReady()
+    }
+
+    fun observeSessionInvalidations(source: SharedFlow<Unit>, scope: CoroutineScope) {
+        if (sessionInvalidations !== source) {
+            sessionInvalidationsObserverJob?.cancel()
+            sessionInvalidationsObserverJob = null
+        }
+        sessionInvalidations = source
+        observerScope = scope
+        startObserversIfReady()
     }
 
     fun onSessionSaved() {
         sink?.onSessionSaved()
+    }
+
+    fun onSessionInvalidated() {
+        sink?.onSessionInvalidated()
     }
 
     suspend fun unbindBeforeLogout() {
@@ -82,15 +122,64 @@ internal object SlockPushRegistrationLifecycle {
     }
 
     internal fun clearForTests() {
+        sessionChangesObserverJob?.cancel()
+        sessionChangesObserverJob = null
+        sessionInvalidationsObserverJob?.cancel()
+        sessionInvalidationsObserverJob = null
         sink = null
+        sessionChanges = null
+        sessionInvalidations = null
+        observerScope = null
+    }
+
+    private fun startObserversIfReady() {
+        if (sink == null) return
+        val scope = observerScope ?: return
+        if (sessionChangesObserverJob == null) {
+            sessionChanges?.let { source ->
+                sessionChangesObserverJob =
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        // Events are wake signals, not state. Reconcile persisted
+                        // auth once at observer startup so a replay=0 flow cannot
+                        // strand an already-authenticated installation.
+                        sink?.onSessionSaved()
+                        source.collect {
+                            sink?.onSessionSaved()
+                        }
+                    }
+            }
+        }
+        if (sessionInvalidationsObserverJob == null) {
+            sessionInvalidations?.let { source ->
+                sessionInvalidationsObserverJob =
+                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                        source.collect {
+                            sink?.onSessionInvalidated()
+                        }
+                    }
+            }
+        }
+    }
+}
+
+internal interface SlockIosRemoteNotificationsController {
+    suspend fun setEnabled(enabled: Boolean)
+}
+
+private object PlatformSlockIosRemoteNotificationsController : SlockIosRemoteNotificationsController {
+    override suspend fun setEnabled(enabled: Boolean) {
+        slockSetIosRemoteNotificationsEnabled(enabled)
     }
 }
 
 internal class SlockIosPushRegistrationCoordinator(
     private val store: SlockKeyValueStore,
     private val currentSession: suspend () -> StoredAuthSession?,
+    private val authRuntimeReady: () -> Boolean = { true },
     private val apiProvider: () -> SlockPushRegistrationApi?,
     private val scope: CoroutineScope,
+    private val remoteNotificationsController: SlockIosRemoteNotificationsController =
+        PlatformSlockIosRemoteNotificationsController,
     private val infoLogger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : SlockPushRegistrationLifecycleSink {
@@ -101,6 +190,8 @@ internal class SlockIosPushRegistrationCoordinator(
 
     @Volatile
     private var registrationSuspended = false
+
+    private var remoteNotificationsEnabled: Boolean? = null
 
     fun installationId(candidateInstallationId: String): String {
         val existing = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
@@ -150,10 +241,28 @@ internal class SlockIosPushRegistrationCoordinator(
         }
     }
 
+    override fun onSessionInvalidated() {
+        scope.launch {
+            handleSessionInvalidated(reason = "session_invalidated")
+        }
+    }
+
     internal suspend fun handleSessionSaved(): Boolean {
         if (unbindInProgress) return false
-        registrationSuspended = false
-        return flushPending(reason = "session_saved")
+        if (!authRuntimeReady()) {
+            infoLogger("registration_deferred reason=auth_runtime_unavailable trigger=session_saved")
+            return false
+        }
+        val session = currentSession()
+        if (session == null || session.user.id.isBlank()) {
+            handleSessionInvalidated(reason = "startup_without_session")
+            return false
+        }
+        return mutex.withLock {
+            registrationSuspended = false
+            setRemoteNotificationsEnabledLocked(true, reason = "authenticated_session")
+            flushPendingLocked(session = session, reason = "session_saved")
+        }
     }
 
     override suspend fun unbindBeforeLogout() {
@@ -161,22 +270,26 @@ internal class SlockIosPushRegistrationCoordinator(
         unbindInProgress = true
         try {
             mutex.withLock {
-                val installationId = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
-                    ?: return@withLock
-                val session = currentSession() ?: return@withLock
-                val api = apiProvider()
-                if (api == null) {
-                    warningLogger("unbind_deferred reason=shared_runtime_unavailable")
-                    return@withLock
-                }
-                val response = api.unbind(installationId)
-                if (response.isSuccessful || response.code == 404) {
-                    store.putString(LAST_BOUND_USER_ID_KEY, null)
-                    store.putString(LAST_BOUND_SERVER_ID_KEY, null)
-                    store.putString(LAST_REGISTERED_PAYLOAD_KEY, null)
-                    infoLogger("unbind_result result=success userPresent=${session.user.id.isNotBlank()}")
-                } else {
-                    warningLogger("unbind_result result=failure code=${response.code}")
+                setRemoteNotificationsEnabledLocked(false, reason = "logout")
+                try {
+                    val installationId = store.getString(INSTALLATION_ID_KEY)?.takeIf { it.isNotBlank() }
+                        ?: return@withLock
+                    val session = currentSession() ?: return@withLock
+                    val api = apiProvider()
+                    if (api == null) {
+                        warningLogger("unbind_deferred reason=shared_runtime_unavailable")
+                        return@withLock
+                    }
+                    val response = api.unbind(installationId)
+                    if (response.isSuccessful || response.code == 404) {
+                        infoLogger("unbind_result result=success userPresent=${session.user.id.isNotBlank()}")
+                    } else {
+                        warningLogger("unbind_result result=failure code=${response.code}")
+                    }
+                } finally {
+                    // A later login belongs to a new auth family even when the
+                    // previous cleanup request failed or never reached server.
+                    clearBoundRegistrationLocked()
                 }
             }
         } finally {
@@ -197,35 +310,68 @@ internal class SlockIosPushRegistrationCoordinator(
                 infoLogger("registration_deferred reason=no_authenticated_session trigger=$reason")
                 return@withLock false
             }
-            val serverId = session.currentServerId?.takeIf { it.isNotBlank() }
-            if (serverId == null) {
-                infoLogger("registration_deferred reason=no_selected_server trigger=$reason")
-                return@withLock false
-            }
-            val alreadyRegistered =
-                store.getString(LAST_REGISTERED_PAYLOAD_KEY) == payloadJson &&
-                    store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id &&
-                    store.getString(LAST_BOUND_SERVER_ID_KEY) == serverId
-            if (alreadyRegistered) {
-                infoLogger("registration_skip reason=unchanged trigger=$reason")
-                return@withLock true
-            }
+            setRemoteNotificationsEnabledLocked(true, reason = "pending_registration")
+            flushPendingLocked(session = session, payloadJson = payloadJson, reason = reason)
+        }
+
+    private suspend fun flushPendingLocked(
+        session: StoredAuthSession,
+        reason: String,
+        payloadJson: String? = store.getString(PENDING_REGISTRATION_KEY)?.takeIf { it.isNotBlank() }
+    ): Boolean {
+        if (registrationSuspended) {
+            infoLogger("registration_deferred reason=logout_suspended trigger=$reason")
+            return false
+        }
+        val pendingPayload = payloadJson ?: return false
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }
+        if (serverId == null) {
+            infoLogger("registration_deferred reason=no_selected_server trigger=$reason")
+            return false
+        }
+        val alreadyRegistered =
+            store.getString(LAST_REGISTERED_PAYLOAD_KEY) == pendingPayload &&
+                store.getString(LAST_BOUND_USER_ID_KEY) == session.user.id
+        return if (alreadyRegistered) {
+            infoLogger("registration_skip reason=unchanged trigger=$reason")
+            true
+        } else {
             val api = apiProvider()
             if (api == null) {
                 infoLogger("registration_deferred reason=shared_runtime_unavailable trigger=$reason")
-                return@withLock false
+                return false
             }
-            val response = api.upsert(payloadJson)
+            val response = api.upsert(pendingPayload)
             if (!response.isSuccessful) {
                 warningLogger("registration_result result=failure code=${response.code} trigger=$reason")
-                return@withLock false
+                return false
             }
-            store.putString(LAST_REGISTERED_PAYLOAD_KEY, payloadJson)
+            store.putString(LAST_REGISTERED_PAYLOAD_KEY, pendingPayload)
             store.putString(LAST_BOUND_USER_ID_KEY, session.user.id)
-            store.putString(LAST_BOUND_SERVER_ID_KEY, serverId)
             infoLogger("registration_result result=success trigger=$reason")
             true
         }
+    }
+
+    internal suspend fun handleSessionInvalidated(reason: String) {
+        mutex.withLock {
+            registrationSuspended = true
+            setRemoteNotificationsEnabledLocked(false, reason = reason)
+            clearBoundRegistrationLocked()
+        }
+    }
+
+    private suspend fun setRemoteNotificationsEnabledLocked(enabled: Boolean, reason: String) {
+        if (remoteNotificationsEnabled == enabled) return
+        remoteNotificationsController.setEnabled(enabled)
+        remoteNotificationsEnabled = enabled
+        infoLogger("remote_notifications_state enabled=$enabled reason=$reason")
+    }
+
+    private fun clearBoundRegistrationLocked() {
+        store.putString(LAST_BOUND_USER_ID_KEY, null)
+        store.putString(LAST_REGISTERED_PAYLOAD_KEY, null)
+    }
 }
 
 private fun IosPushRegistrationPayload.isValid(): Boolean =
@@ -299,6 +445,7 @@ object SlockIosPushRegistrationBridge {
         return SlockIosPushRegistrationCoordinator(
             store = store,
             currentSession = { SlockSharedStoreRegistry.currentOrNull()?.authStore?.readSession() },
+            authRuntimeReady = { SlockSharedStoreRegistry.currentOrNull() != null },
             apiProvider = {
                 SlockSharedStoreRegistry.currentOrNull()?.networkClient?.let(::SlockPushRegistrationNetworkApi)
             },

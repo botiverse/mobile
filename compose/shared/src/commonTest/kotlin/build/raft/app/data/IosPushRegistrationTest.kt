@@ -7,9 +7,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 class IosPushRegistrationTest {
     @AfterTest
@@ -70,7 +72,7 @@ class IosPushRegistrationTest {
 
         session = storedSession(userId = "user-2", serverId = "server-2")
         assertTrue(coordinator.retryPendingRegistration(reason = "server_switch"))
-        assertEquals(3, api.calls.size)
+        assertEquals(2, api.calls.size, "pure selected-server changes do not rebind user-scoped push")
     }
 
     @Test
@@ -95,17 +97,20 @@ class IosPushRegistrationTest {
         val store = InMemorySlockKeyValueStore()
         var session: StoredAuthSession? = storedSession("user-1")
         val api = RecordingPushRegistrationApi()
+        val remoteNotifications = RecordingRemoteNotificationsController()
         val coordinator =
             coordinator(
                 store = store,
                 currentSession = { session },
-                api = api
+                api = api,
+                remoteNotificationsController = remoteNotifications
             )
         val installationId = coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "sandbox", "1.3.0"))
 
         coordinator.unbindBeforeLogout()
         assertEquals("DELETE $installationId", api.calls.last())
+        assertEquals(listOf(true, false), remoteNotifications.states)
         assertEquals(installationId, coordinator.installationId("replacement-must-not-win"))
 
         assertFalse(coordinator.retryPendingRegistration(reason = "foreground_while_logged_out"))
@@ -152,6 +157,106 @@ class IosPushRegistrationTest {
     }
 
     @Test
+    fun canonicalSessionChangesFlowTriggersRegistrationWithoutSaveSessionHook() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val observed = CompletableDeferred<Unit>()
+        var savedEvents = 0
+        SlockPushRegistrationLifecycle.install(
+            object : SlockPushRegistrationLifecycleSink {
+                override fun onSessionSaved() {
+                    savedEvents += 1
+                    if (savedEvents == 2) observed.complete(Unit)
+                }
+
+                override fun onSessionInvalidated() = Unit
+
+                override suspend fun unbindBeforeLogout() = Unit
+            }
+        )
+        SlockPushRegistrationLifecycle.observeSessionChanges(
+            source = store.sessionChanges,
+            scope = CoroutineScope(SupervisorJob())
+        )
+
+        store.saveSession(storedSession("user-1"))
+
+        withTimeout(1_000) { observed.await() }
+    }
+
+    @Test
+    fun canonicalSessionInvalidationDisablesRemoteNotifications() = runBlocking {
+        val authStore = InMemorySlockAuthSessionStore()
+        authStore.saveSession(storedSession("user-1"))
+        val invalidated = CompletableDeferred<Unit>()
+        SlockPushRegistrationLifecycle.install(
+            object : SlockPushRegistrationLifecycleSink {
+                override fun onSessionSaved() = Unit
+
+                override fun onSessionInvalidated() {
+                    invalidated.complete(Unit)
+                }
+
+                override suspend fun unbindBeforeLogout() = Unit
+            }
+        )
+        SlockPushRegistrationLifecycle.observeSessionInvalidations(
+            source = authStore.sessionInvalidations,
+            scope = CoroutineScope(SupervisorJob())
+        )
+
+        authStore.clearSession(reason = "test", source = "test")
+
+        withTimeout(1_000) { invalidated.await() }
+    }
+
+    @Test
+    fun authenticatedStartupRegistersOnceAndAuthLossUnregistersBeforeNextLogin() = runBlocking {
+        var session: StoredAuthSession? = storedSession("user-1")
+        val remoteNotifications = RecordingRemoteNotificationsController()
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                currentSession = { session },
+                api = api,
+                remoteNotificationsController = remoteNotifications
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertFalse(coordinator.handleSessionSaved(), "registration waits for the APNs token")
+        assertEquals(listOf(true), remoteNotifications.states)
+
+        assertFalse(coordinator.handleSessionSaved(), "token rotation does not repeat APNs registration")
+        assertEquals(listOf(true), remoteNotifications.states)
+
+        assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
+        coordinator.handleSessionInvalidated(reason = "auth_loss")
+        assertEquals(listOf(true, false), remoteNotifications.states)
+        assertEquals(1, api.calls.count { it.startsWith("POST ") })
+
+        session = storedSession("user-1")
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(listOf(true, false, true), remoteNotifications.states)
+        assertEquals(2, api.calls.count { it.startsWith("POST ") }, "new auth family must rebind")
+    }
+
+    @Test
+    fun loggedOutStartupUnregistersWithoutCallingTheRegistrationApi() = runBlocking {
+        val remoteNotifications = RecordingRemoteNotificationsController()
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                currentSession = { null },
+                api = api,
+                remoteNotificationsController = remoteNotifications
+            )
+
+        assertFalse(coordinator.handleSessionSaved())
+
+        assertEquals(listOf(false), remoteNotifications.states)
+        assertTrue(api.calls.isEmpty())
+    }
+
+    @Test
     fun networkApiUsesTheRfc045RegistrationRoutes() = runBlocking {
         val network = RecordingNetworkClient()
         val api = SlockPushRegistrationNetworkApi(network)
@@ -171,13 +276,16 @@ class IosPushRegistrationTest {
     private fun coordinator(
         store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
         currentSession: suspend () -> StoredAuthSession? = { null },
-        api: SlockPushRegistrationApi = RecordingPushRegistrationApi()
+        api: SlockPushRegistrationApi = RecordingPushRegistrationApi(),
+        remoteNotificationsController: SlockIosRemoteNotificationsController =
+            RecordingRemoteNotificationsController()
     ): SlockIosPushRegistrationCoordinator =
         SlockIosPushRegistrationCoordinator(
             store = store,
             currentSession = currentSession,
             apiProvider = { api },
-            scope = CoroutineScope(SupervisorJob())
+            scope = CoroutineScope(SupervisorJob()),
+            remoteNotificationsController = remoteNotificationsController
         )
 
     private fun storedSession(userId: String, serverId: String = "server-1"): StoredAuthSession =
@@ -199,6 +307,14 @@ class IosPushRegistrationTest {
         override suspend fun unbind(installationId: String): HomeNetworkResponse {
             calls += "DELETE $installationId"
             return HomeNetworkResponse(code = 204, bodyText = null)
+        }
+    }
+
+    private class RecordingRemoteNotificationsController : SlockIosRemoteNotificationsController {
+        val states = mutableListOf<Boolean>()
+
+        override suspend fun setEnabled(enabled: Boolean) {
+            states += enabled
         }
     }
 
