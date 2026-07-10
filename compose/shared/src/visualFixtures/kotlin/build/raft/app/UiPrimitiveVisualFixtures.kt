@@ -102,11 +102,13 @@ internal fun UiButtonVisualContent() {
 
 @Composable
 internal fun UiFormFieldVisualContent() {
+    // Content-sized on purpose: a fixed 226.dp height exhausted the constraint and
+    // collapsed the error-state input box (react hit the same clip and content-sized
+    // its fixture in task #351).
     Box(
         modifier =
             Modifier
                 .width(342.dp)
-                .height(226.dp)
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
