@@ -890,6 +890,77 @@ class ThreadBottomAnchorSignatureTest {
                 )
             )
         )
+        assertEquals(
+            false,
+            shouldAutoCorrectThreadBottomAnchor(
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = true,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = false,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+        )
+    }
+
+    @Test
+    fun focusedAnchorOwnershipKeepsBottomAutoAnchorDisabledUntilRequestRetires() {
+        val identity = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
+
+        assertTrue(
+            focusedMessageAnchorOwnsViewport(
+                pendingIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = FocusedAnchorBottomYieldCapMs - 1
+            )
+        )
+        assertFalse(
+            resolveThreadBottomAutoAnchorAllowed(
+                ThreadBottomAutoAnchorAvailabilityState(
+                    currentAllow = false,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = true,
+                    focusedAnchorOwnsViewport = true
+                )
+            )
+        )
+        assertFalse(
+            focusedMessageAnchorOwnsViewport(
+                pendingIdentity = identity,
+                consumedIdentity = identity,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = FocusedAnchorBottomYieldCapMs - 1
+            )
+        )
+        assertTrue(
+            resolveThreadBottomAutoAnchorAllowed(
+                ThreadBottomAutoAnchorAvailabilityState(
+                    currentAllow = false,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = true,
+                    focusedAnchorOwnsViewport = false
+                )
+            )
+        )
+        assertFalse(
+            focusedMessageAnchorOwnsViewport(
+                pendingIdentity = identity,
+                consumedIdentity = null,
+                scrollInterruptedIdentity = null,
+                yieldElapsedMs = FocusedAnchorBottomYieldCapMs
+            )
+        )
+        assertTrue(
+            resolveThreadBottomAutoAnchorAllowed(
+                ThreadBottomAutoAnchorAvailabilityState(
+                    currentAllow = false,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = true,
+                    focusedAnchorOwnsViewport = false
+                )
+            )
+        )
     }
 
     @Test
