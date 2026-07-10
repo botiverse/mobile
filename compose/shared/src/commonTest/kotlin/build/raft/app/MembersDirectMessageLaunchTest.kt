@@ -3,15 +3,25 @@ package build.raft.app
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.SlockTimeFormat12Hour
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class MembersDirectMessageLaunchTest {
+    @Test
+    fun agentDetailUsesIconOnlyHeaderMessageAction() {
+        assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Agent))
+        assertFalse(membersHeaderMessageUsesIconOnly(MemberKind.Human))
+        assertFalse(membersHeaderMessageUsesIconOnly(MemberKind.System))
+    }
+
     @Test
     fun agentDetailMessageActionBuildsDirectMessageLaunchPayload() {
         val timeContext = SlockTimeContext(
