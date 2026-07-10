@@ -1259,7 +1259,7 @@ internal fun ThreadComposerContent(
         ) {
             state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
-                    text = status,
+                    text = localizedThreadComposerStatusLabel(status),
                     style = SlockType.Caption.copy(
                         color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
                     ),
@@ -1694,6 +1694,14 @@ private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
     }
 }
 
+@Composable
+private fun localizedThreadComposerStatusLabel(status: String): String =
+    if (status == "Composer payload parse failed") {
+        stringResource(MR.strings.thread_composer_payload_failed)
+    } else {
+        status
+    }
+
 internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
     mentionChannelLabel.toComposerChannelMentionLabel()
         ?: "this channel"
@@ -1898,7 +1906,24 @@ private fun ComposerMemberSuggestionPanel(
         }
         return
     }
-    val panelEntries = composerMemberSuggestionPanelEntries(title, members)
+    val localizedParentChannelTitle = stringResource(MR.strings.thread_composer_members_parent_channel)
+    val localizedNotInParentChannelTitle = stringResource(MR.strings.thread_composer_members_not_parent_channel)
+    val localizedNotInThisChannelTitle = stringResource(MR.strings.thread_composer_members_not_this_channel)
+    val panelEntries =
+        composerMemberSuggestionPanelEntries(
+            title = title,
+            members = members,
+            inThreadTitle = stringResource(MR.strings.thread_composer_members_this_thread),
+            inThisChannelTitle = stringResource(MR.strings.thread_composer_members_this_channel),
+            notInParentChannelTitle = localizedNotInParentChannelTitle,
+            notInThisChannelTitle = localizedNotInThisChannelTitle,
+            notInScopeTitle =
+                if (title == localizedParentChannelTitle) {
+                    localizedNotInParentChannelTitle
+                } else {
+                    localizedNotInThisChannelTitle
+                }
+        )
     val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, panelEntries.selectableCount)
     ComposerSuggestionPanel(
         title = panelEntries.title,
@@ -1950,7 +1975,12 @@ private data class ComposerMemberSuggestionPanelEntry(
 
 private fun composerMemberSuggestionPanelEntries(
     title: String?,
-    members: List<KuiklyComposerMemberItem>
+    members: List<KuiklyComposerMemberItem>,
+    inThreadTitle: String = "IN THIS THREAD",
+    inThisChannelTitle: String = "IN THIS CHANNEL",
+    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
+    notInThisChannelTitle: String = "NOT IN THIS CHANNEL",
+    notInScopeTitle: String? = null
 ): ComposerMemberSuggestionPanelModel {
     val groups = members.composerMemberSuggestionGroups()
     val entries = mutableListOf<ComposerMemberSuggestionPanelEntry>()
@@ -1973,7 +2003,7 @@ private fun composerMemberSuggestionPanelEntries(
         entries +=
             ComposerMemberSuggestionPanelEntry(
                 key = "mention-channel-header",
-                headerText = title ?: "IN THIS CHANNEL",
+                headerText = title ?: inThisChannelTitle,
                 topDivider = true
             )
     }
@@ -1982,23 +2012,31 @@ private fun composerMemberSuggestionPanelEntries(
         entries +=
             ComposerMemberSuggestionPanelEntry(
                 key = "not-in-mention-channel-header",
-                headerText = title.notInMentionScopeHeader(),
+                headerText =
+                    notInScopeTitle
+                        ?: title.notInMentionScopeHeader(
+                            notInParentChannelTitle = notInParentChannelTitle,
+                            notInThisChannelTitle = notInThisChannelTitle
+                        ),
                 topDivider = entries.isNotEmpty()
             )
     }
     addRows(prefix = "not-in-mention-channel", rows = groups.notInMentionChannel, inChannel = false)
     return ComposerMemberSuggestionPanelModel(
-        title = if (hasThreadSection) "IN THIS THREAD" else title,
+        title = if (hasThreadSection) inThreadTitle else title,
         entries = entries,
         selectableCount = selectableIndex
     )
 }
 
-private fun String?.notInMentionScopeHeader(): String =
+private fun String?.notInMentionScopeHeader(
+    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
+    notInThisChannelTitle: String = "NOT IN THIS CHANNEL"
+): String =
     when (this) {
-        "IN PARENT CHANNEL" -> "NOT IN PARENT CHANNEL"
-        "IN THIS CHANNEL" -> "NOT IN THIS CHANNEL"
-        else -> "NOT IN THIS CHANNEL"
+        "IN PARENT CHANNEL" -> notInParentChannelTitle
+        "IN THIS CHANNEL" -> notInThisChannelTitle
+        else -> notInThisChannelTitle
     }
 
 @Composable

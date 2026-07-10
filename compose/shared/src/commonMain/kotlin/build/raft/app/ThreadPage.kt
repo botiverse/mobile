@@ -1836,10 +1836,12 @@ private fun ThreadPageScreen() {
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
+    val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
+    val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
     fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
-            bridge.toast("Unable to open thread")
+            bridge.toast(unableToOpenThreadLabel)
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
         }
@@ -1937,7 +1939,7 @@ private fun ThreadPageScreen() {
                 sourceServerId = selectedSourceServerId
             )
             if (pageData == null) {
-                bridge.toast("Unable to open profile")
+                bridge.toast(unableToOpenProfileLabel)
                 bridge.logWarn(
                     "thread_member_profile_skip reason=missing_member memberId=$memberId " +
                     "instanceId=${currentPayload.instanceId}"
@@ -8494,7 +8496,7 @@ private fun ThreadPageContent(
             }
             if (!payload.joined) {
                 ThreadJoinFooter(
-                    label = payload.joinLabel,
+                    label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
             } else if (shareSelectionActive) {
@@ -8842,6 +8844,15 @@ private fun ThreadPageHeader(
     onTitleClick: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val localizedHeaderTitle =
+        if (
+            headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            headerDisplay.title == ThreadReplyPageTitle
+        ) {
+            stringResource(MR.strings.thread_reply_title)
+        } else {
+            headerDisplay.title
+        }
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
@@ -8886,7 +8897,7 @@ private fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = headerDisplay.title,
+                        text = localizedHeaderTitle,
                         style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -9497,7 +9508,10 @@ private fun ThreadChatTab(
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
-                ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+                ThreadStateMessage(
+                    localizedThreadStateTitle(timelineSlice.emptyTitle),
+                    localizedThreadStateDetail(timelineSlice.emptyDetail)
+                )
             }
         else ->
             ThreadMessagesList(
@@ -9850,7 +9864,10 @@ private fun ThreadMessagesList(
         if (timelineSlice.status == "loading") {
             ThreadStateMessage("Loading...", null)
         } else {
-            ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+            ThreadStateMessage(
+                localizedThreadStateTitle(timelineSlice.emptyTitle),
+                localizedThreadStateDetail(timelineSlice.emptyDetail)
+            )
         }
         return
     }
@@ -10882,7 +10899,10 @@ private fun ThreadMessagesList(
             }
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
-                    ThreadStateMessage(renderPayload.emptyTitle, renderPayload.emptyDetail)
+                    ThreadStateMessage(
+                        localizedThreadStateTitle(renderPayload.emptyTitle),
+                        localizedThreadStateDetail(renderPayload.emptyDetail)
+                    )
                 }
             }
             if (showReplyLoadingSkeleton) {
@@ -12524,6 +12544,14 @@ private fun ThreadMessageCard(
     onToggleLongMessage: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
+    val localizedAuthorName =
+        if (message.isOwn && message.authorName == "You") {
+            stringResource(MR.strings.thread_author_you)
+        } else {
+            message.authorName
+        }
+    val localizedTimestampLabel = localizedThreadTimestampLabel(timestampLabel)
+    val localizedCompactTimestampLabel = localizedThreadTimestampLabel(compactTimestampLabel)
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
@@ -12605,7 +12633,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatarSlot(
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = compactTimestampLabel,
+                        timestampLabel = localizedCompactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -12670,7 +12698,7 @@ private fun ThreadMessageCard(
                                         }
                                 ) {
                                     Text(
-                                        text = message.authorName,
+                                        text = localizedAuthorName,
                                         style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
@@ -12694,7 +12722,7 @@ private fun ThreadMessageCard(
                                         )
                                     }
                                     if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(timestampLabel)
+                                        ThreadMessageTimestampLabel(localizedTimestampLabel)
                                     }
                                 }
                             }
@@ -15234,6 +15262,14 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
         overflow = TextOverflow.Ellipsis
     )
 }
+
+@Composable
+private fun localizedThreadTimestampLabel(value: String): String =
+    if (value == "Now") {
+        stringResource(MR.strings.thread_timestamp_now)
+    } else {
+        value
+    }
 
 @Composable
 private fun ThreadMessageAvatarSlot(
@@ -18007,6 +18043,30 @@ private fun ThreadModalEmptyState(title: String, detail: String) {
         )
     }
 }
+
+@Composable
+private fun localizedThreadStateTitle(value: String): String =
+    when (value) {
+        ThreadReplyEmptyTitle -> stringResource(MR.strings.thread_state_no_replies)
+        "No messages yet" -> stringResource(MR.strings.thread_state_no_messages)
+        "Loading..." -> stringResource(MR.strings.thread_state_loading)
+        else -> value
+    }
+
+@Composable
+private fun localizedThreadStateDetail(value: String?): String? =
+    when (value) {
+        "This conversation has no messages yet." -> stringResource(MR.strings.thread_state_no_messages_detail)
+        else -> value
+    }
+
+@Composable
+private fun localizedThreadJoinLabel(value: String): String =
+    if (value == "Join channel") {
+        stringResource(MR.strings.thread_action_join_channel)
+    } else {
+        value
+    }
 
 @Composable
 private fun ThreadStateMessage(title: String, detail: String?) {

@@ -119,6 +119,16 @@
     <string name="thread_state_no_permission">No permission</string>
     <string name="thread_error_no_permission">You do not have permission to view this thread.</string>
     <string name="thread_state_original_unavailable">Original message is unavailable.</string>
+    <string name="thread_reply_title">Thread</string>
+    <string name="thread_state_no_replies">No replies yet</string>
+    <string name="thread_state_no_messages">No messages yet</string>
+    <string name="thread_state_no_messages_detail">This conversation has no messages yet.</string>
+    <string name="thread_action_join_channel">Join channel</string>
+    <string name="thread_timestamp_now">Now</string>
+    <string name="thread_author_you">You</string>
+    <string name="thread_error_open_thread">Unable to open thread</string>
+    <string name="thread_error_open_profile">Unable to open profile</string>
+    <string name="thread_composer_payload_failed">Composer payload parse failed</string>
     <string name="thread_composer_placeholder_message">Message</string>
     <string name="thread_composer_placeholder_dm">Message @%1$s</string>
     <string name="thread_composer_placeholder_channel">Message #%1$s</string>
@@ -126,6 +136,9 @@
     <string name="thread_composer_as_task">As Task</string>
     <string name="thread_composer_members_parent_channel">IN PARENT CHANNEL</string>
     <string name="thread_composer_members_this_channel">IN THIS CHANNEL</string>
+    <string name="thread_composer_members_this_thread">IN THIS THREAD</string>
+    <string name="thread_composer_members_not_parent_channel">NOT IN PARENT CHANNEL</string>
+    <string name="thread_composer_members_not_this_channel">NOT IN THIS CHANNEL</string>
     <string name="thread_composer_scope_this_channel">this channel</string>
     <string name="thread_composer_load_members_failed">Could not load members</string>
     <string name="thread_composer_load_channels_failed">Could not load channels</string>

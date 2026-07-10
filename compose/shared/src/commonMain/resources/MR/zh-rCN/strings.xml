@@ -119,6 +119,16 @@
     <string name="thread_state_no_permission">没有权限</string>
     <string name="thread_error_no_permission">你没有查看此对话串的权限。</string>
     <string name="thread_state_original_unavailable">原消息不可用。</string>
+    <string name="thread_reply_title">对话串</string>
+    <string name="thread_state_no_replies">暂无回复</string>
+    <string name="thread_state_no_messages">暂无消息</string>
+    <string name="thread_state_no_messages_detail">当前对话还没有消息。</string>
+    <string name="thread_action_join_channel">加入频道</string>
+    <string name="thread_timestamp_now">刚刚</string>
+    <string name="thread_author_you">你</string>
+    <string name="thread_error_open_thread">无法打开对话串</string>
+    <string name="thread_error_open_profile">无法打开资料</string>
+    <string name="thread_composer_payload_failed">编辑器数据解析失败</string>
     <string name="thread_composer_placeholder_message">输入消息</string>
     <string name="thread_composer_placeholder_dm">给 @%1$s 发消息</string>
     <string name="thread_composer_placeholder_channel">发送消息到 #%1$s</string>
@@ -126,6 +136,9 @@
     <string name="thread_composer_as_task">作为任务</string>
     <string name="thread_composer_members_parent_channel">父频道成员</string>
     <string name="thread_composer_members_this_channel">当前频道成员</string>
+    <string name="thread_composer_members_this_thread">当前对话串成员</string>
+    <string name="thread_composer_members_not_parent_channel">不在父频道中</string>
+    <string name="thread_composer_members_not_this_channel">不在当前频道中</string>
     <string name="thread_composer_scope_this_channel">当前频道</string>
     <string name="thread_composer_load_members_failed">无法加载成员</string>
     <string name="thread_composer_load_channels_failed">无法加载频道</string>
