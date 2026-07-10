@@ -314,11 +314,13 @@ internal fun UiSkeletonVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SlockSkeletonRow(avatar = true, avatarSize = 18.dp, lineWidths = listOf(128.dp, 80.dp))
-            SlockSkeleton(modifier = Modifier.width(310.dp).height(46.dp), variant = SlockSkeletonVariant.Block)
+        // Values mirror the react fixture (VisualTestingCases.tsx ui-skeleton case):
+        // avatars size-5/size-8 = 20/32px, outer gap-3 = 12px, block h-12 = 48px.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
+            SlockSkeleton(modifier = Modifier.width(310.dp).height(48.dp), variant = SlockSkeletonVariant.Block)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockSkeleton(modifier = Modifier.size(30.dp), variant = SlockSkeletonVariant.Circle)
+                SlockSkeleton(modifier = Modifier.size(32.dp), variant = SlockSkeletonVariant.Circle)
                 SlockSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = SlockSkeletonVariant.Line)
             }
         }
