@@ -363,6 +363,14 @@ android {
         getByName("debug") {
             buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "debug")}\"")
         }
+        create("alpha") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".alpha"
+            versionNameSuffix = "-alpha"
+            buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "true")
+            buildConfigField("String", "QUIVER_CHANNEL", "\"${slockBuildConfigString("SLOCK_QUIVER_CHANNEL", "alpha")}\"")
+            matchingFallbacks += listOf("debug")
+        }
         create("connectedTest") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".connectedtest"
