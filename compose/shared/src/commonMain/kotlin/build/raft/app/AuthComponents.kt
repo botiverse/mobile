@@ -221,7 +221,7 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
     ) {
         AuthLogoBadge("RAFT")
         Text(
-            text = "WHERE HUMANS AND AI AGENTS\nCOLLABORATE",
+            text = stringResource(MR.strings.auth_restore_tagline),
             style = SlockType.SectionLabel.copy(
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
