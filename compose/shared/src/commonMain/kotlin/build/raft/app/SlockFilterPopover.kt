@@ -132,7 +132,12 @@ internal fun SlockFilterPopover(
                     .width(popoverWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
-                    .slockFloatingContentClickTarget()
+                    // A filter popover owns a LazyColumn. The native capture used
+                    // by slockFloatingContentClickTarget intercepts its drag stream
+                    // before Kuikly delivers it to that list. The empty clickable
+                    // still prevents taps on card whitespace from dismissing the
+                    // overlay while leaving the nested list scrollable.
+                    .clickable(onClick = {})
             ) {
                 Row(
                     modifier = Modifier
