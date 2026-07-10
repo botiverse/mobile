@@ -42,6 +42,17 @@ interface SlockAuthSessionStore {
     suspend fun replaceAuthenticatedSession(session: StoredAuthSession) = saveSession(session)
 
     /**
+     * Intentional full replace while preserving the latest same-account process selection.
+     * Shell-scoped login/register flows use this so a concurrently committed process-level
+     * server switch cannot be rolled back by a stale selection captured before the replace.
+     * Real stores override this inside the same lock as every other session writer.
+     */
+    suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {
+        val current = readSession()
+        replaceAuthenticatedSession(session.withPreservedProcessSelection(current))
+    }
+
+    /**
      * CAS token rotation (coordinator / token-owner only). Rotates only if the store's LATEST
      * tokens still match [expectedAccessToken]/[expectedRefreshToken]; returns the newly-persisted
      * session (latest metadata + new tokens) if applied, or null if another writer already rotated
@@ -85,6 +96,18 @@ interface SlockAuthSessionStore {
         }
         saveSession(updated)
     }
+}
+
+private fun StoredAuthSession.withPreservedProcessSelection(current: StoredAuthSession?): StoredAuthSession {
+    val sameAccountCurrent = current?.takeIf { it.user.id == user.id }
+    val incomingSelectedServerId = selectedServerId
+    val preservedSelectedServerId =
+        (if (sameAccountCurrent != null) sameAccountCurrent.selectedServerId else incomingSelectedServerId)
+            ?.takeIf { selected -> servers.any { it.id == selected } }
+    return copy(
+        selectedServerId = preservedSelectedServerId,
+        selectedServerSlug = preservedSelectedServerId?.let { selected -> servers.firstOrNull { it.id == selected }?.slug }
+    )
 }
 
 interface SlockAuthServerSelectionMemory {
@@ -322,6 +345,21 @@ class InMemorySlockAuthSessionStore(
         }
     }
 
+    override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {
+        var persisted: StoredAuthSession? = null
+        val changed =
+            mutex.withLock {
+                val previous = this.session
+                val updated = session.withPreservedProcessSelection(previous)
+                this.session = updated
+                persisted = updated
+                previous?.authSessionClearFingerprint() != updated.authSessionClearFingerprint()
+            }
+        if (changed) {
+            changes.emit(requireNotNull(persisted).authSessionClearFingerprint())
+        }
+    }
+
     override suspend fun rotateTokensIfMatch(
         expectedAccessToken: String,
         expectedRefreshToken: String,
@@ -427,6 +465,28 @@ class KeyValueAuthSessionStore(
             changes.emit(fingerprint)
         }
         diagnosticsLogger("auth_session_replace result=success changed=$changed servers=${session.servers.size}")
+    }
+
+    override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {
+        var persisted: StoredAuthSession? = null
+        var generation = 0L
+        val changed =
+            mutex.withLock {
+                val previous = readSessionRecordLocked()
+                val updated = session.withPreservedProcessSelection(previous)
+                writeSessionRecordLocked(updated)
+                persisted = updated
+                generation = nextGenerationLocked()
+                previous?.authSessionClearFingerprint() != updated.authSessionClearFingerprint()
+            }
+        storeEvents.emit(AuthSessionEvent.Authenticated(generation))
+        val updated = requireNotNull(persisted)
+        if (changed) {
+            changes.emit(updated.authSessionClearFingerprint())
+        }
+        diagnosticsLogger(
+            "auth_session_replace_preserving_selection result=success changed=$changed servers=${updated.servers.size}"
+        )
     }
 
     override suspend fun rotateTokensIfMatch(

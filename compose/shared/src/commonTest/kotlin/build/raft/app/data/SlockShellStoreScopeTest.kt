@@ -142,6 +142,24 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun authenticatedReplaceDoesNotOverwriteAConcurrentProcessSelection() = runBlocking {
+        val racingStore = SelectBeforeAtomicReplaceStore(InMemorySlockAuthSessionStore(session()))
+        val shellStore =
+            SlockShellAuthSessionStore(
+                racingStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        val replacement = shellStore.readSession()!!.copy(accessToken = "replacement-access")
+        racingStore.selectBeforeNextReplace = true
+
+        shellStore.replaceAuthenticatedSession(replacement)
+
+        assertEquals("server-4", racingStore.readSession()?.selectedServerId)
+        assertEquals("replacement-access", racingStore.readSession()?.accessToken)
+        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
+    }
+
+    @Test
     fun disposedRuntimeStopsMatchingActiveServer() {
         val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
 
@@ -179,9 +197,24 @@ class SlockShellStoreScopeTest {
                 listOf(
                     StoredAuthServer(id = "server-1", name = "One", slug = "one"),
                     StoredAuthServer(id = "server-2", name = "Two", slug = "two"),
-                    StoredAuthServer(id = "server-3", name = "Three", slug = "three")
+                    StoredAuthServer(id = "server-3", name = "Three", slug = "three"),
+                    StoredAuthServer(id = "server-4", name = "Four", slug = "four")
                 )
         )
+
+    private class SelectBeforeAtomicReplaceStore(
+        private val delegate: InMemorySlockAuthSessionStore
+    ) : SlockAuthSessionStore by delegate {
+        var selectBeforeNextReplace: Boolean = false
+
+        override suspend fun replaceAuthenticatedSessionPreservingSelection(session: StoredAuthSession) {
+            if (selectBeforeNextReplace) {
+                selectBeforeNextReplace = false
+                delegate.updateSelectedServer("server-4", "four")
+            }
+            delegate.replaceAuthenticatedSessionPreservingSelection(session)
+        }
+    }
 
     private class RotateAfterReadStore(
         private val delegate: InMemorySlockAuthSessionStore
