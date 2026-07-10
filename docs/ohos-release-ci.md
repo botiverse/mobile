@@ -6,9 +6,9 @@ for `build.raft.mobile`. It is manual-only and uploads the validated package,
 private GitHub Actions artifact.
 
 The release link runs in the repository's HarmonyOS toolchain image on
-`blacksmith-8vcpu-ubuntu-2404`. The workflow gives the Gradle and
-Kotlin/Native processes a 12 GB heap and uses one Gradle worker. Do not move
-the release job to a runner with less than 16 GB of memory: the optimized
+`blacksmith-16vcpu-ubuntu-2404`. The workflow gives the Gradle and
+Kotlin/Native processes a 24 GB heap and uses one Gradle worker. Do not move
+the release job to a runner with less than 32 GB of memory: the optimized
 `linkReleaseSharedOhosArm64` task exceeds the project's normal 4 GB heap.
 
 ## Required repository secrets

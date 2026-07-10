@@ -386,9 +386,9 @@ jobs:
 
   build-ohos-release:
     name: Build, sign, and validate OHOS .app
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     needs: [resolve, kuikly-artifacts, fork-deps]
-    timeout-minutes: 120
+    timeout-minutes: 180
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     env:
@@ -415,6 +415,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
       - name: Raise Gradle and Kotlin/Native heap for release link
         shell: bash
         run: |
@@ -422,11 +427,11 @@ jobs:
           GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
           mkdir -p "$GUH"
           cat >> "$GUH/gradle.properties" <<'PROPERTIES'
-          org.gradle.jvmargs=-Xmx12g -Xss8m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx8g,-Xss8m"
-          kotlin.native.jvmArgs=-Xmx12g -Xss8m
+          org.gradle.jvmargs=-Xmx24g -Xss8m -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx16g,-Xss8m"
+          kotlin.native.jvmArgs=-Xmx24g -Xss8m
           org.gradle.workers.max=1
           PROPERTIES
-          echo "Configured the release runner with a 12 GB Gradle/Kotlin Native heap"
+          echo "Configured the release runner with a 24 GB Gradle/Kotlin Native heap"
 
       - name: Write project build configuration
         shell: bash
@@ -471,6 +476,27 @@ jobs:
           fi
           test -d "$dst/com/tencent/kuikly-open"
           test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
+
+      - name: Build and stage OHOS shared release library
+        working-directory: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --console=plain \
+            -c settings.ohos.gradle.kts \
+            copyNetworkOhosRuntimeLibs \
+            :shared:linkReleaseSharedOhosArm64
+
+          shared_output="shared/build/bin/ohosArm64/releaseShared"
+          install -Dm755 \
+            "$shared_output/libshared.so" \
+            ohosApp/entry/libs/arm64-v8a/libshared.so
+          install -Dm644 \
+            "$shared_output/libshared_api.h" \
+            ohosApp/entry/src/main/cpp/libshared_api.h
+
+          test -s ohosApp/entry/libs/arm64-v8a/libshared.so
+          test -s ohosApp/entry/src/main/cpp/libshared_api.h
 
       - name: Decode OHOS signing assets
         id: signing
