@@ -12,6 +12,7 @@ import { LogAdapter } from '../kuikly/adapter/LogAdapter';
 import { RouterAdapter } from '../kuikly/adapter/RouterAdapter';
 import { SlockKRVideoAdapter } from '../kuikly/adapter/SlockKRVideoAdapter';
 import { initializeSlockOhosAppScopeMMKV } from '../kuikly/SlockOhosAppScopeMMKV';
+import { initKmmResourceCompose } from '../kuikly/SlockOhosKmmResource';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
@@ -183,6 +184,12 @@ export default class EntryAbility extends UIAbility {
       SLOCK_SHARED_LOG_SINK_SERVICE,
       new SlockOhosSharedLogSink()
     );
+    // KmmResource contract: must complete after KNOI setup()/init() and
+    // before any Kuikly/shared page exists — the first shared
+    // stringResource() otherwise SIGSEGVs in native string lookup
+    // (task #19). onCreate runs before onWindowStageCreate's loadContent,
+    // so the ordering is structural.
+    initKmmResourceCompose(this.context);
     hilog.info(0x0000, SLOCK_KNOI_LOG_TAG, '%{public}s', 'KNOI setup complete for libshared.so');
   }
 
