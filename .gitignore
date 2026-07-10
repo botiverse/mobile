@@ -32,3 +32,5 @@ temp_compose/
 trace_processor
 compose/ohosApp/entry/mr-res/*
 !compose/ohosApp/entry/mr-res/.gitkeep
+compose/ohosApp/entry/mr-kuikly-assets/*
+!compose/ohosApp/entry/mr-kuikly-assets/.gitkeep

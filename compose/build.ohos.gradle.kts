@@ -41,7 +41,7 @@ tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
 // restool rejects the generator's BCP-47 locale dirs ("Invalid qualifier
 // key 'zh-CN'"), so locale segments are rewritten to qualifier form.
 val copyMrResourcesForOhosEntry = tasks.register<Sync>("copyMrResourcesForOhosEntry") {
-    dependsOn(":shared:mergeOhosResources")
+    dependsOn(":shared:generateMRohosArm64Main", ":shared:mergeOhosResources")
     from(project(":shared").layout.buildDirectory.dir("generated/tmm-res/ohosArm64Main/mergeRes"))
     into(layout.projectDirectory.dir("ohosApp/entry/mr-res"))
     includeEmptyDirs = false
@@ -58,6 +58,34 @@ val copyMrResourcesForOhosEntry = tasks.register<Sync>("copyMrResourcesForOhosEn
     }
     preserve { include(".gitkeep") }
 }
+
+// Kuikly's OHOS assets:// loader resolves against the HAP resfile root, while
+// KmmResource intentionally generates MR assets under rawfile/assets. Mirror
+// every generated MR asset into a separate resource root so the MR locator can
+// be consumed by Kuikly without changing either subsystem's global contract.
+val copyMrKuiklyAssetsForOhosEntry = tasks.register<Sync>("copyMrKuiklyAssetsForOhosEntry") {
+    dependsOn(":shared:generateMRohosArm64Main", ":shared:mergeOhosResources")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    into(layout.projectDirectory.dir("ohosApp/entry/mr-kuikly-assets"))
+    from(
+        project(":shared")
+            .layout
+            .buildDirectory
+            .dir("generated/tmm-res/ohosArm64Main/res/rawfile/assets")
+    ) {
+        into("resfile/assets")
+    }
+    from(
+        project(":shared")
+            .layout
+            .buildDirectory
+            .dir("generated/tmm-res/ohosArm64Main/mergeRes/rawfile/assets")
+    ) {
+        into("resfile/assets")
+    }
+    includeEmptyDirs = false
+    preserve { include(".gitkeep") }
+}
 project(":shared").tasks.matching { it.name == "mergeOhosResources" }.configureEach {
-    finalizedBy(copyMrResourcesForOhosEntry)
+    finalizedBy(copyMrResourcesForOhosEntry, copyMrKuiklyAssetsForOhosEntry)
 }
