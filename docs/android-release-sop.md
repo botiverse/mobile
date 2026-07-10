@@ -60,8 +60,9 @@ The preflight fails closed when any of these facts is false:
 1. The checkout is clean `main` and exactly matches `origin/main`.
 2. Every `--required-pr` is merged and its merge commit is an ancestor of the
    release head.
-3. The release head has successful `Commit Sign-off` and `Test` GitHub
-   workflows.
+3. The release head has a successful `Commit Sign-off` workflow. The Android
+   Release workflow itself is the candidate build/test gate; do not run a
+   separate exact-head `Test` workflow for release.
 4. The checked-in Kuikly gitlink is reachable from `origin/staging2`; the
    operator must not publish a detached/orphan Kuikly commit during release.
 5. The OHOS Hands dependency is complete: `libs/hands.har` is readable,
@@ -83,6 +84,10 @@ the cancellable `Android Release` draft workflow first, then runs the full
 preflight concurrently. If preflight fails, the wrapper cancels the exact
 GitHub Actions run it dispatched and exits nonzero. This overlaps the long
 build with read-only validation; it does not relax any release gate.
+
+`Android Release` is the only compile/test workflow required for the candidate.
+Its own failure prevents draft creation, so triggering a separate `Test`
+workflow would only duplicate the same build signal.
 
 For a diagnosis that must prove preflight before a workflow is dispatched, pass
 `--preflight-first`. The wrapper has no active-publish mode.

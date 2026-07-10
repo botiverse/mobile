@@ -188,7 +188,7 @@ import sys
 path, head = sys.argv[1:]
 with open(path, encoding="utf-8") as source:
     runs = json.load(source)
-required = ("Commit Sign-off", "Test")
+required = ("Commit Sign-off",)
 missing = []
 for name in required:
     if not any(run.get("name") == name and run.get("headSha") == head and run.get("conclusion") == "success" for run in runs):
@@ -260,7 +260,7 @@ if [ -n "${REPORT_PATH}" ]; then
     printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
     printf -- '- Kuikly gitlink: `%s` reachable from `%s/%s`\n' "${KUIKLY_SHA}" "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}"
     printf -- '- OHOS Hands HAR: `%s@%s` with manifest and lock pin\n' "${HANDS_HAR_NAME}" "${HANDS_HAR_VERSION}"
-    printf -- '- Required CI: `Commit Sign-off` and `Test` succeeded for this head\n'
+    printf -- '- Required CI: `Commit Sign-off` succeeded for this head; Android Release is the candidate build/test gate\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
     else
