@@ -201,8 +201,74 @@ class ThreadComposerPayloadTest {
                 guard = guard,
                 syncNonce = 4,
                 nextText = "",
-                nextAsTask = false,
                 localText = "saved reply",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardIgnoresPreClearTextEchoAfterSend() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 5,
+                previousLocalText = "sent body",
+                previousLocalAsTask = true,
+                restoredText = "",
+                restoredAsTask = false
+            )
+
+        assertTrue(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = guard,
+                syncNonce = 5,
+                nextText = "sent body",
+                localText = "",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardDoesNotIgnoreDifferentImeCommitAfterClear() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 5,
+                previousLocalText = "pin",
+                previousLocalAsTask = false,
+                restoredText = "",
+                restoredAsTask = false
+            )
+
+        assertFalse(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = guard,
+                syncNonce = 5,
+                nextText = "拼",
+                localText = "",
+                localAsTask = false
+            )
+        )
+    }
+
+    @Test
+    fun staleCallbackGuardDoesNotIgnoreSameTextReenteredAfterClearWindow() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 5,
+                previousLocalText = "sent body",
+                previousLocalAsTask = false,
+                restoredText = "",
+                restoredAsTask = false
+            )
+        val expiredGuard = expireThreadComposerClearStaleCallbackGuard(guard, syncNonce = 5)
+
+        assertFalse(
+            shouldIgnoreThreadComposerStaleCallback(
+                guard = expiredGuard,
+                syncNonce = 5,
+                nextText = "sent body",
+                localText = "",
                 localAsTask = false
             )
         )
@@ -215,7 +281,6 @@ class ThreadComposerPayloadTest {
                 guard = null,
                 syncNonce = 4,
                 nextText = "",
-                nextAsTask = false,
                 localText = "saved reply",
                 localAsTask = false
             )
@@ -223,16 +288,7 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun staleCallbackGuardDoesNotArmForBlankHostSeedOrUnchangedLocalValue() {
-        assertNull(
-            threadComposerStaleCallbackGuard(
-                syncNonce = 4,
-                previousLocalText = "old text",
-                previousLocalAsTask = false,
-                restoredText = "",
-                restoredAsTask = false
-            )
-        )
+    fun staleCallbackGuardDoesNotArmForUnchangedLocalValue() {
         assertNull(
             threadComposerStaleCallbackGuard(
                 syncNonce = 4,
@@ -242,6 +298,20 @@ class ThreadComposerPayloadTest {
                 restoredAsTask = false
             )
         )
+    }
+
+    @Test
+    fun staleCallbackGuardKeepsNonBlankRestoreWindowUntilCallbackOrEdit() {
+        val guard =
+            threadComposerStaleCallbackGuard(
+                syncNonce = 4,
+                previousLocalText = "",
+                previousLocalAsTask = false,
+                restoredText = "saved reply",
+                restoredAsTask = false
+            )
+
+        assertEquals(guard, expireThreadComposerClearStaleCallbackGuard(guard, syncNonce = 4))
     }
 
     @Test
@@ -260,7 +330,6 @@ class ThreadComposerPayloadTest {
                 guard = guard,
                 syncNonce = 4,
                 nextText = "saved reply plus",
-                nextAsTask = false,
                 localText = "saved reply",
                 localAsTask = false
             )
@@ -270,7 +339,6 @@ class ThreadComposerPayloadTest {
                 guard = guard,
                 syncNonce = 5,
                 nextText = "",
-                nextAsTask = false,
                 localText = "saved reply",
                 localAsTask = false
             )
