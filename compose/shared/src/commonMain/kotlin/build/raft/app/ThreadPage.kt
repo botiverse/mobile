@@ -3082,12 +3082,92 @@ internal fun SharedThreadRouteContent(
     val unableToOpenTaskNumberTemplate =
         stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+    val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
+    val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
+    val copiedLabel = stringResource(MR.strings.thread_feedback_copied)
+    val linksCopiedLabel = stringResource(MR.strings.thread_feedback_links_copied)
+    val forwardNeedsApiTemplate =
+        stringResource(
+            MR.strings.thread_forward_needs_api,
+            ThreadLocalizedFeedbackPlaceholder,
+            "__RAFT_TARGET__"
+        )
+    val forwardCompletedTemplate =
+        stringResource(
+            MR.strings.thread_forward_completed,
+            ThreadLocalizedFeedbackPlaceholder,
+            "__RAFT_TARGET__"
+        )
+    val forwardJoinFirstTemplate =
+        stringResource(MR.strings.thread_forward_join_first, ThreadLocalizedFeedbackPlaceholder)
+    val forwardGroupUnavailableLabel = stringResource(MR.strings.thread_forward_group_unavailable)
+    val forwardMultiSelectUnavailableLabel = stringResource(MR.strings.thread_forward_multi_select_unavailable)
+    val unableToCopyLinkLabel = stringResource(MR.strings.thread_error_copy_link)
+    val noTextToSelectLabel = stringResource(MR.strings.thread_error_no_text_select)
+    val followedThreadLabel = stringResource(MR.strings.thread_feedback_followed)
+    val unableToFollowThreadLabel = stringResource(MR.strings.thread_error_follow)
+    val unfollowedThreadLabel = stringResource(MR.strings.thread_feedback_unfollowed)
+    val unableToUnfollowThreadLabel = stringResource(MR.strings.thread_error_unfollow)
+    val searchUnavailableLabel = stringResource(MR.strings.thread_error_search_unavailable)
+    val actionUnavailableLabel = stringResource(MR.strings.thread_error_action_unavailable)
+    val actionUnsupportedLabel = stringResource(MR.strings.thread_error_action_unsupported)
+    val unableToUpdateReactionLabel = stringResource(MR.strings.thread_error_update_reaction)
+    val commentSourceUnavailableLabel = stringResource(MR.strings.thread_error_comment_source)
+    val memberNotFoundTemplate =
+        stringResource(MR.strings.thread_error_member_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val memberAddedLabel = stringResource(MR.strings.thread_feedback_member_added)
+    val unableToAddMemberLabel = stringResource(MR.strings.thread_error_add_member)
+    val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
+    val unableToRemoveMemberLabel = stringResource(MR.strings.thread_error_remove_member)
+    val visibilityNotWiredLabel = stringResource(MR.strings.thread_error_visibility_not_wired)
+    val channelArchivedLabel = stringResource(MR.strings.thread_feedback_channel_archived)
+    val unableToArchiveChannelLabel = stringResource(MR.strings.thread_error_archive_channel)
+    val channelDeletedLabel = stringResource(MR.strings.thread_feedback_channel_deleted)
+    val unableToDeleteChannelLabel = stringResource(MR.strings.thread_error_delete_channel)
+    val unableToConvertMessageLabel = stringResource(MR.strings.thread_error_convert_message)
+    val taskCreatedLabel = stringResource(MR.strings.thread_feedback_task_created)
+    val unsupportedTaskStatusLabel = stringResource(MR.strings.thread_error_task_status_unsupported)
+    val taskUpdatedLabel = stringResource(MR.strings.thread_feedback_task_updated)
+    val unableToUpdateTaskLabel = stringResource(MR.strings.thread_error_update_task)
+    val unableToJoinChannelLabel = stringResource(MR.strings.thread_error_join_channel)
+    val joinedChannelLabel = stringResource(MR.strings.thread_feedback_joined_channel)
+    val attachmentRetryUnavailableLabel = stringResource(MR.strings.thread_error_attachment_retry)
+    val mergedForwardModeLabel = stringResource(MR.strings.thread_forward_mode_merged)
+    val individualForwardModeLabel = stringResource(MR.strings.thread_forward_mode_individual)
+    val imageSavedLabel = stringResource(MR.strings.thread_feedback_image_saved)
+    val unableToExportImageLabel = stringResource(MR.strings.thread_error_export_image)
+    val unableToForwardLabel = stringResource(MR.strings.thread_error_forward)
+    val unableToSaveMessageLabel = stringResource(MR.strings.thread_error_save_message)
+    val unableToRemoveSavedMessageLabel = stringResource(MR.strings.thread_error_remove_saved_message)
+    val attachmentSkippedOneLabel = stringResource(MR.strings.thread_attachment_skipped_one)
+    val attachmentSkippedManyTemplate =
+        stringResource(MR.strings.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
         attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
     fun localizedUnableToOpenTarget(target: String): String =
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
         unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
+    fun localizedForwardModeLabel(mode: String?): String =
+        if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
+            individualForwardModeLabel
+        } else {
+            mergedForwardModeLabel
+        }
+    fun localizedForwardNeedsApi(mode: String, target: String): String =
+        forwardNeedsApiTemplate
+            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
+            .replace("__RAFT_TARGET__", target)
+    fun localizedForwardCompleted(mode: String, target: String): String =
+        forwardCompletedTemplate
+            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
+            .replace("__RAFT_TARGET__", target)
+    fun localizedForwardJoinFirst(target: String): String =
+        forwardJoinFirstTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedMemberNotFound(target: String): String =
+        memberNotFoundTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedAttachmentSkippedMany(count: Int): String =
+        attachmentSkippedManyTemplate.replace(ThreadLocalizedFeedbackPlaceholder, count.toString())
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -4290,7 +4370,7 @@ internal fun SharedThreadRouteContent(
     fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
-            bridge.toast("Attachment picker unavailable")
+            bridge.toast(attachmentPickerUnavailableLabel)
             return
         }
         val activeUploadFileRefs =
@@ -4627,7 +4707,7 @@ internal fun SharedThreadRouteContent(
                             filesViewModel.state.value.payload.items.firstOrNull { it.attachmentId == itemId }
                         val sourceMessageId = fileItem?.threadFileSourceFocusMessageId()
                         if (sourceMessageId == null) {
-                            bridge.toast("File source unavailable")
+                            bridge.toast(fileSourceUnavailableLabel)
                             return@ThreadPageContent
                         }
                         threadViewModel.dispatch(
@@ -4644,45 +4724,45 @@ internal fun SharedThreadRouteContent(
                     val body = renderedTimelineSlice.threadMessageById(itemId)?.body.orEmpty()
                     if (body.isNotBlank()) {
                         bridge.copyToPasteboard(body)
-                        bridge.toast("Copied")
+                        bridge.toast(copiedLabel)
                     }
                 }
                 action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast("Copied")
+                    bridge.toast(copiedLabel)
                 }
                 action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast("Links copied")
+                    bridge.toast(linksCopiedLabel)
                 }
                 action == "shareSelectionImageSaved" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Image saved")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: imageSavedLabel)
                 }
                 action == "shareSelectionExportFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to export image")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToExportImageLabel)
                 }
                 action == "forwardTargetSelected" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = tab.threadForwardSelectionModeLabel()
-                    bridge.toast("$modeLabel forwarding to $target needs API support")
+                    val modeLabel = localizedForwardModeLabel(tab)
+                    bridge.toast(localizedForwardNeedsApi(modeLabel, target))
                 }
                 action == "forwardMessagesSent" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = tab.threadForwardSelectionModeLabel()
-                    bridge.toast("$modeLabel forwarded to $target")
+                    val modeLabel = localizedForwardModeLabel(tab)
+                    bridge.toast(localizedForwardCompleted(modeLabel, target))
                 }
                 action == "forwardMessagesFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to forward")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToForwardLabel)
                 }
                 action == "forwardJoinConfirmationRequired" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "that channel"
-                    bridge.toast("Join $target before forwarding")
+                    bridge.toast(localizedForwardJoinFirst(target))
                 }
                 action == "forwardCreateGroupRequested" -> {
-                    bridge.toast("Create group forwarding needs API support")
+                    bridge.toast(forwardGroupUnavailableLabel)
                 }
                 action == "forwardMultiSelectRequested" -> {
-                    bridge.toast("Multi-select forwarding needs API support")
+                    bridge.toast(forwardMultiSelectUnavailableLabel)
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
@@ -4696,15 +4776,15 @@ internal fun SharedThreadRouteContent(
                         }
                     if (permalink != null) {
                         bridge.copyToPasteboard(permalink)
-                        bridge.toast("Copied")
+                        bridge.toast(copiedLabel)
                     } else {
-                        bridge.toast("Unable to copy link")
+                        bridge.toast(unableToCopyLinkLabel)
                     }
                 }
                 action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
                     val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message?.body.isNullOrBlank()) {
-                        bridge.toast("No text to select")
+                        bridge.toast(noTextToSelectLabel)
                     } else {
                         textSelectionMessage = message
                     }
@@ -4768,15 +4848,15 @@ internal fun SharedThreadRouteContent(
                                             replyCount = result.data.replyCount
                                         )
                                     )
-                                    bridge.toast("Followed thread")
+                                    bridge.toast(followedThreadLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to follow thread")
+                                    bridge.toast(unableToFollowThreadLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to follow thread")
+                                    bridge.toast(unableToFollowThreadLabel)
                                 }
                             }
                         } finally {
@@ -4801,15 +4881,15 @@ internal fun SharedThreadRouteContent(
                                             followed = false
                                         )
                                     )
-                                    bridge.toast("Unfollowed thread")
+                                    bridge.toast(unfollowedThreadLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to unfollow thread")
+                                    bridge.toast(unableToUnfollowThreadLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to unfollow thread")
+                                    bridge.toast(unableToUnfollowThreadLabel)
                                 }
                             }
                         } finally {
@@ -4839,7 +4919,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openChannelSearch" -> {
                     if (!pager.openThreadChannelSearch(renderedThread)) {
-                        bridge.toast("Search is unavailable for this thread")
+                        bridge.toast(searchUnavailableLabel)
                     }
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
@@ -4860,12 +4940,12 @@ internal fun SharedThreadRouteContent(
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
-                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
+                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
                             }
                             is DataResult.NoPermission -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
+                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
                             }
                         }
                     }
@@ -4877,11 +4957,11 @@ internal fun SharedThreadRouteContent(
                     val actionCard =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.threadActionCard()
                     if (actionCard == null) {
-                        bridge.toast("Action is no longer available")
+                        bridge.toast(actionUnavailableLabel)
                         return@ThreadPageContent
                     }
                     if (!actionCard.isSupportedCommitAction()) {
-                        bridge.toast("Action is not supported yet")
+                        bridge.toast(actionUnsupportedLabel)
                         return@ThreadPageContent
                     }
                     if (actionCard.type.equals("agent:create", ignoreCase = true)) {
@@ -4948,14 +5028,14 @@ internal fun SharedThreadRouteContent(
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast("Unable to update reaction")
+                                    bridge.toast(unableToUpdateReactionLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast("Unable to update reaction")
+                                    bridge.toast(unableToUpdateReactionLabel)
                                 }
                             }
                         } finally {
@@ -5051,7 +5131,7 @@ internal fun SharedThreadRouteContent(
                     val hostMessageId = commentRef?.hostMessageId?.takeIf { it.isNotBlank() }
                     val loadingPayload = commentRef?.let { renderedThread.commentHostLoadingPayload(it) }
                     if (hostMessageId == null || loadingPayload == null) {
-                        bridge.toast("Comment source unavailable")
+                        bridge.toast(commentSourceUnavailableLabel)
                         return@ThreadPageContent
                     }
                     bridge.log(
@@ -5125,7 +5205,7 @@ internal fun SharedThreadRouteContent(
                                 serverMembers = serverMembers
                             )
                         if (target == null) {
-                            bridge.toast("No member found for ${itemId.take(32)}")
+                            bridge.toast(localizedMemberNotFound(itemId.take(32)))
                         } else {
                             onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.memberId, target.memberKind, target.sourceServerId)
                         }
@@ -5189,7 +5269,7 @@ internal fun SharedThreadRouteContent(
                                         canAddMembers = result.data.canAddMembers
                                     )
                                 )
-                                bridge.toast("Member added")
+                                bridge.toast(memberAddedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -5197,7 +5277,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast("Unable to add member")
+                                bridge.toast(unableToAddMemberLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -5205,7 +5285,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast("Unable to add member")
+                                bridge.toast(unableToAddMemberLabel)
                             }
                         }
                     }
@@ -5231,7 +5311,7 @@ internal fun SharedThreadRouteContent(
                                         canAddMembers = result.data.canAddMembers
                                     )
                                 )
-                                bridge.toast("Member removed")
+                                bridge.toast(memberRemovedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -5243,7 +5323,7 @@ internal fun SharedThreadRouteContent(
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast("Unable to remove member")
+                                bridge.toast(unableToRemoveMemberLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -5255,27 +5335,27 @@ internal fun SharedThreadRouteContent(
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast("Unable to remove member")
+                                bridge.toast(unableToRemoveMemberLabel)
                             }
                         }
                     }
                 }
                 action == "settingsAction" && itemId == "visibility" -> {
-                    bridge.toast("Channel visibility updates are not wired yet")
+                    bridge.toast(visibilityNotWiredLabel)
                 }
                 action == "settingsAction" && itemId == "archive" -> {
                     val previousPayload = renderedThread
                     coroutineScope.launch {
                         when (val result = dataSource.archiveChannel(previousPayload)) {
                             is DataResult.Content -> {
-                                bridge.toast("Channel archived")
+                                bridge.toast(channelArchivedLabel)
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to archive channel")
+                            is DataResult.Error -> bridge.toast(unableToArchiveChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to archive channel")
+                                bridge.toast(unableToArchiveChannelLabel)
                             }
                         }
                     }
@@ -5285,14 +5365,14 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.deleteChannel(previousPayload)) {
                             is DataResult.Content -> {
-                                bridge.toast("Channel deleted")
+                                bridge.toast(channelDeletedLabel)
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to delete channel")
+                            is DataResult.Error -> bridge.toast(unableToDeleteChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to delete channel")
+                                bridge.toast(unableToDeleteChannelLabel)
                             }
                         }
                     }
@@ -5303,7 +5383,7 @@ internal fun SharedThreadRouteContent(
                     }
                     val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
-                        bridge.toast("Unable to convert message")
+                        bridge.toast(unableToConvertMessageLabel)
                         return@ThreadPageContent
                     }
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
@@ -5312,15 +5392,15 @@ internal fun SharedThreadRouteContent(
                             when (val result = dataSource.convertMessageToTask(itemId)) {
                                 is DataResult.Content -> {
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(result.data))
-                                    bridge.toast("Task created")
+                                    bridge.toast(taskCreatedLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to convert message")
+                                    bridge.toast(unableToConvertMessageLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to convert message")
+                                    bridge.toast(unableToConvertMessageLabel)
                                 }
                             }
                         } finally {
@@ -5331,7 +5411,7 @@ internal fun SharedThreadRouteContent(
                 action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     val status = tab.toSharedThreadTaskStatus()
                     if (status == null) {
-                        bridge.toast("Unsupported task status")
+                        bridge.toast(unsupportedTaskStatusLabel)
                         return@ThreadPageContent
                     }
                     val previousPayload = renderedThread
@@ -5343,21 +5423,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5372,21 +5452,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5401,21 +5481,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5423,7 +5503,7 @@ internal fun SharedThreadRouteContent(
                 action == "joinChannel" -> {
                     val channelId = renderedThread.joinChannelTargetId()
                     if (channelId == null) {
-                        bridge.toast("Unable to join channel")
+                        bridge.toast(unableToJoinChannelLabel)
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -5431,13 +5511,13 @@ internal fun SharedThreadRouteContent(
                             is DataResult.Content -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
                                 realtimeEvents.joinChannel(result.data.channelId.value)
-                                bridge.toast("Joined channel")
+                                bridge.toast(joinedChannelLabel)
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to join channel")
+                            is DataResult.Error -> bridge.toast(unableToJoinChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to join channel")
+                                bridge.toast(unableToJoinChannelLabel)
                             }
                         }
                     }
@@ -5732,7 +5812,7 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         val channelId = composerSurface.sendChannelId
                         if (channelId == null) {
-                            bridge.toast("Attachment picker unavailable")
+                            bridge.toast(attachmentPickerUnavailableLabel)
                             return@launch
                         }
                         val response =
@@ -5756,7 +5836,7 @@ internal fun SharedThreadRouteContent(
                                         )
                                     )
                                 response == null ->
-                                    bridge.toast("Attachment picker unavailable")
+                                    bridge.toast(attachmentPickerUnavailableLabel)
                             }
                             return@launch
                         }
@@ -5764,9 +5844,9 @@ internal fun SharedThreadRouteContent(
                         if (skippedCount > 0) {
                             bridge.toast(
                                 if (skippedCount == 1) {
-                                    "One attachment could not be read and was skipped."
+                                    attachmentSkippedOneLabel
                                 } else {
-                                    "$skippedCount attachments could not be read and were skipped."
+                                    localizedAttachmentSkippedMany(skippedCount)
                                 }
                             )
                         }
@@ -5797,7 +5877,7 @@ internal fun SharedThreadRouteContent(
                             bridge.log(
                                 "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
                             )
-                            bridge.toast("Attachment retry unavailable. Remove and attach again.")
+                            bridge.toast(attachmentRetryUnavailableLabel)
                             return@ThreadPageContent
                         }
                         if (attachmentUploadJobs[id]?.isActive == true) {
@@ -5860,7 +5940,7 @@ internal fun SharedThreadRouteContent(
                 message = message,
                 onCopyAll = {
                     bridge.copyToPasteboard(message.body)
-                    bridge.toast("Copied")
+                    bridge.toast(copiedLabel)
                 },
                 onDismiss = { textSelectionMessage = null }
             )
