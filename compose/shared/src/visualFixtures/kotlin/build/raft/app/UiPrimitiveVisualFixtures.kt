@@ -274,7 +274,7 @@ internal fun UiStatusDotVisualContent() {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 SlockStatusDot(color = SlockColor.AccentLime)
                 SlockStatusDot(color = SlockColor.AccentOrange, size = 8.dp)
-                SlockStatusDot(color = SlockColor.EmptyStateGray, size = 11.dp)
+                SlockStatusDot(color = SlockColor.StatusNeutralGray, size = 11.dp)
                 SlockStatusDot(color = SlockColor.AccentCyan)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
