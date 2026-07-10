@@ -10,6 +10,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
@@ -157,8 +158,8 @@ class IosPushRegistrationTest {
     }
 
     @Test
-    fun canonicalSessionChangesFlowTriggersRegistrationWithoutSaveSessionHook() = runBlocking {
-        val store = InMemorySlockAuthSessionStore()
+    fun typedSessionEventsTriggerStartupReconcileAndRegistrationWake() = runBlocking {
+        val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
         val observed = CompletableDeferred<Unit>()
         var savedEvents = 0
         SlockPushRegistrationLifecycle.install(
@@ -168,45 +169,89 @@ class IosPushRegistrationTest {
                     if (savedEvents == 2) observed.complete(Unit)
                 }
 
-                override fun onSessionInvalidated() = Unit
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
 
                 override suspend fun unbindBeforeLogout() = Unit
             }
         )
-        SlockPushRegistrationLifecycle.observeSessionChanges(
-            source = store.sessionChanges,
+        SlockPushRegistrationLifecycle.observeSessionEvents(
+            source = events,
             scope = CoroutineScope(SupervisorJob())
         )
 
-        store.saveSession(storedSession("user-1"))
+        events.emit(AuthSessionEvent.Authenticated(generation = 1))
 
         withTimeout(1_000) { observed.await() }
     }
 
     @Test
-    fun canonicalSessionInvalidationDisablesRemoteNotifications() = runBlocking {
-        val authStore = InMemorySlockAuthSessionStore()
-        authStore.saveSession(storedSession("user-1"))
-        val invalidated = CompletableDeferred<Unit>()
+    fun typedAuthLossRoutesToInvalidationAndRejectsLateOlderEvents() = runBlocking {
+        val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
+        val invalidated = CompletableDeferred<AuthSessionClearReason>()
+        var savedEvents = 0
         SlockPushRegistrationLifecycle.install(
             object : SlockPushRegistrationLifecycleSink {
-                override fun onSessionSaved() = Unit
+                override fun onSessionSaved() {
+                    savedEvents += 1
+                }
 
-                override fun onSessionInvalidated() {
-                    invalidated.complete(Unit)
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) {
+                    invalidated.complete(reason)
                 }
 
                 override suspend fun unbindBeforeLogout() = Unit
             }
         )
-        SlockPushRegistrationLifecycle.observeSessionInvalidations(
-            source = authStore.sessionInvalidations,
+        SlockPushRegistrationLifecycle.observeSessionEvents(
+            source = events,
             scope = CoroutineScope(SupervisorJob())
         )
 
-        authStore.clearSession(reason = "test", source = "test")
+        events.emit(AuthSessionEvent.TokensRotated(generation = 2))
+        events.emit(AuthSessionEvent.Cleared(generation = 1, reason = AuthSessionClearReason.Logout))
+        events.emit(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.AuthLoss))
 
-        withTimeout(1_000) { invalidated.await() }
+        assertEquals(AuthSessionClearReason.AuthLoss, withTimeout(1_000) { invalidated.await() })
+        assertEquals(2, savedEvents, "startup reconcile plus generation-2 wake; stale generation-1 is ignored")
+    }
+
+    @Test
+    fun crossInstanceMatchedAuthLossClearUnregistersWithoutAuthenticatedDelete() = runBlocking {
+        val authKv = InMemorySlockKeyValueStore()
+        val observedStore = KeyValueAuthSessionStore(authKv)
+        val clearingStore = KeyValueAuthSessionStore(authKv)
+        val session = storedSession("user-1")
+        observedStore.replaceAuthenticatedSession(session)
+        val remoteNotifications = RecordingRemoteNotificationsController()
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                currentSession = { observedStore.readSession() },
+                api = api,
+                remoteNotificationsController = remoteNotifications
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.updateRegistration("a0b1c2d3", "build.raft.app", "production", "1.3.0"))
+
+        val unregistered = CompletableDeferred<Unit>()
+        remoteNotifications.onDisabled = { unregistered.complete(Unit) }
+        SlockPushRegistrationLifecycle.install(coordinator)
+        SlockPushRegistrationLifecycle.observeSessionEvents(
+            source = observedStore.authSessionEvents,
+            scope = CoroutineScope(SupervisorJob())
+        )
+
+        assertTrue(
+            clearingStore.clearSessionFromSessionClearedNotify(
+                reason = "remote_session_cleared",
+                previousSessionFingerprint = session.authSessionClearFingerprint()
+            )
+        )
+        withTimeout(1_000) { unregistered.await() }
+
+        assertEquals(listOf(true, false), remoteNotifications.states)
+        assertEquals(1, api.calls.count { it.startsWith("POST ") })
+        assertEquals(0, api.calls.count { it.startsWith("DELETE ") }, "auth loss has no valid token for DELETE")
     }
 
     @Test
@@ -312,9 +357,11 @@ class IosPushRegistrationTest {
 
     private class RecordingRemoteNotificationsController : SlockIosRemoteNotificationsController {
         val states = mutableListOf<Boolean>()
+        var onDisabled: (() -> Unit)? = null
 
         override suspend fun setEnabled(enabled: Boolean) {
             states += enabled
+            if (!enabled) onDisabled?.invoke()
         }
     }
 

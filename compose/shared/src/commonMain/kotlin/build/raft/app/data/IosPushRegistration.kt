@@ -64,7 +64,7 @@ internal class SlockPushRegistrationNetworkApi(
 
 internal interface SlockPushRegistrationLifecycleSink {
     fun onSessionSaved()
-    fun onSessionInvalidated()
+    fun onSessionInvalidated(reason: AuthSessionClearReason)
     suspend fun unbindBeforeLogout()
 }
 
@@ -73,38 +73,26 @@ internal object SlockPushRegistrationLifecycle {
     private var sink: SlockPushRegistrationLifecycleSink? = null
 
     @Volatile
-    private var sessionChanges: SharedFlow<String>? = null
-
-    @Volatile
-    private var sessionInvalidations: SharedFlow<Unit>? = null
+    private var sessionEvents: SharedFlow<AuthSessionEvent>? = null
 
     @Volatile
     private var observerScope: CoroutineScope? = null
 
-    private var sessionChangesObserverJob: Job? = null
-    private var sessionInvalidationsObserverJob: Job? = null
+    private var sessionEventsObserverJob: Job? = null
+    private var lastObservedGeneration = 0L
 
     fun install(next: SlockPushRegistrationLifecycleSink) {
         sink = next
         startObserversIfReady()
     }
 
-    fun observeSessionChanges(source: SharedFlow<String>, scope: CoroutineScope) {
-        if (sessionChanges !== source) {
-            sessionChangesObserverJob?.cancel()
-            sessionChangesObserverJob = null
+    fun observeSessionEvents(source: SharedFlow<AuthSessionEvent>, scope: CoroutineScope) {
+        if (sessionEvents !== source) {
+            sessionEventsObserverJob?.cancel()
+            sessionEventsObserverJob = null
+            lastObservedGeneration = 0L
         }
-        sessionChanges = source
-        observerScope = scope
-        startObserversIfReady()
-    }
-
-    fun observeSessionInvalidations(source: SharedFlow<Unit>, scope: CoroutineScope) {
-        if (sessionInvalidations !== source) {
-            sessionInvalidationsObserverJob?.cancel()
-            sessionInvalidationsObserverJob = null
-        }
-        sessionInvalidations = source
+        sessionEvents = source
         observerScope = scope
         startObserversIfReady()
     }
@@ -113,48 +101,39 @@ internal object SlockPushRegistrationLifecycle {
         sink?.onSessionSaved()
     }
 
-    fun onSessionInvalidated() {
-        sink?.onSessionInvalidated()
-    }
-
     suspend fun unbindBeforeLogout() {
         sink?.unbindBeforeLogout()
     }
 
     internal fun clearForTests() {
-        sessionChangesObserverJob?.cancel()
-        sessionChangesObserverJob = null
-        sessionInvalidationsObserverJob?.cancel()
-        sessionInvalidationsObserverJob = null
+        sessionEventsObserverJob?.cancel()
+        sessionEventsObserverJob = null
         sink = null
-        sessionChanges = null
-        sessionInvalidations = null
+        sessionEvents = null
         observerScope = null
+        lastObservedGeneration = 0L
     }
 
     private fun startObserversIfReady() {
         if (sink == null) return
         val scope = observerScope ?: return
-        if (sessionChangesObserverJob == null) {
-            sessionChanges?.let { source ->
-                sessionChangesObserverJob =
+        if (sessionEventsObserverJob == null) {
+            sessionEvents?.let { source ->
+                sessionEventsObserverJob =
                     scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        // Events are wake signals, not state. Reconcile persisted
-                        // auth once at observer startup so a replay=0 flow cannot
-                        // strand an already-authenticated installation.
+                        // Events are wake signals, not state. Reconcile persisted auth once at
+                        // observer startup so replay=0 cannot strand an already-authenticated
+                        // installation. Generation max-advance rejects a late older emission.
                         sink?.onSessionSaved()
-                        source.collect {
-                            sink?.onSessionSaved()
-                        }
-                    }
-            }
-        }
-        if (sessionInvalidationsObserverJob == null) {
-            sessionInvalidations?.let { source ->
-                sessionInvalidationsObserverJob =
-                    scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        source.collect {
-                            sink?.onSessionInvalidated()
+                        source.collect { event ->
+                            if (event.generation <= lastObservedGeneration) return@collect
+                            lastObservedGeneration = event.generation
+                            when (event) {
+                                is AuthSessionEvent.Cleared -> sink?.onSessionInvalidated(event.reason)
+                                is AuthSessionEvent.Authenticated,
+                                is AuthSessionEvent.TokensRotated,
+                                is AuthSessionEvent.BindingMetadataChanged -> sink?.onSessionSaved()
+                            }
                         }
                     }
             }
@@ -241,9 +220,9 @@ internal class SlockIosPushRegistrationCoordinator(
         }
     }
 
-    override fun onSessionInvalidated() {
+    override fun onSessionInvalidated(reason: AuthSessionClearReason) {
         scope.launch {
-            handleSessionInvalidated(reason = "session_invalidated")
+            handleSessionInvalidated(reason = "session_${reason.name.lowercase()}")
         }
     }
 

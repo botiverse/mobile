@@ -465,12 +465,8 @@ internal class SlockSharedStoreProvider private constructor(
                 threadSendScope = CoroutineScope(SupervisorJob())
             ).also {
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
-                SlockPushRegistrationLifecycle.observeSessionChanges(
-                    source = authStore.sessionChanges,
-                    scope = pushLifecycleScope
-                )
-                SlockPushRegistrationLifecycle.observeSessionInvalidations(
-                    source = authStore.sessionInvalidations,
+                SlockPushRegistrationLifecycle.observeSessionEvents(
+                    source = authStore.authSessionEvents,
                     scope = pushLifecycleScope
                 )
             }
