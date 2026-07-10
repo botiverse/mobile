@@ -115,7 +115,8 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
-        delegate.replaceAuthenticatedSession(session.withProcessSelectionPreserved())
+        resolveSelection(session)
+        delegate.replaceAuthenticatedSessionPreservingSelection(session)
     }
 
     override suspend fun rotateTokensIfMatch(
@@ -150,27 +151,6 @@ internal class SlockShellAuthSessionStore(
             )
         }
         delegate.readSession()?.let { resolveSelection(it) }
-    }
-
-    private suspend fun StoredAuthSession.withProcessSelectionPreserved(): StoredAuthSession {
-        resolveSelection(this)
-        val persistedSession = delegate.readSession()
-        val sameUserPersistedSession = persistedSession?.takeIf { it.user.id == user.id }
-        val persistedSelection =
-            if (sameUserPersistedSession != null) {
-                sameUserPersistedSession.selectedServerId
-                    ?.takeIf { selected -> servers.any { it.id == selected } }
-            } else {
-                selectedServerId
-                    ?.takeIf { selected -> servers.any { it.id == selected } }
-            }
-        val persistedSelectionSlug =
-            persistedSelection
-                ?.let { selected -> servers.firstOrNull { it.id == selected }?.slug }
-        return copy(
-            selectedServerId = persistedSelection,
-            selectedServerSlug = persistedSelectionSlug
-        )
     }
 
     private suspend fun StoredAuthSession.withShellSelection(): StoredAuthSession {
