@@ -10190,16 +10190,22 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(threadInstanceKey, latestItemIndex) {
         snapshotFlow {
-            listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
+            ThreadBottomAutoAnchorAvailabilityState(
+                currentAllow = allowBottomAutoAnchor,
+                isScrollInProgress = listState.isScrollInProgress,
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                focusedAnchorOwnsViewport =
+                    focusedMessageAnchorOwnsViewport(
+                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                    )
+            )
         }
             .distinctUntilChanged()
-            .collect { (isScrollInProgress, isAtBottom) ->
-                val nextAllow =
-                    when {
-                        isScrollInProgress && !isAtBottom -> false
-                        isAtBottom -> true
-                        else -> allowBottomAutoAnchor
-                    }
+            .collect { state ->
+                val nextAllow = resolveThreadBottomAutoAnchorAllowed(state)
                 if (allowBottomAutoAnchor != nextAllow) {
                     allowBottomAutoAnchor = nextAllow
                 }
@@ -10211,7 +10217,14 @@ private fun ThreadMessagesList(
             ThreadBottomAnchorCorrectionState(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
                 isScrollInProgress = listState.isScrollInProgress,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                focusedAnchorOwnsViewport =
+                    focusedMessageAnchorOwnsViewport(
+                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                        consumedIdentity = consumedFocusedMessageAnchorIdentity,
+                        scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity,
+                        yieldElapsedMs = bottomAnchorFocusedYieldElapsedMs
+                    )
             )
         }
             .distinctUntilChanged()
@@ -11605,14 +11618,46 @@ internal fun shouldContinueLatestLocalSendBottomAnchor(
     return isSendingAnchorVisible || !isAtRenderedBottom || attempt < ThreadBottomAnchorMinimumAttempts
 }
 
+internal fun focusedMessageAnchorOwnsViewport(
+    pendingIdentity: String?,
+    consumedIdentity: String?,
+    scrollInterruptedIdentity: String?,
+    yieldElapsedMs: Long
+): Boolean =
+    shouldYieldBottomAnchorToFocusedAnchor(
+        pendingIdentity = pendingIdentity,
+        consumedIdentity = consumedIdentity,
+        scrollInterruptedIdentity = scrollInterruptedIdentity,
+        yieldElapsedMs = yieldElapsedMs
+    )
+
+internal data class ThreadBottomAutoAnchorAvailabilityState(
+    val currentAllow: Boolean,
+    val isScrollInProgress: Boolean,
+    val isAtRenderedBottom: Boolean,
+    val focusedAnchorOwnsViewport: Boolean
+)
+
+internal fun resolveThreadBottomAutoAnchorAllowed(
+    state: ThreadBottomAutoAnchorAvailabilityState
+): Boolean =
+    when {
+        state.focusedAnchorOwnsViewport -> false
+        state.isScrollInProgress && !state.isAtRenderedBottom -> false
+        state.isAtRenderedBottom -> true
+        else -> state.currentAllow
+    }
+
 internal data class ThreadBottomAnchorCorrectionState(
     val allowBottomAutoAnchor: Boolean,
     val isScrollInProgress: Boolean,
-    val isAtRenderedBottom: Boolean
+    val isAtRenderedBottom: Boolean,
+    val focusedAnchorOwnsViewport: Boolean = false
 )
 
 internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrectionState): Boolean =
     state.allowBottomAutoAnchor &&
+        !state.focusedAnchorOwnsViewport &&
         !state.isScrollInProgress &&
         !state.isAtRenderedBottom
 
