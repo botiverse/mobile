@@ -31,3 +31,33 @@ val copyResourceComposeLib = tasks.register<Copy>("copyResourceComposeLib") {
 tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
     finalizedBy(copyResourceComposeLib)
 }
+
+// KmmResource generated MR resources (task #19): the resource generator's
+// mergeOhosResources collects slock_* string/color/plural JSONs from the
+// shared klibs into mergeRes, but nothing shipped them into the HAP — the
+// entry target's resource.directories references ./mr-res, synced here.
+// Hung off mergeOhosResources itself (the Kuikly host flow only runs the
+// shared link, never copyNetworkOhosRuntimeLibs), so any link refreshes it.
+// restool rejects the generator's BCP-47 locale dirs ("Invalid qualifier
+// key 'zh-CN'"), so locale segments are rewritten to qualifier form.
+val copyMrResourcesForOhosEntry = tasks.register<Sync>("copyMrResourcesForOhosEntry") {
+    dependsOn(":shared:mergeOhosResources")
+    from(project(":shared").layout.buildDirectory.dir("generated/tmm-res/ohosArm64Main/mergeRes"))
+    into(layout.projectDirectory.dir("ohosApp/entry/mr-res"))
+    includeEmptyDirs = false
+    eachFile {
+        // Only locale qualifier directories (zh-CN, en-US, sr-Latn-RS...)
+        // are rewritten; hyphenated asset filenames pass through untouched.
+        val localeDir = Regex("^[a-z]{2,3}(-[A-Za-z]{2,8})+${'$'}")
+        relativePath = RelativePath(
+            true,
+            *relativePath.segments.map {
+                if (localeDir.matches(it)) it.replace('-', '_') else it
+            }.toTypedArray()
+        )
+    }
+    preserve { include(".gitkeep") }
+}
+project(":shared").tasks.matching { it.name == "mergeOhosResources" }.configureEach {
+    finalizedBy(copyMrResourcesForOhosEntry)
+}
