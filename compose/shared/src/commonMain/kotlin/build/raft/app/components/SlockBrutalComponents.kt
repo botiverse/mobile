@@ -810,10 +810,16 @@ internal fun SlockBrutalActionButton(
     backgroundColor: Color = SlockColor.SurfaceWhite,
     // react bg-brutal-stone #C0B9B1 @ .btn-brutal-sm:disabled opacity-40 over white = #E6E3E0 (visual-fix pilot, AI analysis 2026-07-09)
     disabledBackgroundColor: Color = Color(0xFFE6E3E0),
-    disabledBorderColor: Color = SlockColor.BorderBlack,
-    disabledShadowColor: Color = SlockColor.ShadowBlack.copy(alpha = 0.40f),
-    disabledContentColor: Color = SlockColor.TextBlack.copy(alpha = 0.40f),
-    disabledIconColor: String = SlockColor.TextBlackArgb,
+    // Same react rule as the fill above: .btn-brutal-sm:disabled is the WHOLE
+    // element at opacity-40, so every part composites over white - border black
+    // -> #999999, shadow ink #141111 -> #A1A0A0, text black -> #999999. Opaque
+    // values on purpose: alpha on the shadow Box is unreliable in this render
+    // path (the 0.40f below still drew black) and opaque matches the #508 fill
+    // precedent.
+    disabledBorderColor: Color = Color(0xFF999999),
+    disabledShadowColor: Color = Color(0xFFA1A0A0),
+    disabledContentColor: Color = Color(0xFF999999),
+    disabledIconColor: String = "#FF999999",
     minWidth: Dp = 82.dp,
     minHeight: Dp = 40.dp,
     leadingIcon: SlockLucideIconName? = null,
