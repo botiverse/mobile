@@ -17,20 +17,20 @@
                 "systemBars": "hidden",
                 "validation": {
                   "uniqueColors": 530,
-                  "dominantRatio": 0.89052135
+                  "dominantRatio": 0.89157856
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 267,
-    "laidOutViews": 261,
+    "totalViews": 266,
+    "laidOutViews": 260,
     "visibleContentLeafViews": 2
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783688857759"
+              "capturedAt": "1783720496695"
             }

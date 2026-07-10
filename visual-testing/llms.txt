@@ -1,20 +1,20 @@
 # Raft Visual Testing
 
-Generated: 2026-07-10 13:25:02 UTC
-Latest run: 6df430f-20260710131759
-Latest commit: 6df430f-20260710131759
-Commit subject: fix(ohos): sync native runtimes before local run (#558)
+Generated: 2026-07-10 22:07:58 UTC
+Latest run: f845b2d-20260710220551
+Latest commit: f845b2d-20260710220551
+Commit subject: fix(home): remeasure server badge after switch (#592)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 89, same 0, pass 0, basic-pass 6, different 79, missing 4
-AI analysis: ready 85 / total 89, pending 4
+Summary: total 89, same 0, pass 0, basic-pass 2, different 83, missing 4
+AI analysis: ready 24 / total 89, pending 65
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 89, same 0, pass 0, basic-pass 6, different 79, missing 4
+- react__android: total 89, same 0, pass 0, basic-pass 2, different 83, missing 4
 - react__ios: total 89, same 0, pass 12, basic-pass 8, different 58, missing 11
-- android__ios: total 89, same 0, pass 17, basic-pass 12, different 52, missing 8
+- android__ios: total 89, same 0, pass 13, basic-pass 11, different 57, missing 8
 
 ## Capture Type Coverage
 
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- f845b2d-20260710220551: react vs android, total 89, pass 0, basic-pass 2, different 83, matrix runs/f845b2d-20260710220551/component-matrix.json, page runs/f845b2d-20260710220551/
 - 6df430f-20260710131759: react vs android, total 89, pass 0, basic-pass 6, different 79, matrix runs/6df430f-20260710131759/component-matrix.json, page runs/6df430f-20260710131759/
 - 4890633-20260709221654: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/4890633-20260709221654/component-matrix.json, page runs/4890633-20260709221654/
 - b7cbd7d-20260709142821: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/b7cbd7d-20260709142821/component-matrix.json, page runs/b7cbd7d-20260709142821/
