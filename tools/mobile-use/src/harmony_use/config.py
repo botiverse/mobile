@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 DEFAULT_DEVECO_HOME = Path("/Applications/DevEco-Studio.app/Contents")
-DEFAULT_BUNDLE = "build.raft.harmony"
+DEFAULT_BUNDLE = "build.raft.mobile"
 DEFAULT_MODULE = "entry"
 DEFAULT_ABILITY = "EntryAbility"
 DEFAULT_PRODUCT = "default"

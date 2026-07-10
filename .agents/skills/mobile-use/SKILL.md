@@ -91,8 +91,8 @@ harmony-use doctor --pretty
 harmony-use devices --pretty
 harmony-use build-hap --project compose/ohosApp --pretty
 harmony-use install --project compose/ohosApp --pretty
-harmony-use launch --bundle build.raft.harmony --pretty
-harmony-use hilog --bundle build.raft.harmony --duration 20 --out artifacts/ohos --pretty
+harmony-use launch --bundle build.raft.mobile --pretty
+harmony-use hilog --bundle build.raft.mobile --duration 20 --out artifacts/ohos --pretty
 harmony-use analyze-log artifacts/ohos/state-hilog.txt --pretty
 ```
 

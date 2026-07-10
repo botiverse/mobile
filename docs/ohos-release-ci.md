@@ -1,7 +1,7 @@
 # OHOS release CI
 
 The `OHOS Release` GitHub Actions workflow builds a signed HarmonyOS `.app`
-for `build.raft.harmony`. It is manual-only and uploads the validated package,
+for `build.raft.mobile`. It is manual-only and uploads the validated package,
 `pack.info`, release metadata, and any generated symbols/source maps as a
 private GitHub Actions artifact.
 

@@ -112,7 +112,7 @@ includes:
 
 - target type: emulator or real device
 - output of `hdc list targets`
-- bundle/module launched: `build.raft.app` / `entry`
+- bundle/module launched: `build.raft.mobile` / `entry`
 - install and launch commands
 - screenshot command
 - pulled PNG path

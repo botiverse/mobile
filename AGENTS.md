@@ -430,7 +430,7 @@ scripts/sync_kuikly_ai_skills.sh
 
 ## OHOS Kuikly Workflow
 
-- The Slock OHOS app bundle/module/ability is `build.raft.app` / `entry` /
+- The Slock OHOS app bundle/module/ability is `build.raft.mobile` / `entry` /
   `EntryAbility`.
 - `hdc` may not be on `PATH`; the default DevEco path in this workspace is
   `/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/toolchains/hdc`.

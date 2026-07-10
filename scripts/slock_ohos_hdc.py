@@ -24,7 +24,7 @@ DEFAULT_DEVECO_HOME = Path("/Applications/DevEco-Studio.app/Contents")
 DEFAULT_SDK_HOME = DEFAULT_DEVECO_HOME / "sdk"
 DEFAULT_HDC = DEFAULT_SDK_HOME / "default" / "openharmony" / "toolchains" / "hdc"
 DEFAULT_OUT = Path(os.environ.get("TMPDIR", "/tmp")) / "slock-ohos-automation" / datetime.now().strftime("%Y%m%d-%H%M%S")
-DEFAULT_BUNDLE = "build.raft.app"
+DEFAULT_BUNDLE = "build.raft.mobile"
 DEFAULT_MODULE = "entry"
 DEFAULT_ABILITY = "EntryAbility"
 

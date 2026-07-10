@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "build.raft.harmony",
+    "bundleName": "build.raft.mobile",
     "vendor": "Raft",
     "versionCode": 1000000,
     "versionName": "1.0.0",
