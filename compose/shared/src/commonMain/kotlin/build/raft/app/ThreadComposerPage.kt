@@ -16,7 +16,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -478,52 +477,6 @@ data class SharedThreadComposerFlowState(
     fun applyLocalChange(value: String, asTask: Boolean = liveDraftAsTask): SharedThreadComposerFlowState =
         copy(liveDraftText = value, liveDraftAsTask = asTask)
 }
-
-internal data class ThreadComposerStaleCallbackGuard(
-    val syncNonce: Int,
-    val previousLocalText: String,
-    val previousLocalAsTask: Boolean,
-    val restoredText: String,
-    val restoredAsTask: Boolean
-)
-
-internal fun threadComposerStaleCallbackGuard(
-    syncNonce: Int,
-    previousLocalText: String,
-    previousLocalAsTask: Boolean,
-    restoredText: String,
-    restoredAsTask: Boolean
-): ThreadComposerStaleCallbackGuard? {
-    if (previousLocalText == restoredText && previousLocalAsTask == restoredAsTask) return null
-    return ThreadComposerStaleCallbackGuard(
-        syncNonce = syncNonce,
-        previousLocalText = previousLocalText,
-        previousLocalAsTask = previousLocalAsTask,
-        restoredText = restoredText,
-        restoredAsTask = restoredAsTask
-    )
-}
-
-internal fun shouldIgnoreThreadComposerStaleCallback(
-    guard: ThreadComposerStaleCallbackGuard?,
-    syncNonce: Int,
-    nextText: String,
-    localText: String,
-    localAsTask: Boolean
-): Boolean =
-    guard != null &&
-        guard.syncNonce == syncNonce &&
-        localText == guard.restoredText &&
-        localAsTask == guard.restoredAsTask &&
-        nextText == guard.previousLocalText
-
-internal fun expireThreadComposerClearStaleCallbackGuard(
-    guard: ThreadComposerStaleCallbackGuard?,
-    syncNonce: Int
-): ThreadComposerStaleCallbackGuard? =
-    guard?.takeUnless { candidate ->
-        candidate.syncNonce == syncNonce && candidate.restoredText.isBlank()
-    }
 
 @Serializable
 data class SharedThreadComposerAttachment(
@@ -1065,38 +1018,13 @@ internal fun ThreadComposerContent(
     var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
     var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
-    var lastAcceptedLocalText by remember(state.instanceId) { mutableStateOf(state.seedText) }
-    var lastAcceptedLocalAsTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
-    var staleCallbackGuard by remember(state.instanceId) { mutableStateOf<ThreadComposerStaleCallbackGuard?>(null) }
     var keyboardInsetDp by remember(state.instanceId) { mutableStateOf(0f) }
     val composerFocusRequester = remember(state.instanceId) { FocusRequester() }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
-        val nextStaleCallbackGuard =
-            threadComposerStaleCallbackGuard(
-                syncNonce = state.syncNonce,
-                previousLocalText = lastAcceptedLocalText,
-                previousLocalAsTask = lastAcceptedLocalAsTask,
-                restoredText = state.seedText,
-                restoredAsTask = state.seedAsTask
-            )
-        staleCallbackGuard = nextStaleCallbackGuard
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
         asTask = state.seedAsTask
         focused = state.suggestionsOpen
-        lastAcceptedLocalText = state.seedText
-        lastAcceptedLocalAsTask = state.seedAsTask
-        if (nextStaleCallbackGuard?.restoredText?.isBlank() == true) {
-            // A send clear only owns the native callback window for the frame that
-            // applies the blank value. Later edits, including the same submitted
-            // text pasted again, are new input and must not be classified by value.
-            withFrameNanos { }
-            staleCallbackGuard =
-                expireThreadComposerClearStaleCallbackGuard(
-                    guard = staleCallbackGuard,
-                    syncNonce = state.syncNonce
-                )
-        }
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
@@ -1191,9 +1119,6 @@ internal fun ThreadComposerContent(
         }
 
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
-        lastAcceptedLocalText = nextText
-        lastAcceptedLocalAsTask = nextAsTask
-        staleCallbackGuard = null
         onEvent("change", nextText, nextAsTask, null)
     }
 
@@ -1399,20 +1324,6 @@ internal fun ThreadComposerContent(
                         placeholder = state.placeholder,
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
-                            // Ignore stale platform callbacks from the pre-sync local value.
-                            if (
-                                shouldIgnoreThreadComposerStaleCallback(
-                                    guard = staleCallbackGuard,
-                                    syncNonce = state.syncNonce,
-                                    nextText = next.text,
-                                    localText = fieldValue.text,
-                                    localAsTask = asTask
-                                )
-                            ) {
-                                staleCallbackGuard = null
-                                onEvent("staleChangeIgnored", next.text, asTask, null)
-                                return@TextField
-                            }
                             fieldValue = next
                             focused = true
                             println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
@@ -1493,8 +1404,6 @@ internal fun ThreadComposerContent(
                                         .clickable(enabled = composerEnabled) {
                                             val newValue = !asTask
                                             asTask = newValue
-                                            lastAcceptedLocalAsTask = newValue
-                                            staleCallbackGuard = null
                                             onEvent("toggleAsTask", null, newValue, null)
                                         }
                                         .heightIn(min = 18.dp),
@@ -1505,8 +1414,6 @@ internal fun ThreadComposerContent(
                                         checked = asTask,
                                         onCheckedChange = { checked ->
                                             asTask = checked
-                                            lastAcceptedLocalAsTask = checked
-                                            staleCallbackGuard = null
                                             onEvent("toggleAsTask", null, checked, null)
                                         },
                                         enabled = composerEnabled,
