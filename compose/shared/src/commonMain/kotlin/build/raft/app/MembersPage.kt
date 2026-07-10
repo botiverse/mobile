@@ -31,6 +31,7 @@ import build.raft.app.data.AgentCreatorSummary
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentScopeSet
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.AgentChannelSummary
 import build.raft.app.data.AgentDmSummary
 import build.raft.app.data.AgentLifecycleActionResult
 import build.raft.app.data.AgentMachineAssignmentRequest
@@ -720,6 +721,20 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             peerName = "artin",
             lastMessageAt = "2026-06-19T12:24:00Z",
             lastMessagePreview = "201继续推进"
+        )
+    ),
+    channels = listOf(
+        AgentChannelSummary(
+            id = "channel-product-design",
+            name = "product-design",
+            description = "Product design reviews and implementation handoffs."
+        ),
+        AgentChannelSummary(
+            id = "channel-visual-testing",
+            name = "visual-testing",
+            description = "Visual validation results and capture evidence.",
+            activityMuted = true,
+            muteFromSeq = 1842L
         )
     ),
     reminders = listOf(
@@ -3453,7 +3468,7 @@ private fun MembersDetailContent(
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Chat ->
-                                    MembersAgentDmsTab(
+                                    MembersAgentChatTab(
                                         detail = detail,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -6970,17 +6985,44 @@ private fun MembersAgentCreatedAgentRow(
 }
 
 @Composable
-private fun MembersAgentDmsTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
+private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        // #67 React parity: AGENT PRIVATE CHATS header + caption explaining the
-        // audit-trail nature of the rows (mirrors React `AgentDmsTab.tsx`
-        // 'Visible here as an activity/audit trail...' caption).
+        Text(
+            text = "AGENT CHANNELS AND DMS",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = "CHANNELS",
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray
+        )
+        val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
+        if (channels.isEmpty()) {
+            Text(
+                text = "No active channel memberships.",
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
+            )
+        } else {
+            channels.forEach { channel ->
+                MembersAgentChannelRow(channel)
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Thin)
+                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
+        )
         Text(
             text = "AGENT PRIVATE CHATS",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
@@ -7006,6 +7048,61 @@ private fun MembersAgentDmsTab(detail: AgentDetailSnapshot?, modifier: Modifier 
             rows.take(8).forEach { row ->
                 MembersAgentDmRow(row)
             }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockLucideIcon(
+                channel.type.threadChannelHeaderIcon(),
+                modifier = Modifier.size(15.dp),
+                color = SlockColor.TextBlackArgb
+            )
+            Text(
+                text = channel.name,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (channel.activityMuted) {
+                SlockLucideIcon(
+                    SlockLucideIconName.BellOff,
+                    modifier = Modifier.size(15.dp),
+                    color = SlockColor.TextMutedGrayArgb
+                )
+                Text(
+                    text = "MUTED",
+                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        }
+        channel.description?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

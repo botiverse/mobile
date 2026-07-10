@@ -106,6 +106,9 @@ private suspend fun SlockNetworkClient.memberProfile(
 private suspend fun SlockNetworkClient.agentDirectMessages(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
     request(priority, "agents/${agentId.value}/agent-dms")
 
+private suspend fun SlockNetworkClient.agentChannels(priority: DataRequestPriority, agentId: MemberId): HomeNetworkResponse =
+    request(priority, "agents/${agentId.value}/channels")
+
 private suspend fun SlockNetworkClient.reminders(
     priority: DataRequestPriority,
     ownerAgentId: MemberId,
@@ -313,6 +316,7 @@ class RealMemberRepository(
         currentContext() ?: return authRequired()
         val summary = agentsApiClient.agent(agentId)
         val directMessages = getAgentDirectMessages(priority, agentId)
+        val channels = getAgentChannels(priority, agentId)
         val reminders = getAgentReminders(priority, agentId)
         val activity = getAgentActivity(priority, agentId)
         val skills = getAgentSkills(priority, agentId)
@@ -324,6 +328,7 @@ class RealMemberRepository(
                         agentId = agentId,
                         summary = summary.data.toAgentDetailSummary(),
                         directMessages = directMessages.contentOrNull()?.directMessages.orEmpty(),
+                        channels = channels.contentOrNull()?.channels.orEmpty(),
                         reminders = reminders.contentOrNull()?.reminders.orEmpty(),
                         activity = activity.contentOrNull()?.activity.orEmpty(),
                         skills = skills.contentOrNull() ?: AgentSkillsSnapshot(agentId = agentId),
@@ -346,6 +351,19 @@ class RealMemberRepository(
             mapper = { bodyText ->
                 parseSharedAgentDirectMessages(bodyText, agentId)
                     ?: throw IllegalStateException("Agent DM response missing dm array")
+            }
+        )
+    }
+
+    override suspend fun getAgentChannels(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentChannelSnapshot> {
+        currentContext() ?: return authRequired()
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = { networkClient.agentChannels(priority, agentId) },
+            source = "agent_channels",
+            mapper = { bodyText ->
+                parseSharedAgentChannels(bodyText, agentId)
+                    ?: throw IllegalStateException("Agent channels response missing channel array")
             }
         )
     }

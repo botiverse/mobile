@@ -556,6 +556,7 @@ private fun AgentDetailSnapshot.withExistingAgentDetailSections(
     if (existing.agentId != agentId) return this
     return copy(
         directMessages = directMessages.ifEmpty { existing.directMessages },
+        channels = channels.ifEmpty { existing.channels },
         reminders = reminders.ifEmpty { existing.reminders },
         activity = activity.ifEmpty { existing.activity },
         skills = skills.takeUnless { it.groups.isEmpty() } ?: existing.skills,
