@@ -4,6 +4,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class ThreadComposerSuggestionSearchTest {
+    private data class Person(
+        val id: String,
+        val handle: String,
+        val displayName: String,
+        val description: String? = null,
+        val sourceServerLabel: String? = null
+    )
+
     @Test
     fun memberSearchRanksExactPrefixSubstringAndFuzzyMatches() {
         val suggestions =
@@ -121,5 +129,30 @@ class ThreadComposerSuggestionSearchTest {
             listOf("b", "a"),
             filterThreadComposerMemberSuggestions("", suggestions).map { it.handle }
         )
+    }
+
+    @Test
+    fun peoplePickersReuseMemberPinyinFuzzyRanking() {
+        val people =
+            listOf(
+                Person(id = "expert", handle = "KMP-专家", displayName = "KMP 专家"),
+                Person(id = "android", handle = "android-developer", displayName = "Android Developer"),
+                Person(id = "server", handle = "alice", displayName = "Alice", sourceServerLabel = "duihua server")
+            )
+        fun search(query: String): List<String> =
+            filterPeopleSuggestions(
+                query = query,
+                suggestions = people,
+                handle = Person::handle,
+                displayName = Person::displayName,
+                description = Person::description,
+                sourceServerLabel = Person::sourceServerLabel,
+                legacyId = Person::id
+            ).map(Person::id)
+
+        assertEquals(listOf("expert"), search("zhuanjia"))
+        assertEquals(listOf("android"), search("anddev"))
+        assertEquals(listOf("server"), search("duihua"))
+        assertEquals(listOf("android"), search("android"))
     }
 }
