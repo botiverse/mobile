@@ -31,6 +31,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.provider.MediaStore
 import android.provider.Settings
@@ -61,6 +62,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.BuildConfig
@@ -230,10 +232,15 @@ private fun StringBuilder.appendDiagnosticsExportLine(label: String, value: Stri
     appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
 }
 
-class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
+open class SlockKuiklyActivity :
+    ComponentActivity(),
+    KuiklyRenderViewBaseDelegatorDelegate,
+    SlockKuiklyChildPageLoadListener {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
     private var pageSpec: SlockKuiklyPageSpec? = null
+    private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
+    private var homeColdStartSplashTimeoutLogged = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
@@ -256,6 +263,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         get() = resolvedPageName(intent)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         SlockKuiklyAdapters.init(applicationContext)
@@ -272,6 +280,46 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         SlockAndroidLocalDiagnostics.reportAppFullLaunch()
+    }
+
+    private fun installHomeColdStartSplashIfNeeded() {
+        val resolvedPageName = resolvedPageName(intent)
+        val pageDataText = resolvedPageData(intent).text
+        if (!shouldInstallHomeColdStartSplash(resolvedPageName, pageDataText)) return
+
+        setTheme(R.style.Theme_Slock_Starting)
+        val gate =
+            HomeColdStartSplashGate(
+                enabled = true,
+                startedAtMillis = SystemClock.elapsedRealtime()
+            )
+        homeColdStartSplashGate = gate
+        installSplashScreen().setKeepOnScreenCondition {
+            val nowMillis = SystemClock.elapsedRealtime()
+            val keepOnScreen = gate.shouldKeepOnScreen(nowMillis)
+            if (!keepOnScreen && gate.timedOut() && !homeColdStartSplashTimeoutLogged) {
+                homeColdStartSplashTimeoutLogged = true
+                SlockAppLog.w(
+                    "SlockBoot",
+                    "home_content_splash_timeout timeoutMs=$HOME_COLD_START_SPLASH_TIMEOUT_MILLIS"
+                )
+            }
+            keepOnScreen
+        }
+        SlockAppLog.d("SlockBoot", "home_content_splash_installed page=$resolvedPageName")
+    }
+
+    override fun onSlockKuiklyChildPageLoadComplete(
+        pageName: String,
+        pageDataText: String,
+        isSucceed: Boolean
+    ) {
+        if (!isHomeAppShellChildPageData(pageDataText)) return
+        if (homeColdStartSplashGate?.release() != true) return
+        SlockAppLog.d(
+            "SlockBoot",
+            "home_content_splash_released source=child_page_load success=$isSucceed page=$pageName"
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -1128,7 +1176,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"
         private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
         private const val ACTION_OPEN_DIAGNOSTICS = "build.raft.app.diagnostics.OPEN"
-        private const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
+        internal const val KEY_APP_SHELL_INITIAL_TAB = "slockInitialTab"
         private const val KEY_APP_SHELL_INITIAL_SETTINGS_DESTINATION = "slockInitialSettingsDestination"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ID = "slockDiagnosticsDeepLinkId"
         private const val KEY_DIAGNOSTICS_DEEP_LINK_ENABLE_PROFILER = "slockDiagnosticsDeepLinkEnableProfiler"
@@ -1148,7 +1196,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             SlockKuiklyAdapters.init(context.applicationContext)
             val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
-                    Intent(context, SlockKuiklyActivity::class.java)
+                    Intent(context, slockKuiklyHostActivityClass(pageName))
                             .putExtra(KEY_PAGE_NAME, pageName)
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
             if (clearTask) {
