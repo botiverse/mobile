@@ -299,7 +299,11 @@ internal fun SlockSlugInput(
                 Text(
                     text = "/",
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
-                    color = contentColor.copy(alpha = 0.70f),
+                    // react slash = text-black/70; disabled multiplies by the control's
+                    // opacity-60 -> 0.70 x 0.60 = 0.42. copy(alpha=) on contentColor
+                    // would REPLACE the disabled 0.60 with 0.70 (same pitfall as the
+                    // tile constant above), so derive from TextBlack explicitly.
+                    color = SlockColor.TextBlack.copy(alpha = if (enabled) 0.70f else 0.42f),
                     maxLines = 1
                 )
             }
