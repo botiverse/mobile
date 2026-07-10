@@ -272,4 +272,19 @@
     <string name="announcement_action_got_it_bilingual">知道了 / Got it</string>
     <string name="announcement_action_skip_bilingual">跳过 / Skip</string>
     <string name="tasks_label_new_tasks">New tasks</string>
+    <string name="home_action_view">View</string>
+    <string name="home_action_retry">Retry</string>
+    <string name="home_nav_search">Search</string>
+    <string name="home_nav_activity">Activity</string>
+    <string name="home_nav_followed_threads">Followed threads</string>
+    <string name="home_nav_saved">Saved</string>
+    <string name="home_section_channels">Channels</string>
+    <string name="home_section_joint_channels">Joint Channels</string>
+    <string name="home_section_direct_messages">Direct Messages</string>
+    <string name="home_section_pinned">Pinned</string>
+    <string name="home_action_pin">Pin</string>
+    <string name="home_action_unpin">Unpin</string>
+    <string name="home_action_mark_as_read">Mark as Read</string>
+    <string name="home_action_mark_as_unread">Mark as Unread</string>
+    <string name="home_action_mute">Mute</string>
 </resources>
