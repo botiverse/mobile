@@ -1073,10 +1073,26 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeListBeyondBoundsKeepsSceneEnterPremeasureSmall() {
-        assertEquals(3, homeListBeyondBoundsItemCount(0))
-        assertEquals(6, homeListBeyondBoundsItemCount(40))
-        assertEquals(6, homeListBeyondBoundsItemCount(400))
+    fun homeListBeyondBoundsTracksTwoThirdsViewportWithBounds() {
+        assertEquals(6, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
+        assertEquals(8, homeListBeyondBoundsItemCount(itemCount = 8, viewportHeightDp = 720f))
+        assertEquals(12, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
+        assertEquals(15, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
+        assertEquals(24, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 2_000f))
+        assertEquals(
+            10,
+            homeListBeyondBoundsItemCount(
+                itemCount = 400,
+                viewportHeightDp = 720f,
+                representativeRowStepDp = 52f
+            )
+        )
+    }
+
+    @Test
+    fun homeServerSwitcherKeepsSmallFixedPremeasureWindow() {
+        assertEquals(3, homeServerSwitcherBeyondBoundsItemCount(0))
+        assertEquals(6, homeServerSwitcherBeyondBoundsItemCount(40))
     }
 
     @Test
