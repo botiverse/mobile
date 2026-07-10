@@ -2,11 +2,9 @@ name: Android Release
 
 # Per owner 2026-07-03 16:39: versionX / Y / Z / build are dispatch inputs,
 # not hardcoded. Default fallbacks preserve "today" if you want a smoke run.
-# Two jobs:
-#   1. build_android_release — always runs; produces a signed APK + metadata.
-#   2. publish_quiver        — gated; only runs when dispatch input
-#                               publish_quiver=true OR after manual approval on
-#                               the `production` GitHub Environment.
+# This workflow is intentionally draft-first. It may build and upload a Hands
+# draft, but it must never activate a release or create the release tag; those
+# happen only after the release owner approves reviewed notes and smoke results.
 
 on:
   workflow_dispatch:
@@ -55,15 +53,14 @@ on:
           - release
           - debug
       release_mode:
-        description: "draft = CI creates a draft release for agent review (policy default); publish = immediately active (emergencies only)"
+        description: "Draft only. Review notes and smoke before the separate explicit Hands publish step."
         required: true
         type: choice
         default: "draft"
         options:
           - draft
-          - publish
       publish_quiver:
-        description: "If true, push the signed APK + metadata to Hands + create share page"
+        description: "If true, upload the signed APK + metadata as a Hands draft and create a share page"
         required: true
         type: boolean
         default: false
@@ -77,13 +74,6 @@ on:
         required: false
         type: string
         default: "604800"
-
-  # Tag-triggered release: push a tag like v1.0.4 (optionally v1.0.4-rc1) to
-  # build. Version is parsed from the tag; the release is draft-first
-  # (an agent reviews the changelog, then publishes).
-  push:
-    tags:
-      - "v*.*.*"
 
 env:
   # The lane's android-release docs require these envs:
@@ -118,54 +108,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Optional advanced entry: a pushed tag. Narrow format only —
-            # v<major>.<minor>.<patch>[-<suffix>] — fail fast otherwise so a
-            # malformed tag never silently builds a wrong version.
-            TAG="${GITHUB_REF_NAME}"
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-              echo "::error::Tag '$TAG' is not a release tag. Expected vX.Y.Z or vX.Y.Z-suffix (e.g. v1.0.4, v1.0.4-rc1)." >&2
-              exit 1
-            fi
-            RAW="${TAG#v}"
-            CORE="${RAW%%-*}"
-            SUFFIX=""
-            if [ "$RAW" != "$CORE" ]; then SUFFIX="${RAW#*-}"; fi
-            IFS='.' read -r MAJ MIN PAT <<< "$CORE"
-            VERSION_NAME="${MAJ}.${MIN}.${PAT}"
-            [ -n "$SUFFIX" ] && VERSION_NAME="${VERSION_NAME}-${SUFFIX}"
-            {
-              echo "version_major=${MAJ:-1}"
-              echo "version_minor=${MIN:-0}"
-              echo "version_patch=${PAT:-0}"
-              echo "version_build=0"
-              echo "version_suffix=${SUFFIX}"
-              echo "version_name=${VERSION_NAME}"
-              echo "quiver_channel=main"
-              echo "android_variant=release"
-              echo "release_mode=draft"
-              echo "publish_quiver=true"
-              echo "create_share_page=true"
-              echo "share_ttl_seconds=604800"
-            } >> "$GITHUB_OUTPUT"
-          else
-            VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
-            [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
-            {
-              echo "version_major=${{ inputs.version_major }}"
-              echo "version_minor=${{ inputs.version_minor }}"
-              echo "version_patch=${{ inputs.version_patch }}"
-              echo "version_build=${{ inputs.version_build }}"
-              echo "version_suffix=${{ inputs.version_suffix }}"
-              echo "version_name=${VERSION_NAME}"
-              echo "quiver_channel=${{ inputs.quiver_channel }}"
-              echo "android_variant=${{ inputs.android_variant }}"
-              echo "release_mode=${{ inputs.release_mode }}"
-              echo "publish_quiver=${{ inputs.publish_quiver }}"
-              echo "create_share_page=${{ inputs.create_share_page }}"
-              echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
-            } >> "$GITHUB_OUTPUT"
-          fi
+          VERSION_NAME="${{ inputs.version_major }}.${{ inputs.version_minor }}.${{ inputs.version_patch }}"
+          [ -n "${{ inputs.version_suffix }}" ] && VERSION_NAME="${VERSION_NAME}-${{ inputs.version_suffix }}"
+          {
+            echo "version_major=${{ inputs.version_major }}"
+            echo "version_minor=${{ inputs.version_minor }}"
+            echo "version_patch=${{ inputs.version_patch }}"
+            echo "version_build=${{ inputs.version_build }}"
+            echo "version_suffix=${{ inputs.version_suffix }}"
+            echo "version_name=${VERSION_NAME}"
+            echo "quiver_channel=${{ inputs.quiver_channel }}"
+            echo "android_variant=${{ inputs.android_variant }}"
+            echo "release_mode=draft"
+            echo "publish_quiver=${{ inputs.publish_quiver }}"
+            echo "create_share_page=${{ inputs.create_share_page }}"
+            echo "share_ttl_seconds=${{ inputs.share_ttl_seconds }}"
+          } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   build_android_release:
@@ -361,8 +319,7 @@ jobs:
     timeout-minutes: 15
     needs: [resolve, build_android_release]
     if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_quiver == 'true')
+      github.event_name == 'workflow_dispatch' && needs.resolve.outputs.publish_quiver == 'true'
     environment:
       name: production
       # Optional: enforce manual approval for `production` env in repo settings.
@@ -386,7 +343,7 @@ jobs:
       SLOCK_ANDROID_VERSION_BUILD: ${{ needs.resolve.outputs.version_build }}
       SLOCK_ANDROID_VERSION_SUFFIX: ${{ needs.resolve.outputs.version_suffix }}
       SLOCK_SKIP_GRADLE_BUILD: "1"
-      SLOCK_QUIVER_DRAFT: ${{ needs.resolve.outputs.release_mode == 'publish' && '0' || '1' }}
+      SLOCK_QUIVER_DRAFT: "1"
       # KMP follow-up: when helper gains sign/zipalign, flip this on.
       SLOCK_COLLECT_ANDROID_SYMBOLS: "0"
     steps:
@@ -534,42 +491,3 @@ jobs:
               echo '\`\`\`'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-  tag_release:
-    name: Tag release record
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    needs: [resolve, build_android_release, publish_quiver]
-    # Main link is workflow_dispatch → build → draft → *then* record a tag so
-    # git history and GitHub Releases line up with what shipped. Only on a
-    # dispatch that actually published (skip dry-runs and tag-triggered runs,
-    # which already came from a tag). The tag is pushed with GITHUB_TOKEN,
-    # which by design does NOT trigger another workflow run — so this is a
-    # record, not the two-stage "CI pushes tag to trigger CI" anti-pattern.
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      needs.resolve.outputs.publish_quiver == 'true' &&
-      needs.publish_quiver.result == 'success'
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Create and push release tag
-        shell: bash
-        env:
-          VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
-        run: |
-          set -euo pipefail
-          TAG="v${VERSION_NAME}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists on origin; leaving it untouched."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Release ${VERSION_NAME} (published via Hands)"
-          git push origin "${TAG}"
-          echo "Pushed ${TAG} at ${GITHUB_SHA}. (GITHUB_TOKEN push — does not re-trigger the release workflow.)"

@@ -11,13 +11,17 @@ VERSION_SUFFIX="${SLOCK_ANDROID_VERSION_SUFFIX:-}"
 CHANNEL="${SLOCK_QUIVER_CHANNEL:-main}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 PUBLISH_QUIVER="${SLOCK_PUBLISH_QUIVER:-true}"
+RELEASE_MODE="${SLOCK_RELEASE_MODE:-draft}"
 CREATE_SHARE_PAGE="${SLOCK_CREATE_SHARE_PAGE:-true}"
 SHARE_TTL_SECONDS="${SLOCK_SHARE_TTL_SECONDS:-604800}"
 PUSH_REMOTE="${SLOCK_RELEASE_REMOTE:-origin}"
 PUSH_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
 KUIKLY_REMOTE="${SLOCK_KUIKLY_REMOTE:-origin}"
-KUIKLY_BRANCH="${SLOCK_KUIKLY_BRANCH:-}"
+KUIKLY_BRANCH="${SLOCK_KUIKLY_BRANCH:-staging2}"
 WAIT_FOR_RUN="${SLOCK_RELEASE_WAIT:-0}"
+PREFLIGHT_REPORT="${SLOCK_RELEASE_PREFLIGHT_REPORT:-}"
+PREFLIGHT_REQUIRED_PRS=()
+PREFLIGHT_SKIP_HANDS_VERSION_CHECK=0
 
 die() {
   echo "error: $*" >&2
@@ -32,13 +36,18 @@ Verifies local Slock Android release inputs are already present on the protected
 remote release branch, ensures the Kuikly submodule commit is reachable by
 GitHub Actions, and dispatches .github/workflows/android-release.yml.
 
-Defaults match the production Quiver release lane:
+Defaults create a Hands **draft** release after the release preflight passes:
   versionName=1.0.1
   versionCode=1000100
   channel=main
   variant=release
+  release_mode=draft
   publish_quiver=true
   create_share_page=true
+
+This script never activates a release. Review the generated draft, replace the
+raw changelog with the approved bilingual notes, smoke it, and use the explicit
+Hands release publish step only after the release owner says to publish.
 
 Options:
   --version <x.y.z>       Semantic version. Default: 1.0.1
@@ -46,7 +55,12 @@ Options:
   --suffix <value>        Version name suffix, e.g. rc1.
   --channel <slug>        Quiver channel. Default: main.
   --variant <name>        Android variant: release or debug. Default: release.
-  --no-publish-quiver     Build only; do not publish to Quiver.
+  --required-pr <number>  Candidate PR included in this release; repeatable.
+  --preflight-report <p>  Write the release-preflight Markdown report to p.
+  --skip-hands-version-check
+                          Offline diagnostic only; prohibited for main.
+  --build-only            Build workflow artifact only; do not create a Hands draft.
+  --no-publish-quiver     Alias for --build-only.
   --no-share-page         Publish to Quiver but skip share page creation.
   --share-ttl <seconds>   Share page TTL. Default: 604800 (7 days).
   --wait                  Wait for the GitHub Actions run to finish.
@@ -56,7 +70,8 @@ Environment overrides:
   SLOCK_RELEASE_REMOTE=origin
   SLOCK_RELEASE_BRANCH=main
   SLOCK_KUIKLY_REMOTE=origin
-  SLOCK_KUIKLY_BRANCH=<defaults to current Kuikly branch>
+  SLOCK_KUIKLY_BRANCH=staging2
+  SLOCK_RELEASE_MODE=draft
   SLOCK_RELEASE_WAIT=1
 USAGE
 }
@@ -122,7 +137,21 @@ while [ "$#" -gt 0 ]; do
       VARIANT="$2"
       shift 2
       ;;
-    --no-publish-quiver)
+    --required-pr)
+      [ "$#" -ge 2 ] || die "--required-pr requires value"
+      PREFLIGHT_REQUIRED_PRS+=("$2")
+      shift 2
+      ;;
+    --preflight-report)
+      [ "$#" -ge 2 ] || die "--preflight-report requires value"
+      PREFLIGHT_REPORT="$2"
+      shift 2
+      ;;
+    --skip-hands-version-check)
+      PREFLIGHT_SKIP_HANDS_VERSION_CHECK=1
+      shift
+      ;;
+    --build-only|--no-publish-quiver)
       PUBLISH_QUIVER=false
       shift
       ;;
@@ -158,6 +187,9 @@ cd "${ROOT_DIR}"
 [ -f .github/workflows/android-release.yml ] || die "android-release.yml not found"
 [ -d third_party/kuikly-ui/.git ] || die "third_party/kuikly-ui submodule is not initialized"
 
+[ "${RELEASE_MODE}" = "draft" ] ||
+  die "release_mode must be draft; active Hands publication is an explicit post-smoke owner action"
+
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "${current_branch}" = "${PUSH_BRANCH}" ] ||
   die "expected branch ${PUSH_BRANCH}, current branch is ${current_branch}"
@@ -170,12 +202,27 @@ if ! git diff --cached --quiet -- . ':!third_party/kuikly-ui'; then
 fi
 
 kuikly_head="$(git -C third_party/kuikly-ui rev-parse HEAD)"
-if [ -z "${KUIKLY_BRANCH}" ]; then
-  KUIKLY_BRANCH="$(git -C third_party/kuikly-ui rev-parse --abbrev-ref HEAD)"
-fi
-[ "${KUIKLY_BRANCH}" != "HEAD" ] || die "Kuikly submodule is detached; set SLOCK_KUIKLY_BRANCH"
+[ -n "${KUIKLY_BRANCH}" ] || die "SLOCK_KUIKLY_BRANCH must name the release branch (normally staging2)"
 
-echo "==> Ensuring Kuikly commit is reachable"
+PREFLIGHT_ARGS=(
+  --version "${VERSION_X}.${VERSION_Y}.${VERSION_Z}"
+  --build "${VERSION_BUILD}"
+  --channel "${CHANNEL}"
+)
+for pr in "${PREFLIGHT_REQUIRED_PRS[@]}"; do
+  PREFLIGHT_ARGS+=(--required-pr "${pr}")
+done
+if [ -n "${PREFLIGHT_REPORT}" ]; then
+  PREFLIGHT_ARGS+=(--report "${PREFLIGHT_REPORT}")
+fi
+if [ "${PREFLIGHT_SKIP_HANDS_VERSION_CHECK}" = "1" ]; then
+  PREFLIGHT_ARGS+=(--skip-hands-version-check)
+fi
+
+echo "==> Running release preflight"
+"${ROOT_DIR}/scripts/release_android_preflight.sh" "${PREFLIGHT_ARGS[@]}"
+
+echo "==> Verifying Kuikly release branch reachability"
 echo "    commit: ${kuikly_head}"
 echo "    target: ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
 git -C third_party/kuikly-ui fetch "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}" || true
@@ -183,8 +230,7 @@ if git -C third_party/kuikly-ui rev-parse --verify --quiet "refs/remotes/${KUIKL
    git -C third_party/kuikly-ui merge-base --is-ancestor "${kuikly_head}" "refs/remotes/${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"; then
   echo "    already reachable"
 else
-  echo "    pushing ${kuikly_head} to ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
-  git -C third_party/kuikly-ui push "${KUIKLY_REMOTE}" "HEAD:${KUIKLY_BRANCH}"
+  die "Kuikly commit is not reachable from ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}; merge it to staging2 before releasing"
 fi
 
 echo "==> Verifying Slock ${PUSH_BRANCH} is already on ${PUSH_REMOTE}/${PUSH_BRANCH}"
@@ -209,6 +255,7 @@ echo "    version: ${release_version}"
 echo "    versionCode: ${release_code}"
 echo "    channel: ${CHANNEL}"
 echo "    variant: ${VARIANT}"
+echo "    release_mode: ${RELEASE_MODE}"
 echo "    publish_quiver: ${publish_quiver}"
 echo "    create_share_page: ${create_share_page}"
 
@@ -223,6 +270,7 @@ run_url="$(
     -f "version_suffix=${VERSION_SUFFIX}" \
     -f "quiver_channel=${CHANNEL}" \
     -f "android_variant=${VARIANT}" \
+    -f "release_mode=${RELEASE_MODE}" \
     -f "publish_quiver=${publish_quiver}" \
     -f "create_share_page=${create_share_page}" \
     -f "share_ttl_seconds=${SHARE_TTL_SECONDS}"

@@ -226,27 +226,40 @@ package pin with `QUIVER_CLI_PACKAGE`.
 
 ## GitHub Actions Release Dispatch
 
-Use the dispatch wrapper for production Android releases:
+The full operational order is [Android Release SOP](android-release-sop.md).
+Use the dispatch wrapper only after its preflight is green; it creates a Hands
+**draft** and cannot activate a public release:
 
 ```bash
-scripts/release_android_quiver_github.sh --version 1.0.1 --build 0 --channel main --variant release --wait
+scripts/release_android_quiver_github.sh \
+  --version 1.0.1 --build 0 --channel main --variant release \
+  --required-pr 123 --wait
 ```
 
-The wrapper performs the release preflight that is easy to forget manually:
+The wrapper delegates to `scripts/release_android_preflight.sh`, which performs
+the release preflight that is easy to forget manually:
 
 - verifies the local Slock branch is `main`
-- ensures the checked-out `third_party/kuikly-ui` commit is reachable from its
-  configured remote branch, pushing it if needed
+- verifies each selected `--required-pr` is merged and included in the release
+  head
+- ensures the checked-out `third_party/kuikly-ui` commit is reachable from
+  `origin/staging2`; it never pushes a Kuikly commit during release
+- verifies the OHOS `hands.har` artifact and both manifest/lock references
 - verifies local Slock `main` matches `origin/main`; the wrapper does not push
   Slock `main`. First merge the release candidate through a GitHub PR, then
   dispatch the release workflow from the protected remote `main` commit.
-- dispatches `.github/workflows/android-release.yml` with the requested
-  version/channel/variant
+- requires successful `Commit Sign-off` and `Test` workflows for the exact
+  release head
+- requires the computed versionCode to be higher than the active Hands version
+  for the selected channel
+- dispatches `.github/workflows/android-release.yml` as a draft with the
+  requested version/channel/variant
 - optionally waits for the GitHub Actions run to finish
 
-Defaults match the current production lane: `versionName=1.0.1`,
-`versionCode=1000100`, Quiver channel `main`, Android variant `release`,
-`publish_quiver=true`, and `create_share_page=true`.
+Defaults match the draft production lane: `versionName=1.0.1`,
+`versionCode=1000100`, Hands channel `main`, Android variant `release`, a
+Hands draft upload, and a temporary share page. The owner-approved publish
+command is intentionally a separate post-smoke step.
 
 ## Release Notes (Changelog) Format
 
