@@ -18,6 +18,7 @@ import build.raft.app.model.RUNTIMES
 import build.raft.app.model.REASONING_EFFORTS
 import build.raft.app.model.buildRuntimeConfig
 import build.raft.app.model.getDefaultModel
+import build.raft.app.model.getModelLabel
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.RuntimeModelInfo
 import build.raft.app.model.supportsRuntimeApiUrl
@@ -354,6 +355,38 @@ internal fun createAgentModelDropdownItems(
         presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
     } else {
         presets
+    }
+}
+
+internal fun createAgentModelDropdownItemsForSelection(
+    runtime: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
+    allowCustomModel: Boolean = true,
+    selectedModel: String,
+    customModelMode: Boolean,
+    retainUnavailableSelectedPreset: Boolean
+): List<CreateAgentModelDropdownItem> {
+    val options =
+        createAgentModelDropdownItems(
+            runtime = runtime,
+            runtimeModelsOverride = runtimeModelsOverride,
+            allowCustomModel = allowCustomModel
+        )
+    if (!retainUnavailableSelectedPreset || customModelMode || selectedModel.isBlank() ||
+        options.any { it.id == selectedModel }
+    ) {
+        return options
+    }
+    val unavailable =
+        CreateAgentModelDropdownItem(
+            id = selectedModel,
+            label = "${getModelLabel(runtime, selectedModel)} (not in this computer's config)"
+        )
+    val customIndex = options.indexOfFirst { it.custom }
+    return if (customIndex >= 0) {
+        options.toMutableList().apply { add(customIndex, unavailable) }
+    } else {
+        options + unavailable
     }
 }
 
@@ -903,6 +936,7 @@ internal fun AdvancedRuntimeSection(
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
     runtimeModelsLoading: Boolean = false,
     onRuntimeModelsRefresh: () -> Unit = {},
+    retainUnavailableSelectedPreset: Boolean = false,
     machineRuntimeIds: List<String> = emptyList(),
     runtimeAvailabilityError: String? = null,
     enabled: Boolean,
@@ -927,10 +961,13 @@ internal fun AdvancedRuntimeSection(
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
     val customModelSupported = supportsRuntimeCustomModelName(runtime)
     val modelOptions =
-        createAgentModelDropdownItems(
+        createAgentModelDropdownItemsForSelection(
             runtime = runtime,
             runtimeModelsOverride = runtimeModelsOverride,
-            allowCustomModel = customModelSupported
+            allowCustomModel = customModelSupported,
+            selectedModel = model,
+            customModelMode = customModelMode,
+            retainUnavailableSelectedPreset = retainUnavailableSelectedPreset
         )
     val runtimeOptions = createAgentRuntimeDropdownItems(
         machineRuntimeIds = machineRuntimeIds,

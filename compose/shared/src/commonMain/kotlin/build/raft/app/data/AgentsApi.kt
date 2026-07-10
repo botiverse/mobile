@@ -332,6 +332,7 @@ internal data class AgentSummary(
     val serverRole: String?,
     val status: String?,
     val model: String?,
+    val runtimeModelKind: String?,
     val runtime: String?,
     val reasoning: String?,
     val executionMode: String?,
@@ -430,6 +431,7 @@ private data class AgentWireDto(
     val status: String? = null,
     val model: String? = null,
     val runtime: String? = null,
+    val runtimeConfig: AgentRuntimeConfigWireDto? = null,
     val reasoningEffort: String? = null,
     val executionMode: String? = null,
     val machineId: String? = null,
@@ -460,6 +462,7 @@ private data class AgentCreatorWireDto(
 private fun AgentWireDto.toSummary(): AgentSummary? {
     if (id.isBlank() || name.isBlank()) return null
     val currentProfile = runtimeProfile?.current
+    val configuredModel = runtimeConfig?.model?.valueOrNull()
     return AgentSummary(
         id = id,
         name = name,
@@ -467,8 +470,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         description = description,
         serverRole = role?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
         status = status,
-        model = model ?: currentProfile?.model,
-        runtime = runtime ?: currentProfile?.runtime,
+        model = configuredModel ?: model ?: currentProfile?.model,
+        runtimeModelKind = runtimeConfig?.model?.normalizedKindOrNull(),
+        runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime,
         reasoning = reasoningEffort ?: currentProfile?.reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
@@ -486,6 +490,29 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activityDetail = activityDetail,
         deletedAt = deletedAt
     )
+}
+
+@Serializable
+private data class AgentRuntimeConfigWireDto(
+    val runtime: String? = null,
+    val model: AgentRuntimeModelWireDto? = null
+)
+
+@Serializable
+private data class AgentRuntimeModelWireDto(
+    val kind: String? = null,
+    val id: String? = null,
+    val name: String? = null
+) {
+    fun normalizedKindOrNull(): String? =
+        kind?.trim()?.lowercase()?.takeIf { it == "preset" || it == "custom" }
+
+    fun valueOrNull(): String? =
+        when (normalizedKindOrNull()) {
+            "preset" -> id?.trim()?.takeIf { it.isNotBlank() }
+            "custom" -> name?.trim()?.takeIf { it.isNotBlank() }
+            else -> null
+        }
 }
 
 private fun Map<String, JsonElement>.toAgentEnvVars(): Map<String, String> =

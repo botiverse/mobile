@@ -6307,7 +6307,10 @@ private fun MembersAgentRuntimeConfigDialog(
     var runtime by remember(initialConfig) { mutableStateOf(initialConfig.runtime) }
     val initialModelValue = remember(initialConfig) { initialConfig.toMembersRuntimeModelValue() }
     val initialModelSelection = remember(initialConfig) {
-        createAgentModelSelectionForValue(initialConfig.runtime, initialModelValue)
+        when (val initialModel = initialConfig.model) {
+            is RuntimeModelConfig.Preset -> false to initialModel.id
+            is RuntimeModelConfig.Custom -> true to initialModel.name
+        }
     }
     var model by remember(initialConfig) { mutableStateOf(initialModelSelection.second) }
     var customModelMode by remember(initialConfig) { mutableStateOf(initialModelSelection.first) }
@@ -6350,28 +6353,6 @@ private fun MembersAgentRuntimeConfigDialog(
     LaunchedEffect(runtime) {
         if (runtime.isNotBlank()) {
             onRuntimeModelsRequest(runtime, false)
-        }
-    }
-
-    LaunchedEffect(runtime, runtimeModelsCatalog) {
-        val presetIds = createAgentModelPresetIds(runtime, runtimeModelsOverride)
-        when {
-            runtimeModelsCatalog != null && model in presetIds -> {
-                // Agent detail can open before the machine catalog arrives. A
-                // machine-only preset (for example builtin MiniMax) is initially
-                // indistinguishable from a custom model; restore preset mode as
-                // soon as the authoritative catalog confirms the model id.
-                customModelMode = false
-                customModelName = ""
-            }
-            !customModelMode && presetIds.isNotEmpty() && model !in presetIds -> {
-                model =
-                    createAgentPreferredModelId(
-                        runtime = runtime,
-                        runtimeModelsOverride = runtimeModelsOverride,
-                        runtimeModelsDefault = runtimeModelsCatalog?.defaultModel
-                    )
-            }
         }
     }
 
@@ -6427,6 +6408,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         onRuntimeModelsRefresh = {
                             onRuntimeModelsRequest(runtime, true)
                         },
+                        retainUnavailableSelectedPreset = true,
                         machineRuntimeIds = machineRuntimeIds,
                         enabled = !saving,
                         providerMode = providerMode,
@@ -6652,7 +6634,7 @@ private fun AgentDetailSummary?.toMembersRuntimeConfig(member: MemberProfile): R
     val model = this?.model?.takeIf { it.isNotBlank() } ?: getDefaultModel(runtime)
     return RuntimeConfig(
         runtime = runtime,
-        model = RuntimeModelConfig.Preset(model),
+        model = membersRuntimeModelConfig(runtime, model, this?.runtimeModelKind),
         mode = if (this?.executionMode?.trim()?.lowercase() == "fast") {
             RuntimeModeConfig.Fast
         } else {
@@ -6662,6 +6644,20 @@ private fun AgentDetailSummary?.toMembersRuntimeConfig(member: MemberProfile): R
         envVars = this?.envVars?.takeIf { it.isNotEmpty() }
     )
 }
+
+internal fun membersRuntimeModelConfig(
+    runtime: String,
+    model: String,
+    modelKind: String?
+): RuntimeModelConfig =
+    when (modelKind?.trim()?.lowercase()) {
+        "custom" -> RuntimeModelConfig.Custom(model)
+        "preset" -> RuntimeModelConfig.Preset(model)
+        else -> {
+            val customModelMode = createAgentModelSelectionForValue(runtime, model).first
+            if (customModelMode) RuntimeModelConfig.Custom(model) else RuntimeModelConfig.Preset(model)
+        }
+    }
 
 private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
     when (val modelConfig = model) {
@@ -6701,6 +6697,11 @@ private fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConfi
         summary = currentSummary.copy(
             runtime = config.runtime,
             model = config.toMembersRuntimeModelValue(),
+            runtimeModelKind =
+                when (config.model) {
+                    is RuntimeModelConfig.Preset -> "preset"
+                    is RuntimeModelConfig.Custom -> "custom"
+                },
             reasoning = config.reasoningEffort,
             executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
             envVars = config.envVars.orEmpty(),

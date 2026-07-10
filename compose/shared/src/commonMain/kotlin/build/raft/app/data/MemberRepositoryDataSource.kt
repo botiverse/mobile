@@ -882,6 +882,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         status = status,
         runtime = runtime,
         model = model,
+        runtimeModelKind = runtimeModelKind,
         reasoning = reasoning,
         executionMode = executionMode,
         machineId = machineId,

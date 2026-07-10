@@ -197,7 +197,7 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun machineOnlyBuiltinPresetRehydratesFromRuntimeCatalog() {
+    fun machineOnlyBuiltinPresetIsRecognizedByRuntimeCatalog() {
         val machineModels =
             listOf(
                 SharedCreateAgentRuntimeModelOption(
@@ -215,6 +215,25 @@ class SharedCreateAgentDialogTest {
 
         assertFalse(customMode)
         assertEquals("minimax/MiniMax-M2.7", modelValue)
+    }
+
+    @Test
+    fun agentDetailRetainsPresetMissingFromCurrentMachineCatalog() {
+        val items =
+            createAgentModelDropdownItemsForSelection(
+                runtime = "builtin",
+                runtimeModelsOverride =
+                    listOf(SharedCreateAgentRuntimeModelOption("other/model", "Other model")),
+                selectedModel = "minimax/MiniMax-M2.7",
+                customModelMode = false,
+                retainUnavailableSelectedPreset = true
+            )
+
+        assertEquals(
+            "minimax/MiniMax-M2.7 (not in this computer's config)",
+            items.first { it.id == "minimax/MiniMax-M2.7" }.label
+        )
+        assertTrue(items.indexOfFirst { it.id == "minimax/MiniMax-M2.7" } < items.indexOfFirst { it.custom })
     }
 
     @Test

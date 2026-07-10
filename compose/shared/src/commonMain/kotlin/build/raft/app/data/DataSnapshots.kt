@@ -423,6 +423,7 @@ data class AgentDetailSummary(
     val status: String? = null,
     val runtime: String? = null,
     val model: String? = null,
+    val runtimeModelKind: String? = null,
     val reasoning: String? = null,
     val executionMode: String? = null,
     val machineId: String? = null,

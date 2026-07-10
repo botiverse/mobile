@@ -24,6 +24,8 @@ class AgentsApiTest {
         assertEquals("admin", detail.serverRole)
         assertEquals("machine-1", detail.machineId)
         assertEquals("codex", detail.runtime)
+        assertEquals("preset", detail.runtimeModelKind)
+        assertEquals("gpt-5.6-sol", detail.model)
         assertEquals("medium", detail.reasoning)
         assertEquals("local", detail.executionMode)
         assertEquals("0.57.1", detail.daemonVersion)
@@ -126,6 +128,23 @@ class AgentsApiTest {
     }
 
     @Test
+    fun typedAgentsApiPreservesCustomRuntimeModelKind() = runBlocking {
+        val client =
+            SlockAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody =
+                        """{"id":"agent-1","name":"Agent One","model":"legacy-flat","runtime":"claude","runtimeConfig":{"version":1,"runtime":"claude","provider":{"kind":"custom","apiUrl":"https://example.invalid","apiKey":"secret"},"model":{"kind":"custom","name":"vendor/private-model"},"mode":{"kind":"default"}}}"""
+                )
+            )
+
+        val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
+
+        assertEquals("claude", detail.runtime)
+        assertEquals("custom", detail.runtimeModelKind)
+        assertEquals("vendor/private-model", detail.model)
+    }
+
+    @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runBlocking {
         val client =
             SlockAgentsApiClient(
@@ -158,7 +177,7 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","role":"Admin","status":"active","model":"gpt-5","runtime":"codex","runtimeConfig":{"version":1,"runtime":"codex","model":{"kind":"preset","id":"gpt-5.6-sol"},"mode":{"kind":"default"}},"machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
