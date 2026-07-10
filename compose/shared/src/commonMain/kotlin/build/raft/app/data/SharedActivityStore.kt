@@ -35,6 +35,7 @@ import kotlin.time.TimeSource
 
 private const val SharedActivityPageSize = 30
 private const val SharedActivityReplyPrewarmConcurrency = 2
+private const val SharedActivityTailPrewarmDepthCap = 20
 
 data class ActivityReplyThreadPrewarmKey(
     val serverId: String,
@@ -59,6 +60,7 @@ class SharedActivityStore internal constructor(
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
+    private val tailPrewarmDepthCap: Int = SharedActivityTailPrewarmDepthCap,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
     private val scope: CoroutineScope,
@@ -73,9 +75,11 @@ class SharedActivityStore internal constructor(
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
+    private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private val completedReplyPrewarmVersions = mutableMapOf<ActivityReplyThreadPrewarmKey, String>()
     private val failedReplyPrewarmVersions = mutableMapOf<ActivityReplyThreadPrewarmKey, String>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
+    private var tailPrewarmLoopJob: Job? = null
 
     internal fun updateRuntimeIntegrations(
         authStore: SlockAuthSessionStore = this.authStore,
@@ -122,6 +126,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
+            is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.event)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
@@ -146,11 +151,7 @@ class SharedActivityStore internal constructor(
         val previousVisible = visibleReplyPrewarmMarkers
         visibleReplyPrewarmMarkers = nextVisible
 
-        replyPrewarmJobs
-            .filterKeys { key -> key !in nextVisible }
-            .values
-            .toList()
-            .forEach(Job::cancel)
+        cancelReplyPrewarmJobsNotIn(nextVisible.keys + tailReplyPrewarmMarkers.keys)
 
         nextVisible.values.forEach { marker ->
             val key = marker.key
@@ -165,13 +166,13 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun launchReplyThreadPrewarm(marker: ActivityReplyThreadPrewarmMarker) {
+    private fun launchReplyThreadPrewarm(marker: ActivityReplyThreadPrewarmMarker): Job {
         val key = marker.key
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     val result = replyPrewarmSemaphore.withPermit { prewarmReplyThread(marker) }
-                    if (visibleReplyPrewarmMarkers[key]?.activityVersion != marker.activityVersion) return@launch
+                    if (activeReplyPrewarmMarker(key)?.activityVersion != marker.activityVersion) return@launch
                     when (result) {
                         is DataResult.Content -> {
                             completedReplyPrewarmVersions[key] = marker.activityVersion
@@ -210,7 +211,7 @@ class SharedActivityStore internal constructor(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (throwable: Throwable) {
-                    if (visibleReplyPrewarmMarkers[key]?.activityVersion == marker.activityVersion) {
+                    if (activeReplyPrewarmMarker(key)?.activityVersion == marker.activityVersion) {
                         failedReplyPrewarmVersions[key] = marker.activityVersion
                     }
                     diagnosticsLogger(
@@ -234,12 +235,69 @@ class SharedActivityStore internal constructor(
                 "parentMessageId=${key.parentMessageId} threadChannelId=${key.threadChannelId}"
         )
         job.start()
+        return job
+    }
+
+    // Lower-priority "tail": warm the rest of the activity list top-first, reusing the exact
+    // visible-prewarm machinery (same marker/key, same prewarmReplyThread, same replyPrewarmSemaphore,
+    // same completed/active/failed dedup maps, same shared candidate cache). The ordered list is
+    // visible-first then below-the-fold top-to-bottom; visible keys are handled by the visible flow
+    // and skipped here. A single serialized loop launches one tail item at a time and awaits it, so
+    // the tail never holds more than one permit — it can only run when the visible set is not
+    // saturating the shared Semaphore, and total concurrency stays bounded by that Semaphore.
+    private fun prewarmActivityTail(orderedMarkers: List<ActivityReplyThreadPrewarmMarker>) {
+        val nextTail = LinkedHashMap<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker>()
+        orderedMarkers.forEach { marker -> nextTail.getOrPut(marker.key) { marker } }
+        tailReplyPrewarmMarkers = nextTail
+
+        tailPrewarmLoopJob?.cancel()
+        tailPrewarmLoopJob = null
+        cancelReplyPrewarmJobsNotIn(visibleReplyPrewarmMarkers.keys + nextTail.keys)
+
+        if (nextTail.isEmpty()) return
+        val ordered = nextTail.values.toList()
+        tailPrewarmLoopJob = scope.launch { runReplyPrewarmTail(ordered) }
+    }
+
+    private suspend fun runReplyPrewarmTail(orderedMarkers: List<ActivityReplyThreadPrewarmMarker>) {
+        var launched = 0
+        for (marker in orderedMarkers) {
+            if (launched >= tailPrewarmDepthCap) return
+            if (!shouldLaunchTailPrewarm(marker)) continue
+            launched++
+            launchReplyThreadPrewarm(marker).join()
+        }
+    }
+
+    private fun shouldLaunchTailPrewarm(marker: ActivityReplyThreadPrewarmMarker): Boolean {
+        val key = marker.key
+        if (key in visibleReplyPrewarmMarkers) return false
+        if (completedReplyPrewarmVersions[key] == marker.activityVersion) return false
+        if (replyPrewarmJobs[key]?.isActive == true) return false
+        if (failedReplyPrewarmVersions[key] == marker.activityVersion) return false
+        return true
+    }
+
+    private fun activeReplyPrewarmMarker(
+        key: ActivityReplyThreadPrewarmKey
+    ): ActivityReplyThreadPrewarmMarker? =
+        visibleReplyPrewarmMarkers[key] ?: tailReplyPrewarmMarkers[key]
+
+    private fun cancelReplyPrewarmJobsNotIn(activeKeys: Set<ActivityReplyThreadPrewarmKey>) {
+        replyPrewarmJobs
+            .filterKeys { key -> key !in activeKeys }
+            .values
+            .toList()
+            .forEach(Job::cancel)
     }
 
     private fun clearReplyPrewarmState() {
+        tailPrewarmLoopJob?.cancel()
+        tailPrewarmLoopJob = null
         replyPrewarmJobs.values.toList().forEach(Job::cancel)
         replyPrewarmJobs.clear()
         visibleReplyPrewarmMarkers = emptyMap()
+        tailReplyPrewarmMarkers = emptyMap()
         completedReplyPrewarmVersions.clear()
         failedReplyPrewarmVersions.clear()
     }
@@ -978,6 +1036,9 @@ sealed interface SharedActivityIntent {
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class PrewarmVisibleReplyThreads(
         val markers: Set<ActivityReplyThreadPrewarmMarker>
+    ) : SharedActivityIntent
+    data class PrewarmActivityTail(
+        val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent) : SharedActivityIntent
     data class ApplyRealtimeSummaryEvent(

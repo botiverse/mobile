@@ -24,16 +24,23 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+// Mirrors the store's private SharedActivityReplyPrewarmConcurrency (Semaphore(2)); the tail reuses
+// that same shared Semaphore, so total prewarm concurrency must never exceed it.
+private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
     @Test
@@ -106,6 +113,169 @@ class SharedActivityStoreTest {
 
         releaseFirst.complete(Unit)
         assertEquals(listOf(first, updated), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmsBelowFoldInTopFirstOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..4).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertEquals(ordered, calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmHonorsDepthCap() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                tailPrewarmDepthCap = 3,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..6).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertEquals(ordered.take(3), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmSkipsVisibleAndCompletedKeys() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val completed = keyedMarker("row-1")
+        val visible = keyedMarker("row-2")
+        val fresh = keyedMarker("row-3")
+
+        // "completed" warms via the visible path and records completion.
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(completed)))
+        // "visible" stays in the current viewport while the tail runs.
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(visible)))
+        calls.clear()
+
+        store.dispatch(
+            SharedActivityIntent.PrewarmActivityTail(listOf(visible, completed, fresh))
+        )
+
+        assertEquals(listOf(fresh), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmNeverExceedsSharedConcurrencyCap() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var inFlight = 0
+        var maxInFlight = 0
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = {
+                    inFlight += 1
+                    if (inFlight > maxInFlight) maxInFlight = inFlight
+                    inFlight -= 1
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..12).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertTrue(maxInFlight <= SharedActivityReplyPrewarmConcurrencyForTest)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReplyPrewarmTakesPriorityOverActivityTail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val releaseVisible = CompletableDeferred<Unit>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val firstVisible = keyedMarker("visible-1")
+        val secondVisible = keyedMarker("visible-2")
+        val tail = keyedMarker("tail-1")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    if (marker == firstVisible || marker == secondVisible) releaseVisible.await()
+                    DataResult.Content(Unit)
+                }
+            )
+
+        // Two visible markers saturate the shared Semaphore(2).
+        store.dispatch(
+            SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(firstVisible, secondVisible))
+        )
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(tail)))
+
+        // Tail cannot acquire a permit while the visible set holds both.
+        assertEquals(setOf(firstVisible, secondVisible), calls.toSet())
+        assertTrue(tail !in calls)
+
+        releaseVisible.complete(Unit)
+        assertTrue(tail in calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmCancelsKeysDroppedFromOrderedSet() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val started = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val cancelled = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val dropped = keyedMarker("dropped")
+        val kept = keyedMarker("kept")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    started += marker
+                    if (marker == dropped) {
+                        try {
+                            awaitCancellation()
+                        } catch (cancellation: CancellationException) {
+                            cancelled += marker
+                            throw cancellation
+                        }
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+
+        // "dropped" is warmed first (top of the list) and stays in-flight.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(dropped, kept)))
+        assertEquals(listOf(dropped), started)
+
+        // New ordered set no longer contains "dropped" -> its in-flight job is cancelled.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(kept)))
+
+        assertEquals(listOf(dropped), cancelled)
+        assertTrue(kept in started)
         scope.cancel()
     }
 
@@ -1030,6 +1200,7 @@ class SharedActivityStoreTest {
         prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
+        tailPrewarmDepthCap: Int = 20,
         onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
@@ -1042,6 +1213,7 @@ class SharedActivityStoreTest {
             tasksDataStore = tasksDataStore,
             persistSlices = persistSlices,
             prewarmReplyThread = prewarmReplyThread,
+            tailPrewarmDepthCap = tailPrewarmDepthCap,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
         )
@@ -1056,6 +1228,21 @@ class SharedActivityStoreTest {
                     parentChannelId = "parent-channel",
                     parentMessageId = "parent-message",
                     threadChannelId = "thread-channel"
+                ),
+            activityVersion = activityVersion
+        )
+
+    private fun keyedMarker(
+        id: String,
+        activityVersion: String = "1:$id"
+    ): ActivityReplyThreadPrewarmMarker =
+        ActivityReplyThreadPrewarmMarker(
+            key =
+                ActivityReplyThreadPrewarmKey(
+                    serverId = "server-1",
+                    parentChannelId = "parent-$id",
+                    parentMessageId = "message-$id",
+                    threadChannelId = "thread-$id"
                 ),
             activityVersion = activityVersion
         )
