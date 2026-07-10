@@ -6631,31 +6631,57 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMessageInlineBookmarkIsHiddenByDefault() {
+    fun threadMessageSavedBadgeIsHiddenByDefault() {
         assertFalse(
-            shouldShowThreadMessageInlineBookmark(
+            shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
                 showInlineSaveAction = false,
                 richContentEnabled = true,
-                hasLocalSendState = false
-            )
-        )
-        assertTrue(
-            shouldShowThreadMessageInlineBookmark(
-                showSaveAction = true,
-                showInlineSaveAction = true,
-                richContentEnabled = true,
-                hasLocalSendState = false
+                hasLocalSendState = false,
+                isSaved = true
             )
         )
         assertFalse(
-            shouldShowThreadMessageInlineBookmark(
+            shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
                 showInlineSaveAction = true,
                 richContentEnabled = true,
-                hasLocalSendState = true
+                hasLocalSendState = false,
+                isSaved = false
             )
         )
+        assertTrue(
+            shouldShowThreadMessageSavedBadge(
+                showSaveAction = true,
+                showInlineSaveAction = true,
+                richContentEnabled = true,
+                hasLocalSendState = false,
+                isSaved = true
+            )
+        )
+        assertFalse(
+            shouldShowThreadMessageSavedBadge(
+                showSaveAction = true,
+                showInlineSaveAction = true,
+                richContentEnabled = true,
+                hasLocalSendState = true,
+                isSaved = true
+            )
+        )
+    }
+
+    @Test
+    fun savedBadgeQualifiesAsThreadFooterMeta() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "saved-only",
+                authorId = "author-1",
+                authorName = "Author",
+                isSaved = true
+            )
+
+        assertFalse(message.hasThreadFooterMeta())
+        assertTrue(message.hasThreadFooterMeta(showSavedBadge = true))
     }
 
     private fun markdownChannelHomeSnapshot(vararg channels: ConversationSummary): HomeSnapshot =
