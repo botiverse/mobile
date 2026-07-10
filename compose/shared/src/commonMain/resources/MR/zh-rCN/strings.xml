@@ -272,4 +272,19 @@
     <string name="announcement_action_got_it_bilingual">知道了 / Got it</string>
     <string name="announcement_action_skip_bilingual">跳过 / Skip</string>
     <string name="tasks_label_new_tasks">新任务</string>
+    <string name="home_action_view">查看</string>
+    <string name="home_action_retry">重试</string>
+    <string name="home_nav_search">搜索</string>
+    <string name="home_nav_activity">活动</string>
+    <string name="home_nav_followed_threads">已关注的话题</string>
+    <string name="home_nav_saved">已收藏</string>
+    <string name="home_section_channels">频道</string>
+    <string name="home_section_joint_channels">联合频道</string>
+    <string name="home_section_direct_messages">私聊</string>
+    <string name="home_section_pinned">置顶</string>
+    <string name="home_action_pin">置顶</string>
+    <string name="home_action_unpin">取消置顶</string>
+    <string name="home_action_mark_as_read">标记已读</string>
+    <string name="home_action_mark_as_unread">标记未读</string>
+    <string name="home_action_mute">静音</string>
 </resources>

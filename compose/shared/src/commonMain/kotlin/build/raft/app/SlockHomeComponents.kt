@@ -247,7 +247,7 @@ data class SlockHomeNotificationItem(
     val id: String = "",
     val title: String = "",
     val body: String = "",
-    val actionLabel: String = "View",
+    val actionLabel: String = "",
     val targetId: String? = null,
     val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning,
     val icon: SlockHomeNotificationIcon = SlockHomeNotificationIcon.Default
@@ -263,7 +263,7 @@ data class SlockHomeInlineError(
     val title: String,
     val detail: String,
     val code: String,
-    val actionLabel: String = "Retry"
+    val actionLabel: String = "",
 )
 
 @Serializable
@@ -296,19 +296,19 @@ enum class SlockSidebarSortMode(val wireValue: String, val label: String) {
 
 @Serializable
 data class SlockHomeShellLabels(
-    val search: String = "Search",
-    val inbox: String = "Activity",
-    val followedThreads: String = "Followed threads",
-    val saved: String = "Saved",
-    val channels: String = "CHANNELS",
-    val jointChannels: String = "Joint Channels",
-    val directMessages: String = "DIRECT MESSAGES",
-    val pinned: String = "PINNED",
-    val pin: String = "Pin",
-    val unpin: String = "Unpin",
-    val markAsRead: String = "Mark as Read",
-    val markAsUnread: String = "Mark as Unread",
-    val mute: String = "Mute",
+    val search: String = "",
+    val inbox: String = "",
+    val followedThreads: String = "",
+    val saved: String = "",
+    val channels: String = "",
+    val jointChannels: String = "",
+    val directMessages: String = "",
+    val pinned: String = "",
+    val pin: String = "",
+    val unpin: String = "",
+    val markAsRead: String = "",
+    val markAsUnread: String = "",
+    val mute: String = "",
     val unmute: String = "Unmute",
     val closeChat: String = "Close Chat",
     val archive: String = "Archive",
@@ -322,7 +322,21 @@ data class SlockHomeShellLabels(
 ) {
     companion object {
         @Composable
-        fun defaults(): SlockHomeShellLabels = SlockHomeShellLabels()
+        fun defaults(): SlockHomeShellLabels = SlockHomeShellLabels(
+            search = stringResource(MR.strings.home_nav_search),
+            inbox = stringResource(MR.strings.home_nav_activity),
+            followedThreads = stringResource(MR.strings.home_nav_followed_threads),
+            saved = stringResource(MR.strings.home_nav_saved),
+            channels = stringResource(MR.strings.home_section_channels),
+            jointChannels = stringResource(MR.strings.home_section_joint_channels),
+            directMessages = stringResource(MR.strings.home_section_direct_messages),
+            pinned = stringResource(MR.strings.home_section_pinned),
+            pin = stringResource(MR.strings.home_action_pin),
+            unpin = stringResource(MR.strings.home_action_unpin),
+            markAsRead = stringResource(MR.strings.home_action_mark_as_read),
+            markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
+            mute = stringResource(MR.strings.home_action_mute)
+        )
     }
 }
 
