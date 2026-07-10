@@ -102,8 +102,8 @@ Build, install, and launch the Raft OHOS app:
 ```bash
 harmony-use build-hap --project compose/ohosApp --pretty
 harmony-use install --project compose/ohosApp --pretty
-harmony-use launch --bundle build.raft.harmony --pretty
-harmony-use run-app --project compose/ohosApp --bundle build.raft.harmony --pretty
+harmony-use launch --bundle build.raft.mobile --pretty
+harmony-use run-app --project compose/ohosApp --bundle build.raft.mobile --pretty
 ```
 
 Capture device state:
@@ -125,7 +125,7 @@ harmony-use key Back
 Capture or analyze HiLog:
 
 ```bash
-harmony-use hilog --bundle build.raft.harmony --duration 20 --out /tmp/harmony-use --pretty
+harmony-use hilog --bundle build.raft.mobile --duration 20 --out /tmp/harmony-use --pretty
 harmony-use analyze-log "/path/to/HiLog.txt" --pretty
 ```
 
@@ -260,7 +260,7 @@ from ios_use import IosConfig, IosSimulator
 config = HarmonyConfig.from_defaults(project="compose/ohosApp")
 device = HarmonyDevice(config)
 print(device.devices())
-device.launch(bundle="build.raft.harmony")
+device.launch(bundle="build.raft.mobile")
 print(HarmonyEmulator(config).list().stdout)
 
 android = AndroidDevice(AndroidConfig.from_defaults())

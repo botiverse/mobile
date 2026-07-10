@@ -40,7 +40,7 @@ python3 scripts/slock_android_adb.py --device emulator-5560 scroll --direction u
 
 OHOS uses DevEco/HDC, not Android `adb`. The Slock app identifiers are:
 
-- bundle: `build.raft.app`
+- bundle: `build.raft.mobile`
 - module: `entry`
 - ability: `EntryAbility`
 - project root: `compose/ohosApp`

@@ -64,7 +64,7 @@ native_push_devices
   device_id             -- stable install/device id
   token_hash
   encrypted_token       -- OHOS/provider push token
-  bundle_name           -- current OHOS bundle name, expected build.raft.app
+  bundle_name           -- current OHOS bundle name, expected build.raft.mobile
   app_version
   os_version
   device_model
@@ -99,7 +99,7 @@ POST /api/push/native/test
   "provider": "huawei-push",
   "deviceId": "stable-install-id",
   "token": "ohos-provider-token",
-  "bundleName": "build.raft.app",
+  "bundleName": "build.raft.mobile",
   "appVersion": "1.2.3",
   "osVersion": "5.0",
   "deviceModel": "OHOS Device",
