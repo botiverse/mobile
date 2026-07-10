@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.data.NetworkSlockThreadApi
+
 import build.raft.app.base.Utils
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalCard
@@ -2099,6 +2101,23 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
             )
         }
+    val homeActivityReplyThreadPrewarmDataSource =
+        remember(
+            authStore,
+            appShellNetworkClient,
+            conversationRepository,
+            sharedStores.threadMessageStore,
+            sharedStores.threadPayloadStore
+        ) {
+            SharedThreadDataSource(
+                networkApi = NetworkSlockThreadApi(appShellNetworkClient),
+                sessionStore = authStore,
+                conversationRepository = conversationRepository,
+                messageStore = sharedStores.threadMessageStore,
+                payloadStore = sharedStores.threadPayloadStore,
+                diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity_thread_prewarm")
+            )
+        }
     val homeActivityStore =
         remember(
             authStore,
@@ -2107,13 +2126,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             conversationRepository,
             memberRepository,
             sharedStores.serverMembersStore,
-            homeStore
+            homeStore,
+            homeActivityReplyThreadPrewarmDataSource
         ) {
             sharedStores.getOrCreateHomeActivityStore(
                 inboxRepository = homeActivityRepository,
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 diagnosticsLogger = slockLogger("SlockHomeActivity", "shared_home_activity")
             )

@@ -1806,6 +1806,7 @@ private fun ThreadPageScreen() {
                     ),
                 channelRepository = channelRepository,
                 messageStore = sharedStores.threadMessageStore,
+                payloadStore = sharedStores.threadPayloadStore,
                 agentsApiClient = SlockAgentsApiClient(
                     transport = SlockAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }

@@ -5,6 +5,7 @@ import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
+import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.data.realtime.MessageSeqEnvelope
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
@@ -87,6 +88,7 @@ internal class SlockSharedStoreProvider private constructor(
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner,
     val messageTranslationStore: SharedMessageTranslationStore,
     val threadMessageStore: SharedThreadMessageStore,
+    val threadPayloadStore: SharedThreadPayloadStore,
     val foregroundReconciler: SharedForegroundReconciler,
     private val homeStoreScope: CoroutineScope,
     private val homeActivityStoreScope: CoroutineScope,
@@ -199,6 +201,7 @@ internal class SlockSharedStoreProvider private constructor(
         readReceiptRepository: ReadReceiptRepository,
         conversationRepository: ConversationRepository,
         memberRepository: MemberRepository? = null,
+        prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
@@ -216,6 +219,7 @@ internal class SlockSharedStoreProvider private constructor(
                     serverMembersStore = serverMembersStore,
                     tasksDataStore = tasksDataStore,
                     persistSlices = listOf(activityPersistSlice),
+                    prewarmReplyThread = prewarmReplyThread,
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -231,6 +235,7 @@ internal class SlockSharedStoreProvider private constructor(
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
             persistSlices = listOf(activityPersistSlice),
+            prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
             onUnreadCountsChanged = onUnreadCountsChanged ?: {},
             scope = homeActivityStoreScope,
             diagnosticsLogger = diagnosticsLogger ?: {}
@@ -441,6 +446,7 @@ internal class SlockSharedStoreProvider private constructor(
                         diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),
                 threadMessageStore = SharedThreadMessageStore(),
+                threadPayloadStore = SharedThreadPayloadStore(CoroutineScope(SupervisorJob())),
                 foregroundReconciler =
                     SharedForegroundReconciler(
                         authStore = authStore,
