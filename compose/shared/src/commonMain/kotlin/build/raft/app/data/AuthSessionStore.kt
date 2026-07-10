@@ -29,6 +29,34 @@ interface SlockAuthSessionStore {
     suspend fun updateTokens(accessToken: String, refreshToken: String)
     suspend fun updateSelectedServer(serverId: String?, serverSlug: String?)
     suspend fun clearSession(reason: String = "local", source: String = "unknown")
+
+    // --- Atomic session-write primitives (#466 lost-update fix) ---
+    // All session read-modify-writes MUST go through these. A stale captured snapshot must
+    // never be able to clobber a concurrently-committed token rotation (the auth_restore
+    // metadata write that overwrote the socket coordinator's successor in #466/#489).
+
+    /** Intentional full replace — login/register only; the only verb that sets tokens from scratch. */
+    suspend fun replaceAuthenticatedSession(session: StoredAuthSession)
+
+    /**
+     * CAS token rotation (coordinator / token-owner only). Rotates only if the store's LATEST
+     * tokens still match [expectedAccessToken]/[expectedRefreshToken]; returns true if applied,
+     * false if another writer already rotated (do not overwrite).
+     */
+    suspend fun rotateTokensIfMatch(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): Boolean
+
+    /**
+     * Metadata-only atomic update. [transform] runs (non-suspending) on the store's LATEST
+     * session inside the write lock and may change user/servers/selection only — it MUST NOT
+     * change tokens (enforced fail-closed). Tokens always come from the latest session, never
+     * from a captured snapshot.
+     */
+    suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession)
 }
 
 interface SlockAuthServerSelectionMemory {
@@ -226,6 +254,58 @@ class InMemorySlockAuthSessionStore(
         invalidations.emit(Unit)
     }
 
+    override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
+        val changed =
+            mutex.withLock {
+                val previous = this.session?.authSessionClearFingerprint()
+                this.session = session
+                previous != session.authSessionClearFingerprint()
+            }
+        if (changed) {
+            changes.emit(session.authSessionClearFingerprint())
+        }
+    }
+
+    override suspend fun rotateTokensIfMatch(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): Boolean {
+        var newFingerprint: String? = null
+        val applied =
+            mutex.withLock {
+                val current = session ?: return@withLock false
+                if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
+                    return@withLock false
+                }
+                val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
+                session = updated
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+                true
+            }
+        newFingerprint?.let { changes.emit(it) }
+        return applied
+    }
+
+    override suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession) {
+        var newFingerprint: String? = null
+        mutex.withLock {
+            val current = session ?: return@withLock
+            val updated = transform(current)
+            require(
+                updated.accessToken == current.accessToken && updated.refreshToken == current.refreshToken
+            ) { "updateMetadata transform must not change access/refresh tokens" }
+            if (updated != current) {
+                session = updated
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+            }
+        }
+        newFingerprint?.let { changes.emit(it) }
+    }
+
     override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =
         mutex.withLock {
             user.accountServerSelectionKey()?.let(rememberedSelections::get)
@@ -250,12 +330,82 @@ class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
-    private val mutex = Mutex()
+    // #466: the serialization lock is SHARED across every KeyValueAuthSessionStore instance
+    // (they all back the same MMKV namespace), so cross-instance / cross-subsystem session
+    // read-modify-writes can never lose an update. Delegating the existing `mutex` to the
+    // companion keeps all current call sites in the single serialization domain.
+    private val mutex get() = storeMutex
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
     override val sessionChanges: SharedFlow<String> = changes.asSharedFlow()
+
+    // Backing read/write of the session record — NOT locked; callers MUST hold [mutex]/[storeMutex].
+    private fun readSessionRecordLocked(): StoredAuthSession? =
+        store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+
+    private fun writeSessionRecordLocked(session: StoredAuthSession) {
+        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+    }
+
+    override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
+        val fingerprint = session.authSessionClearFingerprint()
+        val changed =
+            mutex.withLock {
+                val previous = readSessionRecordLocked()?.authSessionClearFingerprint()
+                writeSessionRecordLocked(session)
+                previous != fingerprint
+            }
+        if (changed) {
+            changes.emit(fingerprint)
+        }
+        diagnosticsLogger("auth_session_replace result=success changed=$changed servers=${session.servers.size}")
+    }
+
+    override suspend fun rotateTokensIfMatch(
+        expectedAccessToken: String,
+        expectedRefreshToken: String,
+        newAccessToken: String,
+        newRefreshToken: String,
+    ): Boolean {
+        var newFingerprint: String? = null
+        val applied =
+            mutex.withLock {
+                val current = readSessionRecordLocked() ?: return@withLock false
+                if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
+                    // Another writer (e.g. the socket coordinator) already rotated — do NOT overwrite.
+                    return@withLock false
+                }
+                val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
+                writeSessionRecordLocked(updated)
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+                true
+            }
+        newFingerprint?.let { changes.emit(it) }
+        diagnosticsLogger("auth_token_rotate applied=$applied")
+        return applied
+    }
+
+    override suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession) {
+        var newFingerprint: String? = null
+        mutex.withLock {
+            val current = readSessionRecordLocked() ?: return@withLock
+            val updated = transform(current)
+            // Fail-closed: metadata transform MUST NOT change tokens. Token rotation is
+            // rotateTokensIfMatch's job ONLY; this is what stops the #466 lost-update overwrite.
+            require(
+                updated.accessToken == current.accessToken && updated.refreshToken == current.refreshToken
+            ) { "updateMetadata transform must not change access/refresh tokens" }
+            if (updated != current) {
+                writeSessionRecordLocked(updated)
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+            }
+        }
+        newFingerprint?.let { changes.emit(it) }
+    }
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock {
@@ -401,6 +551,13 @@ class KeyValueAuthSessionStore(
         runCatching {
             authSessionStoreJson.decodeFromString(StoredAuthServerSelection.serializer(), this)
         }.getOrNull()
+
+    private companion object {
+        // Process-wide, shared across ALL KeyValueAuthSessionStore instances (every instance
+        // backs the same MMKV session record). This is the single serialization domain for all
+        // session read-modify-writes — the fix for the #466 cross-subsystem lost-update.
+        private val storeMutex = Mutex()
+    }
 }
 
 private fun Throwable.safeAuthSessionDiagnosticsType(): String =

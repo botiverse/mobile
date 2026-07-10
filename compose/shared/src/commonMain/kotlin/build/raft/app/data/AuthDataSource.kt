@@ -863,9 +863,25 @@ class SharedAuthDataSource(
                 is AuthApiResult.Failure -> session.servers
             }
         val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "current_user"))
-        val updated = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
-        sessionStore.saveSession(updated)
-        return SharedAuthResult.Success(updated)
+        // Compute the fetched metadata (user + servers + validated selection). This is token-free;
+        // its tokens are the captured `session`'s and are deliberately NOT persisted below.
+        val metadata = session.copy(user = user).withValidatedServerSelection(orderedServers, serverSelectionMemory)
+        // #466 fix: apply the metadata onto the store's LATEST session under the store lock, keeping
+        // the LATEST tokens. The old `session.copy(user=user); saveSession(updated)` wrote back this
+        // captured snapshot's tokens, clobbering a token the socket coordinator may have rotated in
+        // between (the #466/#489 lost-update). `updateMetadata` reads-latest-in-lock and is fail-closed
+        // against any token change, so it can never overwrite a concurrently-committed rotation.
+        var persisted: StoredAuthSession? = null
+        sessionStore.updateMetadata { latest ->
+            latest.copy(
+                user = metadata.user,
+                servers = metadata.servers,
+                selectedServerId = metadata.selectedServerId,
+                selectedServerSlug = metadata.selectedServerSlug,
+            ).also { persisted = it }
+        }
+        // Session cleared concurrently (logout) → updateMetadata no-ops; do NOT revive it.
+        return persisted?.let { SharedAuthResult.Success(it) } ?: SharedAuthResult.Unauthenticated
     }
 
     private suspend fun loadServerOrderOrNull(authorization: String, source: String): List<String>? =

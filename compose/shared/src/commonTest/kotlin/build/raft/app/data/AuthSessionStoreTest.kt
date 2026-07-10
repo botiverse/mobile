@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -155,6 +156,73 @@ class AuthSessionStoreTest {
             )
         )
         assertEquals("token-new", store.readSession()?.accessToken)
+    }
+
+    // --- #466 auth-restore lost-update regressions ---
+
+    @Test
+    fun updateMetadataDoesNotClobberConcurrentTokenRotation() = runBlocking {
+        // Reproduces #466: a metadata writer (currentUserWithSession) captured the OLD session,
+        // the socket coordinator rotated the token in between, and the metadata write then wrote
+        // the captured OLD token back — clobbering the successor. The fix: metadata writes go
+        // through updateMetadata, which reads latest under lock and never touches tokens.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
+
+        val captured = store.readSession()!! // metadata writer captures the OLD session
+        assertEquals("token-a", captured.accessToken)
+
+        // socket coordinator rotates to the successor
+        assertTrue(store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r"))
+        assertEquals("token-successor", store.readSession()?.accessToken)
+
+        // metadata writer commits its (now stale-token) capture as a metadata-only update
+        store.updateMetadata { latest -> latest.copy(user = captured.user.copy(displayName = "Renamed")) }
+
+        val final = store.readSession()!!
+        assertEquals("token-successor", final.accessToken) // successor preserved, NOT clobbered
+        assertEquals("token-successor-r", final.refreshToken)
+        assertEquals("Renamed", final.user.displayName) // metadata applied
+    }
+
+    @Test
+    fun sessionWritesSerializeAcrossStoreInstancesUnderConcurrency() = runBlocking {
+        // The serialization lock is shared across KeyValueAuthSessionStore INSTANCES backing the
+        // same store, so concurrent rotate (instance b) + metadata write (instance a) can never
+        // lose the rotation regardless of interleaving/instance identity.
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        a.replaceAuthenticatedSession(sampleSession())
+        val captured = a.readSession()!!
+
+        val rotate = async { b.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r") }
+        val meta = async { a.updateMetadata { latest -> latest.copy(user = captured.user.copy(displayName = "Renamed")) } }
+        rotate.await()
+        meta.await()
+
+        // Either order is safe: metadata never changes tokens, so rotate's CAS still matches; and
+        // metadata-after-rotate reads the successor. Final token is always the successor, never old.
+        assertEquals("token-successor", b.readSession()?.accessToken)
+        assertEquals("Renamed", b.readSession()?.user?.displayName)
+    }
+
+    @Test
+    fun updateMetadataFailsClosedOnTokenChange() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        assertFailsWith<IllegalArgumentException> {
+            store.updateMetadata { latest -> latest.copy(accessToken = "sneaky") }
+        }
+        assertEquals("token-a", store.readSession()?.accessToken) // unchanged
+    }
+
+    @Test
+    fun rotateTokensIfMatchNoOpsOnStaleExpected() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        assertFalse(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
+        assertEquals("token-a", store.readSession()?.accessToken) // not overwritten
     }
 
     private fun sampleSession(): StoredAuthSession =
