@@ -65,6 +65,7 @@ import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -119,6 +120,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -175,7 +177,11 @@ private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
-private const val HomeListMaxBeyondBoundsItemCount = 6
+private const val HomeListMinBeyondBoundsItemCount = 6
+private const val HomeListMaxBeyondBoundsItemCount = 24
+private const val HomeListOverscanViewportFraction = 2f / 3f
+private const val HomeListRepresentativeRowStepDp = 34f
+private const val HomeServerSwitcherMaxBeyondBoundsItemCount = 6
 
 internal enum class HomeSidebarBadgeTone {
     Loud,
@@ -1114,7 +1120,12 @@ internal fun SlockStructuralHomeShell(
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val homeBeyondBoundsItemCount =
+                        homeListBeyondBoundsItemCount(
+                            itemCount = lazyItemCount,
+                            viewportHeightDp = maxHeight.value
+                        )
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
                         LazyColumn(
                             state = listState,
@@ -1127,7 +1138,7 @@ internal fun SlockStructuralHomeShell(
                                         }
                                     },
                             verticalArrangement = Arrangement.spacedBy(2.dp),
-                            beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
+                            beyondBoundsItemCount = homeBeyondBoundsItemCount
                         ) {
                             if (pullToRefreshEnabled) {
                                 pullToRefreshItem(
@@ -1721,10 +1732,35 @@ internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
         maximumValue = SharedListMaxBeyondBoundsItemCount
     )
 
-internal fun homeListBeyondBoundsItemCount(itemCount: Int): Int =
+internal fun homeListBeyondBoundsItemCount(
+    itemCount: Int,
+    viewportHeightDp: Float,
+    representativeRowStepDp: Float = HomeListRepresentativeRowStepDp
+): Int {
+    val viewportTarget =
+        if (
+            viewportHeightDp.isFinite() && viewportHeightDp > 0f &&
+            representativeRowStepDp.isFinite() && representativeRowStepDp > 0f
+        ) {
+            ceil(viewportHeightDp * HomeListOverscanViewportFraction / representativeRowStepDp).toInt()
+        } else {
+            HomeListMinBeyondBoundsItemCount
+        }
+    val boundedTarget =
+        viewportTarget.coerceIn(
+            minimumValue = HomeListMinBeyondBoundsItemCount,
+            maximumValue = HomeListMaxBeyondBoundsItemCount
+        )
+    return itemCount.coerceIn(
+        minimumValue = HomeListMinBeyondBoundsItemCount,
+        maximumValue = boundedTarget
+    )
+}
+
+internal fun homeServerSwitcherBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceIn(
         minimumValue = SharedListDefaultBeyondBoundsItemCount,
-        maximumValue = HomeListMaxBeyondBoundsItemCount
+        maximumValue = HomeServerSwitcherMaxBeyondBoundsItemCount
     )
 
 internal fun homeLazyItemCount(
@@ -2924,7 +2960,7 @@ private fun ServerSwitcherPanel(
                                     }
                                 }
                             },
-                    beyondBoundsItemCount = homeListBeyondBoundsItemCount(order.size),
+                    beyondBoundsItemCount = homeServerSwitcherBeyondBoundsItemCount(order.size),
                     userScrollEnabled = draggedId == null
                 ) {
                     items(order.size, key = { index -> "server-${order[index]}" }) { index ->
