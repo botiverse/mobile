@@ -36,6 +36,34 @@ internal fun rankThreadComposerMemberSuggestionEntries(
         entries = entries
     )
 
+internal fun <T> filterPeopleSuggestions(
+    query: String,
+    suggestions: List<T>,
+    handle: (T) -> String,
+    displayName: (T) -> String,
+    description: (T) -> String? = { null },
+    sourceServerLabel: (T) -> String? = { null },
+    legacyId: (T) -> String? = { null }
+): List<T> =
+    rankThreadComposerSuggestions(
+        query = query,
+        entries =
+            suggestions.mapIndexed { index, suggestion ->
+                ThreadComposerSuggestionSearchEntry(
+                    index = index,
+                    suggestion = suggestion,
+                    fields =
+                        listOf(
+                            ThreadComposerSuggestionSearchField(handle(suggestion), priority = 0),
+                            ThreadComposerSuggestionSearchField(displayName(suggestion), priority = 1),
+                            ThreadComposerSuggestionSearchField(description(suggestion).orEmpty(), priority = 3),
+                            ThreadComposerSuggestionSearchField(sourceServerLabel(suggestion).orEmpty(), priority = 4),
+                            ThreadComposerSuggestionSearchField(legacyId(suggestion).orEmpty(), priority = 5)
+                        )
+                )
+            }
+    )
+
 internal fun filterThreadComposerChannelSuggestions(
     query: String,
     suggestions: List<KuiklyComposerChannelItem>

@@ -16807,16 +16807,16 @@ private fun ThreadAddMemberModal(
     var selectedId by remember(candidates, initialSelectedId) { mutableStateOf(initialSelectedId) }
     var localError by remember { mutableStateOf(false) }
     val currentKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val normalizedQuery = query.trim()
     val filteredCandidates =
-        candidates
-            .filter { member ->
-                normalizedQuery.isBlank() ||
-                    member.displayName.contains(normalizedQuery, ignoreCase = true) ||
-                    member.handle.contains(normalizedQuery, ignoreCase = true) ||
-                    member.roleLabel.contains(normalizedQuery, ignoreCase = true) ||
-                    member.id.contains(normalizedQuery, ignoreCase = true)
-            }
+        filterPeopleSuggestions(
+            query = query,
+            suggestions = candidates,
+            handle = { member -> member.handle },
+            displayName = { member -> member.displayName },
+            description = { member -> member.roleLabel },
+            sourceServerLabel = { member -> member.sourceServerLabel },
+            legacyId = { member -> member.id }
+        )
             .distinctBy { it.memberKey }
     val agentCandidates = filteredCandidates.filter { it.kind.equals("agent", ignoreCase = true) }
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }

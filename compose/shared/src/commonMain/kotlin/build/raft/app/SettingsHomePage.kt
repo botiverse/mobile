@@ -12704,25 +12704,16 @@ private fun SharedCreateChannelDialog(
     }
     val canSubmit = name.isNotBlank() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
-    val normalizedMemberSearch = memberSearch.trim().lowercase()
     val filteredMembers =
-        selectableMembers.filter { member ->
-            if (normalizedMemberSearch.isBlank()) {
-                true
-            } else {
-                val searchableText =
-                    buildString {
-                        append(member.displayName)
-                        append(' ')
-                        append(member.handle)
-                        member.roleDescription?.let {
-                            append(' ')
-                            append(it)
-                        }
-                    }.lowercase()
-                normalizedMemberSearch in searchableText
-            }
-        }
+        filterPeopleSuggestions(
+            query = memberSearch,
+            suggestions = selectableMembers,
+            handle = { member -> member.handle },
+            displayName = { member -> member.displayName },
+            description = { member -> member.roleDescription },
+            sourceServerLabel = { member -> member.serverName ?: member.serverSlug },
+            legacyId = { member -> member.id.value }
+        )
     val filteredAgentMembers = filteredMembers.filter { it.kind == MemberKind.Agent }
     val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
     val hasFilteredMembers = filteredMembers.isNotEmpty()
