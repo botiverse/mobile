@@ -31,6 +31,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
@@ -47,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
@@ -4109,7 +4111,24 @@ private fun SlockAvatarHttpImage(
     // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
     // once the fetch completes. We therefore render Image unconditionally
     // and the default app avatar underneath remains visible when loading fails.
-    val painter = rememberAsyncImagePainter(model = source)
+    val fallbackSource =
+        remember(source) {
+            source.appAvatarApiFallbackUrl(
+                SlockSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl
+            )
+        }
+    var activeSource by remember(source, fallbackSource) { mutableStateOf(source) }
+    val painter = rememberAsyncImagePainter(model = activeSource)
+    val imageState by painter.state.collectAsState()
+    LaunchedEffect(imageState, activeSource, source, fallbackSource) {
+        if (
+            imageState is AsyncImagePainter.State.Error &&
+            activeSource == source &&
+            fallbackSource != null
+        ) {
+            activeSource = fallbackSource
+        }
+    }
     Image(
         painter = painter,
         contentDescription = null,

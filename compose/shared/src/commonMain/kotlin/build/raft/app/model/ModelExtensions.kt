@@ -286,6 +286,27 @@ fun String.appAvatarWireValueOrNull(): String? =
         .takeIf { it.isNotBlank() }
         ?.takeUnless { it.isLegacyGravatarAvatarUrl() }
 
+fun String.appAvatarApiFallbackUrl(apiBaseUrl: String?): String? {
+    val normalizedSource = trim()
+    if (!normalizedSource.startsWith("http://") && !normalizedSource.startsWith("https://")) return null
+
+    val authorityEnd = normalizedSource.indexOf('/', startIndex = normalizedSource.indexOf("://") + 3)
+    if (authorityEnd < 0) return null
+    val path =
+        normalizedSource
+            .substring(authorityEnd)
+            .substringBefore('?')
+            .substringBefore('#')
+    val match = AppAvatarCdnPath.matchEntire(path) ?: return null
+    val base = apiBaseUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: return null
+    val namespace = match.groupValues[1]
+    val filename = match.groupValues[2]
+    return "${base.trimEnd('/')}/avatars/$namespace/$filename"
+}
+
+private val AppAvatarCdnPath =
+    Regex("^/avatars/([A-Za-z0-9_-]+)/([0-9A-Fa-f]{32,64}\\.webp)$")
+
 fun String.isAgentFallbackAvatarWireValue(): Boolean =
     equals(agentAvatarFallbackWireValue(""), ignoreCase = true) ||
         startsWith("random:", ignoreCase = true)

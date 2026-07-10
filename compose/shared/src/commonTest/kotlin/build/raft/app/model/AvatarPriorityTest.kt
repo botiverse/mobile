@@ -57,6 +57,40 @@ class AvatarPriorityTest {
     }
 
     @Test
+    fun appAvatarCdnUrlMapsToCurrentEnvironmentApiFallback() {
+        assertEquals(
+            "https://api-aws-staging.botiverse.dev/api/avatars/agents/0123456789abcdef0123456789abcdef.webp",
+            "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp?cache=1"
+                .appAvatarApiFallbackUrl("https://api-aws-staging.botiverse.dev/api/")
+        )
+        assertEquals(
+            "http://10.0.2.2:3000/api/avatars/server/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.webp",
+            "https://cdn.example.test/avatars/server/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.webp"
+                .appAvatarApiFallbackUrl("http://10.0.2.2:3000/api")
+        )
+    }
+
+    @Test
+    fun appAvatarApiFallbackRejectsUnvalidatedExternalUrls() {
+        assertNull(
+            "https://example.com/avatar.png"
+                .appAvatarApiFallbackUrl("https://api.raft.build/api/")
+        )
+        assertNull(
+            "https://example.com/profile/avatars/agents/0123456789abcdef0123456789abcdef.webp"
+                .appAvatarApiFallbackUrl("https://api.raft.build/api/")
+        )
+        assertNull(
+            "https://example.com/avatars/agents/not-a-content-hash.webp"
+                .appAvatarApiFallbackUrl("https://api.raft.build/api/")
+        )
+        assertNull(
+            "https://example.com/avatars/agents/0123456789abcdef0123456789abcdef.png"
+                .appAvatarApiFallbackUrl("https://api.raft.build/api/")
+        )
+    }
+
+    @Test
     fun randomAvatarReferenceUsesReactCanonicalPixelWireValue() {
         val random = AvatarReference.Random("agent-1")
 
