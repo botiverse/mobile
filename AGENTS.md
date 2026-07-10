@@ -187,6 +187,11 @@ gate another agent has to clear.
 
 ### Commit message should describe the change (2026-06-21)
 
+Use the Angular / Conventional Commits format for the subject:
+`type(scope): description` — types in use here: `fix`, `feat`, `docs`, `test`,
+`refactor`, `perf`, `chore`. Visual-parity fixes use the `visual` scope
+(`fix(visual): ...`) per owner ruling (2026-07-10).
+
 Commit messages should clearly describe the change in the subject and (when
 useful) the body. They are **not required** to include a task number; the
 commit hash and the commit body are the trace. If a task number is helpful for
