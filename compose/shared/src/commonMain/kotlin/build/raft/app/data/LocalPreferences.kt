@@ -28,12 +28,13 @@ enum class AppLocale(
     );
 
     companion object {
-        val Default = System
+        val Default = English
 
         fun fromStorageKey(value: String?): AppLocale {
             val normalized = value?.trim()?.lowercase()
             return when (normalized) {
-                null, "", "auto", "default", System.storageKey -> System
+                null, "" -> Default
+                "auto", "default", System.storageKey -> System
                 "zh-cn", "zh-rcn", "zh_rcn" -> SimplifiedChinese
                 else ->
                     entries.firstOrNull {
