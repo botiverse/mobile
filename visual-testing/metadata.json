@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-10T22:07:58.057Z",
+  "generatedAt": "2026-07-10T22:15:48.125Z",
   "runId": "f845b2d-20260710220551",
   "commit": "f845b2d-20260710220551",
   "commitSubject": "fix(home): remeasure server badge after switch (#592)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 24,
-        "pending": 65
+        "ready": 85,
+        "pending": 4
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 73,
-        "pending": 16
+        "ready": 78,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 44,
-        "pending": 45
+        "ready": 81,
+        "pending": 8
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 89,
-    "ready": 24,
-    "pending": 65
+    "ready": 85,
+    "pending": 4
   },
   "componentMatrixSummary": {
     "total": 109,

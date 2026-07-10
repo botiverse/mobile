@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T22:07:56.389Z",
+  "generatedAt": "2026-07-10T22:15:46.476Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,21 +8,35 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 44,
-    "pending": 45
+    "ready": 81,
+    "pending": 8
   },
   "cases": [
     {
       "id": "components.ui.segmented-control.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0fc81f80001c003e001c003e5fbcfffe0000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-07-10T22:07:54.771Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:30.728Z",
+      "severity": "low",
+      "summary": [
+        "Segmented control labels, counts, active state (Mentions 3 yellow), and selected/unselected styling are isomorphic between Android and iOS renders.",
+        "Count font on iOS appears slightly heavier/larger compared to Android; badge numerals look marginally bolder on iOS.",
+        "Android crop shows a faint warm/cream background fill below the segment row; iOS render background appears neutral white in the same area."
+      ],
+      "likelyCauses": [
+        "Minor platform-specific font weight mapping for the badge numeric glyphs on iOS.",
+        "Different default surface/container background color between Android and iOS Kuikly themes."
+      ],
+      "suggestedOwner": "kuikly-design-system",
+      "suggestedFixes": [
+        "Normalize segmented-control badge font weight (e.g., force 600 or platform-mapped weight) so counts render identically on Android and iOS.",
+        "Align container/surface background token between Android and iOS so non-selected region color matches.",
+        "Verify selected segment fill (#f5c518-ish yellow) uses the same exact sRGB across platforms to avoid drift."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.03654082445551643
     },
     {
@@ -893,15 +907,34 @@
     },
     {
       "id": "components.thread.files.list",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc003e083e802000208fe00fe0200e000e0070006000e000e00fce0fce00200020006008600ff20ff0f81e781ef81e781e00027c3e87e0fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
-      "generatedAt": "2026-07-10T22:07:55.301Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:31.293Z",
+      "severity": "medium",
+      "summary": [
+        "First list item thumbnail (composer-preview.png) on Android renders with a yellow background and a black-mountain/pink-circle placeholder graphic; on iOS the thumbnail is a blank beige/off-white square with no graphic content",
+        "All other list rows and 'Load more' button appear structurally identical across both sides (file name, size, timestamp, action icons, downloading state, paddings, borders)",
+        "Typography, icon sizes, alignment, list spacing, and card bounds look isomorphic; the divergence is concentrated in the thumbnail asset rendering",
+        "Android canvas is cropped to the component bounds (390×360) while iOS shows the full device canvas (1170×2532) — an artifact of how baselines were captured, not a UI difference"
+      ],
+      "likelyCauses": [
+        "The image preview/thumbnail asset for composer-preview.png fails to load on iOS but a placeholder graphic still renders on Android, suggesting platform-specific image loading or decoding path",
+        "Possible difference in how the two ends resolve the placeholder image (fallback rendering on Android vs. empty container on iOS)",
+        "Could be a missing/sandboxed file resource on iOS or a Kuikly Image component that doesn't trigger the same placeholder on iOS"
+      ],
+      "suggestedOwner": "frontend / assets",
+      "suggestedFixes": [
+        "Verify the composer-preview.png asset is bundled and reachable on iOS; check Kuikly Image source URL resolution paths per platform",
+        "Normalize placeholder behavior so both ends show the same fallback graphic when the thumbnail asset is unavailable",
+        "Confirm the iOS Image component is not suppressing the placeholder during/after load",
+        "If intentional, document the divergence and align designers on whether iOS should also render the yellow/graphic placeholder"
+      ],
+      "intentional": [
+        "Platform-specific image placeholder rendering could be intentional design but should be confirmed"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05728318548223765
     },
     {
@@ -941,15 +974,37 @@
     },
     {
       "id": "components.thread.message.row",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0804000407f81ffe00020002400200024000c0020000c03efffec07efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff81fff",
-      "generatedAt": "2026-07-10T22:07:55.316Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:31.291Z",
+      "severity": "medium",
+      "summary": [
+        "Row component on iOS renders the trailing reply/reaction action bar ('5 replies · 2 new', thumbs-up '1', '+') which is missing/cropped on Android.",
+        "Android's value crop also visibly trims the trailing bottom interactive area (only faint outlines remain).",
+        "Avatar badge ('!') appears clipped/positioned slightly differently — clearly visible on Android, partially overlapping avatar on iOS.",
+        "Top metadata header text wraps 'Thread Message Row' identically but baseline (Android) label uses smaller viewport 374×108 that crops interaction row vs. iOS 1170×2532 which exposes it.",
+        "iOS shows the full message section with pill '#product:f8e569cb' rendered with a slightly lighter mint fill versus Android's more saturated cyan fill."
+      ],
+      "likelyCauses": [
+        "Android crop rect (374×108) cut off action bar that's present on iOS",
+        "Kuikly action bar (reactions/reply count) conditional rendering or height collapse differs between Android and iOS builds",
+        "Token mapping differs: link/pill background color mapped to platform-specific palette",
+        "Avatar status badge offset/border-radius not consistent across platforms"
+      ],
+      "suggestedOwner": "Kuikly thread-message component owner (mobile cross-platform parity)",
+      "suggestedFixes": [
+        "Re-capture Android baseline with full component bounds (drop 374×108 crop so action bar is included).",
+        "Verify action bar visibility logic on Android — ensure replies/like/'+' are rendered at the same row elevation as iOS.",
+        "Align pill/link background color to a single design token (e.g., force cyan across both OS).",
+        "Normalize avatar badge offset and clipping so the orange '!' indicator sits identically on both ends.",
+        "Add a cross-platform snapshot test comparing action bar presence and pill fill to prevent regressions."
+      ],
+      "intentional": [
+        "Avatar size and placement differences can be acceptable as platform conventions if documented."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04518133700598159
     },
     {
@@ -984,158 +1039,394 @@
     },
     {
       "id": "components.thread.message-menu.default",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020006e0066006e07e607ec03e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e819f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
-      "generatedAt": "2026-07-10T22:07:55.384Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:31.365Z",
+      "severity": "medium",
+      "summary": [
+        "Convert to Task row icon differs: Android shows a clipboard/check icon, iOS shows an info (i) circle icon",
+        "Header timestamp truncation differs: Android shows 'Keeps visual testing … 06/22 10:30' (three-char ellipsis) while iOS shows 'Keeps visual testing… 06/22 10:30' with single-char ellipsis and tighter spacing",
+        "Android side has a warm cream/beige background tint while iOS side renders pure white background",
+        "Menu card horizontal padding differs: iOS menu items start further right (more left padding) than Android",
+        "Reactions bar and '5 replies · 2 new' chip positioning differs slightly; iOS chip sits closer to the text block than Android"
+      ],
+      "likelyCauses": [
+        "Platform-specific icon mapping for the 'Convert to Task' action (Android uses Material, iOS falls back to SF Symbol info glyph)",
+        "Text-overflow/ellipsis truncation strategy differs between Android and iOS text rendering in Kuikly",
+        "Default container background color not normalized across platforms (iOS uses system white, Android uses a tinted surface)",
+        "Inconsistent left/right padding token applied to MenuItem rows on iOS vs Android",
+        "Different text-shaping/font metrics (iOS SF vs Android Roboto) causing metric mismatch despite same logical layout"
+      ],
+      "suggestedOwner": "kuikly-mobile-platform",
+      "suggestedFixes": [
+        "Map the 'Convert to Task' menu item to a platform-appropriate icon explicitly in the shared icon registry instead of relying on name-based fallback",
+        "Normalize text-overflow ellipsis: enforce a single '…' character with consistent maxLines truncation on both platforms",
+        "Tokenize the menu surface background to a shared neutral color rather than relying on host platform defaults",
+        "Audit MenuItem horizontal padding tokens so iOS and Android share the same dp value",
+        "Render the thread header on a fixed baseline/measurement box so timestamp alignment is identical across font fallbacks"
+      ],
+      "intentional": [
+        "Possibly intentional platform-native icon for 'Convert to Task' (Material vs SF Symbols) — confirm with design before changing"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.42654534775387853
     },
     {
       "id": "components.thread.message-menu.task",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020006e0766046e0066006c01e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e839f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
-      "generatedAt": "2026-07-10T22:07:55.395Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:31.368Z",
+      "severity": "medium",
+      "summary": [
+        "Context menu vertical spacing differs: iOS shows larger gaps between menu items and section dividers than Android, making the menu noticeably taller.",
+        "Divider lines inside the context menu have heavier/thicker stroke on iOS versus Android.",
+        "Message preview text wrapping differs — Android truncates the preview line after '…' on the first line, iOS wraps to a second line with continued text shown without ellipsis.",
+        "Cindy username / message header line has slightly different vertical rhythm on iOS (extra leading).",
+        "Section background fill of the menu differs subtly: iOS renders with a colder/near-white tint vs. Android's warmer near-white."
+      ],
+      "likelyCauses": [
+        "Kuikly layout using non-tokenized spacing values that resolve differently per platform density bucket.",
+        "iOS text layout engine (CoreText) honoring different line-break/ellipsis rules than Android's TextView.",
+        "Native divider thickness falling back to platform default rather than a shared design token.",
+        "Missing or mismatched container background/elevation token between the two Kuikly adapters."
+      ],
+      "suggestedOwner": "kuikly-components / design-system",
+      "suggestedFixes": [
+        "Adopt shared spacing tokens (e.g. menuItemGap, sectionGap) sized in dp and verify parity across Android/iOS Kuikly adapters.",
+        "Normalize divider thickness to a 1dp hairline token; apply consistent stroke color across platforms.",
+        "Use a shared ellipsis/truncation policy for the message preview (single-line ellipsis) rather than relying on platform-default text wrapping.",
+        "Pin the context menu container background and elevation to explicit tokens instead of letting platform defaults bleed through.",
+        "Re-render and re-snapshot after token fixes; confirm pixel-perfect similarity climbs above 0.95."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.42921746938334615
     },
     {
       "id": "components.thread.message-share.selection",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fcfffe7ffe81fe01fec0024002f0027002ff7e7ffe83fe83fec0024002f8027002d0064006800100008001000080020000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fff83fff",
-      "generatedAt": "2026-07-10T22:07:55.400Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:31.380Z",
+      "severity": "high",
+      "summary": [
+        "Background color differs: Android shows a warm cream/beige tint while iOS uses a pure white background",
+        "Selection toolbar (yellow bar) is positioned higher on iOS and extends nearly full-width with tighter padding, while Android's toolbar sits lower with wider margins and smaller action buttons",
+        "Toolbar action buttons (✕, ✓ All, Forward, Copy, Download) are larger and more spaced on iOS vs. smaller and more tightly packed on Android",
+        "Checkboxes in the message rows are smaller on Android and larger on iOS; iOS checkboxes appear with a heavier/thicker border",
+        "iOS canvas is taller (2532 vs 844 logical units on the comparison canvas) resulting in a much larger empty area below the toolbar; content vertical scale diverges significantly"
+      ],
+      "likelyCauses": [
+        "Kuikly component style not normalized between Android and iOS targets (different default densities/paddings)",
+        "Missing or incorrect platform-specific design tokens for selection action bar (heights, button sizes, spacing)",
+        "Independent DP/px scaling on iOS rendering engine causing overall zoom differences",
+        "Background theme color not shared across platforms — likely Android uses an app-wide cream surface while iOS defaults to white",
+        "Toolbar button sizing derived from platform hit-area minimums rather than a shared spec"
+      ],
+      "suggestedOwner": "kuikly-mobile-platform",
+      "suggestedFixes": [
+        "Define a shared token set for the selection action bar: exact height, button size, gaps, and padding used by both Android and iOS renders",
+        "Unify surface/background color tokens so both platforms render identical backdrop for this view",
+        "Standardize checkbox and avatar dimensions per a shared component spec",
+        "Apply explicit uniformScaling/fontSize on the iOS render to match Android's logical viewport (390×844) so canvas heights align",
+        "Audit toolbar button container to use the same intrinsic sizing on both ends (avoid platform hit-area overrides)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6472897341380754
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc1ffe1ffc7ffe7ffc7ffe7ffc3ffc7ffc3ffc7ffc7ffc7ffc7fc07fc07f007f000000000000000000000000000000000000000000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.404Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:34.681Z",
+      "severity": "low",
+      "summary": [
+        "Modal container width differs: iOS version is slightly wider relative to the viewport, extending closer to the right edge",
+        "iOS right edge of the modal card appears clipped or shifted right versus Android, which has more balanced left/right padding",
+        "Overall layout, typography, colors, spacing, and component structure are visually equivalent between both platforms"
+      ],
+      "likelyCauses": [
+        "Slight differences in safe-area / viewport padding on the iOS Kuikly render",
+        "Modal container max-width or horizontal margin not normalized across platforms"
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize modal container width and horizontal margins to be platform-agnostic",
+        "Verify safe-area insets are applied consistently on both Android and iOS Kuikly renders",
+        "Re-run visual diff after normalizing modal bounds to confirm pixel-perfect match"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3914155223396929
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe81ff81ff80ff80ff9ffe1ffe8fff0fff9fffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ff87ff80ffc0ff8001c001c001e003e03fe03fe03fe03fc001c101c000c000c1ffc1ffc00fc00fc00000000000e001e083e003e07fc3ffc3ffc7ffc00000000381c381c00000000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.470Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:36.516Z",
+      "severity": "low",
+      "summary": [
+        "Top-right corner badge differs: Android shows 'ANDROID' label, iOS shows 'IOS' label (expected platform indicator).",
+        "Document icon in attachment header card appears slightly bolder/larger on iOS compared to Android.",
+        "Anchor tag chips ('Anchor: agent-tabs-full-page-review.md') appear with slightly different padding/rounded corners between Android and iOS.",
+        "Typography weight on the 'Review' heading and body text appears marginally thicker on iOS (likely SF Pro vs Roboto rendering).",
+        "No structural or layout divergence — all components are present and aligned consistently between the two renders."
+      ],
+      "likelyCauses": [
+        "Platform-specific font rendering (SF Pro on iOS vs Roboto on Android) causing minor weight/metrics differences.",
+        "Default SVG icon stroke width or asset resolution differing between Android and iOS bundles.",
+        "Minor dp/pt rounding differences in Kuikly layout primitives between the two platform renderers."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Accept as-is: pixel-perfect similarity is 92.49% and all structural elements match — divergences are limited to platform-typical font/icon rendering.",
+        "If exact parity is required, unify on a webfont (e.g., Inter) loaded identically on both platforms to eliminate SF Pro vs Roboto weight differences.",
+        "Verify Kuikly icon assets ship with identical stroke weights for Android and iOS bundles.",
+        "Audit comment-anchor chip padding values to ensure both renderers apply the same dp/pt token."
+      ],
+      "intentional": [
+        "Platform badge text difference (ANDROID vs IOS) is intentional test metadata, not a UI defect.",
+        "Font metric differences between SF Pro and Roboto are expected cross-platform behavior."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.07512793508054172
     },
     {
       "id": "components.home.titlebar.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc1ffcfffe7ffe6002700600020002000200027ffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-10T22:07:55.484Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:37.048Z",
+      "severity": "high",
+      "summary": [
+        "Background color differs: Android renders a beige/cream page background, iOS renders near-white",
+        "Titlebar placement differs: Android bar extends from very top with no top padding, iOS bar is offset down with a visible top gap (safe-area/status-bar offset)",
+        "Titlebar height/width proportions differ due to different device aspect ratios (Android 390×844 vs iOS 1170×2532 ~ same 9:19.5 ratio, but bar footprint scales differently)",
+        "Pin/debug markers sit on slightly different offsets on the two sides (top-right of title bar and top-right of warning button)",
+        "Pixel mismatch 89.29% is driven primarily by the page-background color, not by intrinsic component diffs"
+      ],
+      "likelyCauses": [
+        "Default page/body backgroundColor hardcoded or themed per-platform instead of a shared token",
+        "iOS safe-area / status-bar inset not applied on Android, or applied asymmetrically (Android bar starts at y=0, iOS starts after safe-area)",
+        "Kuikly status-bar / safe-area adapter providing different offsets on Android vs iOS",
+        "Different canvas/viewport sizes being compared without DPR normalization (390×844 vs 1170×2532, ~3x scale), inflating raw pixel mismatch"
+      ],
+      "suggestedOwner": "kuikly-platform / UI Components owner",
+      "suggestedFixes": [
+        "Normalize the page backgroundColor to a single design token on both platforms; remove platform-specific fallback colors",
+        "Unify title-bar top inset handling so Android and iOS apply the same safe-area/status-bar offset (or explicitly opt out consistently)",
+        "Ensure the titlebar uses the same height/padding values in dp/pt independent of device viewport, and verify with a normalized crop (e.g., 390×844 on both ends) before diffing",
+        "Add a Slock compare step that resamples the iOS capture to match the Android viewport before pixel diff to reduce false mismatch",
+        "Align debug/pin overlay positions to the same anchored nodes on both sides to avoid spurious marker offset reports"
+      ],
+      "intentional": [
+        "Platform status-bar height differences may be acceptable if product accepts Android bar flush to top and iOS offset for safe-area"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8928977464522488
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fefffe7ffefffefffe80020006804202428002000280020002e07240728012001280320012a0124012a07240728002000280060006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe00007ffefffe7fff",
-      "generatedAt": "2026-07-10T22:07:55.490Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:37.124Z",
+      "severity": "low",
+      "summary": [
+        "Notification card layout, content, button labels, colors, and typography are visually isomorphic between Android and iOS renders.",
+        "Android panel has a warm cream/beige background tint while iOS panel uses a neutral white background — a global canvas difference not from the component itself.",
+        "Android header badge label reads 'ANDROID' while iOS badge reads 'IOS'; this is the Slock chrome label, not part of the component under test.",
+        "Minor pixel-level offset of the notification card's drop shadow on iOS (rendered slightly offset/softer), consistent with platform shadow style differences."
+      ],
+      "likelyCauses": [
+        "Kuikly renderer applies platform-specific default page/screen background (Material cream on Android vs system white on iOS).",
+        "Platform-native shadow rendering (Android elevation vs iOS shadow parameters) producing slightly different card shadow bounds.",
+        "Slock test harness using a fixed orange 'ANDROID'/'IOS' chrome label as metadata, unrelated to the Notification Center component."
+      ],
+      "suggestedOwner": "kuikly-renderer / cross-platform theming",
+      "suggestedFixes": [
+        "Normalize the screen background color across platforms via a shared design token so Android does not default to a cream tint.",
+        "Standardize card shadow specification (offset, blur, opacity) to a shared elevation token rather than relying on native defaults.",
+        "Confirm that Notification Center component itself is intentionally platform-agnostic and that observed delta is only Slock chrome plus background tint.",
+        "If the cream background is intentional Material theming, add an iOS equivalent token or override to keep parity in visual tests.",
+        "Re-run pixel-diff after harmonizing background and shadow tokens to validate convergence."
+      ],
+      "intentional": [
+        "Platform-specific page background tint may be intentional Material vs Cupertino theming.",
+        "Slock 'ANDROID' vs 'IOS' badge label is intentional test metadata."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6434020604636719
     },
     {
       "id": "components.home.search.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffe85f601f680030003800700078007000781061107dffedffffffeffff80fe80ff9ffe9fff80fec0ff80fe80ffdffe5fffdffe7fff80fe81f78006800f8386038f83fe87ffc8fe48ff9ffe9fff807e807fc1fe49ffc83ef83ffffefffffffefffffffefffffffefffffffefffffffefffffffeffff00027ffeffffffff",
-      "generatedAt": "2026-07-10T22:07:55.487Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:38.116Z",
+      "severity": "medium",
+      "summary": [
+        "Highlight/selection backgrounds on matched terms appear slightly different in extent and padding between Android and iOS, contributing to the 42.78% pixel mismatch.",
+        "Background tint extends much further down on Android (covers full height behind filters and results), while iOS background is restricted to the top region only — large empty pale band on Android.",
+        "Search field bounds, icon button bounds, and filter chip bounds are visibly larger on the iOS render (scaled with viewport); on Android they are more compact.",
+        "Last 7 days filter chip text is clipped/truncated on both sides, but truncation point differs slightly (Android shows 'day' cutoff earlier, iOS cuts at 'day' slightly later).",
+        "Top header section ('Home Search Results' label and breadcrumb) occupies more vertical space on iOS relative to content; spacing between header, search bar, and filter row is larger on iOS."
+      ],
+      "likelyCauses": [
+        "Different device pixel ratios / raw canvas sizes not normalized before diff (baseline 390×844 vs current 1170×2532) causing scale-related mismatches in bounds and padding.",
+        "Page-level background container has different height/stop on the two platforms (Android paints full-height pale background, iOS only behind header).",
+        "Filter chip and search input use platform-default padding/minHeight that diverges between Android and iOS Kuikly renderers.",
+        "Text highlight/span backgrounds computed with different vertical padding or line-height metrics across platforms."
+      ],
+      "suggestedOwner": "components/home/search-results (Kuikly cross-platform parity owner)",
+      "suggestedFixes": [
+        "Normalize both renders to the same logical viewport (e.g., scale baseline to match current or compare at dp level) before pixel diffing to remove DPR-driven bounds differences.",
+        "Unify the page background extent — make the pale background cover the same region (either full-height or header-only) on both platforms.",
+        "Pin explicit minHeight/horizontalPadding on SearchInput, icon buttons, and filter chips so Android and iOS produce identical bounds.",
+        "Audit Text span/mark highlight styling to use consistent vertical padding and background shape across platforms.",
+        "Verify the 'Last 7 days' chip uses an explicit width or allows text truncation consistently; consider shortening label to '7 days' or providing ellipsis with same cutoff."
+      ],
+      "intentional": [
+        "Platform-default text shaping and font metrics differences are expected but should be constrained via explicit text style tokens."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.42780917081864944
     },
     {
       "id": "components.home.search.channel-dropdown",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffe85f701f7800300078007000780070007900310e3f1f2f1f3f002f00384f380d394f394fbc7f3c7bb80028003f807d803ffffffff81ff81f78007800f83af83bf87ff87ffcfffcfff9fff9fffc47fc07ff9fff9fff83ff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-10T22:07:55.557Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:40.829Z",
+      "severity": "medium",
+      "summary": [
+        "Channel dropdown panel horizontal alignment differs: Android anchors to the right edge of the #design chip; iOS anchors to the right edge of the screen, pushing it further right and past the Last 7 days filter (clipped at right).",
+        "Dropdown vertical position offset: iOS dropdown sits slightly lower than Android, partially overlapping the #android row in CHANNELS & DMS rather than sitting cleanly above it.",
+        "iOS dropdown width is wider relative to viewport — extends beyond the right safe area causing 'Last 7 day' filter to be clipped on the right edge, while Android leaves it intact as 'Last 7 days'.",
+        "Top bar avatar/badge sizing differs: iOS renders the back/search glyph container slightly larger and with heavier border weight than Android.",
+        "Typography weight on filter chips ('From: Me', '# #design', 'Last 7 day') appears heavier on iOS; Android chips render in lighter weight with thinner borders."
+      ],
+      "likelyCauses": [
+        "Kuikly dropdown overlay component computes its anchorRect using different reference views per platform (chip-relative on Android vs viewport-relative on iOS).",
+        "iOS uses a default UIPopoverPresentationController / safe-area behavior that adds outer padding the Android (Compose Popup) implementation doesn't add.",
+        "Safe-area / bottom inset is not being injected into the iOS Kuikly root view, while Android adds a default contentInset or status-bar padding.",
+        "Chip text uses platform-native font weight (SF Pro on iOS vs Roboto on Android) resulting in heavier glyph metrics at same dp size.",
+        "Border/stroke width on outlined components is resolved in physical pixels rather than dp on iOS (3x scale) vs dp on Android, producing heavier visual strokes on iOS."
+      ],
+      "suggestedOwner": "kuikly-platform-bridge / components.home.search owner",
+      "suggestedFixes": [
+        "Unify anchorRect computation: always derive dropdown x from the parent filter row's measured bounds on both platforms; clamp width to (viewportWidth − 2 × horizontalMargin).",
+        "Inject consistent safeAreaInsets for both platforms before laying out the dropdown so it never overlaps system chrome or clipped filter chips.",
+        "Normalize chip typography to a shared token (fontFamily + fontWeight + letterSpacing) instead of relying on system default; keep dp/dp scaling identical.",
+        "Resolve all border/stroke/corner-radius values in dp with a shared Theme.Spacing token; verify iOS 3x rendering matches Android dp output via snapshot diff.",
+        "Ensure bottom content area applies platform-safe bottom inset (home indicator on iOS, nav bar on Android) so list heights match."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.44277690012287174
     },
     {
       "id": "components.home.saved.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc07fc0ffe03fc07fe0000000683e007c680310066803d007efffdfffef9e5f3ce80a1014680310066843d087efffdfffee021d84681e003c680110026803d007efffdfffef83df07ef83df07efffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-10T22:07:55.567Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:40.998Z",
+      "severity": "medium",
+      "summary": [
+        "The bookmark/save icon (filled bookmark glyph) in the top-right of each result card on Android renders as an information/info icon (circle with 'i') on iOS — component appears to be the wrong glyph.",
+        "Layout proportions, card spacing, text content, and typography weights are visually equivalent across both renders.",
+        "Typography size and weight of 'Saved' title, '5 saved' subtitle, tag labels, author names, timestamps, body text, and 'Load More' button appear consistent between Android and iOS."
+      ],
+      "likelyCauses": [
+        "Icon mapping differs between Android and iOS asset/resource sets — the bookmark icon used in the card action slot is replaced with an info icon on iOS.",
+        "Possible Kuikly cross-platform icon resource resolution falling back to a different SF Symbol vs Android drawable mapping.",
+        "May indicate a missing or misnamed icon asset in the iOS bundle for the 'saved/bookmark' state."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Verify the icon asset used for the result-card trailing action: it should be a bookmark/save glyph on both platforms, not an info icon.",
+        "Add an iOS-specific asset (or use a vector/icon component with platform-aware mapping) so Android and iOS render the same glyph.",
+        "Confirm the Kuikly icon component is referencing the correct shared icon name and that both Android and iOS resource bundles contain the bookmark icon.",
+        "After fixing, re-run the Slock visual diff for 'components.home.saved.results' to confirm pixel-perfect similarity returns above tolerance."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.06480536314659535
     },
     {
       "id": "components.home.activity.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc03fc07fe81fc03ff0000000380400003000000079ff13fe7c0118027c01d003f80fd01fffbf1ffe7803100078015000f87fd0fff8ffd3fff99f103e781f103e7fffdfffffffdfffffffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe1fff",
-      "generatedAt": "2026-07-10T22:07:55.573Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:42.335Z",
+      "severity": "low",
+      "summary": [
+        "The two renders are nearly isomorphic: same component structure, identical text content, and matching layout/states for the All/Unread/Mentions filter chips, Mark all read button, and three result cards.",
+        "Very subtle differences are limited to font weight rendering and the position of the metadata badges in the first card — on iOS the '5 replies', '@ you', and '2 new' chips are vertically centered slightly lower compared to Android, and the chevron caret boxes appear marginally thicker.",
+        "No missing elements, no clipping, no color shifts, no state indicator mismatches; all interactive elements (filters, chevrons, badges) are present and identically styled on both ends."
+      ],
+      "likelyCauses": [
+        "Native font weight differences between Android (Roboto/system) and iOS (San Francisco) rendering of the bold 'Activity' title and card titles.",
+        "Minor vertical metric differences in the Kuikly layout engine when laying out inline chips within the first result card row on iOS vs Android."
+      ],
+      "suggestedOwner": "ui-engineering",
+      "suggestedFixes": [
+        "Normalize font weight/family across platforms using a shared webfont or explicit font-weight tokens in the Kuikly theme so 'Activity' and card titles render with the same perceived weight on Android and iOS.",
+        "Verify and unify the vertical-align/line-height of inline chips ('5 replies', '@ you', '2 new') inside the result card so they align identically on both platforms.",
+        "Run a follow-up visual diff with antialiasing-ignored tolerance tightened to confirm the residual ~5.55% pixel mismatch is only from font rendering and not from a real layout regression.",
+        "If the diff is accepted as platform-acceptable, mark these differences as intentional in the visual baseline to suppress future alerts."
+      ],
+      "intentional": [
+        "Possible intentional platform-specific font rendering differences (Roboto vs SF) for the bold headings.",
+        "Possible intentional slight vertical offset of inline metadata chips within result cards due to differing line-box metrics on Android vs iOS."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.05552112447847046
     },
     {
       "id": "components.tasks.panel.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bffe7ffe000000000000000080070006ffffffefffc1ffc1dfc1ffc19fff9fff9ffd9ffd9ffc9ffc87f487f4bffcfffcffe1ffe08001800187ff87ff87ff87ffbffdbffc80348014bfe1bfe18001800187ff87ff8fff8fff9ffdbffc80c5808cbfe1ffe1800180019fff9fff9ffd9ffd887c807cbfe1ffe180010000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.580Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:42.642Z",
+      "severity": "low",
+      "summary": [
+        "Card outlines on iOS appear slightly thicker/heavier than on Android, with a more pronounced double-border look around each task card.",
+        "iOS filter chips (Channel/Creator/Assignee) appear with a subtle drop shadow / elevation halo, while Android chips render flat with a hairline border.",
+        "iOS vertical spacing between the task cards (TODO → IN PROGRESS → IN REVIEW → DONE sections) is marginally tighter, reducing the gap between section headers and the following card."
+      ],
+      "likelyCauses": [
+        "Different default elevation/shadow tokens between Android (Material flat) and iOS (subtle shadow) on the same Kuikly card component.",
+        "Density/scale token divergence: iOS using a slightly smaller inter-section spacing constant than Android.",
+        "Border thickness token differs by platform — iOS picks a 2px hairline vs Android's 1px."
+      ],
+      "suggestedOwner": "kuikly-design-system",
+      "suggestedFixes": [
+        "Normalize the card border/shadow token so both platforms render the same hairline weight and no extra elevation halo on iOS.",
+        "Align the filter-chip elevation token to be flat on both ends, or explicitly scope the shadow to a single platform only if intended.",
+        "Audit the section spacing scale and pin both Android and iOS to the same dp value between group header and card."
+      ],
+      "intentional": [
+        "Filter chip row (Channel / Creator / Assignee) layout and presence is a known Android vs React/platform difference and is not a defect on either side."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09577206626969659
     },
     {
@@ -1299,15 +1590,35 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe0031003100310831000000000ff40fe48fff0fff001f001f8bff0bff9fff9fffc7ffc7fff7ffd7ffffffffff81f780f7ffffffffffffffff8fff0fff8fff0fffd87ff8fff1fff1fff1fff1fffffffffff7ffffff8c3f0c3f8c3f0c3f8c7f0c7f8007000780030003fffff7ff87ff97ff87fe97ff9c065802ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.728Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:43.125Z",
+      "severity": "low",
+      "summary": [
+        "Tab bar overflow: Android shows a clipped/cropped fifth tab icon at the right edge, iOS shows the fifth tab icon (note/edit) without visible clipping.",
+        "Header subtitle truncation differs: Android shows 'Turns product feedback, screensho…' while iOS shows 'Turns product feedback, screensh…' — slightly different ellipsis point due to font metrics.",
+        "Environment variable chips: Android truncates 'RAFT_PROFILE=...' and 'SLOCK_VISUAL_PROVIDER=...' with ellipsis; iOS truncates with '=' + ellipsis (e.g., 'RAFT_PROFILE=•••'), rendering the trailing '=' plus dots rather than just dots.",
+        "'Created Agents' card status indicator color: Android shows a slightly more saturated/lime green dot, iOS shows a muted/grayish-green dot — minor hue/saturation delta.",
+        "Top-right badge labels differ: Android uses yellow 'ANDROID' chip, iOS uses yellow 'IOS' chip (test harness label, not product UI)."
+      ],
+      "likelyCauses": [
+        "iOS system font metrics (SF Pro) produce slightly wider/narrower glyph runs than Android Roboto, shifting where ellipsis truncation kicks in.",
+        "Tab bar implementation uses a fixed slot count with overflow cropping on Android but a flexible/icon-only fifth slot on iOS.",
+        "Environment variable chip truncation rule differs between platforms (iOS appends '=' before ellipsis).",
+        "Platform-specific rendering of the status dot color token."
+      ],
+      "suggestedOwner": "frontend-platform",
+      "suggestedFixes": [
+        "Unify tab bar behavior: render all 5 tab slots with consistent icons and prevent horizontal clipping on Android.",
+        "Normalize environment variable chip truncation logic across platforms (use identical ellipsis rule, e.g., drop content before '=').",
+        "Align ellipsis thresholds using logical pixel widths rather than raw glyph widths to equalize truncation points.",
+        "Verify status indicator color tokens resolve to the same RGB on both platforms (audit color asset mapping).",
+        "Re-run visual diff with text-similarity normalization to confirm remaining pixel mismatch is within tolerance."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.087664560294892
     },
     {
@@ -1404,236 +1715,604 @@
     },
     {
       "id": "components.settings.page.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff7cff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.806Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:45.690Z",
+      "severity": "high",
+      "summary": [
+        "iOS (right) shows a software keyboard overlay covering the lower half of the screen; Android (left) does not have a keyboard visible — different input focus/UI state.",
+        "On iOS, the DISPLAY NAME text field shows an active caret/cursor while on Android it does not — different focus states between the two captures.",
+        "On iOS, the 'Connected accounts' card, 'Change password', 'Session' and 'Log out' sections are hidden behind the keyboard; on Android they are fully visible — layout/visibility divergence caused by keyboard insets not being accounted for.",
+        "The 'Session' row label is rendered dimmer/more muted on iOS compared to Android, suggesting a different disabled/secondary text style or color token.",
+        "Bottom safe-area/keyboard gap is not reserved on iOS — content is pushed up and clipped instead of scrolling or insetting."
+      ],
+      "likelyCauses": [
+        "iOS capture taken while the DISPLAY NAME field is focused, triggering the native keyboard without applying keyboard-avoiding insets in the Kuikly layout.",
+        "Keyboard appearance not handled via safe-area/IME insets on iOS, so underlying page content is occluded instead of being scrolled out of view.",
+        "Inconsistent disabled/secondary label styling tokens between Android and iOS theme definitions.",
+        "Possibly different scroll/inset behavior between Android (no keyboard up) and iOS (keyboard up) test harness state."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Add keyboard-avoiding behavior (IME insets / KeyboardAvoidingView equivalent in Kuikly) so focused inputs cause the scroll view to offset instead of being covered.",
+        "For Slock visual tests, ensure both baselines are captured in the same UI state (keyboard dismissed, no field focused) before diffing.",
+        "Align secondary/disabled label color tokens (e.g. 'Session' label) across Android and iOS theme definitions.",
+        "In test harness, dismiss the keyboard before snapshotting or normalize by applying consistent window insets.",
+        "Re-run the Slock diff after fixing state mismatch to verify whether remaining ~40% mismatch is purely the keyboard occlusion."
+      ],
+      "intentional": [
+        "Platform-native on-screen keyboard appearance on iOS when a text field gains focus is expected native behavior; the divergence is in how the app responds to it."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3998761156344095
     },
     {
       "id": "components.settings.account.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff7cff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.819Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:47.428Z",
+      "severity": "medium",
+      "summary": [
+        "iOS shows an active on-screen keyboard occupying roughly the bottom 45% of the viewport, while Android does not — keyboard is only present on one platform (state difference)",
+        "As a consequence of the keyboard, the iOS view is scrolled: the Session / Log out section visible on Android is hidden on iOS (clipping at 'Connect' button)",
+        "The iOS layout appears compressed/shifted upward so that the 'Change password' row is partially clipped between the main profile card and the Session card",
+        "Header underline/divider on iOS appears slightly closer to the 'Account' title than on Android, suggesting different header padding"
+      ],
+      "likelyCauses": [
+        "iOS test harness or screenshot capture triggered an active text input (focused input field) on the Display Name field before snapshot",
+        "Android render kept focus off-screen or unfocused, producing different scroll/keyboard state between the two captures",
+        "Autofocus / keyboard-avoiding-view differences between Kuikly's Android and iOS implementations during the same captured state"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Ensure both Android and iOS test fixtures dismiss/blur the focused field before capturing, or capture via a state where no input has focus",
+        "Verify Kuikly's KeyboardAvoidingView behavior on iOS so focused input does not push the Log out / Session section out of view",
+        "If capturing both ends in a typed-in state is intended, keep them aligned by using the same fixture (focused vs unfocused) and document it as the test contract",
+        "Re-run the snapshot and check whether the misalignment disappears once the keyboard is dismissed; if not, inspect ScrollView/FlatList contentInset for iOS"
+      ],
+      "intentional": [
+        "Log out copy diverges: Android uses 'Sign out on this device' and iOS uses 'Sign out of this browser' — platform-correct, do not align"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3998761156344095
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff7cff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff970000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.830Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:48.457Z",
+      "severity": "high",
+      "summary": [
+        "iOS side shows the on-screen keyboard occupying the lower half of the screen, occluding the Connected accounts, GitHub row, Change password, Session, and Log out sections.",
+        "DISPLAY NAME input has visible text-cursor caret ('|') on iOS (focused/active state) that is not present on Android, indicating iOS has keyboard focus while Android does not.",
+        "Android shows the full page including Change password, Session header, and the Log out panel with its logout button; iOS renders none of these because the IME is shown over them.",
+        "Back arrow and 'Account' title, Profile header, avatar/name block, NAME input, DISPLAY NAME input, Email row with VERIFIED badge, and Save Profile button appear at consistent positions between the two sides above the occlusion point."
+      ],
+      "likelyCauses": [
+        "iOS capture was taken while the DISPLAY NAME TextField was focused, automatically presenting the system soft keyboard which covers lower content.",
+        "Android capture was taken without keyboard focus, so the full scrollable layout is visible.",
+        "Missing use of keyboard insets / keyboardAvoidingView behavior on iOS in the Kuikly render layer, or the screenshot was not dismissed before capture."
+      ],
+      "suggestedOwner": "Mobile / Kuikly renderer team (iOS focus & IME handling)",
+      "suggestedFixes": [
+        "Dismiss the keyboard before capturing the iOS screenshot, or scroll to top and blur the input so the soft keyboard is hidden.",
+        "Apply iOS keyboard avoidance (e.g., KeyboardAvoidingView equivalent in Kuikly) so the form can scroll above the IME instead of being clipped.",
+        "Verify focus/blur handling on TextField in Kuikly iOS so unfocused state matches Android for screenshot parity.",
+        "Ensure Connected accounts list, GitHub row, Change password, Session, and Log out sections remain reachable on iOS when the keyboard is up (scrollable container with proper bottom contentInset).",
+        "Capture both platforms in an unfocused state or after tapping outside the field to keep visual diffs focused on layout rather than IME presence."
+      ],
+      "intentional": [
+        "Back button, 'Account' title, Profile section, NAME/DISPLAY NAME inputs, Email row, VERIFIED badge, and Save Profile button styling appear intentionally isomorphic between platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3992560186872983
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:2ffe2ffe9fff9fff83ff83ffffffffffcfffffff8ff70ff783f783f78ff70ff7bff77ff7fff77ff797f747f79fe78ff780070007fe377e378337837783f783f780f740f7b1f761f7f3077307ff077f07fff77ff6c3070290bf070000fff72236e1f7000081f73100bfe7066080070e60bff700008007000081d70000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.878Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:49.427Z",
+      "severity": "high",
+      "summary": [
+        "iOS side shows an on-screen keyboard occupying the lower half of the viewport that is absent on the Android side, occluding the GitHub and Change password sections.",
+        "Layout below the keyboard on iOS is not scrollable in view: GitHub row, Change password expandable, and password input fields are not visible on iOS but are visible on Android.",
+        "Submit/Confirm Password inputs that exist on Android are missing from iOS visible area; the form appears truncated on iOS end.",
+        "Focus indicator (text caret) visible inside the Display Name input on iOS but not on Android, indicating an active focused input state only on iOS.",
+        "Vertical content position differs: Google Connect row and Email row sit lower on iOS, suggesting different safe-area, keyboard inset, or scroll-offset handling between the two ends."
+      ],
+      "likelyCauses": [
+        "iOS end renders the soft keyboard and insets viewport height without resizing or scrolling the scroll container, while Android handles IME insets by shrinking/repositioning the canvas.",
+        "Form scroll view on iOS may not be wired to adjust insets via useSafeArea / keyboardInset, causing bottom content to be hidden behind the keyboard.",
+        "Input auto-focus on the Display Name field fires only on iOS build, triggering keyboard show that obscures Password section on that side.",
+        "Different default WindowInsets / soft-keyboard behavior between Kuikly's Android and iOS runtimes in handling focused TextField within a scrollable container."
+      ],
+      "suggestedOwner": "kuikly-input-insets",
+      "suggestedFixes": [
+        "Apply keyboard inset to the scroll container on iOS (e.g., WindowInsets.ime + safeAreaPadding) so the password fields can scroll above the keyboard.",
+        "On focus change to any TextField, scroll the focused input into the visible area using scrollIntoView / onFocusRequest layout.",
+        "Audit whether autoFocus on Display Name is intentional; if so, ensure both platforms show the keyboard consistently before screenshot capture.",
+        "Unify IME inset handling between Android and iOS builds in the shared component layer to keep visual parity.",
+        "Use keyboardAppearance / focus dismissal lifecycle hooks to dismiss keyboard before the visual snapshot on the iOS side during regression capture."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.35721736136428084
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff7a017c0179ff75ff7fff77ff7fff77ff797f7d7f78fa780078ff74007fe377e3783f783f783f783f7bc07dc178007400781f740f7f7e70b90f7070000ff972236c3070000cf073580a0f706e080270e60c0070000e1f70000a1f70000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.889Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:50.391Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows an on-screen keyboard occupying the lower half of the screen, which is absent on Android; this likely indicates the DISPLAY NAME input has focus on iOS but not on Android.",
+        "As a consequence of the keyboard, the iOS view has no visible scroll offset shift, while the connected accounts section and Change password are scrolled out of view; the entire bottom area (Google, GitHub, Provider link failed banner, Change password) is clipped/hidden on iOS.",
+        "The DISPLAY NAME input on iOS is missing its left border/edge stroke where it meets the keyboard area, while Android shows the full bordered input clearly.",
+        "Input field text/placeholder rendering of 'artin' in DISPLAY NAME on iOS is clipped at the left edge (visible as 'rtin' is not the case here, but the cursor/text positioning differs).",
+        "The DISPLAY NAME input on Android is slightly narrower (no focus state highlight) versus iOS which shows what appears to be a focus/active border treatment around the input."
+      ],
+      "likelyCauses": [
+        "iOS test step focused the DISPLAY NAME TextField (tap gesture or programmatic focus) before capture, triggering the native iOS keyboard.",
+        "Android did not focus the input, so no soft keyboard is shown and the lower content (Connected accounts, Change password) is visible.",
+        "Possible lack of keyboard avoidanceView / insets handling in Kuikly iOS render, or differing focus/blur lifecycle between platforms.",
+        "Test harness (Slock) may be blurring/focusing fields differently per platform before snapshot."
+      ],
+      "suggestedOwner": "kuikly-mobile-platform / settings-account-component owner",
+      "suggestedFixes": [
+        "Blur the focused TextField on both platforms before capturing the Slock snapshot, or set the input as non-focusable in test mode.",
+        "Apply consistent keyboard-avoidance behavior (contentInset / resize) in the iOS Kuikly render so the form scrolls above the keyboard instead of being clipped.",
+        "Ensure DISPLAY NAME input border and focus state are rendered identically on both platforms (verify Kuikly TextField focus ring).",
+        "Align viewport/scroll state at capture time so the bottom of the form (Google/GitHub/Provider link failed/Change password) is shown on both sides.",
+        "Add platform-specific tolerance or skip the keyboard region in the pixel-perfect comparison to avoid false mismatches."
+      ],
+      "intentional": [
+        "On-screen keyboard appearance is platform-correct iOS behavior when an input is focused, not a render bug per se."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3845350454355194
     },
     {
       "id": "components.settings.server.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.906Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:51.795Z",
+      "severity": "high",
+      "summary": [
+        "iOS side displays the system soft keyboard occupying the lower half of the screen, which is absent on the Android side",
+        "NAME input field is focused on iOS (caret visible) but not on Android, causing a different page composition/keyboard occlusion state",
+        "Danger Zone Delete Server card is pushed up and partially compressed/overlapped on iOS due to keyboard insets, while Android shows it with full surrounding whitespace",
+        "Save Profile button on iOS is visually clipped/shortened horizontally compared to Android (smaller width)",
+        "Lower ~50% of the iOS viewport (below the keyboard area) is occluded, hiding any content that exists in that region on Android (empty whitespace on Android)"
+      ],
+      "likelyCauses": [
+        "iOS keyboard presentation adjusts content insets while Android does not, or Android screenshot was taken without an active keyboard",
+        "Input field auto-focus differs between platforms (iOS focused on load, Android did not)",
+        "Missing or inconsistent keyboard avoidance view / safe-area handling in the Kuikly iOS renderer for this screen",
+        "Page layout is not responding to keyboard show/hide events symmetrically across platforms"
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly renderer team (settings profile screen owner in copy)",
+      "suggestedFixes": [
+        "Reproduce with the keyboard dismissed on iOS to compare like-for-like baseline states",
+        "Add a unified keyboard-avoidance + content-inset policy for Kuikly-rendered forms on iOS so layout does not collapse when the soft keyboard appears",
+        "Ensure the Name input does not auto-focus on iOS (or align auto-focus behavior across Android/iOS)",
+        "Verify SafeArea / keyboard insets are applied to the scroll container so Danger Zone card remains fully visible",
+        "Add a visual regression check that covers both the keyboard-dismissed and keyboard-shown states on both platforms"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39066242691835107
     },
     {
       "id": "components.settings.administration.admins",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8fff0ff79ff31ff783f3000780030007bff37ff7bff37ff7bbf33bf7800300078007800787f307f786030e07ba037e07bf030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.920Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:52.687Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows an on-screen software keyboard occupying the lower half of the viewport; Android does not, leaving that area blank",
+        "The Name input field on iOS shows a blinking text caret/cursor, on Android no caret is visible (focus state only on iOS)",
+        "Vertical content layout shifts: on iOS the 'Delete Server' card and its button sit higher relative to viewport because the keyboard pushes content up, while on Android they sit in their natural position with empty space below",
+        "Save Profile button on iOS appears slightly dimmer/grayed-out pink vs. a more saturated pink on Android (possibly disabled/disabled-by-empty state vs. active state)",
+        "Form input borders, card borders, and button drop-shadow offsets appear consistent between platforms; main divergence is keyboard-induced layout shift and caret/focus indicator"
+      ],
+      "likelyCauses": [
+        "iOS is rendering an active software keyboard because an input has focus, while Android is not (focus/IME state not synchronized between platforms in the Slock capture)",
+        "Focus state was triggered only on the iOS run, or auto-focus differs between Android and iOS Kuikly renders",
+        "Text caret rendering differs: iOS shows native blinking caret, Android may suppress it in the test harness",
+        "Submit button enabled/disabled state differs between platforms based on validation that hasn't fired identically"
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Ensure the test harness dismisses/blurs any focused input before screenshot, or capture both runs with identical IME/focus state",
+        "Unify auto-focus behavior across Android and iOS so neither platform opens the keyboard unexpectedly",
+        "Synchronize input validation state so Save Profile button uses the same enabled color on both platforms",
+        "Add an IME-state guard in Kuikly to avoid keyboard-driven viewport reflow during visual regression baselines",
+        "If keyboard presence on iOS is expected, include a non-keyboard variant in the visual baseline set"
+      ],
+      "intentional": [
+        "Keyboard appearance may be a real production behavior on iOS, in which case baselines should be updated to include the keyboard layout"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3717374866663966
     },
     {
       "id": "components.settings.administration.invites",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.964Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:52.829Z",
+      "severity": "high",
+      "summary": [
+        "iOS side shows the on-screen keyboard occupying roughly the bottom 40% of the viewport, while Android side has no keyboard visible — the form is fully scrollable/focusable on Android but the keyboard pushes the iOS layout up.",
+        "NAME input on iOS displays an active text caret/cursor inside the field (text is being edited), whereas the Android NAME field is unfocused and shows no caret.",
+        "iOS renders the NAME input with a heavier/stroked outlined border (active focus ring) compared to Android's thinner border.",
+        "iOS Name field content 'Visual Server' is rendered with a noticeably larger/heavier font weight than Android's lighter weight in the same field.",
+        "Vertical spacing between the Save Profile button and the Danger Zone card is reduced on iOS because the keyboard compresses the viewport; on Android there is empty space between the Danger Zone and the bottom of the screen."
+      ],
+      "likelyCauses": [
+        "iOS native keyboard automatically appears when an input is focused and is not being dismissed or inset-padded the same way as on Android.",
+        "Kuikly input/focus handling differs between Android and iOS runs — iOS triggered auto-focus on render while Android did not.",
+        "Platform-specific TextField styling (focus border weight, font weight in active state) is not unified in the Kuikly component mapping.",
+        "Safe-area / keyboard-inset padding is not applied uniformly, causing layout shift on iOS only."
+      ],
+      "suggestedOwner": "Kuikly mobile platform team (input/focus & keyboard-inset handling)",
+      "suggestedFixes": [
+        "Add a uniform focus/autofocus policy so both ends start in the same unfocused state for screenshot diffs, or blur on mount.",
+        "Normalize TextField active-state styling (border thickness, font weight) via a shared theme so focused and unfocused appearances match across Android and iOS.",
+        "Apply consistent keyboard-inset/safe-area padding to the scroll container so layout below the Danger Zone is not pushed off-screen on iOS.",
+        "Ensure the iOS render uses the same viewport-bounds crop contract as Android for comparison.",
+        "Pin the Slug placeholder/value font weight to match between platforms (currently 'visual' placeholder weight differs slightly)."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.administration.join-links",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.975Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:56.111Z",
+      "severity": "high",
+      "summary": [
+        "iOS (current) shows a system soft keyboard occupying the lower half of the viewport, while Android (baseline) does not, indicating iOS captured the screen with keyboard visible",
+        "All content below the 'Delete Server' card is occluded by the keyboard on iOS; Android has empty space showing the full layout end",
+        "Name input field shows a visible text caret/blinking cursor on iOS but not on Android, suggesting iOS rendered an active focused input state",
+        "Layout vertical positioning of Profile card and Danger Zone card appears slightly shifted due to the keyboard pushing content up on iOS",
+        "Visual proportions and component bounds are otherwise consistent between the two ends (cards, buttons, typography, colors align)"
+      ],
+      "likelyCauses": [
+        "Test capture on iOS triggered a focused text field which invoked the on-screen keyboard",
+        "Screenshot timing on iOS captured during/after input focus rather than after dismissal",
+        "Input auto-focus behavior differs between Kuikly Android and iOS renders, causing iOS to show focus + keyboard by default",
+        "No explicit blur or keyboard-dismiss step in the iOS test harness before capturing"
+      ],
+      "suggestedOwner": "mobile-platform / qa-automation",
+      "suggestedFixes": [
+        "Dismiss the soft keyboard (tap-outside or send blur event) before taking the iOS screenshot to match the Android baseline state",
+        "Avoid auto-focusing the Name input on screen mount, or guard auto-focus behind a platform-specific flag",
+        "Re-capture iOS with keyboard hidden so the lower Danger Zone area is fully visible and the two ends become directly comparable",
+        "Normalize viewport rendering in Slock by waiting for IME to close or by using a fixed-state capture (e.g., after input loses focus)",
+        "If the keyboard is the intended state for the visual check, add an Android counterpart that also focuses an input so both sides are captured with the IME shown"
+      ],
+      "intentional": [
+        "Keyboard visibility itself is platform-correct behavior; the divergence is a test-capture artifact rather than a render bug"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:55.994Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:58.392Z",
+      "severity": "high",
+      "summary": [
+        "iOS shows a system keyboard occupying the lower ~40% of the viewport, while Android does not — completely different layout state between the two ends.",
+        "NAME input shows a blinking text caret ('|' character) on iOS but not on Android, indicating iOS has input focus while Android does not.",
+        "The iOS NAME input appears slightly wider and the 'Visual Server' text sits closer to the left edge, while Android has more left padding inside the input.",
+        "Component bounds (Profile card, Danger Zone card, Delete Server button) are essentially identical between sides; main divergence is the keyboard overlay and input focus state on iOS."
+      ],
+      "likelyCauses": [
+        "iOS is rendered while the NAME field is focused (keyboard up), whereas Android is rendered without focus — likely a test/setup state mismatch rather than a rendering bug.",
+        "Possible difference in default focus/auto-focus behavior on TextInput between Kuikly Android and iOS targets.",
+        "Keyboard avoidance/viewport resize handling may differ between platforms, causing the visible canvas to differ in effective height."
+      ],
+      "suggestedOwner": "Kuikly cross-platform QA / Input component owner",
+      "suggestedFixes": [
+        "Dismiss the keyboard on the iOS capture (tap outside the input or blur) before screenshotting to match the Android resting state.",
+        "Ensure consistent auto-focus policy on the TextInput component across iOS and Android (neither should auto-focus on mount, or both should).",
+        "If auto-focus is intended on iOS only, document the intentional difference and add a visual test fixture that pre-blurs the input for parity comparisons.",
+        "Verify the keyboard-insets/avoidingView behavior so that focused inputs produce consistent viewport bounds on both platforms.",
+        "Re-run the visual diff after aligning input focus state to confirm the only real divergence is the keyboard itself."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.administration.onboarding",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:56.009Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:59.591Z",
+      "severity": "medium",
+      "summary": [
+        "iOS view shows an active on-screen QWERTY keyboard occupying the lower half, while Android shows no keyboard (focus may differ or keyboard is suppressed on Android).",
+        "NAME input on iOS displays an active text caret (vertical bar) inside 'Visual Server', while Android has no caret visible (input not focused).",
+        "Save Profile button has reduced opacity/faded appearance on iOS (~50% alpha) vs. fully solid pink fill on Android — visual disabled/dimmed state divergence.",
+        "A vertical pale-yellow/orange band is visible along the right edge of the Android panel (likely viewport/safe-area indicator) that has no counterpart on iOS."
+      ],
+      "likelyCauses": [
+        "Text input auto-focus behavior differs between platforms (iOS focuses and raises keyboard, Android does not or keyboard is dismissed).",
+        "Save Profile button enabled/disabled state or opacity styling not normalized across Kuikly platform renderers.",
+        "Android render includes an extra viewport/insets debug or status-bar artifact not present on iOS."
+      ],
+      "suggestedOwner": "kuikly-mobile / settings-onboarding component owner",
+      "suggestedFixes": [
+        "Normalize input focus and keyboard presentation across Android/iOS (or capture both states explicitly in the visual test).",
+        "Align Save Profile button opacity/disabled-state logic so both platforms render the same enabled appearance when inputs are valid.",
+        "Investigate and remove or align the right-edge colored band on Android to match iOS viewport bounds.",
+        "Re-run visual diff with keyboard explicitly hidden/visible on both ends for an apples-to-apples comparison."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.administration.member-permissions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:56.051Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:00.817Z",
+      "severity": "medium",
+      "summary": [
+        "iOS side shows an active on-screen keyboard occupying the bottom ~40% of the viewport, while Android side has no keyboard visible.",
+        "NAME input field is focused on iOS (shows active caret/text cursor) versus unfocused on Android.",
+        "Visual layout of Profile and Danger Zone sections otherwise appears structurally similar but scaled due to iOS keyboard pushing content / different viewport occupation.",
+        "iOS rendering canvas is 1170x2532 vs Android 390x844, but displayed at comparable scale; the keyboard presence is the dominant divergence."
+      ],
+      "likelyCauses": [
+        "iOS side captured while the NAME field had focus, triggering the iOS software keyboard.",
+        "Android capture was taken without an active keyboard (focus dismissed or never triggered).",
+        "Possible difference in how focus/blur is handled between Kuikly Android and iOS bridges, or simply a state difference at screenshot time."
+      ],
+      "suggestedOwner": "Mobile platform / Kuikly integration team",
+      "suggestedFixes": [
+        "Dismiss iOS keyboard before screenshot or blur the focused field to match Android's idle state.",
+        "Standardize capture script so both ends dismiss active input controls prior to visual diff.",
+        "Verify Kuikly iOS TextInput focus behavior to ensure consistency with Android.",
+        "If keyboard visibility is test-relevant, add a dedicated test case for focused state rather than comparing across states.",
+        "Investigate why pixel mismatch is ~39% despite only the keyboard region diverging — confirm scale normalization is correct."
+      ],
+      "intentional": [
+        "Keyboard appearance on iOS when a text field is focused is platform-correct behavior and expected."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.administration.translation",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:07:56.058Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:02.771Z",
+      "severity": "high",
+      "summary": [
+        "iOS side shows a software keyboard occupying the lower ~40% of the screen, Android side does not — likely because iOS focused state of the Name input was not normalized in the test capture",
+        "Name input has a visible blinking text caret (cursor) on iOS but not on Android, indicating iOS is in active-focus state while Android is not",
+        "As a result of the keyboard, the lower portion of the iOS layout (the empty area beneath the Danger Zone card) is occluded, making the two screens non-isomorphic at this moment",
+        "Save Profile button text on iOS appears slightly lower-contrast/fainter than on Android; possible disabled-state styling leak from focus shift",
+        "Pixel-perfect similarity drops to ~61% while RGB similarity stays at ~92%, consistent with a large localized region difference (keyboard + caret) rather than a global style drift"
+      ],
+      "likelyCauses": [
+        "iOS test capture was taken while a text field was focused, triggering native keyboard; Android capture was not, or Android hid the IME",
+        "No focus-state normalization (e.g., blur active input or dismiss keyboard) in the Slock capture step for iOS",
+        "Possible difference in input autofocus behavior between the two platform adapters in Kuikly",
+        "Button hover/active/disabled style being re-applied when a sibling element gains focus on iOS"
+      ],
+      "suggestedOwner": "Mobile platform / visual-testing harness owner (Kuikly + Slock capture pipeline)",
+      "suggestedFixes": [
+        "Blur the focused input and dismiss the keyboard before taking the baseline/current screenshot on both platforms",
+        "Add an explicit `tintColor`/disabled-state check for Save Profile to ensure it renders identically regardless of focus context",
+        "In Slock config, normalize iOS captures by waiting for keyboard dismissal or by capturing a `keyboardHidden` variant",
+        "Treat keyboard presence as a non-isomorphic capture and exclude it from the compare canvas, or assert keyboard visibility parity in the test",
+        "Audit Kuikly iOS TextField rendering for unintended caret/IME focus propagation on mount"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.39062867096042453
     },
     {
       "id": "components.settings.billing.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffe9bfe9bfe80fe80ff1ffe1fff800600079ff21ff790f204f7800300078ff20ff7a7f267f7aff24ff7a8124017abf26bf7a1f241f7a0f240f7a0324077a5f265f787f207f7a0f240f7a0726077a3f263f780524057aff24ff7bff23ff787e20fe7bff27ff7c00260078002000781fe01ff81f60bf60ff21ff2ffff7fff",
-      "generatedAt": "2026-07-10T22:07:56.085Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:02.850Z",
+      "severity": "low",
+      "summary": [
+        "Overall layout and content are isomorphic between Android and iOS renders with only minor pixel-level deviations (~19% mismatch).",
+        "Header bar: title 'Plan & Billing' weight, back-button placement, and underline divider appear consistent across both ends.",
+        "Current Plan card header (cream/beige band) shows a subtle width/inset difference — iOS band appears slightly narrower or more padded-in relative to the card outline.",
+        "Included checklist rows (Channels, Tasks, Agents…, 30 days…, 100 MB…) have small vertical spacing/leading differences; line-height in iOS is marginally tighter so the list ends ~one row height earlier.",
+        "Not included checklist (red ✕) rows match in count and order; ✕ glyph stroke appears slightly thinner on iOS vs Android."
+      ],
+      "likelyCauses": [
+        "Native font rendering differences between Android (Roboto) and iOS (San Francisco) causing minor line-height and glyph-stroke variation.",
+        "Density / scale-factor mapping in Kuikly producing small dp rounding offsets in vertical spacing.",
+        "Default platform font metrics producing slightly tighter leading on iOS for the checklist text.",
+        "Subpixel/anti-aliasing rendering differences accounted for by ignoreAntialiasing tolerance but still visible in diff."
+      ],
+      "suggestedOwner": "mobile-ui-engineering",
+      "suggestedFixes": [
+        "Normalize vertical spacing on list rows via explicit line-height/token instead of relying on platform font metrics.",
+        "Constrain the Current Plan header band width with the same inset token on both platforms.",
+        "Pin the usage-footer and CTA button to a shared layout grid so bottom offsets match across platforms.",
+        "Override the ✕/✓ icon stroke width to a fixed dp to equalize weight between Android and iOS.",
+        "Verify font-family fallback chain to ensure the chosen family falls back to a metrically similar face on iOS."
+      ],
+      "intentional": [
+        "None of the observed differences appear to be intentional platform adaptations — they look like minor rendering/spacing drift."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.19390637447509484
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe9fff9fff803f803fbfff3fff83f703f783f303f7be537ad786f3477780030007801300178bb34bb780f300f78ff30ff78003000787f307f780030007800f83ef8ff30ff7bff37ff78ff31ff783e303e780030007bff31ff7807300f780f300f787f307f780078007fffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-10T22:07:56.097Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:03.701Z",
+      "severity": "medium",
+      "summary": [
+        "Time Format segmented control on iOS uses larger 12-hour/24-hour buttons with more padding, while Android uses smaller, tighter buttons.",
+        "iOS segmented control gaps between Automatic/Manual/Original and 12-hour/24-hour pairs are visibly wider than on Android.",
+        "Language dropdown ('English') and Timezone dropdown ('Asia/Shanghai') are visibly taller on iOS, with more internal vertical padding than Android.",
+        "Save button on iOS is slightly taller with more vertical padding than the Android Save button.",
+        "iOS bottom Save button has a thin pink top border/edge highlight that is absent (or less visible) on Android."
+      ],
+      "likelyCauses": [
+        "Kuikly segmented control / button height tokens differ between Android and iOS targets (HIG vs Material sizing).",
+        "Different default paddings applied to TextField/Select and primary buttons across platforms.",
+        "Inconsistent Save button disabled-state styling between the two platform themes.",
+        "Slight font metric or line-height differences between iOS San Francisco and Android Roboto causing layout reflow."
+      ],
+      "suggestedOwner": "design-system / cross-platform UI owner",
+      "suggestedFixes": [
+        "Unify segmented control height/min-width and inter-segment gap via shared design tokens so both platforms match.",
+        "Standardize TextField/Select vertical padding so dropdown boxes render the same height on iOS and Android.",
+        "Align Save button height, padding, and disabled-state border treatment across platforms.",
+        "Audit section-title underline thickness/alpha and unify across themes.",
+        "Re-run Slock visual diff after token changes to confirm pixel mismatch drops below tolerance."
+      ],
+      "intentional": [
+        "Platform-native feel of segmented controls may justify small sizing differences but should be documented in the design spec."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.210723592714114
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffc87fe07fe80fe01fe04060a068012001600120012805200128012001280020002800200028032003280020002a00220028002000280064006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
-      "generatedAt": "2026-07-10T22:07:56.139Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:05.185Z",
+      "severity": "medium",
+      "summary": [
+        "The card containing 'Message font size' description, font size buttons (Small/Medium/Large), and Preview block has a noticeably larger right/bottom shadow offset on Android (left) than on iOS (right); iOS shadow is more compact.",
+        "On Android the description text wraps to 3 lines with the word 'sizes.' on its own line; on iOS it wraps to 3 lines differently (e.g., 'code blocks keep fixed UI / sizes.'), indicating a slightly different text width/column due to padding or font metrics.",
+        "Horizontal padding inside the 'Message font size' card appears larger on iOS, pushing the Small/Medium/Large button group slightly more inward and reducing inter-button gaps compared to Android.",
+        "The vertical gap between the Small/Medium/Large segmented buttons row and the Preview card is smaller on iOS than on Android, making the iOS layout feel more compact.",
+        "The bottom edge of the outer card (shadow extent) sits closer to the Preview card on iOS, suggesting a reduced outer-card padding-bottom on iOS."
+      ],
+      "likelyCauses": [
+        "Platform-default font metrics (San Francisco on iOS vs Roboto on Android) causing different line-break points in the description paragraph.",
+        "Kuikly shadow/elevation token mapped differently per platform, producing a larger blurred shadow on Android than iOS for the same card component.",
+        "Inconsistent card/segmented-control horizontal padding tokens between Android and iOS implementations of the same Appearance page.",
+        "Spacing token (gap between segmented control and Preview block) not normalized across platforms."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize card outer padding (horizontal and vertical) using a shared dp token for both Android and iOS implementations of the Appearance page.",
+        "Unify shadow/elevation style for the 'Message font size' card; if intentional, ensure both platforms use the same elevation token so the visual weight matches.",
+        "Adjust segmented control (Small/Medium/Large) inner padding/gap to a shared token so inter-button spacing is identical across platforms.",
+        "Verify the gap between the segmented control and the Preview card uses the same spacing token on both ends.",
+        "Optionally standardize body font or apply text wrapping rules so the description paragraph breaks consistently across platforms."
+      ],
+      "intentional": [
+        "Different platform-native font rendering (San Francisco vs Roboto) and minor line-break differences in the description text are expected and acceptable."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16294439718610332
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffe9ffe0ffe80fe80fe9ffe1ffe8000000280000000800000008303070381fe01fe80f000f1ae187f1881fe01fe81f00191bffe7ffe807e0078801051d18ffa0ffe80fc00fc80fc00fcfffe7ffe8fff0ffe81f001f180304830ffffffffffffffffffffffffffffffffffffffffffffffffffffffff7ffe7ffeffffffff",
-      "generatedAt": "2026-07-10T22:07:56.142Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:05.407Z",
+      "severity": "low",
+      "summary": [
+        "Typography weight differs: iOS title 'Notifications' and body labels (e.g. 'Message notifications', 'Background realtime', 'Foreground message banners', 'Send a test notification', 'Mute this workspace') appear bolder/heavier than Android equivalents.",
+        "List item cards on iOS have slightly more vertical padding (taller card heights) than Android, producing larger row spacing in the 'ON THIS DEVICE' and 'WORKSPACE' sections.",
+        "Send icon glyph next to 'Ready' in the 'Send a test notification' row renders slightly smaller/less prominent on iOS compared to Android.",
+        "Section header spacing: gap between 'SYSTEM' label and the green banner is marginally larger on iOS; gap between 'ON THIS DEVICE' label and first card is also slightly larger on iOS.",
+        "Card/list right-edge alignment of toggle controls appears to differ: iOS toggles sit a touch closer to the card border than on Android, which adds subtle horizontal inset variance."
+      ],
+      "likelyCauses": [
+        "Kuikly font-weight fallback yielding different weights across platforms (Android using one system font weight, iOS another).",
+        "Default row padding/min-height not normalized in the shared component, letting each platform's intrinsic metrics drive the value.",
+        "Density/scale tokens not applied uniformly, so dp/pt differences and safe-area handling shift paddings and toggle inset."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize font-weight for titles and list-row primary text via an explicit token in the Kuikly theme (e.g. semibold on both).",
+        "Pin list-row min-height and vertical padding to a single design token instead of relying on platform default.",
+        "Standardize toggle horizontal inset and right-edge alignment within the list-item card.",
+        "Audit Send icon size token to ensure identical render across Android and iOS.",
+        "Re-run Slock diff after fixes to confirm pixel-mismatch ratio drops below tolerance."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.06503760413713022
     },
     {
       "id": "components.settings.connected-apps.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffeffffdfff807f807fffffffffbbffb3f782038207a603ce07fff3fff7bff3fff7bff3fff787f387f79333bb379333bb378007800780078007bfffbfff891780179ff39ff79f03ff07ff07ff07bf03ff1780078007bfff871783f3bff78003800783e3a7f78003800787f3c7d7ff03ff07bff3dff787230707ffffffff",
-      "generatedAt": "2026-07-10T22:07:56.174Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:06.816Z",
+      "severity": "medium",
+      "summary": [
+        "Body paragraph text wraps differently: on Android 'Third-party apps for this server' header sits on 2 lines with narrower wrap; on iOS the same phrase spans more lines/width and the description paragraph below breaks earlier (e.g., 'integration.·' on iOS vs 'integration.··' on Android), indicating a wider text column or smaller font on iOS.",
+        "Card heights differ: the 'Third-party apps / EXPERIMENTAL / stats cards' container and the 'GitHub built-in' card are visibly taller on iOS, creating extra vertical spacing between the Register app button and the stat tiles, and between the GitHub description and the Open button.",
+        "Text truncation in tab pills differs: iOS truncates the third tab to 'My Ap…' while Android shows 'My A… 1'; badge counts also truncate differently (iOS 'Marketpla…' vs Android 'Marketpla…').",
+        "Stat card labels use different truncation: iOS shows 'Marketpla…' under the '3' tile, Android shows 'Marketpla…' but with slightly different ellipsis position/width.",
+        "'Open' button on the GitHub card is wider on iOS relative to its card; on Android it appears more compact."
+      ],
+      "likelyCauses": [
+        "Kuikly text/layout engine resolves column widths or font metrics differently between Android and iOS (e.g., default font width, line-height, or padding not normalized across platforms).",
+        "Stat cards and tab pills lack minWidth/maxWidth + numberOfLines=1 + ellipsize constraints, so each platform truncates at different points.",
+        "Card containers use auto height based on intrinsic content without a fixed minHeight, causing platform-dependent vertical sizing when text wrapping differs.",
+        "Button width in the GitHub built-in card is not constrained, allowing iOS to allocate more horizontal space.",
+        "Spacer/padding values are not platform-normalized, leading to differing vertical gaps between sections."
+      ],
+      "suggestedOwner": "kuikly-cross-platform-layout",
+      "suggestedFixes": [
+        "Normalize text container widths: set explicit maxWidth on description TextViews and ensure numberOfLines + ellipsize are consistent so both platforms truncate identically.",
+        "Constrain stat tile and tab pill widths with fixed dp values and apply single-line truncation with the same strategy on both platforms.",
+        "Fix the GitHub built-in card's Open button width (e.g., minWidth + flex) and equalize internal paddings across platforms.",
+        "Normalize vertical spacing by using consistent dp padding/margin tokens in Kuikly instead of relying on intrinsic content sizing.",
+        "Audit default font and line-height on iOS vs Android to ensure the same logical pixel sizes are used so wrapping breaks at the same points."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2701901135550424
     },
     {
@@ -1675,7 +2354,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1688,7 +2367,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1701,7 +2380,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1714,7 +2393,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1727,7 +2406,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1740,7 +2419,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.088Z",
+      "generatedAt": "2026-07-10T22:15:46.210Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1783,28 +2462,69 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffe3ffe4031003100310031238023803f9e3fa4803f803f801f001f8fff0fff9fff9fffe7ffe7ffffffffffffffffff81ff81ffffffffffffffffff8fff0fff8fff0fffd87ff8fff1fff1fff3fff3ffffffffffffffffff8c3f0c3f8c3f0c3f8c7f0c7f8007002780030003fffff7ff97ff97ff87fe97ff9ffe5c02ffffffff",
-      "generatedAt": "2026-07-10T22:07:56.231Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:10.868Z",
+      "severity": "low",
+      "summary": [
+        "iOS right side shows the popup dropdown ('Stop Agent' / 'Restart / Reset') shifted further right and extending past the right edge of the header bar, while Android positions it flush to the left edge under the agent avatar",
+        "The 'Reminders' button label is more clipped on iOS — the trailing folder/mail icon area is cropped at the right viewport boundary whereas Android keeps the icon fully visible",
+        "Minor vertical alignment offset: the agent avatar and 'Product UX Designer' title sit slightly higher on iOS vs. Android within the top app bar",
+        "Header action icons (comment, menu/hamburger) appear with slightly larger hit-target padding on iOS, producing wider spacing between them and the popup's right edge"
+      ],
+      "likelyCauses": [
+        "Dropdown/menu component uses absolute positioning with different anchor computation on iOS vs Android Kuikly runtime",
+        "Header row uses platform-specific flex/inset handling — iOS lacks the same right safe-area inset Android applies to action button group",
+        "Top bar height/insets are derived from platform status-bar metrics and differ between Android (390×844) and iOS (1170×2532) reference frames"
+      ],
+      "suggestedOwner": "kuikly-runtime/header-dropdown",
+      "suggestedFixes": [
+        "Anchor the actions popup to the left edge of the avatar with a consistent offset token across platforms",
+        "Apply the same right safe-area/padding to the header action group so 'Reminders' trailing icon is not clipped on iOS",
+        "Normalize top-bar metrics (height, status-bar inset) via a shared token rather than per-platform literals",
+        "Verify popup z-order/elevation so the dropdown's right shadow/border isn't clipped by the header's right boundary on iOS"
+      ],
+      "intentional": [
+        "Platform-specific status-bar inset handling may be intentional, but the popup horizontal offset and 'Reminders' icon clipping look unintentional"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09031642834960374
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bffe7ffec233823388310a3100000000001f001e8b3f0b3f8fff8fffffffffff8001c0018001400180010001800100019fff1fffffffffffffffffffffffffffffffffff81ff81ffffffffffffffffff9fffdfff8fff0ffffffffffff9fff9fff3fff3ffffffffffffffffff8c3f8c3f8c3f8c3f8c7f9c7f88ff89ffffffffff",
-      "generatedAt": "2026-07-10T22:07:56.258Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:12.374Z",
+      "severity": "low",
+      "summary": [
+        "Header avatar to title spacing appears slightly wider on iOS, pushing chat/menu icons further right relative to the avatar grid.",
+        "Header subtitle text on iOS truncates earlier ('screensh…') than Android ('screensho…') due to narrower available width in the same component bounds.",
+        "Tab bar last item on Android shows a visible folder/files icon peeking from the right edge; on iOS the icon is clipped/cut off at the same position, indicating a horizontal overflow/scroll edge difference.",
+        "Computer name text on iOS truncates as 'Jiachengs-Mac…' while Android shows 'Jiachengs-MacB…' (one more character), consistent with a slightly tighter value column on iOS.",
+        "Header top-right utility icons (chat, menu) sit at marginally different x-offsets between the two platforms, likely due to safe-area/padding rounding on iOS."
+      ],
+      "likelyCauses": [
+        "Platform-specific default padding/margins (e.g., iOS safe-area insets or NUI padding) applied to the header row and tab bar container.",
+        "Text/row container width computed before avatar image reaches its final bounds on iOS, leaving less room for subtitle/value text and causing earlier truncation.",
+        "Horizontal scroll container in the tab bar not clipping consistently: Android renders a partial next tab icon, iOS clips it at the edge.",
+        "Sub-pixel font metric or line-height differences between Android (Roboto) and iOS (SF) leading to minor width deltas in same-DP text fields."
+      ],
+      "suggestedOwner": "Kuikly cross-platform layout/style owner (components.members.avatar-management)",
+      "suggestedFixes": [
+        "Normalize header row padding (start/end) and avatar-to-title gap via a shared dp token to align both platforms.",
+        "Reserve a min-width or use ellipsis policy consistently on the header subtitle and Computer value cell so truncation length matches.",
+        "Audit the tab bar's horizontal scroll/content insets so the trailing tab icon is either fully shown or uniformly clipped on both ends.",
+        "Verify font fallback and line-height are driven by the design system, not native defaults, for label and value typography.",
+        "Run a layout-DP diff (not just pixel diff) between Android and iOS builds to catch safe-area/padding drifts early."
+      ],
+      "intentional": [
+        "Pixel similarity ~95% and mismatch ~9% indicate mostly intentional cross-platform parity with only minor truncation/clipping variances."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.09017836648168398
     },
     {
@@ -1972,22 +2692,39 @@
     },
     {
       "id": "components.thread.message-row.long-inline-code",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:fffe7ffeffffffff9fff9fff9d7f9d5ffbfff3ffe36fe0efe3ffe3ffe01fe01fefffefffffc7fc07e00fe00fe03fe03fe67fe6ffe29fe01ff7ffffffefffe7ffe003e003e02fe07fe0ffe0ffe003e003e007e001e003e001e003e001e003e001e003e003e001e1ffe1ffe001e003e001e001e001e003e001e003e00fffffffff",
-      "generatedAt": "2026-07-10T22:07:56.386Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:14:14.187Z",
+      "severity": "high",
+      "summary": [
+        "Bare #number task-chip divergence: '#42' and '#43' are tagged as task chips on Android but render as plain text on iOS.",
+        "Long inline-code path wrapping differs: Android breaks the long path at nearly every segment with hyphen-separated line wraps (one segment per line), iOS keeps longer hyphenated runs together resulting in fewer, wider lines.",
+        "Long command inline-code wraps differently: Android breaks the command across more, shorter lines while iOS produces fewer, longer lines per wrap, changing vertical footprint and line-break positions."
+      ],
+      "likelyCauses": [
+        "iOS renderer (Kuikly/RN side) applies a different word/breakpoint strategy for inline code spans, failing to break at segment separators the way Android does.",
+        "Task-chip token regex / known-ref gate on iOS rejects bare '#42' and '#43' because they are not in the loaded entity set, while Android tags every bare #number regardless of resolution.",
+        "Text-measuring / layout engine on iOS measures inline code as a single long token and refuses mid-token breaks that Android performs at '/' or '-' boundaries."
+      ],
+      "suggestedOwner": "kuikly-mobile",
+      "suggestedFixes": [
+        "Unify inline-code wrapping logic so both platforms break long paths/commands at the same boundaries (e.g., segment separators) and produce matching line counts.",
+        "Decide explicitly whether bare #numbers should be task chips on iOS (currently treated as plain text) and align behavior with the intentional Android tag-everything policy.",
+        "Re-run the long-inline-code Slock test on iOS after the wrap/break change and verify the long-path and long-command blocks match Android's line-break positions exactly."
+      ],
+      "intentional": [
+        "Bare '#520' and any other unknown-ref bare #number task chips: Android tags them as task chips; iOS renders them as plain text. Per artin's ruling (task #416), Android's tag-everything behavior is the kept platform behavior."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.41502612711143516
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.272Z",
+      "generatedAt": "2026-07-10T22:15:46.391Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2000,7 +2737,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:56.272Z",
+      "generatedAt": "2026-07-10T22:15:46.391Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

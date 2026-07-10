@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-10 22:07:58 UTC
+Generated: 2026-07-10 22:15:48 UTC
 Latest run: f845b2d-20260710220551
 Latest commit: f845b2d-20260710220551
 Commit subject: fix(home): remeasure server badge after switch (#592)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 89, same 0, pass 0, basic-pass 2, different 83, missing 4
-AI analysis: ready 24 / total 89, pending 65
+AI analysis: ready 85 / total 89, pending 4
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

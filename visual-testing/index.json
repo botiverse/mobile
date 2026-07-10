@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-10T22:07:58.057Z",
+  "generatedAt": "2026-07-10T22:15:48.125Z",
   "latestRunId": "f845b2d-20260710220551",
   "latest": {
     "runId": "f845b2d-20260710220551",
     "commit": "f845b2d-20260710220551",
     "commitSubject": "fix(home): remeasure server badge after switch (#592)",
-    "generatedAt": "2026-07-10T22:07:58.057Z",
+    "generatedAt": "2026-07-10T22:15:48.125Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 89,
-      "ready": 24,
-      "pending": 65
+      "ready": 85,
+      "pending": 4
     },
     "comparisons": [
       "react__android",
@@ -117,7 +117,7 @@
       "runId": "f845b2d-20260710220551",
       "commit": "f845b2d-20260710220551",
       "commitSubject": "fix(home): remeasure server badge after switch (#592)",
-      "generatedAt": "2026-07-10T22:07:58.057Z",
+      "generatedAt": "2026-07-10T22:15:48.125Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -130,8 +130,8 @@
       },
       "analysisSummary": {
         "total": 89,
-        "ready": 24,
-        "pending": 65
+        "ready": 85,
+        "pending": 4
       },
       "comparisons": [
         "react__android",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T22:07:53.125Z",
+  "generatedAt": "2026-07-10T22:15:43.265Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 73,
-    "pending": 16
+    "ready": 78,
+    "pending": 11
   },
   "cases": [
     {
@@ -827,7 +827,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:51.940Z",
+      "generatedAt": "2026-07-10T22:15:42.079Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -910,7 +910,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:51.985Z",
+      "generatedAt": "2026-07-10T22:15:42.149Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1196,15 +1196,38 @@
     },
     {
       "id": "components.thread.comment-anchor",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fe07fe001e00fe0000801e807e0e08807f0ffeffff0106ffff7ffefffefffefffefffefffefffefffefffefffefffefffefffeffff0000ffff0ff8ffff0018ffff001effff03feffff03e0ffff001cffff0004ffff1ffcffff00fcffff0000ffff0002fffe001e003207fc00023ffc7fde00007ff8000400000000ffff7fff",
-      "generatedAt": "2026-07-10T22:07:52.249Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:15.016Z",
+      "severity": "high",
+      "summary": [
+        "Completely different component scope rendered: React (left) shows only a small top comment chip + a bottom composer anchored to a video file (.mp4); iOS (right) renders a full file preview surface (FILE PREVIEW header, Review text, body) with a side/bottom Comments panel containing file metadata, All/Unresolved tabs, existing comment card with Quote/Resolve actions, and a full composer with SEND COMMENT button.",
+        "Anchor/attachment label differs: React anchors to 'agent-tabs-full-page-review.mp4' (video file, map-pin icon), iOS anchors to 'agent-tabs-full-page-review.md' (markdown file, document icon) with 23.0 KB · text/markdown metadata.",
+        "Comment body differs: React shows monospaced code-style text 'Please keep the tag inset consistent with the field below.'; iOS shows the same sentence in a proportional sans-serif at larger size with a white card background, border, Quote and Resolve action buttons, and a top-right close (×) icon not present in React.",
+        "Typography weight/size mismatch: iOS uses a much larger, bolder title ('FILE PREVIEW' all-caps), larger H1 'Review', and a more condensed comment timestamp ('18:32') versus React's small, lighter '06/25 10:32 AM'.",
+        "Alignment and layout differ: React is a single-column sheet with comment chip top-left and composer bottom-left; iOS uses a two-region layout (preview on top, comments panel below) with right-aligned timestamps, right-aligned close icon, and right-aligned SEND COMMENT button."
+      ],
+      "likelyCauses": [
+        "Baseline React snapshot was captured from a different entry point (a comment-anchor/chip variant) while iOS rendered the full file preview with the comments drawer open, so the two views are not the same component state.",
+        "Fixture/test data diverged between platforms: React used an .mp4 anchor with no metadata, iOS used an .md anchor with size/type metadata and a richer comment card.",
+        "No shared design tokens or cross-platform Storybook entry for 'thread.comment-anchor' — each platform implements its own layout, leading to divergent typography, spacing, and chrome (back arrow, tabs, close button, send button).",
+        "Comment card density differs: iOS added Quote/Resolve actions and a bordered card surface that React's anchor variant does not include."
+      ],
+      "suggestedOwner": "design-system / cross-platform parity owner (Threads comment component maintainers)",
+      "suggestedFixes": [
+        "Align on a single source of truth: pick one canonical layout for 'thread.comment-anchor' (chip-only vs full preview + comments drawer) and ensure both React and iOS baselines render the same component state during Slock capture.",
+        "Normalize anchor metadata: render the same filename, icon, and subtitle (e.g., size + mime) on both platforms; remove the .mp4 vs .md mismatch or update the fixture to match.",
+        "Unify comment card treatment: match border, background, padding, typography weight/size, and include/exclude Quote/Resolve buttons consistently across React and iOS.",
+        "Align composer affordances: place the send button, attachment tag, and close (×) icon in the same positions; match composer input height and placeholder text weight.",
+        "Add a token check for the FILE PREVIEW header style (size, weight, casing) and the timestamp format ('06/25 10:32 AM' vs '18:32') so they match the design spec."
+      ],
+      "intentional": [
+        "iOS platform-specific file metadata (23.0 KB · text/markdown) may be intentional on iOS only.",
+        "iOS close (×) button in the comments panel is a platform navigation convention that may be intentionally omitted on React."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.24783151726279684
     },
     {
@@ -1582,7 +1605,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.367Z",
+      "generatedAt": "2026-07-10T22:15:42.536Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1593,15 +1616,35 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe80100031801008310000000000120fe481ff0fff8fff001f8fff0bffffff9fff83ffc7ffffffd7ff81fbffff803f80f7ffffffffffffffff8fff0fff8fff0ffff7fff8ffc3fff1fffffff1ffd47fffffffffffffd3ff0c3f80010c3f80010c7f80ff0007807f0003807ff7ffffff97ffdfff97ff80785802ffffffff",
-      "generatedAt": "2026-07-10T22:07:52.495Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:15.268Z",
+      "severity": "medium",
+      "summary": [
+        "Header avatar and title area: React shows a solid cyan square; iOS renders a pixelated/QR-like pattern with mixed cyan and black pixels in the avatar slot, and the status indicator is absent in the iOS header but present in the React header (green dot with 'Capturing determ...' text).",
+        "Tab bar layout: iOS introduces a horizontal scroll/overflow on the tab strip — the 'Reminders' tab is clipped and a small scroll indicator chevron appears at the right edge, while React shows all tabs fully visible without overflow. Activity tab label is also truncated to 'Activi...' on iOS.",
+        "Info section spacing: iOS uses a horizontal two-column label/value layout (Computer, Created, Creator rows aligned to grid) with tighter vertical spacing; React stacks values in an asymmetric two-column grid with larger gaps and the Computer name wraps across two lines (Jiachengs-MacBook-Pro).",
+        "Runtime Config: iOS groups Runtime/Model/Reasoning/Mode as separate rows with two columns each; React displays all four in a single horizontal row of chips, changing the visual density significantly.",
+        "Avatar sizes: iOS profile detail avatar appears smaller relative to the surrounding text than the React version, and the header avatar occupies less visual prominence."
+      ],
+      "likelyCauses": [
+        "iOS render not matching the React design tokens for avatar fallback imagery (placeholder/QR-style asset used instead of plain cyan block).",
+        "iOS tab component lacks a proper horizontal scroll affordance and uses fixed-width tabs that overflow on the 1170px canvas scaled width.",
+        "Different grid/layout system between web (React) and native (iOS) for the Info metadata rows, causing label/value alignment divergence.",
+        "Responsive/adaptive logic differs between platforms, leading to different breakpoints for collapsing the Runtime Config row into multiple rows on iOS."
+      ],
+      "suggestedOwner": "iOS engineering team (cross-platform parity owner)",
+      "suggestedFixes": [
+        "Align iOS header avatar rendering with React — use the same solid cyan placeholder or fetch a matching avatar asset so both platforms show identical glyphs and status indicator.",
+        "Adjust iOS tab bar to either fit all tabs (Profile, Activity, Chat, Reminders) without clipping on the rendered width, or make the overflow scroll handle more obvious and prevent the trailing chevron from being cut off.",
+        "Normalize the Info section layout between platforms — decide on a single label/value grid (stacked vs two-column) and apply it consistently via shared design tokens.",
+        "Wrap Computer and other long identifier strings in iOS with text truncation or smaller font size to avoid line-wrap differences versus React.",
+        "Unify Runtime Config presentation: either keep all four chips in one row on iOS (with horizontal scroll if needed) or apply the two-row layout to React for parity."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1799256693806457
     },
     {
@@ -2269,15 +2312,39 @@
     },
     {
       "id": "components.settings.notifications.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffe0ffe87fe07fe81fe80fe00fe1ffe80820000807c00008060000080608602affc81febffc80f1bffc6e18800c01fc807c8090807c7ffe81fc0038a0045090bff00ffebfe000fc800000fcffff7ffeffff0ffeffff01f0ffff4030fffefffefffefffefffefffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-10T22:07:52.891Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:15.702Z",
+      "severity": "high",
+      "summary": [
+        "React shows a single 'PUSH NOTIFICATIONS' section with 'UNAVAILABLE' badge and pink 'Enable Push Notifications' button plus Save button; iOS shows three distinct sections (SYSTEM, ON THIS DEVICE, WORKSPACE) with toggles and a 'Send a test notification' row.",
+        "iOS displays a prominent green 'Notifications allowed' status banner with check icon and chevron; React has no equivalent system permission status block.",
+        "React 'Mute this server' uses a checkbox; iOS 'Mute this workspace' uses a square toggle switch (unchecked).",
+        "React uses pink filled CTA-style buttons ('Enable Push Notifications', 'Save') with shadow; iOS uses no buttons in this view, relying on toggle switches and a paper-airplane icon for test send.",
+        "iOS includes extra rows not present in React: 'Background realtime', 'Foreground message banners', and 'Send a test notification' (Ready state with send icon)."
+      ],
+      "likelyCauses": [
+        "Component is being rendered against the wrong baseline—the iOS notifications page is fundamentally different from the React web notifications page, not a styling diff.",
+        "Web push notification flow differs from native iOS notification API (system permission, APNs), so React shows web-push-specific UI (enable button, unavailable state, server mute) while iOS shows native toggles.",
+        "Missing parity mapping between React notification controls and iOS notification settings; feature sets not aligned.",
+        "Permission state differs (iOS reports 'granted', React shows 'denied/not configured') causing divergent UI presentation."
+      ],
+      "suggestedOwner": "Mobile platform team (iOS) with cross-platform settings parity owner",
+      "suggestedFixes": [
+        "Confirm whether this comparison is intentional: iOS native notifications page should likely be compared against a different baseline, not the React web page.",
+        "If parity is required, add React equivalents for 'Background realtime', 'Foreground message banners', and 'Send a test notification' rows.",
+        "Replace iOS-only sections (SYSTEM permission banner) with a platform-agnostic abstraction or exclude from cross-platform visual diffs.",
+        "Align toggle/checkbox control types across platforms or document platform-specific control differences in the visual test contract.",
+        "Map React 'Mute this server' semantics to iOS 'Mute this workspace' and ensure label consistency ('server' vs 'workspace')."
+      ],
+      "intentional": [
+        "Platform-specific notification permission UI (system permission banner on iOS vs web push enable flow) may be intentionally divergent.",
+        "Different primary controls (checkboxes on web vs toggle switches on iOS) are typical platform conventions.",
+        "Additional iOS-only rows (background realtime, foreground banners, test send) may reflect iOS-specific capabilities not applicable to web."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.175889131931786
     },
     {
@@ -2349,7 +2416,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2362,7 +2429,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2375,7 +2442,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2388,7 +2455,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2401,7 +2468,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2414,7 +2481,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:52.837Z",
+      "generatedAt": "2026-07-10T22:15:43.005Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2455,28 +2522,70 @@
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffe3ffe8010003180100031000c238000843fa48000803f8fff001f8fff0fffffff9fff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff0fff8fff0ffffffff8ffc3fff1fffffff3ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0027807f0003807ff7ffffff97ffdfff97ff80785c02ffffffff",
-      "generatedAt": "2026-07-10T22:07:52.973Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:15.796Z",
+      "severity": "high",
+      "summary": [
+        "iOS avatar is rendered as a pixelated/QR-code style glyph block instead of the solid cyan square avatar seen on React.",
+        "React shows an open action menu with 'Stop Agent' and 'Restart / Reset' options; iOS shows the same menu content but positioned/overlaid differently across the header and tabs.",
+        "iOS tab bar includes a 'Reminders' tab that appears clipped/cropped on the right edge, while React shows 'Profile' highlighted (yellow) and 'Activity' beside it without Reminders visible.",
+        "INFO section layout differs: React stacks Computer/Created/Creator in two rows, iOS uses a 2x2 grid with truncated 'Jiachengs-Mac…' and 'daemon v0.0.1' metadata shown inline.",
+        "Runtime Config uses a 4-column row (Runtime/Model/Reasoning/Mode) on React but a 2x2 grid on iOS, changing badge widths and spacing."
+      ],
+      "likelyCauses": [
+        "Different layout strategies (Flex row vs vertical grid) applied to the Info/Runtime Config sections between React and iOS targets.",
+        "Avatar asset swap: iOS image pipeline is rendering an unstyled/original QR-style placeholder instead of the cropped solid square used in React.",
+        "Tab bar component on iOS is overflowing its container, causing the rightmost tab (Reminders) to clip.",
+        "Missing active-state background fill on iOS tabs due to token mapping mismatch for the 'Profile' selected state.",
+        "Truncation/ellipsis logic for long metadata strings (computer name, environment variable values) differs in token availability between platforms."
+      ],
+      "suggestedOwner": "iOS UI engineer (members component team)",
+      "suggestedFixes": [
+        "Unify the avatar rendering: ensure iOS uses the same solid cropped avatar variant as React, or apply identical clipping/icon mapping rules across both targets.",
+        "Reflow tab bar to accommodate the Reminders tab without clipping (verify safe-area insets and tab bar width constraints).",
+        "Align Info/Runtime Config grid structure between React (multi-column row) and iOS (2x2 grid) via a shared layout token.",
+        "Apply consistent truncation rules for long values (computer name, env var values) so both platforms truncate at the same breakpoint with matching ellipsis style.",
+        "Map the 'Profile' active tab background token identically on both platforms to restore the yellow fill state."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.20301339436410526
     },
     {
       "id": "components.members.avatar-management",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:bffe7ffec03b823386b10a31000000008ffe001e81ff0b3f8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffff81ffc03bffffffffffffffffdfffffff0fff8ffffffffffff9ffe7fff3fffffffffffefffffffeff8c3fffff8c3f88939c7f800189ffffffffff",
-      "generatedAt": "2026-07-10T22:07:53.012Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-10T22:13:15.798Z",
+      "severity": "high",
+      "summary": [
+        "Header layout differs: iOS shows full avatar + title + status line in the header bar, React shows compact header with truncated subtitle (e.g., 's…')",
+        "Profile tab indicator: iOS uses a yellow filled background with bottom underline on Profile, React uses a yellow underline-only bar with no fill",
+        "Activity tab label is truncated to 'Activi…' on iOS but fully spelled on React",
+        "Member status row differs: iOS shows 'Working' status badge with yellow dot below handle; React shows 'Capturing determ…' truncated status text beside the title",
+        "Avatar picker grid: iOS renders avatars in a wider 8-column grid with larger tiles and more whitespace between rows; React uses a tighter 6-column grid with smaller spacing"
+      ],
+      "likelyCauses": [
+        "iOS implementation not honoring the React design tokens for spacing, grid columns, and section dividers",
+        "Different status/state copy between platforms ('Working' vs 'Capturing…') suggests divergent i18n or default values",
+        "Truncation rules for Activity tab and Computer name not aligned across platforms",
+        "Connected status indicator color token not shared (green vs grey)",
+        "Runtime Config layout component reimplemented with grid in iOS instead of flex row used in React"
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "Normalize avatar grid tokens (tile size, gap, columns) so both platforms render the same number of columns at the same component width",
+        "Align tab bar active-state style: pick either filled-background or underline and apply consistently",
+        "Restore full 'Activity' label and ensure tab overflow handling is identical",
+        "Unify status pill content: use one canonical 'Working'/'Capturing…' copy across platforms",
+        "Match Connected indicator color and shape (use shared semantic token)"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.2559741294338451
     },
     {
@@ -2694,7 +2803,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:53.038Z",
+      "generatedAt": "2026-07-10T22:15:43.177Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2707,7 +2816,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:07:53.038Z",
+      "generatedAt": "2026-07-10T22:15:43.177Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
