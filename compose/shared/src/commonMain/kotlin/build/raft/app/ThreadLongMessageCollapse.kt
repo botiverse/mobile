@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.markdown.normalizeThreadMarkdownBody
 
-internal const val ThreadLongMessagePreviewLineLimit = 5
+internal const val ThreadLongMessagePreviewLineLimit = 8
 internal const val ThreadLongMessagePreviewCharLimit = 1_200
 
 internal data class ThreadLongMessageRenderPlan(
