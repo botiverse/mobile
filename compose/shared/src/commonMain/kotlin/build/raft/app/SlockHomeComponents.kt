@@ -1482,6 +1482,7 @@ internal fun SlockStructuralHomeShell(
                 // of per-popover dismiss layers, so nothing beneath stays interactive.
                 SlockFloatingOverlayHost(
                     onDismiss = onServerSwitcherDismiss,
+                    modifier = Modifier.padding(bottom = bottomContentPadding),
                     dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
                 ) { _ ->
                     ServerSwitcherPanel(
@@ -1513,6 +1514,7 @@ internal fun SlockStructuralHomeShell(
             if (notificationCenterExpanded && visibleNotifications.isNotEmpty()) {
                 SlockFloatingOverlayHost(
                     onDismiss = { notificationCenterExpanded = false },
+                    modifier = Modifier.padding(bottom = bottomContentPadding),
                     dismissActivationDelayMillis = SlockFloatingOverlayClickTriggeredDismissDelayMillis
                 ) { _ ->
                     Box(Modifier.fillMaxSize()) {
