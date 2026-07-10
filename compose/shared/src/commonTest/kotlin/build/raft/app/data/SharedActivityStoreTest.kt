@@ -24,16 +24,23 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+// Mirrors the store's private SharedActivityReplyPrewarmConcurrency (Semaphore(2)); the tail reuses
+// that same shared Semaphore, so total prewarm concurrency must never exceed it.
+private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
     @Test
@@ -106,6 +113,282 @@ class SharedActivityStoreTest {
 
         releaseFirst.complete(Unit)
         assertEquals(listOf(first, updated), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmsBelowFoldInTopFirstOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..4).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertEquals(ordered, calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmHonorsDepthCap() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                tailPrewarmDepthCap = 3,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..6).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertEquals(ordered.take(3), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmSkipsVisibleAndCompletedKeys() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val completed = keyedMarker("row-1")
+        val visible = keyedMarker("row-2")
+        val fresh = keyedMarker("row-3")
+
+        // "completed" warms via the visible path and records completion.
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(completed)))
+        // "visible" stays in the current viewport while the tail runs.
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(visible)))
+        calls.clear()
+
+        store.dispatch(
+            SharedActivityIntent.PrewarmActivityTail(listOf(visible, completed, fresh))
+        )
+
+        assertEquals(listOf(fresh), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmNeverExceedsSharedConcurrencyCap() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var inFlight = 0
+        var maxInFlight = 0
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = {
+                    inFlight += 1
+                    if (inFlight > maxInFlight) maxInFlight = inFlight
+                    inFlight -= 1
+                    DataResult.Content(Unit)
+                }
+            )
+        val ordered = (1..12).map { keyedMarker("row-$it") }
+
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(ordered))
+
+        assertTrue(maxInFlight <= SharedActivityReplyPrewarmConcurrencyForTest)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReplyPrewarmTakesPriorityOverActivityTail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val releaseVisible = CompletableDeferred<Unit>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val firstVisible = keyedMarker("visible-1")
+        val secondVisible = keyedMarker("visible-2")
+        val tail = keyedMarker("tail-1")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    if (marker == firstVisible || marker == secondVisible) releaseVisible.await()
+                    DataResult.Content(Unit)
+                }
+            )
+
+        // Two visible markers saturate the shared Semaphore(2).
+        store.dispatch(
+            SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(firstVisible, secondVisible))
+        )
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(tail)))
+
+        // Tail cannot acquire a permit while the visible set holds both.
+        assertEquals(setOf(firstVisible, secondVisible), calls.toSet())
+        assertTrue(tail !in calls)
+
+        releaseVisible.complete(Unit)
+        assertTrue(tail in calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailPrewarmCancelsKeysDroppedFromOrderedSet() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val started = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val cancelled = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val dropped = keyedMarker("dropped")
+        val kept = keyedMarker("kept")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    started += marker
+                    if (marker == dropped) {
+                        try {
+                            awaitCancellation()
+                        } catch (cancellation: CancellationException) {
+                            cancelled += marker
+                            throw cancellation
+                        }
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+
+        // "dropped" is warmed first (top of the list) and stays in-flight.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(dropped, kept)))
+        assertEquals(listOf(dropped), started)
+
+        // New ordered set no longer contains "dropped" -> its in-flight job is cancelled.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(kept)))
+
+        assertEquals(listOf(dropped), cancelled)
+        assertTrue(kept in started)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailReplanReschedulesInFlightItemWithoutExceedingOneActive() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val gates = mutableMapOf<ActivityReplyThreadPrewarmMarker, CompletableDeferred<Unit>>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        var active = 0
+        var maxActive = 0
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    active += 1
+                    if (active > maxActive) maxActive = active
+                    try {
+                        gates.getOrPut(marker) { CompletableDeferred() }.await()
+                    } finally {
+                        active -= 1
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+        val firstVersion = keyedMarker("A", activityVersion = "v1")
+        val secondVersion = keyedMarker("A", activityVersion = "v2")
+        val below = keyedMarker("B")
+
+        // A(v1) is warmed at the top of the tail and suspends in-flight on its gate.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
+        assertEquals(listOf(firstVersion), calls)
+
+        // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
+
+        // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
+        // time. Release the gates so the serial tail can drain.
+        gates.getOrPut(secondVersion) { CompletableDeferred() }.complete(Unit)
+        gates.getOrPut(below) { CompletableDeferred() }.complete(Unit)
+
+        // A(v2) must be rescheduled (no permanent warm miss) and B must be warmed.
+        assertTrue(secondVersion in calls)
+        assertTrue(below in calls)
+        // The tail never runs more than one prewarm concurrently across the replan.
+        assertTrue(maxActive <= 1)
+        // A(v1)'s stale result is discarded; only the latest version is recorded as warmed.
+        assertEquals(1, calls.count { it == firstVersion })
+        scope.cancel()
+    }
+
+    @Test
+    fun activityTailRapidReplansSerializeBehindSlowDrainingJob() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val running = CompletableDeferred<Unit>()
+        val drainGate = CompletableDeferred<Unit>()
+        var active = 0
+        var maxActive = 0
+        val firstVersion = keyedMarker("A", activityVersion = "v1")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    active += 1
+                    if (active > maxActive) maxActive = active
+                    try {
+                        if (marker == firstVersion) {
+                            running.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } catch (cancellation: CancellationException) {
+                                // Simulate a SLOW drain: the cancelled job stays alive (and still
+                                // counts as active) until the drain gate releases.
+                                withContext(NonCancellable) { drainGate.await() }
+                                throw cancellation
+                            }
+                        }
+                    } finally {
+                        active -= 1
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+        val secondVersion = keyedMarker("A", activityVersion = "v2")
+        val secondBelow = keyedMarker("B")
+        val thirdVersion = keyedMarker("A", activityVersion = "v3")
+        val thirdBelow = keyedMarker("C")
+
+        // A(v1) is warmed at the top of the tail and is now in-flight.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
+        running.await()
+        assertEquals(listOf(firstVersion), calls)
+
+        // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
+
+        // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
+        assertEquals(listOf(firstVersion), calls)
+        assertTrue(maxActive <= 1)
+
+        // Once the slow drain finishes, only the LATEST generation (v3) runs, one item at a time.
+        drainGate.complete(Unit)
+
+        assertTrue(thirdVersion in calls)
+        assertTrue(thirdBelow in calls)
+        // The superseded v2 generation never launched (its loop was cancelled before it ran).
+        assertTrue(secondVersion !in calls)
+        assertTrue(secondBelow !in calls)
+        // Concurrency never exceeded one across the two consecutive replans and the drain.
+        assertTrue(maxActive <= 1)
         scope.cancel()
     }
 
@@ -1030,6 +1313,7 @@ class SharedActivityStoreTest {
         prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
+        tailPrewarmDepthCap: Int = 20,
         onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
@@ -1042,6 +1326,7 @@ class SharedActivityStoreTest {
             tasksDataStore = tasksDataStore,
             persistSlices = persistSlices,
             prewarmReplyThread = prewarmReplyThread,
+            tailPrewarmDepthCap = tailPrewarmDepthCap,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
         )
@@ -1056,6 +1341,21 @@ class SharedActivityStoreTest {
                     parentChannelId = "parent-channel",
                     parentMessageId = "parent-message",
                     threadChannelId = "thread-channel"
+                ),
+            activityVersion = activityVersion
+        )
+
+    private fun keyedMarker(
+        id: String,
+        activityVersion: String = "1:$id"
+    ): ActivityReplyThreadPrewarmMarker =
+        ActivityReplyThreadPrewarmMarker(
+            key =
+                ActivityReplyThreadPrewarmKey(
+                    serverId = "server-1",
+                    parentChannelId = "parent-$id",
+                    parentMessageId = "message-$id",
+                    threadChannelId = "thread-$id"
                 ),
             activityVersion = activityVersion
         )

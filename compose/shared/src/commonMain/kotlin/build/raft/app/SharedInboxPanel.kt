@@ -617,9 +617,17 @@ private fun SharedActivityList(
                 onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
             }
     }
+    LaunchedEffect(snapshot.server.id, snapshot.items) {
+        val orderedMarkers =
+            snapshot.items.mapNotNull { item ->
+                item.toReplyThreadPrewarmMarker(snapshot.server.id.value)
+            }
+        onIntent(SharedActivityIntent.PrewarmActivityTail(orderedMarkers))
+    }
     DisposableEffect(listState) {
         onDispose {
             latestOnIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
+            latestOnIntent(SharedActivityIntent.PrewarmActivityTail(emptyList()))
         }
     }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
