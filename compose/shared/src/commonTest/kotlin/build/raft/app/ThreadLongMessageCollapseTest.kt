@@ -9,6 +9,14 @@ import kotlin.test.assertTrue
 class ThreadLongMessageCollapseTest {
 
     @Test
+    fun collapseRequiresExplicitPreferenceEnablement() {
+        val plan = threadLongMessageRenderPlan((1..12).joinToString("\n") { "line $it" })
+
+        assertFalse(threadLongMessageCollapseActive(enabled = false, plan = plan))
+        assertTrue(threadLongMessageCollapseActive(enabled = true, plan = plan))
+    }
+
+    @Test
     fun shortMessageIsNotCollapsible() {
         val body = "Short message\nwith two lines."
 

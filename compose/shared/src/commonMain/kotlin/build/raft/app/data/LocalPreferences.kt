@@ -180,6 +180,7 @@ data class ChatLayoutPreferenceSnapshot(
     val supportedLargeScreenNavigation: List<LargeScreenNavigationPreference> =
         LargeScreenNavigationPreference.entries,
     val compactConsecutiveMessages: Boolean = true,
+    val longMessageCollapseEnabled: Boolean = false,
     val imageAnnotationEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
     val activityTaskStatusBadgesEnabled: Boolean = false,
@@ -203,6 +204,9 @@ interface ChatLayoutPreferenceStore {
     fun readCompactConsecutiveMessagesSync(): Boolean
     suspend fun readCompactConsecutiveMessages(): Boolean
     suspend fun saveCompactConsecutiveMessages(enabled: Boolean)
+    fun readLongMessageCollapseEnabledSync(): Boolean
+    suspend fun readLongMessageCollapseEnabled(): Boolean
+    suspend fun saveLongMessageCollapseEnabled(enabled: Boolean)
     fun readImageAnnotationEnabledSync(): Boolean
     suspend fun readImageAnnotationEnabled(): Boolean
     suspend fun saveImageAnnotationEnabled(enabled: Boolean)
@@ -258,6 +262,16 @@ class KeyValueChatLayoutPreferenceStore(
 
     override suspend fun saveCompactConsecutiveMessages(enabled: Boolean) {
         store.putBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, enabled)
+    }
+
+    override fun readLongMessageCollapseEnabledSync(): Boolean =
+        store.getBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, false)
+
+    override suspend fun readLongMessageCollapseEnabled(): Boolean =
+        readLongMessageCollapseEnabledSync()
+
+    override suspend fun saveLongMessageCollapseEnabled(enabled: Boolean) {
+        store.putBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, enabled)
     }
 
     override fun readImageAnnotationEnabledSync(): Boolean =
@@ -339,6 +353,7 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_LARGE_SCREEN_NAVIGATION = "chatLayout:large_screen_navigation"
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
+        const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_IMAGE_ANNOTATION_ENABLED = "chatLayout:image_annotation_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "chatLayout:activity_task_status_badges_enabled"
@@ -357,6 +372,7 @@ interface ChatLayoutPreferenceRepository {
         navigation: LargeScreenNavigationPreference
     ): ChatLayoutPreferenceSnapshot
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
+    suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setActivityTaskStatusBadgesEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -376,6 +392,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -392,6 +409,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = alignment,
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -409,6 +427,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = navigation,
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -424,6 +443,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = enabled,
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -433,12 +453,18 @@ class PersistentChatLayoutPreferenceRepository(
         )
     }
 
+    override suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
+        store.saveLongMessageCollapseEnabled(enabled)
+        return getChatLayoutPreference()
+    }
+
     override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveImageAnnotationEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = enabled,
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -454,6 +480,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = enabled,
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -469,6 +496,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = enabled,
@@ -484,6 +512,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -499,6 +528,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),
@@ -524,6 +554,7 @@ class PersistentChatLayoutPreferenceRepository(
             myMessageAlignment = store.readMyMessageAlignment(),
             largeScreenNavigation = store.readLargeScreenNavigation(),
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
+            longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             imageAnnotationEnabled = store.readImageAnnotationEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             activityTaskStatusBadgesEnabled = store.readActivityTaskStatusBadgesEnabled(),

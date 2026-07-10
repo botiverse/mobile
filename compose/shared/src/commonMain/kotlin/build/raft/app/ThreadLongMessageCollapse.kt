@@ -12,6 +12,11 @@ internal data class ThreadLongMessageRenderPlan(
     val lineCount: Int
 )
 
+internal fun threadLongMessageCollapseActive(
+    enabled: Boolean,
+    plan: ThreadLongMessageRenderPlan
+): Boolean = enabled && plan.collapsible
+
 internal fun threadLongMessageRenderPlan(
     body: String,
     lineLimit: Int = ThreadLongMessagePreviewLineLimit,
