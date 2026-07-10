@@ -838,12 +838,14 @@ internal fun SlockStructuralHomeShell(
     var activeSortMenu by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    var activePinnedMemberMenuKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var pinMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
         pinnedSortModeState = SlockSidebarSortMode.fromWireValue(pinnedSortMode)
         activeSortMenu = null
+        activePinnedMemberMenuKey = null
     }
     LaunchedEffect(currentServerId, channels, directMessages) {
         // If the active row menu target was removed, close the menu.
@@ -935,7 +937,7 @@ internal fun SlockStructuralHomeShell(
             mode = pinnedSortModeState
         )
     }
-    val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.conversation } }
+    val pinnedItemsForSort = remember(displayedPinned) { displayedPinned.mapNotNull { it.toSidebarSortItem() } }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
     val channelSectionHasUnread = remember(displayedChannels) { displayedChannels.any { it.homeConversationBadgeProjection().hasUnread } }
     val jointChannelSectionHasUnread = remember(displayedJointChannels) { displayedJointChannels.any { it.homeConversationBadgeProjection().hasUnread } }
@@ -1183,16 +1185,30 @@ internal fun SlockStructuralHomeShell(
                                             else -> ChannelRowInteractionState.Default
                                         }
                                         val handleLongPress: (Offset) -> Unit = { anchor ->
-                                            pinned?.id?.let { conversationId ->
-                                                onChannelLongPressWithDismiss(conversationId, anchor)
-                                                activePinMenuConversationId = conversationId
-                                                activeMenuSection = SlockHomeSortSection.Pinned
-                                                pinMenuAnchor = anchor
-                                                // Menu opens: clear press so the
-                                                // visual doesn't stick while the
-                                                // user reads the menu.
-                                                pressedRowKey = null
+                                            when {
+                                                pinned != null -> {
+                                                    onChannelLongPressWithDismiss(pinned.id, anchor)
+                                                    activePinnedMemberMenuKey = null
+                                                    activePinMenuConversationId = pinned.id
+                                                    activeMenuSection = SlockHomeSortSection.Pinned
+                                                    pinMenuAnchor = anchor
+                                                }
+                                                pinnedMember != null -> {
+                                                    // Typed pinned members can exist before a DM
+                                                    // conversation is materialized. They still own
+                                                    // a stable member id in the per-user pinned
+                                                    // order, so expose the section-level Sort action
+                                                    // without inventing conversation operations.
+                                                    dismissNotificationCenterForFocusLoss()
+                                                    activePinMenuConversationId = null
+                                                    activePinnedMemberMenuKey = pinnedRow.key
+                                                    activeMenuSection = SlockHomeSortSection.Pinned
+                                                    pinMenuAnchor = anchor
+                                                }
                                             }
+                                            // Menu opens: clear press so the visual doesn't stick
+                                            // while the user reads it.
+                                            pressedRowKey = null
                                         }
                                         if (isDirectMessage) {
                                             val badgeProjection = pinned?.homeConversationBadgeProjection()
@@ -1224,7 +1240,7 @@ internal fun SlockStructuralHomeShell(
                                                     } else {
                                                         null
                                                     },
-                                                onLongPress = if (sidebarInteractionsEnabled && pinned != null) handleLongPress else null,
+                                                onLongPress = if (sidebarInteractionsEnabled && pinnedRow.supportsLongPress()) handleLongPress else null,
                                                 onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinnedRow.key}" }) else null,
                                                 onPressEnd = { if (pressedRowKey == "pinned:${pinnedRow.key}") pressedRowKey = null }
                                             )
@@ -1565,6 +1581,23 @@ internal fun SlockStructuralHomeShell(
                     }
                 )
             }
+            if (activePinnedMemberMenuKey != null) {
+                SlockBaseMenuOverlay(
+                    anchor = pinMenuAnchor,
+                    items = slockHomePinnedMemberMenuItems(labels),
+                    selectedId = "",
+                    onDismiss = {
+                        activePinnedMemberMenuKey = null
+                        onPinMenuDismiss()
+                    },
+                    onSelect = { actionId ->
+                        if (actionId == "sort-channels") {
+                            sortOverlaySection = SlockHomeSortSection.Pinned
+                        }
+                        activePinnedMemberMenuKey = null
+                    }
+                )
+            }
             sortOverlaySection?.let { section ->
                 val sortItems =
                     when (section) {
@@ -1758,6 +1791,17 @@ internal fun slockHomeConversationMenuItems(
             )
         }
     }
+
+internal fun slockHomePinnedMemberMenuItems(
+    labels: SlockHomeShellLabels = SlockHomeShellLabels()
+): List<SlockBaseMenuItem> =
+    listOf(
+        SlockBaseMenuItem(
+            id = "sort-channels",
+            label = labels.sortChannels,
+            icon = SlockLucideIconName.ArrowUpDown
+        )
+    )
 
 enum class SlockSidebarSortTarget { Channels, JointChannels, DirectMessages, Pinned }
 
@@ -2194,6 +2238,22 @@ internal data class SlockHomePinnedRow(
     val sortLabel: String = conversation?.name ?: member?.name.orEmpty()
     val sortTimestamp: String? = conversation?.lastMessageAt ?: conversation?.createdAt
 }
+
+internal fun SlockHomePinnedRow.supportsLongPress(): Boolean = conversation != null || member != null
+
+internal fun SlockHomePinnedRow.toSidebarSortItem(): SlockHomeConversationItem? =
+    conversation ?: member?.let { pinnedMember ->
+        SlockHomeConversationItem(
+            id = pinnedMember.memberId,
+            name = pinnedMember.name,
+            kind = KuiklyThreadSurfaceKind.DirectMessage,
+            channelType = "dm",
+            description = pinnedMember.description,
+            avatarLabel = pinnedMember.avatarLabel,
+            peerType = pinnedMember.peerType,
+            presenceMemberId = pinnedMember.memberId
+        )
+    }
 
 internal fun pinnedItemsForSidebar(
     channels: List<SlockHomeConversationItem>,

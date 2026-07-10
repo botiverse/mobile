@@ -883,6 +883,49 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun pinnedMemberRowsRemainLongPressableAndParticipateInManualSort() {
+        val member =
+            SlockHomePinnedMemberItem(
+                memberId = "agent-1",
+                name = "Cindy",
+                description = "@cindy",
+                avatarLabel = "C",
+                peerType = "agent"
+            )
+        val memberRow = SlockHomePinnedRow(key = "agent:agent-1", member = member)
+        val conversation =
+            SlockHomeConversationItem(
+                id = "channel-1",
+                name = "general",
+                kind = KuiklyThreadSurfaceKind.Channel,
+                channelType = "channel"
+            )
+        val conversationRow = SlockHomePinnedRow(key = "channel:channel-1", conversation = conversation)
+
+        assertTrue(memberRow.supportsLongPress())
+        assertEquals(
+            listOf("agent-1", "channel-1"),
+            listOf(memberRow, conversationRow).mapNotNull { it.toSidebarSortItem()?.id }
+        )
+        assertEquals("dm", memberRow.toSidebarSortItem()?.channelType)
+        assertEquals("agent", memberRow.toSidebarSortItem()?.peerType)
+    }
+
+    @Test
+    fun pinnedMemberLongPressMenuOffersSectionSortWithoutConversationActions() {
+        assertEquals(
+            listOf(
+                SlockBaseMenuItem(
+                    id = "sort-channels",
+                    label = "Sort",
+                    icon = SlockLucideIconName.ArrowUpDown
+                )
+            ),
+            slockHomePinnedMemberMenuItems()
+        )
+    }
+
+    @Test
     fun pinnedRowsResolveTypedAgentThroughExistingDirectMessage() {
         val agentDm =
             SlockHomeConversationItem(
