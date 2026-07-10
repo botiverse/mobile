@@ -108,6 +108,47 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun threadFlowStringResourcesAreGenerated() {
+        val literalResources =
+            listOf(
+                MR.strings.thread_tab_chat,
+                MR.strings.thread_tab_tasks,
+                MR.strings.thread_tab_files,
+                MR.strings.thread_composer_as_task,
+                MR.strings.thread_composer_members_this_channel,
+                MR.strings.thread_members_agents,
+                MR.strings.thread_add_member_search,
+                MR.strings.thread_settings_edit_channel,
+                MR.strings.thread_action_card_create_channel,
+                MR.strings.thread_action_card_scope_identity,
+                MR.strings.thread_comments_title,
+                MR.strings.thread_forward_destinations,
+                MR.strings.thread_share_preview_title
+            )
+
+        literalResources.forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "thread flow resources must produce ResourceStringDesc entries"
+            )
+        }
+
+        val formattedResources =
+            listOf(
+                MR.strings.thread_composer_placeholder_channel.format(listOf("design")),
+                MR.strings.thread_members_title.format(listOf(3)),
+                MR.strings.thread_action_card_title_add_members.format(listOf(2, "#design")),
+                MR.strings.thread_forward_selected.format(listOf(2))
+            )
+        formattedResources.forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "formatted thread flow resources must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.
