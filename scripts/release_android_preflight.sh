@@ -255,21 +255,21 @@ if [ -n "${REPORT_PATH}" ]; then
   {
     echo "# Android Release Preflight"
     echo
-    echo "- Candidate version: `${VERSION}` (versionCode `${RELEASE_CODE}`)"
-    echo "- Channel: `${CHANNEL}`"
-    echo "- Release head: `${HEAD_SHA}`"
-    echo "- Kuikly gitlink: `${KUIKLY_SHA}` reachable from `${KUIKLY_REMOTE}/${KUIKLY_BRANCH}`"
-    echo "- OHOS Hands HAR: `${HANDS_HAR_NAME}@${HANDS_HAR_VERSION}` with manifest and lock pin"
-    echo "- Required CI: `Commit Sign-off` and `Test` succeeded for this head"
+    printf -- '- Candidate version: `%s` (versionCode `%s`)\n' "${VERSION}" "${RELEASE_CODE}"
+    printf -- '- Channel: `%s`\n' "${CHANNEL}"
+    printf -- '- Release head: `%s`\n' "${HEAD_SHA}"
+    printf -- '- Kuikly gitlink: `%s` reachable from `%s/%s`\n' "${KUIKLY_SHA}" "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}"
+    printf -- '- OHOS Hands HAR: `%s@%s` with manifest and lock pin\n' "${HANDS_HAR_NAME}" "${HANDS_HAR_VERSION}"
+    printf -- '- Required CI: `Commit Sign-off` and `Test` succeeded for this head\n'
     if [ "${#REQUIRED_PRS[@]}" -gt 0 ]; then
       echo "- Included PRs: $(printf '#%s ' "${REQUIRED_PRS[@]}")"
     else
       echo "- Included PRs: none explicitly supplied"
     fi
     if [ -n "${LIVE_CODE}" ]; then
-      echo "- Hands active versionCode on `${CHANNEL}`: `${LIVE_CODE}`; candidate is newer"
+      printf -- '- Hands active versionCode on `%s`: `%s`; candidate is newer\n' "${CHANNEL}" "${LIVE_CODE}"
     else
-      echo "- Hands active versionCode on `${CHANNEL}`: none returned; candidate can establish the first active version"
+      printf -- '- Hands active versionCode on `%s`: none returned; candidate can establish the first active version\n' "${CHANNEL}"
     fi
     echo
     echo "Next: dispatch a **draft** Android Release, rewrite the raw changelog into reviewed zh-CN/en notes, smoke the draft, then have the owner explicitly approve activation."
