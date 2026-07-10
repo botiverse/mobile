@@ -103,19 +103,27 @@ Key rules (from #4445 §10.1):
 fixed-width, or a lexical-sortable varint). Exact encoding finalized in code and
 reviewed by AD2 (Android collation/index) before P1 first commit lands.
 
-## 4. Single-frame atomic apply (P1 core, task #491)
+## 4. Atomic apply — one ingest call = one transaction (P1 core, task #491)
 
-Exactly **one** SQLite transaction per applied core frame. On `SyncCore` emitting an
-`Applied` outcome for a frame, the coordinator, in one `withTransaction { }`:
+The transaction-count invariant scopes to the **ingest call**, not the individual
+frame (赵, #4445 final read): a single frame is just the 1-fact special case. Each
+ingest applies its facts + timeline rows + cursor/epoch in **exactly one**
+`withTransaction { }`, so there is no mid-batch commit point that a crash could
+tear:
 
-1. upsert the fact row (`sync_fact`, version-gated: skip if incoming ver ≤ stored);
-2. upsert the timeline row (`sync_timeline`);
-3. update the scope cursor + epoch (`sync_scope_cursor`).
+| Ingest call | One transaction contains |
+|---|---|
+| `ingestFrame` (1 event) | 1 fact upsert + 1 timeline upsert + cursor/epoch bump |
+| `ingestDifference` (N events) | **N** fact upserts + N timeline upserts + **one** cursor advance to `toSeq` |
+| `ingestSnapshot` (rebaseline) | clear scope facts/timeline + rebuild from snapshot state + cursor/epoch set |
 
-Facts + timeline + cursor + epoch commit or roll back together. Replay is idempotent
-by `messageId`/`ver` (re-applying a frame after a crash is a no-op via the version
-gate). Duplicate/gap/violation outcomes drive **no** fact write (only a cursor bump
-where the contract says the watermark advanced).
+Facts + timeline + cursor + epoch of a call commit or roll back **together**. A
+difference batch never leaves "cursor advanced but half the facts missing" (or the
+reverse) — the two failure shapes 赵 flagged are impossible because there is only
+one commit for the whole batch. Fact upserts are version-gated (skip if incoming
+`ver` ≤ stored); replay after a crash is idempotent by `messageId`/`ver`.
+Duplicate/gap/violation outcomes drive **no** fact write (a cursor bump only where
+the contract says the watermark advanced).
 
 Prune (task #492/#493, T6): capacity/tombstone eviction deletes timeline rows in an
 `orderKey` range **and** their referenced facts in the **same** transaction — never
@@ -150,11 +158,16 @@ after replaying the canonical fixture. A serializer divergence is the
 dual-representation disease.
 
 ### 6.2 Crash-window torn-write (deterministic fault-hook)
-Apply a frame; kill **before** the storage commit (run A) and **after** it (run B);
-restore. Assert the restored state `deepEquals` **either** the complete pre-frame
-state **or** the complete post-frame state — never a torn mix. The transaction
-**count invariant**: exactly one commit carries facts+timeline+cursor+epoch; a
-separate index/cursor commit is a renamed torn window and fails by construction.
+For each ingest call (frame **and** a multi-event `ingestDifference` batch): kill
+**before** the storage commit (run A) and **after** it (run B); restore. Assert the
+restored state `deepEquals` **either** the complete pre-call state **or** the
+complete post-call state — never a torn mix. The transaction **count invariant**:
+exactly one commit per ingest call carries all of its facts + timeline + cursor +
+epoch; a separate index/cursor commit — or a per-frame commit *inside* a difference
+batch — is a renamed torn window and fails by construction. The difference-batch leg
+is essential: a mid-batch commit point does not exist, so "cursor advanced but half
+the batch's facts missing" (and its reverse) are unrepresentable, not merely
+untested.
 
 ### 6.3 Persist/restore equivalence (T8 joint gate seed)
 A persisted-then-restored baseline fed further frames converges
