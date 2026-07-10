@@ -187,6 +187,46 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun shellScopedHomeStoresKeepRuntimeServerSelectionsIndependent() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(sampleSession())
+        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val authA = SlockShellAuthSessionStore(processStore, runtimeA)
+        val authB = SlockShellAuthSessionStore(processStore, runtimeB)
+        val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeB = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storeA =
+            SharedHomeStore(
+                authStore = authA,
+                dataSource = source(api = RecordingHomeApi(), sessionStore = authA),
+                scope = scopeA
+            )
+        val storeB =
+            SharedHomeStore(
+                authStore = authB,
+                dataSource = source(api = RecordingHomeApi(), sessionStore = authB),
+                scope = scopeB
+            )
+
+        storeA.accept(SharedHomeIntent.Start)
+        storeB.accept(SharedHomeIntent.Start)
+
+        assertEquals("server-1", (storeA.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        assertEquals("server-2", (storeB.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value)
+
+        storeA.accept(SharedHomeIntent.SelectServer("server-2"))
+        storeB.accept(SharedHomeIntent.SelectServer("server-1"))
+
+        assertEquals("server-2", (storeA.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        assertEquals("server-1", (storeB.state.value.content as SharedHomeContentState.Content).snapshot.server.id.value)
+        assertEquals("server-2", runtimeA.currentServerId.value)
+        assertEquals("server-1", runtimeB.currentServerId.value)
+        assertEquals("server-1", processStore.readSession()?.currentServerId)
+        scopeA.cancel()
+        scopeB.cancel()
+    }
+
+    @Test
     fun selectServerShowsSelectedSessionWhileNetworkLoadIsPending() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())

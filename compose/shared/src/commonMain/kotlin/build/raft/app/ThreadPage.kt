@@ -84,6 +84,7 @@ import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.ThreadRowAffordancePreference
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.toMessageMetadata
@@ -1712,8 +1713,11 @@ private fun ThreadPageScreen() {
                 "responseBytes=${payloadTrace.responseBytes} durationMs=${payloadTrace.durationMs} dispatcher=caller"
         )
     }
+    val storeScope = remember(params.toString(), pager.pagerId) {
+        params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val threadPageCoroutineScope = rememberCoroutineScope()
     var authLossReportInProgress by remember { mutableStateOf(false) }
     val networkClient = sharedStores.networkClient
@@ -1833,8 +1837,12 @@ private fun ThreadPageScreen() {
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
         }
+        val pageData =
+            launchPayload.toThreadPageData()
+                .put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+                .also { data -> storeScope.initialServerId?.let { data.put(SLOCK_SHELL_SERVER_ID, it) } }
         val openPage = {
-            routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+            routerModule.openPage(THREAD_PAGE, pageData)
         }
         if (nextPayload.sourceThreadId?.isNotBlank() == true &&
             (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty())
@@ -1843,7 +1851,7 @@ private fun ThreadPageScreen() {
             openPage()
             return
         }
-        routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+        routerModule.openPage(THREAD_PAGE, pageData)
     }
     SharedThreadRouteContent(
         initialPayload = payload,
@@ -1857,7 +1865,8 @@ private fun ThreadPageScreen() {
         computersStore = computersStore,
         membersStore = membersStore,
         serverMembersStore = sharedStores.serverMembersStore,
-        conversationIdentityProvider = sharedStores.conversationIdentityProvider,
+        conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
+        storeScope = storeScope,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         eventBus = sharedStores.eventBus,
         onBack = {
@@ -2755,6 +2764,7 @@ internal fun SharedThreadRouteContent(
     membersStore: SharedMembersStore? = null,
     serverMembersStore: SharedServerMembersStore? = null,
     conversationIdentityProvider: SharedConversationIdentityProvider? = null,
+    storeScope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     eventBus: SlockEventBus,
     onBack: () -> Unit,
@@ -2772,7 +2782,7 @@ internal fun SharedThreadRouteContent(
     val realtimeDomainEventOwner = remember(sharedStores) { sharedStores.realtimeDomainEventOwner }
     val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
-    val sharedHomeStore = remember(sharedStores) { sharedStores.sharedHomeStore }
+    val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)

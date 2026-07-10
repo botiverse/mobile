@@ -1300,6 +1300,45 @@ class SharedActivityStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun shellScopedActivityStoresKeepOwnerServerAndRequestsIndependent() = runBlocking {
+        val processSession =
+            sampleSession().copy(
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-1", name = "One"),
+                        StoredAuthServer(id = "server-2", name = "Two")
+                    )
+            )
+        val processStore = InMemorySlockAuthSessionStore(processSession)
+        val authA =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+            )
+        val authB =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        val inboxA = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
+        val inboxB = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
+        val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val scopeB = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val storeA = activityStore(scopeA, inboxA, authStore = authA)
+        val storeB = activityStore(scopeB, inboxB, authStore = authB)
+
+        storeA.dispatch(SharedActivityIntent.LoadInitial)
+        storeB.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals("server-1", storeA.state.value.ownerServerId)
+        assertEquals("server-2", storeB.state.value.ownerServerId)
+        assertEquals(listOf(ServerId("server-1")), inboxA.initialLoadServerIds)
+        assertEquals(listOf(ServerId("server-2")), inboxB.initialLoadServerIds)
+        scopeA.cancel()
+        scopeB.cancel()
+    }
+
     private fun activityStore(
         scope: CoroutineScope,
         inboxRepository: InboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
@@ -1381,6 +1420,7 @@ class SharedActivityStoreTest {
     ) : InboxRepository {
         var initialLoadCount = 0
         var moreLoadCount = 0
+        val initialLoadServerIds = mutableListOf<ServerId>()
         val loadMoreOffsets = mutableListOf<Int>()
         val doneChannelIds = mutableListOf<ChannelId>()
 
@@ -1389,7 +1429,10 @@ class SharedActivityStoreTest {
             filter: InboxFilter,
             limit: Int
         ): DataResult<InboxSnapshot> =
-            DataResult.Content(initialSnapshots.getOrElse(initialLoadCount++) { initialSnapshots.last() })
+            DataResult.Content(
+                initialSnapshots.getOrElse(initialLoadCount++) { initialSnapshots.last() }
+                    .also { initialLoadServerIds += serverId }
+            )
 
         override suspend fun loadMore(
             serverId: ServerId,
