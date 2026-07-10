@@ -477,7 +477,7 @@ internal fun UiBadgeVisualContent() {
                 SlockBrutalBadge("Shared", tone = SlockBrutalTone.White)
                 SlockBrutalBadge("Installed", tone = SlockBrutalTone.Lime)
                 SlockBrutalBadge("Update", tone = SlockBrutalTone.Orange)
-                SlockBrutalBadge("Built In", tone = SlockBrutalTone.Black)
+                SlockBrutalBadge("Built In", tone = SlockBrutalTone.Stone)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SlockBrutalBadge("task #273", tone = SlockBrutalTone.Red, uppercase = false)
