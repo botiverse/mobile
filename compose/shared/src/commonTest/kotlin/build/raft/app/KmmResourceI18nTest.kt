@@ -266,6 +266,74 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun settingsMobilePreferenceCopyResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_state_unavailable,
+            MR.strings.settings_state_permission_required,
+            MR.strings.settings_state_saving,
+            MR.strings.settings_state_saved,
+            MR.strings.settings_state_ready,
+            MR.strings.settings_error_language,
+            MR.strings.settings_error_appearance,
+            MR.strings.settings_error_notification,
+            MR.strings.settings_language_loading,
+            MR.strings.settings_translation_mode,
+            MR.strings.settings_translation_mode_detail,
+            MR.strings.settings_timezone,
+            MR.strings.settings_timezone_detail,
+            MR.strings.settings_time_format,
+            MR.strings.settings_time_format_detail,
+            MR.strings.settings_time_format_12_hour,
+            MR.strings.settings_time_format_24_hour,
+            MR.strings.settings_workspace_translation,
+            MR.strings.settings_option_on,
+            MR.strings.settings_option_off,
+            MR.strings.settings_appearance_loading,
+            MR.strings.settings_appearance_preview,
+            MR.strings.settings_appearance_preview_sender,
+            MR.strings.settings_appearance_preview_message,
+            MR.strings.settings_message_alignment_left,
+            MR.strings.settings_message_alignment_right,
+            MR.strings.settings_mobile_compact_messages,
+            MR.strings.settings_mobile_compact_enabled,
+            MR.strings.settings_mobile_compact_disabled,
+            MR.strings.settings_mobile_activity_task_badges,
+            MR.strings.settings_mobile_activity_task_badges_enabled,
+            MR.strings.settings_mobile_activity_task_badges_disabled,
+            MR.strings.settings_mobile_composer_key,
+            MR.strings.settings_mobile_composer_key_enabled,
+            MR.strings.settings_mobile_composer_key_disabled,
+            MR.strings.settings_mobile_message_row_actions,
+            MR.strings.settings_mobile_reactions_enabled,
+            MR.strings.settings_mobile_reactions_disabled,
+            MR.strings.settings_mobile_saved_enabled,
+            MR.strings.settings_mobile_saved_disabled,
+            MR.strings.settings_mobile_image_annotation,
+            MR.strings.settings_mobile_image_annotation_enabled,
+            MR.strings.settings_mobile_image_annotation_disabled,
+            MR.strings.settings_notifications_loading,
+            MR.strings.settings_notifications_system,
+            MR.strings.settings_notifications_on_device,
+            MR.strings.settings_notifications_message_title,
+            MR.strings.settings_notifications_message_detail,
+            MR.strings.settings_notifications_background_realtime_title,
+            MR.strings.settings_notifications_background_realtime_detail,
+            MR.strings.settings_notifications_test_title,
+            MR.strings.settings_notifications_permission_allowed,
+            MR.strings.settings_notifications_permission_needed,
+            MR.strings.settings_notifications_permission_open_settings,
+            MR.strings.settings_notifications_request_permission,
+            MR.strings.settings_notifications_workspace,
+            MR.strings.settings_notifications_mute_workspace
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "settings mobile preference copy must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API
