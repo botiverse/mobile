@@ -45,5 +45,14 @@ set_target_properties(openssl
         PROPERTIES
         IMPORTED_LOCATION ${NATIVERENDER_ROOT_PATH}/../../../libs/${OHOS_ARCH}/libopenssl.so)
 
+# KmmResource native bridge (task #19): implements the ohos_* resource C API
+# that libshared.so's resource-core KLIB declares (DT_NEEDED). Committed
+# binary from KuiklyBase-components KmmResource@928fdd2 (same commit as its
+# source resource_compose.cpp), sha256 99680ee047ec56dae7ae3646b4f6bfbbf1bbaa74951dbcb3bc9aea9409a32865.
+add_library(resource_compose SHARED IMPORTED)
+set_target_properties(resource_compose
+        PROPERTIES
+        IMPORTED_LOCATION ${NATIVERENDER_ROOT_PATH}/../../../libs/${OHOS_ARCH}/libresource_compose.so)
+
 add_library(entry SHARED napi_init.cpp)
-target_link_libraries(entry PUBLIC libace_napi.z.so libhilog_ndk.z.so kuikly_shared kuikly_render pbcurlwrapper openssl)
+target_link_libraries(entry PUBLIC libace_napi.z.so libhilog_ndk.z.so kuikly_shared kuikly_render pbcurlwrapper openssl resource_compose)

@@ -18,3 +18,16 @@ plugins {
 networkOhosRuntime {
     outputDir.set(layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a"))
 }
+
+// KmmResource native bridge (task #19): libshared.so carries a DT_NEEDED on
+// libresource_compose.so (see shared/build.ohos.gradle.kts linkerOpts), so the
+// committed binary must reach the HAP's native libs next to the network
+// runtime .so files. Hooked onto copyNetworkOhosRuntimeLibs so every existing
+// sync workflow picks it up unchanged.
+val copyResourceComposeLib = tasks.register<Copy>("copyResourceComposeLib") {
+    from(layout.projectDirectory.file("shared/src/libs/arm64-v8a/libresource_compose.so"))
+    into(layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a"))
+}
+tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
+    finalizedBy(copyResourceComposeLib)
+}
