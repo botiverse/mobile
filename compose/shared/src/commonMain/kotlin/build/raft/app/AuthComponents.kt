@@ -494,7 +494,7 @@ internal fun AuthDivider() {
     ) {
         Box(Modifier.weight(1f).height(SlockStroke.Default).background(SlockColor.BorderBlack))
         Text(
-            text = "OR",
+            text = stringResource(MR.strings.auth_social_divider_or),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.authStaticTextFocus()

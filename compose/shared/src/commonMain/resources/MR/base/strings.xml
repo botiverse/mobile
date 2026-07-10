@@ -227,6 +227,7 @@
     <string name="auth_title_sign_in">Sign In</string>
     <string name="auth_action_sign_in">Sign In</string>
     <string name="auth_state_signing_in">Signing in…</string>
+    <string name="auth_social_divider_or">OR</string>
     <string name="auth_action_continue_with_provider">Continue with %1$s</string>
     <string name="auth_action_opening_provider">Opening %1$s</string>
     <string name="auth_link_forgot_password">Forgot Password?</string>

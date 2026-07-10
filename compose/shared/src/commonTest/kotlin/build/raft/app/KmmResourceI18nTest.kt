@@ -186,6 +186,7 @@ class KmmResourceI18nTest {
             MR.strings.auth_title_sign_in,
             MR.strings.auth_action_sign_in,
             MR.strings.auth_state_signing_in,
+            MR.strings.auth_social_divider_or,
             MR.strings.auth_link_forgot_password,
             MR.strings.auth_prompt_no_account,
             MR.strings.auth_action_create_one,

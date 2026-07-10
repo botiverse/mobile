@@ -227,6 +227,7 @@
     <string name="auth_title_sign_in">登录</string>
     <string name="auth_action_sign_in">登录</string>
     <string name="auth_state_signing_in">登录中…</string>
+    <string name="auth_social_divider_or">或</string>
     <string name="auth_action_continue_with_provider">使用 %1$s 继续</string>
     <string name="auth_action_opening_provider">正在打开 %1$s</string>
     <string name="auth_link_forgot_password">忘记密码？</string>
