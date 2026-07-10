@@ -2283,17 +2283,8 @@ private fun MemberDetailRoutePageShell(
 internal fun MembersAgentDetailVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
-    val member =
-        if (pager.pageData.params.optBoolean("legacyGravatar")) {
-            membersAgentDetailVisualMember.copy(
-                avatar = null,
-                avatarUrl = "https://www.gravatar.com/avatar/legacy-visual-hash?s=52&d=404"
-            )
-        } else {
-            membersAgentDetailVisualMember
-        }
     MembersDetailContent(
-        member = member,
+        member = membersAgentDetailVisualMember,
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },

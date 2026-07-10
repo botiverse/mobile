@@ -348,8 +348,6 @@ internal class SqlDelightComposeLocalDataStore(
             handle = handle,
             kind = kind.toStoredKind(),
             avatarUrl = avatarUrl,
-            // Keep the legacy column empty until the schema migration removes it.
-            gravatarHash = null,
             avatarLabel = avatarLabel,
             presence = presence.name,
             description = description,
