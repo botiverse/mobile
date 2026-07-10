@@ -492,6 +492,7 @@ internal fun SlockBrutalInputField(
                     .slockSquareCorners()
                     .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
+                    .clickable(enabled = enabled) { focusRequester.requestFocus() }
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = fieldContentAlignment
         ) {
@@ -596,6 +597,7 @@ internal fun SlockBrutalInputField(
                     .slockSquareCorners()
                     .background(if (enabled) enabledBackgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, borderColor)
+                    .clickable(enabled = enabled) { focusRequester.requestFocus() }
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = fieldContentAlignment
         ) {

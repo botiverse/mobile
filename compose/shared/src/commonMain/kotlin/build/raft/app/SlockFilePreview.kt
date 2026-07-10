@@ -19,6 +19,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.SlockSharedStoreRegistry
 import build.raft.app.data.SlockNetworkClient
 import build.raft.app.data.SlockThreadApiClient
+import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
@@ -101,6 +102,7 @@ internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 internal const val SLOCK_COMPOSER_IMAGE_EDIT_EVENT = "slock.composerImageEdit"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
+private const val SlockFilePreviewCommentsActionId = "comments"
 private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
 private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
@@ -173,6 +175,8 @@ internal data class SlockFilePreviewPayload(
     val externalMimeType: String = "",
     val source: String = "",
     val attachmentId: String = "",
+    val attachmentCommentsEnabled: Boolean = false,
+    val commentsInitiallyOpen: Boolean = false,
     val agentId: String = "",
     val imageGallery: List<SlockFilePreviewGalleryImage> = emptyList(),
     val imageGalleryIndex: Int = 0,
@@ -243,6 +247,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     var payload by remember(launchPayloadTrace.payload) {
         mutableStateOf(launchPayloadTrace.payload)
     }
+    var attachmentCommentsState by remember(payload.attachmentId) {
+        mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
+    }
     var resolvedImageGalleryPayloads by remember(launchPayloadTrace.payload.imageGallery) {
         mutableStateOf<Map<String, SlockFilePreviewPayload>>(emptyMap())
     }
@@ -260,6 +267,118 @@ private fun SlockFilePreviewStandalonePageContent() {
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
+    fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
+        attachmentCommentsState =
+            attachmentCommentsState
+                ?.takeIf { current -> current.attachment.id == next.attachment.id }
+                ?.let { next }
+    }
+    fun loadAttachmentComments(state: ThreadAttachmentCommentsDialogState) {
+        coroutineScope.launch {
+            val next =
+                when (val result = threadApi.attachmentComments(state.attachment.id)) {
+                    is ThreadApiResult.Success ->
+                        state.copy(
+                            status = "loaded",
+                            page = result.data,
+                            sending = false,
+                            resolvingCommentIds = emptySet(),
+                            errorCode = null
+                        )
+                    is ThreadApiResult.Failure ->
+                        state.copy(
+                            status = "error",
+                            sending = false,
+                            resolvingCommentIds = emptySet(),
+                            errorCode = result.contractCode ?: "http_${result.code}"
+                        )
+                }
+            setAttachmentCommentsState(next)
+        }
+    }
+    fun openAttachmentComments() {
+        if (!payload.supportsAttachmentComments()) return
+        val state =
+            ThreadAttachmentCommentsDialogState(
+                attachment =
+                    KuiklyThreadAttachmentItem(
+                        id = payload.attachmentId,
+                        name = payload.externalFileName.ifBlank { payload.name.ifBlank { "Attachment" } },
+                        mimeType = payload.externalMimeType
+                    ),
+                status = "loading",
+                pendingAnchorLabel = payload.externalFileName.ifBlank { payload.name.ifBlank { "Attachment" } }
+            )
+        attachmentCommentsState = state
+        loadAttachmentComments(state)
+    }
+    fun reloadAttachmentComments() {
+        val current = attachmentCommentsState ?: return
+        val loading = current.copy(status = "loading", errorCode = null)
+        attachmentCommentsState = loading
+        loadAttachmentComments(loading)
+    }
+    fun sendAttachmentComment() {
+        val current = attachmentCommentsState ?: return
+        val body = current.draft.trim()
+        if (body.isBlank() || current.sending) return
+        attachmentCommentsState = current.copy(sending = true, errorCode = null)
+        coroutineScope.launch {
+            when (val result = threadApi.sendAttachmentComment(current.attachment.id, body)) {
+                is ThreadApiResult.Success -> {
+                    val loading =
+                        current.copy(
+                            status = "loading",
+                            draft = "",
+                            sending = false,
+                            pendingQuoteLabel = null,
+                            errorCode = null
+                        )
+                    attachmentCommentsState = loading
+                    loadAttachmentComments(loading)
+                }
+                is ThreadApiResult.Failure -> {
+                    attachmentCommentsState =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == current.attachment.id }
+                            ?.copy(sending = false, errorCode = result.contractCode ?: "http_${result.code}")
+                    bridge.toast("Unable to send comment")
+                }
+            }
+        }
+    }
+    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
+        val current = attachmentCommentsState ?: return
+        if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
+        if (comment.id in current.resolvingCommentIds) return
+        attachmentCommentsState =
+            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id, errorCode = null)
+        coroutineScope.launch {
+            when (val result = threadApi.addReaction(comment.id, "✅")) {
+                is ThreadApiResult.Success -> {
+                    val loading =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == current.attachment.id }
+                            ?.copy(status = "loading", resolvingCommentIds = emptySet(), errorCode = null)
+                            ?: return@launch
+                    attachmentCommentsState = loading
+                    loadAttachmentComments(loading)
+                }
+                is ThreadApiResult.Failure -> {
+                    attachmentCommentsState =
+                        attachmentCommentsState
+                            ?.takeIf { it.attachment.id == current.attachment.id }
+                            ?.let { state ->
+                                state.copy(
+                                    resolvingCommentIds = state.resolvingCommentIds - comment.id,
+                                    errorCode = result.contractCode ?: "http_${result.code}"
+                                )
+                            }
+                    bridge.toast("Unable to resolve comment")
+                }
+            }
+        }
+    }
     DisposableEffect(eventBus) {
         val subscription =
             eventBus.observe(SlockFilePreviewAttachmentDownloadEvent) { data ->
@@ -308,7 +427,13 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    LaunchedEffect(payload.commentsInitiallyOpen, payload.attachmentId, payload.source) {
+        if (payload.commentsInitiallyOpen && attachmentCommentsState == null) {
+            openAttachmentComments()
+        }
+    }
     val canOpenWith = canOpenPayloadWithExternalViewer(payload)
+    val canOpenComments = payload.supportsAttachmentComments()
     LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
         attachmentCacheState = false
         if (!canOpenWith) return@LaunchedEffect
@@ -486,28 +611,38 @@ private fun SlockFilePreviewStandalonePageContent() {
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         contentPadding = 0.dp,
         overflowMenuItems =
-            if (canOpenWith) {
-                listOfNotNull(
+            listOfNotNull(
+                if (canOpenComments) {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewCommentsActionId,
+                        label = "Comments",
+                        icon = SlockLucideIconName.MessageCircle
+                    )
+                } else {
+                    null
+                },
+                if (canOpenWith) {
                     SlockRaftUiMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
                         label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState),
                         icon = SlockLucideIconName.ExternalLink
-                    ),
-                    if (attachmentCacheState) {
-                        SlockRaftUiMenuItem(
-                            id = SlockFilePreviewDeleteDownloadActionId,
-                            label = stringResource(MR.strings.file_preview_action_delete_downloaded),
-                            icon = SlockLucideIconName.Trash2
-                        )
-                    } else {
-                        null
-                    }
-                )
-            } else {
-                emptyList()
-            },
+                    )
+                } else {
+                    null
+                },
+                if (canOpenWith && attachmentCacheState) {
+                    SlockRaftUiMenuItem(
+                        id = SlockFilePreviewDeleteDownloadActionId,
+                        label = stringResource(MR.strings.file_preview_action_delete_downloaded),
+                        icon = SlockLucideIconName.Trash2
+                    )
+                } else {
+                    null
+                }
+            ),
         onOverflowMenuSelect = { id ->
             when (id) {
+                SlockFilePreviewCommentsActionId -> openAttachmentComments()
                 SlockFilePreviewOpenWithActionId -> requestExternalOpen()
                 SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
             }
@@ -556,6 +691,40 @@ private fun SlockFilePreviewStandalonePageContent() {
                 }
             )
         }
+    }
+    attachmentCommentsState?.let { state ->
+        ThreadAttachmentCommentsDialog(
+            state = state,
+            onDismiss = { attachmentCommentsState = null },
+            onFilterChange = { filter ->
+                attachmentCommentsState =
+                    attachmentCommentsState
+                        ?.takeIf { it.attachment.id == state.attachment.id }
+                        ?.copy(filter = filter)
+            },
+            onDraftChange = { draft ->
+                attachmentCommentsState =
+                    attachmentCommentsState
+                        ?.takeIf { it.attachment.id == state.attachment.id }
+                        ?.copy(draft = draft, errorCode = null)
+            },
+            onRetry = ::reloadAttachmentComments,
+            onSend = ::sendAttachmentComment,
+            onResolve = ::resolveAttachmentComment,
+            onQuote = { comment ->
+                attachmentCommentsState =
+                    attachmentCommentsState
+                        ?.takeIf { it.attachment.id == state.attachment.id }
+                        ?.let { current ->
+                            current.copy(
+                                draft = appendThreadQuoteToComposer(current.draft, formatThreadMessageQuote(comment.content)),
+                                pendingQuoteLabel = comment.senderName,
+                                pendingAnchorLabel = comment.anchorLabel ?: current.attachment.name,
+                                errorCode = null
+                            )
+                        }
+            }
+        )
     }
 }
 
@@ -1002,7 +1171,8 @@ internal fun slockFilePreviewLaunchPageData(previewId: String): JSONObject =
 internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
     kind: String,
     imageGallery: List<KuiklyThreadAttachmentItem> = emptyList(),
-    imageGalleryIndex: Int = 0
+    imageGalleryIndex: Int = 0,
+    attachmentCommentsEnabled: Boolean = false
 ): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = "loading",
@@ -1029,9 +1199,34 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,
         attachmentId = id,
+        attachmentCommentsEnabled = attachmentCommentsEnabled,
         imageGallery = imageGallery.map { it.toSlockFilePreviewGalleryImage() },
         imageGalleryIndex = imageGalleryIndex.coerceAtLeast(0)
     )
+
+internal fun KuiklyThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload(
+    commentsEnabled: Boolean
+): SlockFilePreviewPayload? {
+    if (!commentsEnabled) return null
+    if (isMp4VideoAttachment()) return null
+    val kind =
+        when {
+            isImageAttachment() -> "image"
+            isMarkdownAttachment() -> "markdown"
+            isTextLikeAttachment() || isHtmlAttachment() -> "text"
+            else -> "file"
+        }
+    return toThreadAttachmentLazyPreviewPayload(
+        kind = kind,
+        attachmentCommentsEnabled = true
+    ).copy(commentsInitiallyOpen = true)
+}
+
+internal fun SlockFilePreviewPayload.supportsAttachmentComments(): Boolean =
+    source == SlockFilePreviewSourceThreadAttachment &&
+        attachmentId.isNotBlank() &&
+        attachmentCommentsEnabled &&
+        !slockFilePreviewIsMp4VideoAttachment(externalFileName, externalMimeType)
 
 internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
     SlockFilePreviewPayload(

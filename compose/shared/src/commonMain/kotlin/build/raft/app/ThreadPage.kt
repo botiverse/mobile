@@ -1067,9 +1067,8 @@ private data class ThreadImagePreviewState(
 
 private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
 
-private data class ThreadAttachmentCommentsDialogState(
+internal data class ThreadAttachmentCommentsDialogState(
     val attachment: KuiklyThreadAttachmentItem,
-    val parentMessage: KuiklyThreadMessageItem,
     val status: String = "loading",
     val page: ThreadAttachmentCommentsPage? = null,
     val filter: String = "all",
@@ -3608,10 +3607,13 @@ internal fun SharedThreadRouteContent(
             bridge.toast("Comments are unavailable")
             return
         }
+        target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
+            pager.openSlockFilePreviewPage(previewPayload)
+            return
+        }
         val state =
             ThreadAttachmentCommentsDialogState(
                 attachment = target.attachment,
-                parentMessage = target.parentMessage,
                 status = "loading",
                 pendingAnchorLabel = target.attachment.name
             )
@@ -3776,7 +3778,8 @@ internal fun SharedThreadRouteContent(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
                 imageGallery = group.images,
-                imageGalleryIndex = currentIndex
+                imageGalleryIndex = currentIndex,
+                attachmentCommentsEnabled = attachmentCommentsEnabled
             )
         )
     }
@@ -3842,7 +3845,12 @@ internal fun SharedThreadRouteContent(
                 attachment.isMp4VideoAttachment() -> "video"
                 else -> "file"
             }
-        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = lazyPreviewKind))
+        pager.openSlockFilePreviewPage(
+            attachment.toThreadAttachmentLazyPreviewPayload(
+                kind = lazyPreviewKind,
+                attachmentCommentsEnabled = attachmentCommentsEnabled
+            )
+        )
     }
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
         if (attachmentId.isBlank()) return
@@ -15186,10 +15194,10 @@ private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
 private fun KuiklyThreadAttachmentItem.normalizedMimeType(): String =
     mimeType.substringBefore(';').trim().lowercase()
 
-private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
+internal fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
     slockFilePreviewIsMarkdownAttachment(fileName = name, mimeType = mimeType)
 
-private fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
+internal fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
     !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
 internal fun KuiklyThreadAttachmentItem.isMp4VideoAttachment(): Boolean =
@@ -15200,7 +15208,7 @@ private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolea
         isMarkdownAttachment() ||
         isTextLikeAttachment()
 
-private fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
+internal fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
@@ -15396,7 +15404,7 @@ private fun ThreadAttachmentChip(
 }
 
 @Composable
-private fun ThreadAttachmentCommentsDialog(
+internal fun ThreadAttachmentCommentsDialog(
     state: ThreadAttachmentCommentsDialogState,
     onDismiss: () -> Unit,
     onFilterChange: (String) -> Unit,
@@ -15682,7 +15690,7 @@ private fun ThreadAttachmentCommentComposer(
     }
 }
 
-private fun ThreadAttachmentCommentItem.isThreadAttachmentCommentResolved(): Boolean =
+internal fun ThreadAttachmentCommentItem.isThreadAttachmentCommentResolved(): Boolean =
     reactions.any { reaction -> reaction.emoji == "✅" || reaction.emoji == "☑️" }
 
 private fun String?.attachmentCommentsEnabledForThread(): Boolean =
@@ -16171,50 +16179,66 @@ internal class ComposeThreadCommentAnchorVisualPage : build.raft.app.base.BasePa
 
 @Composable
 internal fun ThreadCommentAnchorVisualScreen() {
-    val state =
+    var state by
         remember {
-            ThreadAttachmentCommentsDialogState(
-                attachment =
-                    KuiklyThreadAttachmentItem(
-                        id = "att-anchor-1",
-                        name = "agent-tabs-full-page-review.mp4",
-                        mimeType = "video/mp4",
-                        sizeLabel = "675.8 KB"
-                    ),
-                parentMessage =
-                    KuiklyThreadMessageItem(
-                        id = "msg-anchor-1",
-                        authorId = "user-anchor-1",
-                        authorName = "artin"
-                    ),
-                status = "loaded",
-                page =
-                    ThreadAttachmentCommentsPage(
-                        comments =
-                            listOf(
-                                ThreadAttachmentCommentItem(
-                                    id = "comment-anchor-1",
-                                    channelId = "channel-anchor-1",
-                                    senderType = "user",
-                                    senderId = "user-anchor-2",
-                                    senderName = "Artea",
-                                    content = "Please keep the tag inset consistent with the field below.",
-                                    createdAt = "18:32",
-                                    reactions = emptyList(),
-                                    anchorLabel = "agent-tabs-full-page-review.mp4"
-                                )
-                            ),
-                        threadChannelId = null,
-                        viewer = null
-                    ),
-                pendingAnchorLabel = "agent-tabs-full-page-review.mp4"
+            mutableStateOf(
+                ThreadAttachmentCommentsDialogState(
+                    attachment =
+                        KuiklyThreadAttachmentItem(
+                            id = "att-anchor-1",
+                            name = "agent-tabs-full-page-review.md",
+                            mimeType = "text/markdown",
+                            sizeLabel = "23.0 KB"
+                        ),
+                    status = "loaded",
+                    page =
+                        ThreadAttachmentCommentsPage(
+                            comments =
+                                listOf(
+                                    ThreadAttachmentCommentItem(
+                                        id = "comment-anchor-1",
+                                        channelId = "channel-anchor-1",
+                                        senderType = "user",
+                                        senderId = "user-anchor-2",
+                                        senderName = "Artea",
+                                        content = "Please keep the tag inset consistent with the field below.",
+                                        createdAt = "18:32",
+                                        reactions = emptyList(),
+                                        anchorLabel = "agent-tabs-full-page-review.md"
+                                    )
+                                ),
+                            threadChannelId = null,
+                            viewer = null
+                        ),
+                    pendingAnchorLabel = "agent-tabs-full-page-review.md"
+                )
             )
         }
+    SlockFilePreviewPageScaffold(
+        title = "FILE PREVIEW",
+        subtitle = "agent-tabs-full-page-review.md",
+        iconName = SlockLucideIconName.FileText,
+        onBack = {},
+        contentPadding = 0.dp
+    ) {
+        SlockFilePreviewPayloadContent(
+            payload =
+                SlockFilePreviewPayload(
+                    kind = "markdown",
+                    title = "FILE PREVIEW",
+                    name = "agent-tabs-full-page-review.md",
+                    content = "# Review\n\nKeep attachment comments on this standalone preview surface.",
+                    markdown = true
+                ),
+            onOpenUrl = {},
+            modifier = Modifier.weight(1f).fillMaxWidth()
+        )
+    }
     ThreadAttachmentCommentsDialog(
         state = state,
         onDismiss = {},
         onFilterChange = {},
-        onDraftChange = {},
+        onDraftChange = { state = state.copy(draft = it) },
         onRetry = {},
         onSend = {},
         onResolve = {},
