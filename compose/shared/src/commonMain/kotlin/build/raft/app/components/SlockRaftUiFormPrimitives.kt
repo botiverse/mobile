@@ -41,7 +41,10 @@ internal enum class SlockFormFieldSize {
 }
 
 internal val SlockSlugInputPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.30f)
-internal val SlockSlugInputDisabledPrefixBackground = SlockSlugInputPrefixBackground.copy(alpha = 0.55f)
+// react's disabled look is the WHOLE control at opacity-60, so the tile's
+// effective alpha is 0.30 x 0.60 = 0.18 (#FFF7DD over white). Color.copy(alpha=)
+// REPLACES alpha - the old 0.55 made the disabled tile MORE saturated than enabled.
+internal val SlockSlugInputDisabledPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.18f)
 
 @Composable
 internal fun SlockFormField(
@@ -258,8 +261,10 @@ internal fun SlockSlugInput(
     fieldHeight: Dp = 42.dp
 ) {
     val shadowOffset = SlockShadow.BrutalSmall
-    val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.40f)
-    val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.45f)
+    // Same react uniform opacity-60 rule as the text below: every part of the
+    // disabled control dims by x0.60 (the old 0.40/0.45 were pre-rule guesses).
+    val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.60f)
+    val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.60f)
     // react text-black @ fixture opacity-60 over white = #666666, i.e. black @ 0.60 (visual-fix pilot, AI analysis 2026-07-09)
     val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.60f)
     Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {

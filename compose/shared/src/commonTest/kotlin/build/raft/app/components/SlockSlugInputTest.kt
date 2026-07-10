@@ -11,7 +11,8 @@ class SlockSlugInputTest {
     }
 
     @Test
-    fun disabledPrefixBackgroundKeepsEnabledTokenWithReducedOpacity() {
-        assertEquals(SlockSlugInputPrefixBackground.copy(alpha = 0.55f), SlockSlugInputDisabledPrefixBackground)
+    fun disabledPrefixBackgroundMatchesReactControlOpacityRule() {
+        // react: tile bg-soft-signal/30 x control opacity-60 = BrandYellow @ 0.18
+        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.18f), SlockSlugInputDisabledPrefixBackground)
     }
 }
