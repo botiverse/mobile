@@ -814,6 +814,34 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun logoutUnbindsPushInstallationBeforeInvalidatingServerSession() = runBlocking {
+        val events = mutableListOf<String>()
+        val store = InMemorySlockAuthSessionStore(storedSession())
+        val api = FakeAuthApi(onLogoutRequest = { events += "auth_logout" })
+        SlockPushRegistrationLifecycle.install(
+            object : SlockPushRegistrationLifecycleSink {
+                override fun onSessionSaved() = Unit
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
+
+                override suspend fun unbindBeforeLogout() {
+                    assertTrue(store.readSession() != null)
+                    events += "push_unbind"
+                }
+            }
+        )
+
+        try {
+            val result = SharedAuthDataSource(transport = api, sessionStore = store).logout()
+
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(listOf("push_unbind", "auth_logout"), events)
+            assertNull(store.readSession())
+        } finally {
+            SlockPushRegistrationLifecycle.clearForTests()
+        }
+    }
+
+    @Test
     fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -1063,7 +1091,8 @@ class AuthDataSourceTest {
         private val throwCurrentUser: Boolean = false,
         private val resendVerificationResponse: AuthNetworkResponse =
             AuthNetworkResponse(200, """{"ok":true}"""),
-        private val onServersRequest: suspend () -> Unit = {}
+        private val onServersRequest: suspend () -> Unit = {},
+        private val onLogoutRequest: suspend () -> Unit = {}
     ) : SlockAuthTransport {
         var loginBody: String? = null
             private set
@@ -1169,8 +1198,10 @@ class AuthDataSourceTest {
         override suspend fun refresh(bodyText: String): AuthNetworkResponse =
             refreshResponse
 
-        override suspend fun logout(bodyText: String): AuthNetworkResponse =
-            logoutResponse
+        override suspend fun logout(bodyText: String): AuthNetworkResponse {
+            onLogoutRequest()
+            return logoutResponse
+        }
 
         override suspend fun servers(authorization: String): AuthNetworkResponse {
             serversAuthorization = authorization

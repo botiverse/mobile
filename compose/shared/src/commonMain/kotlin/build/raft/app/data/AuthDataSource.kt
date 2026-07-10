@@ -850,6 +850,14 @@ class SharedAuthDataSource(
         val session = sessionStore.readSession()
         if (session != null) {
             runCatchingPreservingCancellation {
+                SlockPushRegistrationLifecycle.unbindBeforeLogout()
+            }.onFailure { throwable ->
+                diagnosticsLogger(
+                    "push_registration_unbind_result result=failure stage=logout " +
+                        "errorType=${throwable.safeDiagnosticsType()}"
+                )
+            }
+            runCatchingPreservingCancellation {
                 api.logout(session.refreshToken)
             }
             session.rememberSelectedServer(serverSelectionMemory)

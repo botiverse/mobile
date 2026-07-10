@@ -463,7 +463,13 @@ internal class SlockSharedStoreProvider private constructor(
                 homeStoreScope = CoroutineScope(SupervisorJob()),
                 homeActivityStoreScope = CoroutineScope(SupervisorJob()),
                 threadSendScope = CoroutineScope(SupervisorJob())
-            )
+            ).also {
+                val pushLifecycleScope = CoroutineScope(SupervisorJob())
+                SlockPushRegistrationLifecycle.observeSessionEvents(
+                    source = authStore.authSessionEvents,
+                    scope = pushLifecycleScope
+                )
+            }
         }
     }
 }
@@ -759,6 +765,8 @@ private fun RealtimeEvent.messageSeqEnvelope(epoch: String): MessageSeqEnvelope<
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
     internal var homeActivityStore: SharedActivityStore? = null
+
+    fun currentOrNull(): SlockSharedStoreProvider? = provider
 
     fun get(bridge: BridgeModule): SlockSharedStoreProvider {
         val eventBus = SlockEventBuses.appScope()
