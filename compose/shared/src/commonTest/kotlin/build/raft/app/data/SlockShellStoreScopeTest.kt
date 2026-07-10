@@ -126,6 +126,22 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun legacyTokenUpdateDoesNotOverwriteAConcurrentRotation() = runBlocking {
+        val racingStore = RotateAfterReadStore(InMemorySlockAuthSessionStore(session()))
+        val shellStore =
+            SlockShellAuthSessionStore(
+                racingStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        racingStore.rotateAfterNextRead = true
+
+        shellStore.updateTokens("stale-access", "stale-refresh")
+
+        assertEquals("concurrent-access", racingStore.readSession()?.accessToken)
+        assertEquals("concurrent-refresh", racingStore.readSession()?.refreshToken)
+    }
+
+    @Test
     fun disposedRuntimeStopsMatchingActiveServer() {
         val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
 
@@ -166,4 +182,24 @@ class SlockShellStoreScopeTest {
                     StoredAuthServer(id = "server-3", name = "Three", slug = "three")
                 )
         )
+
+    private class RotateAfterReadStore(
+        private val delegate: InMemorySlockAuthSessionStore
+    ) : SlockAuthSessionStore by delegate {
+        var rotateAfterNextRead: Boolean = false
+
+        override suspend fun readSession(): StoredAuthSession? {
+            val captured = delegate.readSession()
+            if (rotateAfterNextRead && captured != null) {
+                rotateAfterNextRead = false
+                delegate.rotateTokensIfMatch(
+                    expectedAccessToken = captured.accessToken,
+                    expectedRefreshToken = captured.refreshToken,
+                    newAccessToken = "concurrent-access",
+                    newRefreshToken = "concurrent-refresh"
+                )
+            }
+            return captured
+        }
+    }
 }
