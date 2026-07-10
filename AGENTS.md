@@ -677,7 +677,10 @@ Key invariants:
   platform-incompatible dependencies. It is also what catches JVM-only APIs in
   commonMain (e.g. `Map.putIfAbsent`/`Map.merge`) that compile fine for
   Android but break the iOS and OHOS builds — never push a commonMain change
-  that has only been validated by step 1.
+  that has only been validated by step 1. Do not count on CI to catch this
+  after push: the CI-side OHOS shared compile is a non-blocking lane (red
+  does not stop a merge; failures are fixed forward), so this local step is
+  the real gate until the pre-merge JVM-only-Map grep gate lands on main.
 - Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
   comments; treat them as warnings unless Hvigor reports a hard compile error.
 
