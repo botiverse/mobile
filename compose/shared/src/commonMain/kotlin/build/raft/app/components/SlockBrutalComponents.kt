@@ -57,6 +57,8 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.semantics.contentDescription
+import com.tencent.kuikly.compose.ui.semantics.semantics
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -1104,6 +1106,7 @@ internal fun SlockAnchoredToolbarChip(
 internal fun SlockBrutalIconButton(
     iconName: SlockLucideIconName,
     onClick: () -> Unit,
+    contentDescription: String? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
@@ -1141,7 +1144,17 @@ internal fun SlockBrutalIconButton(
             enabled = enabled,
             pressFeedback = enabled,
             pressOffset = shadowOffset,
-            modifier = Modifier.size(size)
+            modifier = Modifier
+                .size(size)
+                .then(
+                    if (contentDescription.isNullOrBlank()) {
+                        Modifier
+                    } else {
+                        Modifier.semantics {
+                            this.contentDescription = contentDescription
+                        }
+                    }
+                )
         ) {
             Box(
                 modifier =

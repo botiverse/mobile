@@ -3770,6 +3770,7 @@ private fun MembersDetailHeader(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.MessageSquare,
                     onClick = onOpenDirectMessage,
+                    contentDescription = stringResource(MR.strings.member_label_message),
                     enabled = !deleted,
                     size = MembersActionSize
                 )
