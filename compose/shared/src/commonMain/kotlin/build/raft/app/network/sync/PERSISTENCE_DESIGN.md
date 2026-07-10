@@ -77,23 +77,23 @@ CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, se
 -- (NOT the existing selectMessagesForChannel, which sorts by timestampLabel).
 ```
 
-**PK migration (must actually remove the single-column PK — AD2):** `messageEntity.id`
-is currently `TEXT PRIMARY KEY`, so the same `id` under two servers/scopes replaces
-each other and `ON CONFLICT(serverId,channelId,id)` collides on `id` first. Two roads,
-decided in the first migration PR:
+**PK — RESOLVED (赵+AD2 verified server schema `packages/server/src/db/schema.ts:798`):**
+the server's `messages.id` is a single-table UUID `PRIMARY KEY` (`randomUUID`), so
+`messageId` is **globally unique by database contract** — being written into RFC 043
+§10.1 via slock #4452 (not relied on as an incidental UUID, per AD2). Therefore
+server-backed rows cannot collide cross-scope and we **keep `messageEntity.id`
+single-column PK** — no high-risk composite-PK/FK/table rebuild. The only real
+collision source is **client-generated pending/optimistic ids** (not in the server's
+unique domain), fenced by a mandatory namespace:
 
-- **(A) contract invariant:** if the server guarantees `messageId` is **globally
-  unique** (UUID) — this must be stated explicitly in the RFC/type contract, not
-  relied on as an incidental UUID (AD2). Then `id` PK is safe; we only add the
-  composite index above and the conflict target is `id`. **Preferred if the invariant
-  holds** (no FK churn).
-- **(B) composite key migration:** otherwise migrate to a composite PK
-  (`serverId, channelId, id`) or an internal surrogate + composite UNIQUE, and update
-  the `attachmentEntity`/`messageReactionEntity`/`savedMessageEntity` FK references and
-  every `ON CONFLICT` target accordingly.
+- local/pending ids MUST carry a namespace prefix that can never overlap a server
+  UUID; a **generator test forbids bare UUID / server-id** from the local id
+  generator;
+- conflict target stays `id`; child FKs (`attachment`/`reaction`/`saved`) unchanged;
+- the `(serverId,channelId,seq,id)` index above supplies canonical timeline.
 
-Road choice is flagged for AD2/contract confirmation before the migration lands; the
-note ships both so code doesn't re-open schema after LGTM.
+Order-of-magnitude cheaper than a composite-PK rebuild (赵); AD2's composite-PK
+blocker is cleared.
 
 ## 4. Atomic apply — one ingest call = one transaction
 
@@ -163,8 +163,9 @@ AD2 can verify (no long-lived second writer).
 
 **First migration/query/test checklist (must not re-open schema after LGTM):**
 1. `syncCursorEntity.epoch` column (forward-only .sqm).
-2. PK road (A contract-unique `id`, or B composite/surrogate + FK/conflict-target
-   updates) — decided with AD2/contract before landing.
+2. keep `id` single-column PK (server messageId globally-unique by contract, slock
+   #4452); client/pending ids namespaced (prefix that can't overlap a server UUID) +
+   a generator test forbidding bare UUID / server-id in the local id generator.
 3. `messageEntity_channelSeqId(serverId,channelId,seq,id)` index + canonical
    server-backed restore query (`seq IS NOT NULL ORDER BY seq,id`).
 4. all upserts `ON CONFLICT DO UPDATE` (no `INSERT OR REPLACE`).
