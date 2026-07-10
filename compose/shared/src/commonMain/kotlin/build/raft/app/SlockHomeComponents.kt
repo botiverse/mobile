@@ -167,6 +167,10 @@ private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = SlockLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val HomeServerBadgeTiltDegrees = -2f
+private val HomeServerBadgeHorizontalInset = 14.dp
+private val HomeServerBadgeVerticalInset = 6.dp
+private val HomeServerBadgeContentGap = 6.dp
+private val HomeServerBadgeChevronSize = 16.dp
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
@@ -2408,7 +2412,7 @@ private fun HomeTitlebar(
                     showDropdown = true,
                     tilted = true,
                     unread = hasOtherServerUnread,
-                    textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
                 )
             }
             val blankModifier =
@@ -2436,7 +2440,7 @@ private fun SlockLogoBadge(
     showDropdown: Boolean = false,
     tilted: Boolean = true,
     unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
     if (tilted) {
         SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
@@ -2464,7 +2468,7 @@ private fun SlockTiltedLogoBadge(
     modifier: Modifier = Modifier,
     showDropdown: Boolean = false,
     unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
     // Render the chrome as final vector geometry, then tilt the complete
     // foreground as one layer so text, icon, and unread marker share the angle.
@@ -2479,13 +2483,20 @@ private fun SlockTiltedLogoBadge(
         )
         Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
             com.tencent.kuikly.compose.foundation.layout.Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.padding(
+                    horizontal = HomeServerBadgeHorizontalInset,
+                    vertical = HomeServerBadgeVerticalInset
+                ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
                 if (showDropdown) {
-                    Spacer(Modifier.width(4.dp))
-                    SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp), color = SlockColor.BrandYellowArgb)
+                    Spacer(Modifier.width(HomeServerBadgeContentGap))
+                    SlockLucideIcon(
+                        SlockLucideIconName.ChevronDown,
+                        Modifier.size(HomeServerBadgeChevronSize),
+                        color = SlockColor.BrandYellowArgb
+                    )
                 }
             }
             if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
