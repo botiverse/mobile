@@ -29,8 +29,14 @@ class SessionRealtimeRepository(
                                 clearOnUnauthorized = false
                             )
                         } else {
+                            // A Socket.IO reconnect attempt is not proof that auth expired.
+                            // Refresh tokens rotate, so proactively refreshing from the
+                            // synchronous EventThread callback can consume a successor that a
+                            // later lifecycle reconnect cancels before it is persisted. Reuse
+                            // the latest committed session here; an explicit auth connect_error
+                            // remains the single native realtime refresh trigger.
                             tokenProvider.currentSession(
-                                refreshIfExpiringSoon = true,
+                                refreshIfExpiringSoon = false,
                                 clearOnUnauthorized = false
                             )
                         }

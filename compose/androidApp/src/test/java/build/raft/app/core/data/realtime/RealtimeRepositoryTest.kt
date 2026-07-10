@@ -108,21 +108,23 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun repositoryRefreshesSocketAuthOnReconnectAttempt() {
+    fun repositoryReusesCommittedSocketAuthOnReconnectAttempt() {
         val transport = FakeRealtimeSocketTransport()
         val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))
+        val authApi =
+            FakeAuthApi(
+                responses =
+                    listOf(
+                        AuthRefreshResponse("socket-first-access", "socket-first-refresh"),
+                        AuthRefreshResponse("socket-retry-access", "socket-retry-refresh")
+                    )
+            )
         val repository = SessionRealtimeRepository(
             store = store,
             client = SocketIoRealtimeClient(transport),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
-                authApi = FakeAuthApi(
-                    responses =
-                        listOf(
-                            AuthRefreshResponse("socket-first-access", "socket-first-refresh"),
-                            AuthRefreshResponse("socket-retry-access", "socket-retry-refresh")
-                        )
-                ),
+                authApi = authApi,
                 clockMillis = { 0L },
                 logger = {},
                 warningLogger = {}
@@ -134,8 +136,43 @@ class RealtimeRepositoryTest {
 
         transport.receive(RealtimeSocketEvents.ReconnectAttempt, 1)
 
+        assertEquals("socket-first-access", transport.lastAuth["token"])
+        assertEquals("socket-first-access", store.session?.accessToken)
+        assertEquals(1, authApi.refreshCallCount)
+    }
+
+    @Test
+    fun repositoryRefreshesSocketAuthAfterExplicitAuthConnectError() {
+        val transport = FakeRealtimeSocketTransport()
+        val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))
+        val authApi =
+            FakeAuthApi(
+                responses =
+                    listOf(
+                        AuthRefreshResponse("socket-first-access", "socket-first-refresh"),
+                        AuthRefreshResponse("socket-retry-access", "socket-retry-refresh")
+                    )
+            )
+        val repository = SessionRealtimeRepository(
+            store = store,
+            client = SocketIoRealtimeClient(transport),
+            tokenProvider = SharedAuthTokenProvider(
+                sessionStore = store,
+                authApi = authApi,
+                clockMillis = { 0L },
+                logger = {},
+                warningLogger = {}
+            )
+        )
+
+        runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+        assertEquals("socket-first-access", transport.lastAuth["token"])
+
+        transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
+
         assertEquals("socket-retry-access", transport.lastAuth["token"])
         assertEquals("socket-retry-access", store.session?.accessToken)
+        assertEquals(2, authApi.refreshCallCount)
     }
 
     @Test
@@ -986,6 +1023,8 @@ class RealtimeRepositoryTest {
         private val responses: List<AuthRefreshResponse> = listOf(AuthRefreshResponse("socket-new-access", "socket-new-refresh"))
     ) : SlockAuthApi {
         private var refreshIndex = 0
+        var refreshCallCount: Int = 0
+            private set
         override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
             AuthApiResult.Failure(404)
 
@@ -1044,6 +1083,7 @@ class RealtimeRepositoryTest {
             AuthApiResult.Failure(404)
 
         override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
+            refreshCallCount += 1
             refreshFailure?.let { throw it }
             refreshFailureCode?.let { return AuthApiResult.Failure(it) }
             val response = responses.getOrElse(refreshIndex) { responses.last() }

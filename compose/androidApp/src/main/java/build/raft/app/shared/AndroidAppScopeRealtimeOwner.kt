@@ -205,7 +205,12 @@ internal object AndroidAppScopeRealtimeOwner {
                 try {
                     var session =
                         tokenProvider.currentSession(
-                            refreshIfExpiringSoon = true,
+                            // Foreground/lifecycle connect jobs are replaceable. Do not send a
+                            // rotating refresh request from a job that a later shared connect
+                            // request can cancel after the server has accepted it but before the
+                            // successor token is persisted. Connect with the latest committed
+                            // session; Socket.IO auth connect_error owns the native refresh.
+                            refreshIfExpiringSoon = false,
                             clearOnUnauthorized = false
                         )
                     var serverId = session?.currentServerId?.let(::ServerId)
@@ -218,7 +223,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             delay(1500L)
                             session =
                                 tokenProvider.currentSession(
-                                    refreshIfExpiringSoon = true,
+                                    refreshIfExpiringSoon = false,
                                     clearOnUnauthorized = false
                                 )
                             serverId = session?.currentServerId?.let(::ServerId)
