@@ -863,6 +863,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeTitlebarResizeAfterServerSwitch() {
+        captureKmpComponentCase(
+            caseId = "components.home.titlebar.resize-after-server-switch",
+            pageName = "compose_home_titlebar_resize_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureHomeNotificationCenterStates() {
         captureKmpComponentCase(
             caseId = "components.home.notification-center.states",
