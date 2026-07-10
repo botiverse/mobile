@@ -358,7 +358,8 @@ private data class ChannelActivityMuteRequestBody(val activityMuted: Boolean)
 private data class ChannelActivityMuteSettingsResponse(
     val activityMuted: Boolean,
     val muteFromSeq: Long? = null,
-    val activityMuteSupported: Boolean = false
+    val activityMuteSupported: Boolean = false,
+    val prefsVersion: Long? = null
 ) {
     fun toSettings(channelId: ChannelId): ChannelActivityMuteSettings =
         ChannelActivityMuteSettings(
@@ -368,7 +369,8 @@ private data class ChannelActivityMuteSettingsResponse(
                     activityMuted = activityMuted,
                     muteFromSeq = muteFromSeq,
                     activityMuteSupported = activityMuteSupported
-                )
+                ),
+            prefsVersion = prefsVersion
         )
 }
 

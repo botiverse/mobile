@@ -341,13 +341,20 @@ data class ChannelUpdateResult(val channelId: ChannelId)
 
 data class ChannelActivityMuteSettings(
     val channelId: ChannelId,
-    val activityNotificationPreference: ChannelActivityNotificationPreference
+    val activityNotificationPreference: ChannelActivityNotificationPreference,
+    /**
+     * Server-authoritative per-(member, channel) notification-preferences
+     * version. Optimistic client predictions deliberately leave this null so
+     * only a response or realtime event can advance the durable version gate.
+     */
+    val prefsVersion: Long? = null
 ) {
     constructor(
         channelId: ChannelId,
         activityMuted: Boolean,
         muteFromSeq: Long?,
-        activityMuteSupported: Boolean
+        activityMuteSupported: Boolean,
+        prefsVersion: Long? = null
     ) : this(
         channelId = channelId,
         activityNotificationPreference =
@@ -355,7 +362,8 @@ data class ChannelActivityMuteSettings(
                 activityMuted = activityMuted,
                 muteFromSeq = muteFromSeq,
                 activityMuteSupported = activityMuteSupported
-            )
+            ),
+        prefsVersion = prefsVersion
     )
 
     val activityMuted: Boolean

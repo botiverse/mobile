@@ -1477,9 +1477,47 @@ internal class SharedHomeStore(
         }
         when (val result = setChannelActivityMuted(channelId, muted)) {
             is DataResult.Content -> {
-                if (channelActivityMuteRequests[channelId] == request) {
-                    channelActivityMuteRequests.remove(channelId)
-                    applyHomeSnapshotLocally { it.withChannelActivityMute(result.data) }
+                val version = result.data.prefsVersion
+                if (version == null || version <= 0L) {
+                    if (channelActivityMuteRequests[channelId] == request) {
+                        channelActivityMuteRequests.remove(channelId)
+                        // A successful HTTP status without the per-receiver
+                        // version is not durable authority. Drop the transient
+                        // prediction instead of bypassing the shared gate.
+                        applyHomeSnapshotLocally { it.withChannelActivityMute(previousSettings) }
+                        pinUpdateFailureCallback("Unable to update channel notifications")
+                    }
+                } else {
+                    val activeRequest = channelActivityMuteRequests[channelId]
+                    if (activeRequest == request) {
+                        val content = _state.value.content as? SharedHomeContentState.Content
+                        val applied =
+                            content?.let {
+                                applyPerReceiverNotificationPrefs(
+                                    PerReceiverNotificationPrefsUpdate(
+                                        serverId = it.snapshot.server.id,
+                                        memberId = it.snapshot.currentMember.id,
+                                        channelId = channelId,
+                                        version = version,
+                                        preference = result.data.activityNotificationPreference
+                                    )
+                                )
+                            } ?: false
+                        diagnosticsLogger(
+                            "per_receiver_notification_prefs_response_apply channelId=${channelId.value} " +
+                                "version=$version muted=${result.data.activityMuted} " +
+                                "result=${if (applied) "applied" else "skipped"}"
+                        )
+                    } else {
+                        // The echo already resolved this request, or a newer
+                        // prediction replaced it. Do not let the stale response
+                        // briefly overwrite current UI; echoes remain
+                        // independent version-gated inputs.
+                        diagnosticsLogger(
+                            "per_receiver_notification_prefs_response_superseded channelId=${channelId.value} " +
+                                "version=$version muted=${result.data.activityMuted}"
+                        )
+                    }
                 }
             }
             is DataResult.Empty -> {
@@ -1545,6 +1583,9 @@ internal class SharedHomeStore(
             incomingVersion = update.version,
             scopeId = update.channelId
         )
+        // A versioned authority fold resolves the local prediction. This also
+        // covers an echo arriving before its PATCH response.
+        channelActivityMuteRequests.remove(update.channelId)
         return applyHomeSnapshotLocally { snapshot ->
             snapshot.withChannelActivityMute(
                 ChannelActivityMuteSettings(
