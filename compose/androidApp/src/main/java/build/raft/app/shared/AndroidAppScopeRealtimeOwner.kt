@@ -204,15 +204,10 @@ internal object AndroidAppScopeRealtimeOwner {
             scope.launch {
                 try {
                     var session =
-                        tokenProvider.currentSession(
-                            // Foreground/lifecycle connect jobs are replaceable. Do not send a
-                            // rotating refresh request from a job that a later shared connect
-                            // request can cancel after the server has accepted it but before the
-                            // successor token is persisted. Connect with the latest committed
-                            // session; Socket.IO auth connect_error owns the native refresh.
-                            refreshIfExpiringSoon = false,
-                            clearOnUnauthorized = false
-                        )
+                        // Foreground/lifecycle connect jobs are replaceable. Connect with the
+                        // latest committed session; Socket.IO auth connect_error may trigger
+                        // only the process-owned shared refresh coordinator.
+                        tokenProvider.currentSession()
                     var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockAppLog.w(
@@ -222,10 +217,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         if (missingSelectedServerRetryCount < 1) {
                             delay(1500L)
                             session =
-                                tokenProvider.currentSession(
-                                    refreshIfExpiringSoon = false,
-                                    clearOnUnauthorized = false
-                                )
+                                tokenProvider.currentSession()
                             serverId = session?.currentServerId?.let(::ServerId)
                             if (serverId == null) {
                                 SlockAppLog.w(

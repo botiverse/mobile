@@ -85,15 +85,16 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun repositoryRefreshesTokenBeforeRealtimeConnectWhenTokenIsNotFresh() {
+    fun repositoryConsumesCommittedTokenBeforeRealtimeConnectWithoutRefreshing() {
         val transport = FakeRealtimeSocketTransport()
         val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))
+        val authApi = FakeAuthApi()
         val repository = SessionRealtimeRepository(
             store = store,
             client = SocketIoRealtimeClient(transport),
             tokenProvider = SharedAuthTokenProvider(
                 sessionStore = store,
-                authApi = FakeAuthApi(),
+                authApi = authApi,
                 clockMillis = { 0L },
                 logger = {},
                 warningLogger = {}
@@ -103,8 +104,9 @@ class RealtimeRepositoryTest {
         val result = runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
 
         assertTrue(result is DataResult.Content)
-        assertEquals("socket-new-access", transport.lastAuth["token"])
-        assertEquals("socket-new-access", store.session?.accessToken)
+        assertEquals("opaque-access", transport.lastAuth["token"])
+        assertEquals("opaque-access", store.session?.accessToken)
+        assertEquals(0, authApi.refreshCallCount)
     }
 
     @Test
@@ -132,13 +134,13 @@ class RealtimeRepositoryTest {
         )
 
         runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
-        assertEquals("socket-first-access", transport.lastAuth["token"])
+        assertEquals("opaque-access", transport.lastAuth["token"])
 
         transport.receive(RealtimeSocketEvents.ReconnectAttempt, 1)
 
-        assertEquals("socket-first-access", transport.lastAuth["token"])
-        assertEquals("socket-first-access", store.session?.accessToken)
-        assertEquals(1, authApi.refreshCallCount)
+        assertEquals("opaque-access", transport.lastAuth["token"])
+        assertEquals("opaque-access", store.session?.accessToken)
+        assertEquals(0, authApi.refreshCallCount)
     }
 
     @Test
@@ -166,13 +168,13 @@ class RealtimeRepositoryTest {
         )
 
         runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
-        assertEquals("socket-first-access", transport.lastAuth["token"])
+        assertEquals("opaque-access", transport.lastAuth["token"])
 
         transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
 
-        assertEquals("socket-retry-access", transport.lastAuth["token"])
-        assertEquals("socket-retry-access", store.session?.accessToken)
-        assertEquals(2, authApi.refreshCallCount)
+        assertEquals("socket-first-access", transport.lastAuth["token"])
+        assertEquals("socket-first-access", store.session?.accessToken)
+        assertEquals(1, authApi.refreshCallCount)
     }
 
     @Test
@@ -192,14 +194,15 @@ class RealtimeRepositoryTest {
         )
         var cancelled = false
 
+        runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
         try {
-            runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+            transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
         } catch (_: CancellationException) {
             cancelled = true
         }
 
         assertTrue(cancelled)
-        assertTrue(transport.lastAuth.isEmpty())
+        assertEquals("opaque-access", transport.lastAuth["token"])
         assertEquals("opaque-access", store.session?.accessToken)
     }
 
@@ -226,9 +229,10 @@ class RealtimeRepositoryTest {
         )
 
         val result = runSuspend { repository.connect(ServerId("server-1"), lastSeq = 0) }
+        transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
 
-        assertTrue(result is DataResult.NoPermission)
-        assertTrue(transport.lastAuth.isEmpty())
+        assertTrue(result is DataResult.Content)
+        assertEquals("unauthorized-opaque-access", transport.lastAuth["token"])
         assertEquals("unauthorized-opaque-access", store.session?.accessToken)
     }
 

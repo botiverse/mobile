@@ -25,6 +25,13 @@ class SharedAuthDataSource(
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
+    private val authMiddleware =
+        SlockNetworkAuthMiddleware(
+            sessionStore = sessionStore,
+            authApi = api,
+            logger = diagnosticsLogger,
+            warningLogger = diagnosticsLogger
+        )
 
     constructor(
         transport: SlockAuthTransport,
@@ -513,7 +520,14 @@ class SharedAuthDataSource(
             SharedAuthResult.Unauthenticated -> {
                 diagnosticsLogger("auth_restore_current_user_result result=unauthenticated action=refresh")
                 val refreshed =
-                    runCatchingPreservingCancellation { refresh(session.refreshToken) }
+                    runCatchingPreservingCancellation {
+                        refreshAfterUnauthorized(
+                            failedSession = session,
+                            clearOnUnauthorized = true,
+                            reason = "auth_restore_401",
+                            caller = "auth_restore"
+                        )
+                    }
                         .getOrElse { throwable ->
                             diagnosticsLogger(
                                 "auth_restore_refresh_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
@@ -600,26 +614,36 @@ class SharedAuthDataSource(
         }
     }
 
-    suspend fun refresh(refreshToken: String): SharedAuthResult<StoredAuthSession> {
-        if (refreshToken.isBlank()) {
-            sessionStore.clearSession(reason = "missing_refresh_token", source = "auth_data_source_refresh")
+    private suspend fun refreshAfterUnauthorized(
+        failedSession: StoredAuthSession,
+        clearOnUnauthorized: Boolean,
+        reason: String,
+        caller: String
+    ): SharedAuthResult<StoredAuthSession> {
+        if (failedSession.refreshToken.isBlank()) {
+            if (clearOnUnauthorized) {
+                sessionStore.clearSession(reason = "missing_refresh_token", source = "auth_data_source_refresh")
+            }
             return SharedAuthResult.Unauthenticated
         }
-        val current = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
-        val tokens =
-            when (val response = api.refresh(refreshToken)) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> {
-                    if (response.code == 401) {
-                        sessionStore.clearSession(reason = "refresh_http_401", source = "auth_data_source_refresh")
-                        return SharedAuthResult.Unauthenticated
-                    }
-                    return response.toSharedAuthFailure()
+        return when (
+            val result =
+                authMiddleware.refreshAfterUnauthorized(
+                    failedSession = failedSession,
+                    clearOnUnauthorized = clearOnUnauthorized,
+                    reason = reason,
+                    caller = caller
+                )
+        ) {
+            is SharedAuthRefreshResult.Success -> SharedAuthResult.Success(result.session)
+            is SharedAuthRefreshResult.Failure ->
+                if (result.response.code == 401 || result.response.code == 403) {
+                    SharedAuthResult.Unauthenticated
+                } else {
+                    result.response.toSharedAuthFailure()
                 }
-            }
-        val session = current.copy(accessToken = tokens.accessToken, refreshToken = tokens.refreshToken)
-        sessionStore.saveSession(session)
-        return SharedAuthResult.Success(session)
+            SharedAuthRefreshResult.Unavailable -> SharedAuthResult.Unauthenticated
+        }
     }
 
     suspend fun refreshRealtimeAuth(reason: String): SharedAuthResult<StoredAuthSession> {
@@ -629,21 +653,28 @@ class SharedAuthDataSource(
             return SharedAuthResult.Unauthenticated
         }
         diagnosticsLogger("auth_realtime_refresh_start reason=$reason")
-        val tokens =
-            when (val response = api.refresh(current.refreshToken)) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> {
-                    val failure = response.toSharedAuthFailure()
-                    diagnosticsLogger("auth_realtime_refresh_result result=failure reason=$reason code=${failure.code}")
-                    // Realtime reconnect attempts are background recovery. Preserve the cached
-                    // session on unauthorized so the visible auth gate decides whether to clear it.
-                    return failure
-                }
+        return when (
+            val result =
+                authMiddleware.refreshAfterUnauthorized(
+                    failedSession = current,
+                    clearOnUnauthorized = false,
+                    reason = reason,
+                    caller = "shared_realtime"
+                )
+        ) {
+            is SharedAuthRefreshResult.Success -> {
+                diagnosticsLogger("auth_realtime_refresh_result result=success reason=$reason")
+                SharedAuthResult.Success(result.session)
             }
-        val session = current.copy(accessToken = tokens.accessToken, refreshToken = tokens.refreshToken)
-        sessionStore.saveSession(session)
-        diagnosticsLogger("auth_realtime_refresh_result result=success reason=$reason")
-        return SharedAuthResult.Success(session)
+            is SharedAuthRefreshResult.Failure -> {
+                val failure = result.response.toSharedAuthFailure()
+                diagnosticsLogger("auth_realtime_refresh_result result=failure reason=$reason code=${failure.code}")
+                // Realtime reconnect attempts are background recovery. Preserve the cached
+                // session on unauthorized so the visible auth gate decides whether to clear it.
+                failure
+            }
+            SharedAuthRefreshResult.Unavailable -> SharedAuthResult.Unauthenticated
+        }
     }
 
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
@@ -673,7 +704,15 @@ class SharedAuthDataSource(
     }
 
     private suspend fun loadServersAfterRefresh(session: StoredAuthSession): SharedAuthResult<StoredAuthSession> {
-        when (val refreshed = refresh(session.refreshToken)) {
+        when (
+            val refreshed =
+                refreshAfterUnauthorized(
+                    failedSession = session,
+                    clearOnUnauthorized = true,
+                    reason = "servers_http_401",
+                    caller = "auth_data_source_load_servers"
+                )
+        ) {
             is SharedAuthResult.Success -> {
                 val updated = refreshed.data
                 val servers =

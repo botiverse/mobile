@@ -1,0 +1,423 @@
+package build.raft.app.data
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+/**
+ * Process-wide refresh-token execution owner.
+ *
+ * Every caller still owns its auth-loss policy, but refresh transport and the
+ * rotating-token commit are single-flight by the old refresh token. The
+ * coordinator scope is independent from page/lifecycle/connect jobs: caller
+ * cancellation only stops awaiting the result. Once [authApi] has parsed a
+ * successful response, committing its successor to [sessionStore] is the only
+ * explicitly non-cancellable window.
+ */
+internal class SharedAuthRefreshCoordinator(
+    private val sessionStore: SlockAuthSessionStore,
+    private val authApi: SlockAuthApi,
+    private val clockMillis: () -> Long,
+    private val logger: (String) -> Unit = {},
+    private val warningLogger: (String) -> Unit = {}
+) {
+    suspend fun refreshSession(
+        failedAccessToken: String? = null,
+        failedRefreshToken: String? = null,
+        clearOnUnauthorized: Boolean = true,
+        clearSource: String = "token_refresh",
+        reason: String = "unknown",
+        caller: String = "unknown"
+    ): SharedAuthRefreshResult {
+        val safeReason = reason.toSafeAuthRefreshDiagnosticsToken()
+        val safeCaller = caller.toSafeAuthRefreshDiagnosticsToken()
+        val current = sessionStore.readSession() ?: return SharedAuthRefreshResult.Unavailable
+        if (current.isNewerThan(failedAccessToken, failedRefreshToken)) {
+            logAlreadyUpdated(current, failedAccessToken, failedRefreshToken, safeCaller, safeReason)
+            return SharedAuthRefreshResult.Success(current)
+        }
+        val refreshToken = current.refreshToken.takeIf { it.isNotBlank() }
+            ?: return handleMissingRefreshToken(
+                current = current,
+                clearOnUnauthorized = clearOnUnauthorized,
+                clearSource = clearSource,
+                safeCaller = safeCaller,
+                safeReason = safeReason
+            )
+
+        val selection =
+            coordinationMutex.withLock {
+                val recent =
+                    recentUnauthorizedByRefreshToken[refreshToken]
+                        ?.takeIf { it.matches(current, clockMillis()) }
+                if (recent != null) {
+                    FlightSelection.Completed(recent.exchange)
+                } else {
+                    val existing = inFlightByRefreshToken[refreshToken]
+                    if (existing != null) {
+                        FlightSelection.Join(existing)
+                    } else {
+                        val result = CompletableDeferred<RefreshExchange>()
+                        val flight =
+                            InFlightRefresh(
+                                originalSession = current,
+                                result = result
+                            )
+                        inFlightByRefreshToken[refreshToken] = flight
+                        FlightSelection.Owner(flight)
+                    }
+                }
+            }
+
+        if (selection is FlightSelection.Owner) {
+            coordinatorScope.launch {
+                executeOwnerRefresh(
+                    flight = selection.flight,
+                    refreshToken = refreshToken,
+                    safeCaller = safeCaller,
+                    safeReason = safeReason
+                )
+            }
+        }
+
+        val exchange =
+            when (selection) {
+                is FlightSelection.Completed -> {
+                    warningLogger(
+                        "refresh_skip reason=recent_unauthorized_session_preserved " +
+                            "caller=$safeCaller requestReason=$safeReason"
+                    )
+                    selection.exchange
+                }
+                is FlightSelection.Join -> {
+                    logger(
+                        "refresh_join caller=$safeCaller requestReason=$safeReason " +
+                            "refresh=${refreshToken.authTokenDiagnosticsFingerprint()}"
+                    )
+                    selection.flight.result.await()
+                }
+                is FlightSelection.Owner -> selection.flight.result.await()
+            }
+        return applyExchange(
+            exchange = exchange,
+            clearOnUnauthorized = clearOnUnauthorized,
+            clearSource = clearSource,
+            safeCaller = safeCaller,
+            safeReason = safeReason
+        )
+    }
+
+    private suspend fun executeOwnerRefresh(
+        flight: InFlightRefresh,
+        refreshToken: String,
+        safeCaller: String,
+        safeReason: String
+    ) {
+        val exchange =
+            try {
+                val latest = sessionStore.readSession()
+                if (latest == null) {
+                    RefreshExchange.Unavailable
+                } else if (!latest.sameTokensAs(flight.originalSession)) {
+                    RefreshExchange.AlreadyUpdated(latest)
+                } else {
+                    logger(
+                        "refresh_start reason=$safeReason caller=$safeCaller " +
+                            "access=${latest.accessToken.authTokenDiagnosticsFingerprint()} " +
+                            "refresh=${refreshToken.authTokenDiagnosticsFingerprint()}"
+                    )
+                    when (val response = authApi.refresh(refreshToken)) {
+                        is AuthApiResult.Success ->
+                            commitSuccessfulRefresh(
+                                original = flight.originalSession,
+                                response = response.data,
+                                safeCaller = safeCaller,
+                                safeReason = safeReason
+                            )
+                        is AuthApiResult.Failure -> {
+                            warningLogger(
+                                "refresh_failed status=${response.code} " +
+                                    "reason=$safeReason caller=$safeCaller"
+                            )
+                            RefreshExchange.Failure(
+                                originalSession = flight.originalSession,
+                                response = response,
+                                failedAtMillis = clockMillis()
+                            )
+                        }
+                    }
+                }
+            } catch (cancellation: CancellationException) {
+                flight.result.cancel(cancellation)
+                cleanupFlight(refreshToken, flight, exchange = null)
+                throw cancellation
+            } catch (throwable: Throwable) {
+                RefreshExchange.Exception(throwable)
+            }
+
+        flight.result.complete(exchange)
+        cleanupFlight(refreshToken, flight, exchange)
+    }
+
+    private suspend fun cleanupFlight(
+        refreshToken: String,
+        flight: InFlightRefresh,
+        exchange: RefreshExchange?
+    ) {
+        coordinationMutex.withLock {
+            if (inFlightByRefreshToken[refreshToken] === flight) {
+                inFlightByRefreshToken.remove(refreshToken)
+            }
+            when (exchange) {
+                is RefreshExchange.Success ->
+                    recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
+                is RefreshExchange.Failure ->
+                    if (exchange.response.code == 401 || exchange.response.code == 403) {
+                        recentUnauthorizedByRefreshToken[exchange.originalSession.refreshToken] =
+                            RecentUnauthorizedRefresh(exchange)
+                    }
+                else -> Unit
+            }
+        }
+    }
+
+    private suspend fun commitSuccessfulRefresh(
+        original: StoredAuthSession,
+        response: AuthRefreshResponse,
+        safeCaller: String,
+        safeReason: String
+    ): RefreshExchange =
+        withContext(NonCancellable) {
+            val latest = sessionStore.readSession()
+            if (latest == null) {
+                return@withContext RefreshExchange.Unavailable
+            }
+            if (!latest.sameTokensAs(original)) {
+                logger(
+                    "refresh_commit_skip reason=token_already_updated caller=$safeCaller " +
+                        "requestReason=$safeReason"
+                )
+                return@withContext RefreshExchange.AlreadyUpdated(latest)
+            }
+            val updated =
+                latest.copy(
+                    accessToken = response.accessToken,
+                    refreshToken = response.refreshToken
+                )
+            sessionStore.saveSession(updated)
+            logger(
+                "refresh_success reason=$safeReason caller=$safeCaller " +
+                    "accessRotated=${original.accessToken != updated.accessToken} " +
+                    "refreshRotated=${original.refreshToken != updated.refreshToken} " +
+                    "oldAccess=${original.accessToken.authTokenDiagnosticsFingerprint()} " +
+                    "newAccess=${updated.accessToken.authTokenDiagnosticsFingerprint()} " +
+                    "oldRefresh=${original.refreshToken.authTokenDiagnosticsFingerprint()} " +
+                    "newRefresh=${updated.refreshToken.authTokenDiagnosticsFingerprint()}"
+            )
+            RefreshExchange.Success(originalSession = original, session = updated)
+        }
+
+    private suspend fun applyExchange(
+        exchange: RefreshExchange,
+        clearOnUnauthorized: Boolean,
+        clearSource: String,
+        safeCaller: String,
+        safeReason: String
+    ): SharedAuthRefreshResult =
+        when (exchange) {
+            is RefreshExchange.Success -> SharedAuthRefreshResult.Success(exchange.session)
+            is RefreshExchange.AlreadyUpdated -> {
+                logAlreadyUpdated(
+                    current = exchange.session,
+                    failedAccessToken = null,
+                    failedRefreshToken = null,
+                    safeCaller = safeCaller,
+                    safeReason = safeReason
+                )
+                SharedAuthRefreshResult.Success(exchange.session)
+            }
+            is RefreshExchange.Failure ->
+                applyFailure(
+                    exchange = exchange,
+                    clearOnUnauthorized = clearOnUnauthorized,
+                    clearSource = clearSource,
+                    safeCaller = safeCaller,
+                    safeReason = safeReason
+                )
+            is RefreshExchange.Exception -> throw exchange.throwable
+            RefreshExchange.Unavailable -> SharedAuthRefreshResult.Unavailable
+        }
+
+    private suspend fun applyFailure(
+        exchange: RefreshExchange.Failure,
+        clearOnUnauthorized: Boolean,
+        clearSource: String,
+        safeCaller: String,
+        safeReason: String
+    ): SharedAuthRefreshResult {
+        val code = exchange.response.code
+        if (code != 401 && code != 403) {
+            return SharedAuthRefreshResult.Failure(exchange.response)
+        }
+        val latest = sessionStore.readSession()
+        if (latest != null && !latest.sameTokensAs(exchange.originalSession)) {
+            logAlreadyUpdated(latest, null, null, safeCaller, safeReason)
+            return SharedAuthRefreshResult.Success(latest)
+        }
+        if (clearOnUnauthorized) {
+            val clearCandidate = sessionStore.readSession()
+            if (clearCandidate != null && !clearCandidate.sameTokensAs(exchange.originalSession)) {
+                logAlreadyUpdated(clearCandidate, null, null, safeCaller, safeReason)
+                return SharedAuthRefreshResult.Success(clearCandidate)
+            }
+            if (clearCandidate?.sameTokensAs(exchange.originalSession) == true) {
+                sessionStore.clearSession(
+                    reason = "refresh_http_$code",
+                    source = clearSource
+                )
+            }
+            coordinationMutex.withLock {
+                recentUnauthorizedByRefreshToken.remove(exchange.originalSession.refreshToken)
+            }
+            warningLogger(
+                "refresh_unauthorized_session_cleared status=$code " +
+                    "reason=$safeReason caller=$safeCaller"
+            )
+        } else {
+            warningLogger(
+                "refresh_unauthorized_session_preserved status=$code " +
+                    "reason=$safeReason caller=$safeCaller"
+            )
+        }
+        return SharedAuthRefreshResult.Failure(exchange.response)
+    }
+
+    private suspend fun handleMissingRefreshToken(
+        current: StoredAuthSession,
+        clearOnUnauthorized: Boolean,
+        clearSource: String,
+        safeCaller: String,
+        safeReason: String
+    ): SharedAuthRefreshResult {
+        warningLogger(
+            "refresh_skip reason=missing_refresh_token caller=$safeCaller requestReason=$safeReason"
+        )
+        if (clearOnUnauthorized) {
+            val latest = sessionStore.readSession()
+            if (latest != null && !latest.sameTokensAs(current)) {
+                logAlreadyUpdated(latest, null, null, safeCaller, safeReason)
+                return SharedAuthRefreshResult.Success(latest)
+            }
+            if (latest?.sameTokensAs(current) == true) {
+                sessionStore.clearSession(
+                    reason = "missing_refresh_token",
+                    source = clearSource
+                )
+            }
+        } else {
+            warningLogger(
+                "refresh_missing_refresh_token_session_preserved " +
+                    "caller=$safeCaller requestReason=$safeReason"
+            )
+        }
+        return SharedAuthRefreshResult.Unavailable
+    }
+
+    private fun logAlreadyUpdated(
+        current: StoredAuthSession,
+        failedAccessToken: String?,
+        failedRefreshToken: String?,
+        safeCaller: String,
+        safeReason: String
+    ) {
+        logger(
+            "refresh_skip reason=token_already_updated caller=$safeCaller requestReason=$safeReason " +
+                "failedAccess=${failedAccessToken.authTokenDiagnosticsFingerprint()} " +
+                "currentAccess=${current.accessToken.authTokenDiagnosticsFingerprint()} " +
+                "failedRefresh=${failedRefreshToken.authTokenDiagnosticsFingerprint()} " +
+                "currentRefresh=${current.refreshToken.authTokenDiagnosticsFingerprint()}"
+        )
+    }
+
+    private companion object {
+        val coordinatorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val coordinationMutex = Mutex()
+        val inFlightByRefreshToken = mutableMapOf<String, InFlightRefresh>()
+        val recentUnauthorizedByRefreshToken = mutableMapOf<String, RecentUnauthorizedRefresh>()
+    }
+}
+
+internal sealed interface SharedAuthRefreshResult {
+    data class Success(val session: StoredAuthSession) : SharedAuthRefreshResult
+    data class Failure(val response: AuthApiResult.Failure) : SharedAuthRefreshResult
+    data object Unavailable : SharedAuthRefreshResult
+}
+
+private data class InFlightRefresh(
+    val originalSession: StoredAuthSession,
+    val result: CompletableDeferred<RefreshExchange>
+)
+
+private sealed interface FlightSelection {
+    data class Owner(val flight: InFlightRefresh) : FlightSelection
+    data class Join(val flight: InFlightRefresh) : FlightSelection
+    data class Completed(val exchange: RefreshExchange.Failure) : FlightSelection
+}
+
+private sealed interface RefreshExchange {
+    data class Success(
+        val originalSession: StoredAuthSession,
+        val session: StoredAuthSession
+    ) : RefreshExchange
+
+    data class AlreadyUpdated(val session: StoredAuthSession) : RefreshExchange
+
+    data class Failure(
+        val originalSession: StoredAuthSession,
+        val response: AuthApiResult.Failure,
+        val failedAtMillis: Long
+    ) : RefreshExchange
+
+    data class Exception(val throwable: Throwable) : RefreshExchange
+    data object Unavailable : RefreshExchange
+}
+
+private data class RecentUnauthorizedRefresh(
+    val exchange: RefreshExchange.Failure
+) {
+    fun matches(session: StoredAuthSession, nowMillis: Long): Boolean =
+        exchange.originalSession.sameTokensAs(session) &&
+            nowMillis - exchange.failedAtMillis in 0..PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS
+}
+
+private fun StoredAuthSession.isNewerThan(
+    failedAccessToken: String?,
+    failedRefreshToken: String?
+): Boolean =
+    failedAccessToken?.takeIf { it.isNotBlank() }?.let { accessToken != it } == true ||
+        failedRefreshToken?.takeIf { it.isNotBlank() }?.let { refreshToken != it } == true
+
+private fun StoredAuthSession.sameTokensAs(other: StoredAuthSession): Boolean =
+    accessToken == other.accessToken && refreshToken == other.refreshToken
+
+private const val PRESERVED_UNAUTHORIZED_BACKOFF_MILLIS = 30_000L
+
+internal fun String?.authTokenDiagnosticsFingerprint(): String {
+    if (this.isNullOrBlank()) return "blank"
+    val tail = takeLast(4).toSafeAuthRefreshDiagnosticsToken()
+    val hash = (hashCode().toLong() and 0xffffffffL).toString(16)
+    return "len=${length}:tail4=$tail:hash=$hash"
+}
+
+internal fun String.toSafeAuthRefreshDiagnosticsToken(): String =
+    trim()
+        .ifBlank { "unknown" }
+        .replace(Regex("""[^A-Za-z0-9_.:/-]"""), "_")
+        .take(96)
