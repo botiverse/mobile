@@ -1057,17 +1057,28 @@ internal class SharedHomeStore(
     }
 
     private suspend fun applyHomeSessionLocally(session: StoredAuthSession) {
-        authStore.saveSession(session)
+        // #466: these are server-ordering (metadata) changes only — persist onto the store's LATEST
+        // session (keeping latest tokens) instead of whole-saving this state-captured snapshot, which
+        // could clobber a token the coordinator rotated in between. Project the persisted session
+        // (latest tokens) into home state so the UI never diverges from the store.
+        var persisted: StoredAuthSession = session
+        authStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            latest.copy(
+                servers = session.servers,
+                selectedServerId = session.selectedServerId,
+                selectedServerSlug = session.selectedServerSlug
+            ).also { persisted = it }
+        }
         contentByServer.entries.forEach { entry ->
-            entry.setValue(entry.value.copy(session = session))
+            entry.setValue(entry.value.copy(session = persisted))
         }
         val current = _state.value.content
         val nextContent =
             when (current) {
-                is SharedHomeContentState.Content -> current.copy(session = session)
-                is SharedHomeContentState.Empty -> current.copy(session = session)
-                is SharedHomeContentState.Error -> current.copy(session = session)
-                is SharedHomeContentState.Loading -> current.copy(session = session)
+                is SharedHomeContentState.Content -> current.copy(session = persisted)
+                is SharedHomeContentState.Empty -> current.copy(session = persisted)
+                is SharedHomeContentState.Error -> current.copy(session = persisted)
+                is SharedHomeContentState.Loading -> current.copy(session = persisted)
             }
         reduceState(_state.value.copy(content = nextContent))
     }

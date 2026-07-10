@@ -127,7 +127,7 @@ class SharedAuthDataSource(
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
         diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
+        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -279,7 +279,7 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=mobile_oauth userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
+        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result provider=mobile_oauth result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -408,7 +408,7 @@ class SharedAuthDataSource(
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
-        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
+        runCatchingPreservingCancellation { sessionStore.replaceAuthenticatedSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result provider=$provider result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -459,7 +459,7 @@ class SharedAuthDataSource(
                 refreshToken = register.refreshToken,
                 servers = orderedServers
             ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
-        sessionStore.saveSession(session)
+        sessionStore.replaceAuthenticatedSession(session)
         return SharedAuthResult.Success(session)
     }
 
@@ -750,16 +750,18 @@ class SharedAuthDataSource(
         servers: List<StoredAuthServer>,
         source: String
     ): SharedAuthResult<StoredAuthSession> {
-        val current = sessionStore.readSession()
-        if (current?.authSessionClearFingerprint() != session.authSessionClearFingerprint()) {
-            diagnosticsLogger(
-                "auth_servers_load_result result=stale source=$source action=drop"
-            )
+        val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = source))
+        // #466: apply the freshly-loaded server list/selection onto the store's LATEST session under
+        // the store lock (keeping latest tokens), instead of the old read-fingerprint-then-whole-save
+        // which either dropped on any concurrent change or clobbered a coordinator-rotated token.
+        var persisted: StoredAuthSession? = null
+        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            latest.withValidatedServerSelection(orderedServers, serverSelectionMemory).also { persisted = it }
+        }
+        val updated = persisted ?: run {
+            diagnosticsLogger("auth_servers_load_result result=stale source=$source action=drop")
             return SharedAuthResult.Unauthenticated
         }
-        val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = source))
-        val updated = session.withValidatedServerSelection(orderedServers, serverSelectionMemory)
-        sessionStore.saveSession(updated)
         diagnosticsLogger(
             "auth_servers_load_result result=success source=$source serversCount=${orderedServers.size} " +
                 "selectedServer=${!updated.selectedServerId.isNullOrBlank()} " +
@@ -773,9 +775,15 @@ class SharedAuthDataSource(
         val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val selected = session.servers.firstOrNull { it.id == serverId }
             ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Server not found.")
-        val updated = session.copy(selectedServerId = selected.id, selectedServerSlug = selected.slug)
+        // #466: selection is metadata — write it onto the LATEST session under the lock (keep latest
+        // tokens), preferring the server as it exists in the latest list.
+        var persisted: StoredAuthSession? = null
+        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            val target = latest.servers.firstOrNull { it.id == serverId } ?: selected
+            latest.copy(selectedServerId = target.id, selectedServerSlug = target.slug).also { persisted = it }
+        }
+        val updated = persisted ?: return SharedAuthResult.Unauthenticated
         updated.rememberSelectedServer(serverSelectionMemory)
-        sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
 
@@ -817,14 +825,18 @@ class SharedAuthDataSource(
                 .ifEmpty { listOf(created) }
                 .orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = "create_server"))
         val selected = latestServers.firstOrNull { it.id == created.id } ?: created
-        val updated =
-            session.copy(
+        // #466: server list + selection are metadata — apply onto the LATEST session under the lock
+        // (keep latest tokens) instead of whole-saving the captured snapshot.
+        var persisted: StoredAuthSession? = null
+        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            latest.copy(
                 servers = latestServers,
                 selectedServerId = selected.id,
                 selectedServerSlug = selected.slug
-            )
+            ).also { persisted = it }
+        }
+        val updated = persisted ?: return SharedAuthResult.Unauthenticated
         updated.rememberSelectedServer(serverSelectionMemory)
-        sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
 

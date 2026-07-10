@@ -6,6 +6,7 @@ on:
       - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
+      - "scripts/check_auth_session_writes.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -21,6 +22,7 @@ on:
       - ".github/workflows/test.yml"
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
+      - "scripts/check_auth_session_writes.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -375,6 +377,12 @@ jobs:
         run: |
           scripts/check_commonmain_map_compat.sh --self-test
           scripts/check_commonmain_map_compat.sh
+
+      - name: Guard atomic auth-session writes (#466 no-bypass)
+        shell: bash
+        run: |
+          scripts/check_auth_session_writes.sh --self-test
+          scripts/check_auth_session_writes.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5

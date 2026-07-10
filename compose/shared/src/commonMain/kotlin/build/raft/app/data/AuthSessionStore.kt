@@ -44,21 +44,23 @@ interface SlockAuthSessionStore {
 
     /**
      * CAS token rotation (coordinator / token-owner only). Rotates only if the store's LATEST
-     * tokens still match [expectedAccessToken]/[expectedRefreshToken]; returns true if applied,
-     * false if another writer already rotated (do not overwrite).
+     * tokens still match [expectedAccessToken]/[expectedRefreshToken]; returns the newly-persisted
+     * session (latest metadata + new tokens) if applied, or null if another writer already rotated
+     * / no session exists (do not overwrite — read latest to reconcile).
      */
     suspend fun rotateTokensIfMatch(
         expectedAccessToken: String,
         expectedRefreshToken: String,
         newAccessToken: String,
         newRefreshToken: String,
-    ): Boolean {
-        val current = readSession() ?: return false
+    ): StoredAuthSession? {
+        val current = readSession() ?: return null
         if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
-            return false
+            return null
         }
-        saveSession(current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken))
-        return true
+        val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
+        saveSession(updated)
+        return updated
     }
 
     /**
@@ -330,22 +332,22 @@ class InMemorySlockAuthSessionStore(
         expectedRefreshToken: String,
         newAccessToken: String,
         newRefreshToken: String,
-    ): Boolean {
+    ): StoredAuthSession? {
         var newFingerprint: String? = null
-        val applied =
+        val rotated =
             mutex.withLock {
-                val current = session ?: return@withLock false
+                val current = session ?: return@withLock null
                 if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
-                    return@withLock false
+                    return@withLock null
                 }
                 val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
                 session = updated
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
-                true
+                updated
             }
         newFingerprint?.let { changes.emit(it) }
-        return applied
+        return rotated
     }
 
     override suspend fun updateMetadata(
@@ -437,27 +439,27 @@ class KeyValueAuthSessionStore(
         expectedRefreshToken: String,
         newAccessToken: String,
         newRefreshToken: String,
-    ): Boolean {
+    ): StoredAuthSession? {
         var newFingerprint: String? = null
         var generation = 0L
-        val applied =
+        val rotated =
             mutex.withLock {
-                val current = readSessionRecordLocked() ?: return@withLock false
+                val current = readSessionRecordLocked() ?: return@withLock null
                 if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
                     // Another writer (e.g. the socket coordinator) already rotated — do NOT overwrite.
-                    return@withLock false
+                    return@withLock null
                 }
                 val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
                 writeSessionRecordLocked(updated)
                 generation = nextGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
-                true
+                updated
             }
-        if (applied) storeEvents.emit(AuthSessionEvent.TokensRotated(generation))
+        if (rotated != null) storeEvents.emit(AuthSessionEvent.TokensRotated(generation))
         newFingerprint?.let { changes.emit(it) }
-        diagnosticsLogger("auth_token_rotate applied=$applied")
-        return applied
+        diagnosticsLogger("auth_token_rotate applied=${rotated != null}")
+        return rotated
     }
 
     override suspend fun updateMetadata(
@@ -538,19 +540,39 @@ class KeyValueAuthSessionStore(
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        val current = readSession() ?: return
-        saveSession(current.copy(accessToken = accessToken, refreshToken = refreshToken))
+        // #466: read-modify-write under a SINGLE lock so this can never clobber a concurrent rotation
+        // (the old readSession()+saveSession() had a TOCTOU gap between the two lock acquisitions).
+        var newFingerprint: String? = null
+        var generation: Long? = null
+        mutex.withLock {
+            val current = readSessionRecordLocked() ?: return@withLock
+            val updated = current.copy(accessToken = accessToken, refreshToken = refreshToken)
+            if (updated != current) {
+                writeSessionRecordLocked(updated)
+                generation = nextGenerationLocked()
+                newFingerprint =
+                    updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
+            }
+        }
+        generation?.let { storeEvents.emit(AuthSessionEvent.TokensRotated(it)) }
+        newFingerprint?.let { changes.emit(it) }
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val current = readSession() ?: return
-        saveRememberedServerSelection(
-            current.user,
-            serverId?.takeIf { it.isNotBlank() }?.let {
-                StoredAuthServerSelection(serverId = it, serverSlug = serverSlug)
-            }
-        )
-        saveSession(current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug))
+        // #466: selection is metadata — apply atomically onto the latest session (keep latest tokens).
+        var selectedUser: StoredAuthUser? = null
+        updateMetadata(expectedAccountId = null) { latest ->
+            selectedUser = latest.user
+            latest.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
+        }
+        selectedUser?.let { user ->
+            saveRememberedServerSelection(
+                user,
+                serverId?.takeIf { it.isNotBlank() }?.let {
+                    StoredAuthServerSelection(serverId = it, serverSlug = serverSlug)
+                }
+            )
+        }
     }
 
     override suspend fun clearSession(reason: String, source: String) {

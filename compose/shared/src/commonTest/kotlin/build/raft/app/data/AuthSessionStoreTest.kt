@@ -174,8 +174,9 @@ class AuthSessionStoreTest {
         val captured = store.readSession()!! // metadata writer captures the OLD session
         assertEquals("token-a", captured.accessToken)
 
-        // socket coordinator rotates to the successor
-        assertTrue(store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r"))
+        // socket coordinator rotates to the successor; CAS returns the newly-persisted session
+        val rotated = store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r")
+        assertEquals("token-successor", rotated?.accessToken)
         assertEquals("token-successor", store.readSession()?.accessToken)
 
         // metadata writer commits its (now stale-token) capture as a metadata-only update
@@ -198,7 +199,8 @@ class AuthSessionStoreTest {
         val captured = store.readSession()!!
 
         // refresh-only rotation: access stays token-a, refresh token-r -> token-r2
-        assertTrue(store.rotateTokensIfMatch("token-a", "token-r", "token-a", "token-r2"))
+        val rotated = store.rotateTokensIfMatch("token-a", "token-r", "token-a", "token-r2")
+        assertEquals("token-r2", rotated?.refreshToken)
         assertEquals("token-a", store.readSession()?.accessToken)
         assertEquals("token-r2", store.readSession()?.refreshToken)
 
@@ -279,7 +281,7 @@ class AuthSessionStoreTest {
     fun rotateTokensIfMatchNoOpsOnStaleExpected() = runBlocking {
         val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
-        assertFalse(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
+        assertNull(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
         assertEquals("token-a", store.readSession()?.accessToken) // not overwritten
     }
 
