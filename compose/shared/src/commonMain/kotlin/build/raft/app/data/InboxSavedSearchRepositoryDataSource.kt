@@ -81,6 +81,10 @@ private suspend fun SlockNetworkClient.searchMessages(
                 "limit" to limit.toString(),
                 "offset" to offset.toString(),
                 options.sort.wireValue?.let { "sort" to it },
+                options.scopes
+                    .takeIf { SearchScope.Mentioned in it }
+                    ?.let { "mentionTarget" to "self" },
+                options.scopes.exclusiveSenderTypeWireValue()?.let { "senderType" to it },
                 options.channelId?.value?.let { "channelId" to it },
                 options.afterIso?.takeIf { it.isNotBlank() }?.let { "after" to it },
                 options.beforeIso?.takeIf { it.isNotBlank() }?.let { "before" to it }

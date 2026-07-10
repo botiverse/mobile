@@ -901,6 +901,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchScopeDropdown() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.scope-dropdown",
+            pageName = "compose_home_search_scope_dropdown_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeSearchError() {
         captureKmpComponentCase(
             caseId = "components.home.search.error",

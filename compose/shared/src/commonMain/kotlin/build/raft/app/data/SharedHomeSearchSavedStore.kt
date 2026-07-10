@@ -86,11 +86,21 @@ class SharedHomeSearchSavedStore(
                 scheduleSearchRefresh()
             }
             is SharedHomeSearchSavedIntent.ToggleSearchSender -> {
+                val currentSearch = _state.value.search
+                val selectedSenderIds = currentSearch.selectedSenderIds.toggleSenderId(intent.senderId)
+                val senderWasAdded = intent.senderId in selectedSenderIds
+                val senderKind = currentSearch.senderFilters.firstOrNull { it.id == intent.senderId }?.kind
                 _state.value =
                     _state.value.copy(
                         search =
-                            _state.value.search.copy(
-                                selectedSenderIds = _state.value.search.selectedSenderIds.toggleSenderId(intent.senderId),
+                            currentSearch.copy(
+                                selectedSenderIds = selectedSenderIds,
+                                selectedScopes =
+                                    if (senderWasAdded && senderKind != null) {
+                                        currentSearch.selectedScopes.withSenderKindConflictResolved(senderKind)
+                                    } else {
+                                        currentSearch.selectedScopes
+                                    },
                                 myMessagesOnly = false
                             )
                     )
@@ -115,13 +125,46 @@ class SharedHomeSearchSavedStore(
                 _state.value = _state.value.copy(search = _state.value.search.copy(timeRange = intent.range))
                 scheduleSearchRefresh()
             }
+            is SharedHomeSearchSavedIntent.ToggleSearchScope -> {
+                val currentSearch = _state.value.search
+                val selectedScopes = currentSearch.selectedScopes.toggleSearchScope(intent.scope)
+                val exclusiveKind = selectedScopes.exclusiveSenderKind()
+                _state.value =
+                    _state.value.copy(
+                        search =
+                            currentSearch.copy(
+                                selectedScopes = selectedScopes,
+                                selectedSenderIds =
+                                    if (exclusiveKind == null) {
+                                        currentSearch.selectedSenderIds
+                                    } else {
+                                        currentSearch.selectedSenderIds.filter { senderId ->
+                                            currentSearch.senderFilters.firstOrNull { it.id == senderId }?.kind
+                                                ?.let { it == exclusiveKind } != false
+                                        }
+                                    },
+                                myMessagesOnly = currentSearch.myMessagesOnly && exclusiveKind != MemberKind.Agent
+                            )
+                    )
+                scheduleSearchRefresh()
+            }
+            SharedHomeSearchSavedIntent.ClearSearchScopes -> {
+                _state.value = _state.value.copy(search = _state.value.search.copy(selectedScopes = emptyList()))
+                scheduleSearchRefresh()
+            }
             is SharedHomeSearchSavedIntent.SetMyMessagesOnly -> {
                 _state.value =
                     _state.value.copy(
                         search =
                             _state.value.search.copy(
                                 myMessagesOnly = intent.enabled,
-                                selectedSenderIds = if (intent.enabled) emptyList() else _state.value.search.selectedSenderIds
+                                selectedSenderIds = if (intent.enabled) emptyList() else _state.value.search.selectedSenderIds,
+                                selectedScopes =
+                                    if (intent.enabled) {
+                                        _state.value.search.selectedScopes.withSenderKindConflictResolved(MemberKind.Human)
+                                    } else {
+                                        _state.value.search.selectedScopes
+                                    }
                             )
                     )
                 scheduleSearchRefresh()
@@ -133,6 +176,7 @@ class SharedHomeSearchSavedStore(
                             _state.value.search.copy(
                                 myMessagesOnly = false,
                                 selectedSenderIds = emptyList(),
+                                selectedScopes = emptyList(),
                                 selectedChannelId = null,
                                 timeRange = SearchTimeRange.Any
                             )
@@ -361,6 +405,7 @@ class SharedHomeSearchSavedStore(
                                 SearchQueryOptions(
                                     sort = previous.sort,
                                     senderIds = senderIds,
+                                    scopes = previous.selectedScopes,
                                     channelId = previous.selectedChannelId?.let(::ChannelId),
                                     afterIso = bounds.afterIso,
                                     beforeIso = bounds.beforeIso
@@ -812,6 +857,7 @@ data class SharedHomeSearchPanelState(
     val timeRange: SearchTimeRange = SearchTimeRange.Any,
     val myMessagesOnly: Boolean = false,
     val selectedSenderIds: List<String> = emptyList(),
+    val selectedScopes: List<SearchScope> = emptyList(),
     val senderFilters: List<SearchSenderFilterItem> = emptyList(),
     val senderFiltersLoading: Boolean = false,
     val senderFiltersErrorCode: String? = null,
@@ -834,6 +880,7 @@ private fun SharedHomeSearchPanelState.hasMessageSearchIntent(): Boolean =
     query.trim().isNotBlank() ||
         myMessagesOnly ||
         selectedSenderIds.any { it.isNotBlank() } ||
+        selectedScopes.isNotEmpty() ||
         !selectedChannelId.isNullOrBlank() ||
         timeRange != SearchTimeRange.Any
 
@@ -841,6 +888,25 @@ private fun List<String>.toggleSenderId(senderId: String): List<String> {
     val normalized = senderId.trim()
     if (normalized.isBlank()) return this
     return if (normalized in this) filterNot { it == normalized } else this + normalized
+}
+
+private fun List<SearchScope>.toggleSearchScope(scope: SearchScope): List<SearchScope> =
+    if (scope in this) filterNot { it == scope } else SearchScope.entries.filter { it == scope || it in this }
+
+private fun List<SearchScope>.exclusiveSenderKind(): MemberKind? =
+    when (exclusiveSenderTypeWireValue()) {
+        "user" -> MemberKind.Human
+        "agent" -> MemberKind.Agent
+        else -> null
+    }
+
+internal fun List<SearchScope>.withSenderKindConflictResolved(kind: MemberKind): List<SearchScope> {
+    val exclusiveKind = exclusiveSenderKind() ?: return this
+    if (exclusiveKind == kind) return this
+    return filterNot {
+        (it == SearchScope.Humans && kind == MemberKind.Agent) ||
+            (it == SearchScope.Agents && kind == MemberKind.Human)
+    }
 }
 
 sealed interface SharedHomeSearchSavedIntent {
@@ -861,6 +927,8 @@ sealed interface SharedHomeSearchSavedIntent {
     data class SetSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchSort(val sort: SearchSort) : SharedHomeSearchSavedIntent
     data class SetSearchTimeRange(val range: SearchTimeRange) : SharedHomeSearchSavedIntent
+    data class ToggleSearchScope(val scope: SearchScope) : SharedHomeSearchSavedIntent
+    data object ClearSearchScopes : SharedHomeSearchSavedIntent
     data class SetMyMessagesOnly(val enabled: Boolean) : SharedHomeSearchSavedIntent
     data object ClearSearchFilters : SharedHomeSearchSavedIntent
 }

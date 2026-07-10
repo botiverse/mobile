@@ -225,6 +225,14 @@ internal class ComposeHomeSearchChannelDropdownVisualPage : BasePager() {
     }
 }
 
+@Page("compose_home_search_scope_dropdown_visual", supportInLocal = true)
+internal class ComposeHomeSearchScopeDropdownVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSearchVisualContent(initialOpenFilterId = "scope") }
+    }
+}
+
 @Page("compose_home_search_error_visual", supportInLocal = true)
 internal class ComposeHomeSearchErrorVisualPage : BasePager() {
     override fun willInit() {

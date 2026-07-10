@@ -211,6 +211,7 @@ import build.raft.app.data.SettingsRepository
 import build.raft.app.data.SettingsServerManagementRepository
 import build.raft.app.data.SharedMembersDataSource
 import build.raft.app.data.SearchIsoBounds
+import build.raft.app.data.SearchScope
 import build.raft.app.data.SearchSort
 import build.raft.app.data.SearchSenderFilterItem
 import build.raft.app.data.SearchTimeRange
@@ -13294,6 +13295,7 @@ private fun SharedHomeSearchPanel(
     val groupedResults = remember(projectedItems) { groupHomeSearchResults(projectedItems) }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
+    var scopeAnchor by remember { mutableStateOf(Offset.Zero) }
     var senderAnchor by remember { mutableStateOf(Offset.Zero) }
     var channelAnchor by remember { mutableStateOf(Offset.Zero) }
     var timeAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -13303,9 +13305,9 @@ private fun SharedHomeSearchPanel(
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
-    LaunchedEffect(initialOpenFilterId, senderAnchor, channelAnchor, timeAnchor, sortAnchor) {
+    LaunchedEffect(initialOpenFilterId, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor) {
         val pending = pendingInitialOpenFilterId ?: return@LaunchedEffect
-        if (homeSearchFilterAnchorReady(pending, senderAnchor, channelAnchor, timeAnchor, sortAnchor)) {
+        if (homeSearchFilterAnchorReady(pending, scopeAnchor, senderAnchor, channelAnchor, timeAnchor, sortAnchor)) {
             openFilterId = pending
             pendingInitialOpenFilterId = null
         }
@@ -13336,6 +13338,7 @@ private fun SharedHomeSearchPanel(
             SharedHomeSearchFilters(
                 state = state,
                 channelFilters = channelFilters,
+                scopeAnchorChanged = { scopeAnchor = it },
                 senderAnchorChanged = { senderAnchor = it },
                 channelAnchorChanged = { channelAnchor = it },
                 timeAnchorChanged = { timeAnchor = it },
@@ -13438,6 +13441,30 @@ private fun SharedHomeSearchPanel(
             }
         }
         when (openFilterId) {
+            "scope" ->
+                SlockFilterPopover(
+                    anchor = scopeAnchor,
+                    title = "Scope",
+                    searchPlaceholder = "",
+                    searchText = "",
+                    onSearchChange = {},
+                    options = SearchScope.entries.map { SlockFilterOption(it.key, it.label) },
+                    selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
+                    onToggle = { key ->
+                        SearchScope.entries.firstOrNull { it.key == key }?.let {
+                            onIntent(SharedHomeSearchSavedIntent.ToggleSearchScope(it))
+                        }
+                    },
+                    onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchScopes) },
+                    onDismiss = { openFilterId = null },
+                    widthDp = 180f,
+                    multiSelect = true,
+                    searchable = false,
+                    surfaceBorderColor = SearchPopoverBorderColor,
+                    surfaceShadowColor = SearchPopoverShadowColor,
+                    selectedRowColor = SlockColor.SurfaceWhite,
+                    showClearWhenSelected = true
+                )
             "sender" ->
                 SlockFilterPopover(
                     anchor = senderAnchor,
@@ -13555,12 +13582,14 @@ private fun SharedHomeSearchDivider() {
 
 private fun homeSearchFilterAnchorReady(
     filterId: String,
+    scopeAnchor: Offset,
     senderAnchor: Offset,
     channelAnchor: Offset,
     timeAnchor: Offset,
     sortAnchor: Offset
 ): Boolean =
     when (filterId) {
+        "scope" -> scopeAnchor != Offset.Zero
         "sender" -> senderAnchor != Offset.Zero
         "channel" -> channelAnchor != Offset.Zero
         "time" -> timeAnchor != Offset.Zero
@@ -14018,6 +14047,7 @@ private fun SharedHomePanelSearchField(
 private fun SharedHomeSearchFilters(
     state: SharedHomeSearchPanelState,
     channelFilters: List<SearchChannelFilterItem>,
+    scopeAnchorChanged: (Offset) -> Unit,
     senderAnchorChanged: (Offset) -> Unit,
     channelAnchorChanged: (Offset) -> Unit,
     timeAnchorChanged: (Offset) -> Unit,
@@ -14027,11 +14057,13 @@ private fun SharedHomeSearchFilters(
     showSenderFilter: Boolean = true
 ) {
     val hasActiveFilters =
-        state.myMessagesOnly ||
+        state.selectedScopes.isNotEmpty() ||
+            state.myMessagesOnly ||
             state.selectedSenderIds.isNotEmpty() ||
             state.selectedChannelId != null ||
             state.timeRange != SearchTimeRange.Any
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
+    val scopeActive = state.selectedScopes.isNotEmpty()
     val senderActive = state.selectedSenderIds.isNotEmpty()
     val channelActive = state.selectedChannelId != null
     val timeActive = state.timeRange != SearchTimeRange.Any
@@ -14041,6 +14073,23 @@ private fun SharedHomeSearchFilters(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                SlockAnchoredToolbarChip(
+                    label = if (scopeActive) "Scope ${state.selectedScopes.size}" else "Scope",
+                    active = scopeActive,
+                    enabled = true,
+                    uppercase = !scopeActive,
+                    iconName = SlockLucideIconName.AtSign,
+                    activeBackgroundColor = SlockColor.BrandYellow,
+                    activeShadowOffset = SearchControlShadowOffset,
+                    reserveActiveShadowSpace = true,
+                    onAnchorChanged = scopeAnchorChanged,
+                    onClick = { anchor ->
+                        scopeAnchorChanged(anchor)
+                        onOpenFilter("scope")
+                    }
+                )
+            }
             if (showSenderFilter) {
                 item {
                     SlockAnchoredToolbarChip(
@@ -17336,9 +17385,10 @@ private val homeCreateChannelVisualMembers = listOf(
 )
 
 private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
-        query = "android",
-        sort = SearchSort.Recent,
-        timeRange = SearchTimeRange.Last7Days,
+    query = "android",
+    sort = SearchSort.Recent,
+    timeRange = SearchTimeRange.Last7Days,
+    selectedScopes = listOf(SearchScope.Mentioned, SearchScope.Humans),
     myMessagesOnly = false,
     selectedSenderIds = listOf("user_artin"),
     // Visual fixture is static + non-interactive (`onIntent = {}` in HomeSearchVisualContent),
