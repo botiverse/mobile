@@ -7000,7 +7000,9 @@ internal fun threadVisualFixture(
                             authorName = "Cindy",
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
-                            authorAgentStatus = "online",
+                            // react fixtureData.json seeds Cindy activity=working
+                            // (yellow pulsing dot); "online" rendered the lime dot.
+                            authorAgentStatus = "working",
                             isOwn = false,
                             avatarLabel = "CI",
                             timestampLabel = "06/22 10:30",
