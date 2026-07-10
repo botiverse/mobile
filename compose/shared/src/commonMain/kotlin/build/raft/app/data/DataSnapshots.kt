@@ -408,6 +408,7 @@ data class AgentDetailSnapshot(
     val agentId: MemberId,
     val summary: AgentDetailSummary? = null,
     val directMessages: List<AgentDmSummary>,
+    val channels: List<AgentChannelSummary> = emptyList(),
     val reminders: List<AgentReminderSummary>,
     val activity: List<AgentActivityEntry>,
     val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId),
@@ -462,6 +463,11 @@ data class AgentCreatedSummary(
 data class AgentDmSnapshot(
     val agentId: MemberId,
     val directMessages: List<AgentDmSummary>
+)
+
+data class AgentChannelSnapshot(
+    val agentId: MemberId,
+    val channels: List<AgentChannelSummary>
 )
 
 data class AgentReminderSnapshot(
@@ -577,6 +583,18 @@ data class AgentDmSummary(
     val peerAvatarUrl: String? = null,
     val lastMessageAt: String? = null,
     val lastMessagePreview: String? = null
+)
+
+/** An agent's channel membership as returned by GET /agents/:id/channels. */
+data class AgentChannelSummary(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val type: String = "channel",
+    val createdAt: String? = null,
+    val archivedAt: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null
 )
 
 data class AgentReminderSummary(

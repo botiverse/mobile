@@ -10,6 +10,29 @@ import kotlin.test.assertNotNull
 
 class MemberAgentParserTest {
     @Test
+    fun agentChannelsPreserveMembershipMuteState() {
+        val channels = assertNotNull(
+            parseSharedAgentChannels(
+                """
+                [
+                  {"id":"channel-1","name":"general","description":"Team updates","type":"channel","createdAt":"2026-06-01T00:00:00Z","archivedAt":null,"activityMuted":false,"muteFromSeq":null},
+                  {"id":"channel-2","name":"private-ops","description":null,"type":"private","createdAt":"2026-06-02T00:00:00Z","archivedAt":null,"activityMuted":true,"muteFromSeq":7}
+                ]
+                """.trimIndent(),
+                MemberId("agent-1")
+            )
+        )
+
+        assertEquals("agent-1", channels.agentId.value)
+        assertEquals(2, channels.channels.size)
+        assertEquals("general", channels.channels.first().name)
+        assertEquals(false, channels.channels.first().activityMuted)
+        assertEquals("private", channels.channels.last().type)
+        assertEquals(true, channels.channels.last().activityMuted)
+        assertEquals(7L, channels.channels.last().muteFromSeq)
+    }
+
+    @Test
     fun agentsListUsesRuntimeProfileComputerName() {
         val members = parseSharedSettingsAgentsAsMembers(
             """

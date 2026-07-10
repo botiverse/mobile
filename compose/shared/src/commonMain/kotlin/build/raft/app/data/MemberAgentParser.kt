@@ -196,6 +196,19 @@ fun parseSharedAgentDirectMessages(
     )
 }.getOrNull()
 
+fun parseSharedAgentChannels(
+    bodyText: String,
+    agentId: MemberId,
+): AgentChannelSnapshot? = runCatching {
+    AgentChannelSnapshot(
+        agentId = agentId,
+        channels = memberAgentJson.decodeFromString(
+            ListSerializer(WireAgentChannelMembership.serializer()),
+            bodyText,
+        ).map { it.toDomain() },
+    )
+}.getOrNull()
+
 @Serializable
 private data class WireAgentDmSummary(
     val id: String,
@@ -215,6 +228,30 @@ private fun WireAgentDmSummary.toDomain(): AgentDmSummary =
         peerAvatarUrl = peerAvatarUrl,
         lastMessageAt = lastMessageAt,
         lastMessagePreview = lastMessagePreview,
+    )
+
+@Serializable
+private data class WireAgentChannelMembership(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val type: String = "channel",
+    val createdAt: String? = null,
+    val archivedAt: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+)
+
+private fun WireAgentChannelMembership.toDomain(): AgentChannelSummary =
+    AgentChannelSummary(
+        id = id,
+        name = name,
+        description = description,
+        type = type,
+        createdAt = createdAt,
+        archivedAt = archivedAt,
+        activityMuted = activityMuted,
+        muteFromSeq = muteFromSeq,
     )
 
 @Serializable

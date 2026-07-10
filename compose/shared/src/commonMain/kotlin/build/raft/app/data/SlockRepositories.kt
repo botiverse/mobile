@@ -257,6 +257,10 @@ interface MemberRepository {
         priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentDmSnapshot>
+    suspend fun getAgentChannels(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentChannelSnapshot> = DataResult.Empty(EmptyReason.NoMembers)
     suspend fun getAgentReminders(
         priority: DataRequestPriority,
         agentId: MemberId

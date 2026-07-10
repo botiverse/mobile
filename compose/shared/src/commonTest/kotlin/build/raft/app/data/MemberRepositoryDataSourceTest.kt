@@ -45,6 +45,9 @@ class MemberRepositoryDataSourceTest {
         assertEquals("Helper", detail.data.summary?.createdAgents?.single()?.displayName)
         assertEquals("idle", detail.data.summary?.activity)
         assertEquals(1, detail.data.directMessages.size)
+        assertEquals(2, detail.data.channels.size)
+        assertTrue(detail.data.channels.last().activityMuted)
+        assertEquals(7L, detail.data.channels.last().muteFromSeq)
         assertEquals(1, detail.data.reminders.size)
         assertEquals(true, detail.data.skills.groups.isNotEmpty())
 
@@ -63,6 +66,7 @@ class MemberRepositoryDataSourceTest {
             listOf(
                 "GET agents/agent-1",
                 "GET agents/agent-1/agent-dms",
+                "GET agents/agent-1/channels",
                 "GET reminders ownerAgentId=agent-1 status=scheduled",
                 "GET agents/agent-1/activity-log limit=50",
                 "GET agents",
@@ -250,6 +254,17 @@ class MemberRepositoryDataSourceTest {
                 normalized == "agents/agent-1/agent-dms" && method == "GET" -> {
                     calls += "GET agents/agent-1/agent-dms"
                     ok("""[{"id":"dm-1","peerId":"user-1","peerName":"Artin"}]""")
+                }
+                normalized == "agents/agent-1/channels" && method == "GET" -> {
+                    calls += "GET agents/agent-1/channels"
+                    ok(
+                        """
+                        [
+                          {"id":"channel-1","name":"general","description":"Team updates","type":"channel","createdAt":"2026-06-01T00:00:00Z","archivedAt":null,"activityMuted":false,"muteFromSeq":null},
+                          {"id":"channel-2","name":"private-ops","description":null,"type":"private","createdAt":"2026-06-02T00:00:00Z","archivedAt":null,"activityMuted":true,"muteFromSeq":7}
+                        ]
+                        """.trimIndent()
+                    )
                 }
                 normalized == "reminders" && method == "GET" -> {
                     val queryMap = query.toMap()
