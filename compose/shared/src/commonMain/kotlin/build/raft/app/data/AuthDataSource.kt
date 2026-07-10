@@ -751,12 +751,18 @@ class SharedAuthDataSource(
         source: String
     ): SharedAuthResult<StoredAuthSession> {
         val orderedServers = servers.orderedByServerOrder(loadServerOrderOrNull(session.bearer(), source = source))
-        // #466: apply the freshly-loaded server list/selection onto the store's LATEST session under
-        // the store lock (keeping latest tokens), instead of the old read-fingerprint-then-whole-save
-        // which either dropped on any concurrent change or clobbered a coordinator-rotated token.
+        // Validate selection in the suspend body (withValidatedServerSelection is suspend), then apply
+        // only the resulting server/selection FIELDS onto the store's LATEST session under the lock
+        // (keeping latest tokens) — the #466 fix, mirroring currentUserWithSession. Replaces the old
+        // read-fingerprint-then-whole-save that either dropped on any concurrent change or clobbered.
+        val validated = session.withValidatedServerSelection(orderedServers, serverSelectionMemory)
         var persisted: StoredAuthSession? = null
         sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
-            latest.withValidatedServerSelection(orderedServers, serverSelectionMemory).also { persisted = it }
+            latest.copy(
+                servers = validated.servers,
+                selectedServerId = validated.selectedServerId,
+                selectedServerSlug = validated.selectedServerSlug
+            ).also { persisted = it }
         }
         val updated = persisted ?: run {
             diagnosticsLogger("auth_servers_load_result result=stale source=$source action=drop")
