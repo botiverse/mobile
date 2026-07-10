@@ -78,9 +78,14 @@ is rejected for the `main` channel.
 
 ## 3. Create A Draft
 
-Use the dispatch wrapper only after the preflight is green. It reruns the
-preflight and dispatches `Android Release` in draft mode. The wrapper has no
-active-publish mode.
+Use the dispatch wrapper from the same clean checkout. By default it dispatches
+the cancellable `Android Release` draft workflow first, then runs the full
+preflight concurrently. If preflight fails, the wrapper cancels the exact
+GitHub Actions run it dispatched and exits nonzero. This overlaps the long
+build with read-only validation; it does not relax any release gate.
+
+For a diagnosis that must prove preflight before a workflow is dispatched, pass
+`--preflight-first`. The wrapper has no active-publish mode.
 
 ```bash
 scripts/release_android_quiver_github.sh \

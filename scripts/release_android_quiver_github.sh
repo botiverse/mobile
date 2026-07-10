@@ -19,6 +19,7 @@ PUSH_BRANCH="${SLOCK_RELEASE_BRANCH:-main}"
 KUIKLY_REMOTE="${SLOCK_KUIKLY_REMOTE:-origin}"
 KUIKLY_BRANCH="${SLOCK_KUIKLY_BRANCH:-staging2}"
 WAIT_FOR_RUN="${SLOCK_RELEASE_WAIT:-0}"
+PARALLEL_PREFLIGHT="${SLOCK_RELEASE_PARALLEL_PREFLIGHT:-1}"
 PREFLIGHT_REPORT="${SLOCK_RELEASE_PREFLIGHT_REPORT:-}"
 PREFLIGHT_REQUIRED_PRS=()
 PREFLIGHT_SKIP_HANDS_VERSION_CHECK=0
@@ -36,7 +37,7 @@ Verifies local Slock Android release inputs are already present on the protected
 remote release branch, ensures the Kuikly submodule commit is reachable by
 GitHub Actions, and dispatches .github/workflows/android-release.yml.
 
-Defaults create a Hands **draft** release after the release preflight passes:
+Defaults create a Hands **draft** release with release preflight enforced:
   versionName=1.0.1
   versionCode=1000100
   channel=main
@@ -49,6 +50,10 @@ This script never activates a release. Review the generated draft, replace the
 raw changelog with the approved bilingual notes, smoke it, and use the explicit
 Hands release publish step only after the release owner says to publish.
 
+By default, the draft workflow is dispatched first and the full preflight runs
+at the same time. A failed preflight cancels that dispatched workflow. This
+reduces release latency without weakening the draft-only or final-publish gates.
+
 Options:
   --version <x.y.z>       Semantic version. Default: 1.0.1
   --build <n>             Version build component. Default: 0
@@ -57,6 +62,10 @@ Options:
   --variant <name>        Android variant: release or debug. Default: release.
   --required-pr <number>  Candidate PR included in this release; repeatable.
   --preflight-report <p>  Write the release-preflight Markdown report to p.
+  --parallel-preflight    Dispatch the draft workflow, then run preflight and
+                          cancel the run if it fails. Default.
+  --preflight-first       Run preflight before dispatching. Use only when
+                          diagnosing the release lane.
   --skip-hands-version-check
                           Offline diagnostic only; prohibited for main.
   --build-only            Build workflow artifact only; do not create a Hands draft.
@@ -73,6 +82,7 @@ Environment overrides:
   SLOCK_KUIKLY_BRANCH=staging2
   SLOCK_RELEASE_MODE=draft
   SLOCK_RELEASE_WAIT=1
+  SLOCK_RELEASE_PARALLEL_PREFLIGHT=1
 USAGE
 }
 
@@ -108,6 +118,70 @@ json_bool() {
     0) printf 'false\n' ;;
     *) die "boolean value expected, got: $1" ;;
   esac
+}
+
+find_dispatched_run() {
+  local dispatch_started_at="$1"
+  local expected_head="$2"
+  local attempts=0
+  local runs_json
+  local run_id
+
+  while [ "${attempts}" -lt 30 ]; do
+    runs_json="$(gh run list \
+      --repo botiverse/mobile \
+      --workflow android-release.yml \
+      --branch "${PUSH_BRANCH}" \
+      --event workflow_dispatch \
+      --limit 20 \
+      --json databaseId,createdAt,headSha,url)"
+    run_id="$(printf '%s' "${runs_json}" | python3 -c '
+import datetime as dt
+import json
+import sys
+
+started_at = dt.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+expected_head = sys.argv[2]
+runs = json.load(sys.stdin)
+
+def parse_created_at(value):
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+candidates = [
+    run for run in runs
+    if run.get("headSha") == expected_head
+    and parse_created_at(run["createdAt"]) >= started_at
+]
+if not candidates:
+    recent_runs = [
+        run for run in runs
+        if parse_created_at(run["createdAt"]) >= started_at
+    ]
+    candidates = recent_runs if len(recent_runs) == 1 else []
+if candidates:
+    candidates.sort(key=lambda run: run["createdAt"], reverse=True)
+    print(candidates[0]["databaseId"])
+' "${dispatch_started_at}" "${expected_head}")"
+    if [ -n "${run_id}" ]; then
+      printf '%s\n' "${run_id}"
+      return 0
+    fi
+    attempts="$((attempts + 1))"
+    sleep 2
+  done
+
+  return 1
+}
+
+cancel_dispatched_run() {
+  local run_id="$1"
+
+  echo "==> Preflight failed; cancelling draft workflow run ${run_id}" >&2
+  if gh run cancel "${run_id}" --repo botiverse/mobile; then
+    echo "    cancellation requested" >&2
+  else
+    echo "warning: could not cancel run ${run_id}; cancel it in GitHub immediately" >&2
+  fi
 }
 
 while [ "$#" -gt 0 ]; do
@@ -147,6 +221,14 @@ while [ "$#" -gt 0 ]; do
       PREFLIGHT_REPORT="$2"
       shift 2
       ;;
+    --parallel-preflight)
+      PARALLEL_PREFLIGHT=1
+      shift
+      ;;
+    --preflight-first)
+      PARALLEL_PREFLIGHT=0
+      shift
+      ;;
     --skip-hands-version-check)
       PREFLIGHT_SKIP_HANDS_VERSION_CHECK=1
       shift
@@ -180,15 +262,21 @@ done
 
 require_cmd git
 require_cmd gh
+require_cmd python3
 
 cd "${ROOT_DIR}"
 
-[ -d .git ] || die "not a git repository: ${ROOT_DIR}"
+[ -e .git ] || die "not a git repository: ${ROOT_DIR}"
 [ -f .github/workflows/android-release.yml ] || die "android-release.yml not found"
-[ -d third_party/kuikly-ui/.git ] || die "third_party/kuikly-ui submodule is not initialized"
+[ -e third_party/kuikly-ui/.git ] || die "third_party/kuikly-ui submodule is not initialized"
 
 [ "${RELEASE_MODE}" = "draft" ] ||
   die "release_mode must be draft; active Hands publication is an explicit post-smoke owner action"
+
+case "${PARALLEL_PREFLIGHT}" in
+  0|1) ;;
+  *) die "SLOCK_RELEASE_PARALLEL_PREFLIGHT must be 0 or 1" ;;
+esac
 
 current_branch="$(git rev-parse --abbrev-ref HEAD)"
 [ "${current_branch}" = "${PUSH_BRANCH}" ] ||
@@ -201,17 +289,16 @@ if ! git diff --cached --quiet -- . ':!third_party/kuikly-ui'; then
   die "working tree has staged changes; commit or unstage before release"
 fi
 
-kuikly_head="$(git -C third_party/kuikly-ui rev-parse HEAD)"
-[ -n "${KUIKLY_BRANCH}" ] || die "SLOCK_KUIKLY_BRANCH must name the release branch (normally staging2)"
-
 PREFLIGHT_ARGS=(
   --version "${VERSION_X}.${VERSION_Y}.${VERSION_Z}"
   --build "${VERSION_BUILD}"
   --channel "${CHANNEL}"
 )
-for pr in "${PREFLIGHT_REQUIRED_PRS[@]}"; do
-  PREFLIGHT_ARGS+=(--required-pr "${pr}")
-done
+if [ "${#PREFLIGHT_REQUIRED_PRS[@]}" -gt 0 ]; then
+  for pr in "${PREFLIGHT_REQUIRED_PRS[@]}"; do
+    PREFLIGHT_ARGS+=(--required-pr "${pr}")
+  done
+fi
 if [ -n "${PREFLIGHT_REPORT}" ]; then
   PREFLIGHT_ARGS+=(--report "${PREFLIGHT_REPORT}")
 fi
@@ -219,38 +306,12 @@ if [ "${PREFLIGHT_SKIP_HANDS_VERSION_CHECK}" = "1" ]; then
   PREFLIGHT_ARGS+=(--skip-hands-version-check)
 fi
 
-echo "==> Running release preflight"
-"${ROOT_DIR}/scripts/release_android_preflight.sh" "${PREFLIGHT_ARGS[@]}"
-
-echo "==> Verifying Kuikly release branch reachability"
-echo "    commit: ${kuikly_head}"
-echo "    target: ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"
-git -C third_party/kuikly-ui fetch "${KUIKLY_REMOTE}" "${KUIKLY_BRANCH}" || true
-if git -C third_party/kuikly-ui rev-parse --verify --quiet "refs/remotes/${KUIKLY_REMOTE}/${KUIKLY_BRANCH}" >/dev/null &&
-   git -C third_party/kuikly-ui merge-base --is-ancestor "${kuikly_head}" "refs/remotes/${KUIKLY_REMOTE}/${KUIKLY_BRANCH}"; then
-  echo "    already reachable"
-else
-  die "Kuikly commit is not reachable from ${KUIKLY_REMOTE}/${KUIKLY_BRANCH}; merge it to staging2 before releasing"
-fi
-
-echo "==> Verifying Slock ${PUSH_BRANCH} is already on ${PUSH_REMOTE}/${PUSH_BRANCH}"
-git fetch "${PUSH_REMOTE}" "${PUSH_BRANCH}"
-remote_ref="refs/remotes/${PUSH_REMOTE}/${PUSH_BRANCH}"
-git rev-parse --verify --quiet "${remote_ref}" >/dev/null ||
-  die "remote branch not found after fetch: ${PUSH_REMOTE}/${PUSH_BRANCH}"
-local_head="$(git rev-parse HEAD)"
-remote_head="$(git rev-parse "${remote_ref}")"
-if [ "${local_head}" != "${remote_head}" ]; then
-  die "local ${PUSH_BRANCH} (${local_head}) is not ${PUSH_REMOTE}/${PUSH_BRANCH} (${remote_head}); merge through a PR and fetch before releasing"
-fi
-echo "    verified: ${local_head}"
-
 release_version="$(version_name)"
 release_code="$(version_code)"
 publish_quiver="$(json_bool "${PUBLISH_QUIVER}")"
 create_share_page="$(json_bool "${CREATE_SHARE_PAGE}")"
 
-echo "==> Dispatching Android release"
+echo "==> Preparing Android draft release request"
 echo "    version: ${release_version}"
 echo "    versionCode: ${release_code}"
 echo "    channel: ${CHANNEL}"
@@ -259,8 +320,16 @@ echo "    release_mode: ${RELEASE_MODE}"
 echo "    publish_quiver: ${publish_quiver}"
 echo "    create_share_page: ${create_share_page}"
 
-run_url="$(
-  gh workflow run android-release.yml \
+if [ "${PARALLEL_PREFLIGHT}" = "0" ]; then
+  echo "==> Running release preflight before dispatch"
+  "${ROOT_DIR}/scripts/release_android_preflight.sh" "${PREFLIGHT_ARGS[@]}"
+fi
+
+local_head="$(git rev-parse HEAD)"
+dispatch_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+echo "==> Dispatching Android release"
+gh workflow run android-release.yml \
     --repo botiverse/mobile \
     --ref "${PUSH_BRANCH}" \
     -f "version_major=${VERSION_X}" \
@@ -274,11 +343,38 @@ run_url="$(
     -f "publish_quiver=${publish_quiver}" \
     -f "create_share_page=${create_share_page}" \
     -f "share_ttl_seconds=${SHARE_TTL_SECONDS}"
-)"
-printf '%s\n' "${run_url}"
+
+preflight_log="$(mktemp)"
+trap 'rm -f "${preflight_log}"' EXIT
+
+if [ "${PARALLEL_PREFLIGHT}" = "1" ]; then
+  echo "==> Running release preflight in parallel with draft workflow"
+  "${ROOT_DIR}/scripts/release_android_preflight.sh" "${PREFLIGHT_ARGS[@]}" >"${preflight_log}" 2>&1 &
+  preflight_pid="$!"
+fi
+
+echo "==> Resolving dispatched Android Release run"
+if ! run_id="$(find_dispatched_run "${dispatch_started_at}" "${local_head}")"; then
+  if [ "${PARALLEL_PREFLIGHT}" = "1" ]; then
+    wait "${preflight_pid}" || true
+    cat "${preflight_log}" >&2
+  fi
+  die "could not identify the dispatched Android Release run; inspect GitHub Actions before continuing"
+fi
+run_url="https://github.com/botiverse/mobile/actions/runs/${run_id}"
+echo "    run: ${run_url}"
+
+if [ "${PARALLEL_PREFLIGHT}" = "1" ]; then
+  if wait "${preflight_pid}"; then
+    cat "${preflight_log}"
+  else
+    cat "${preflight_log}" >&2
+    cancel_dispatched_run "${run_id}"
+    die "release preflight failed; dispatched draft workflow was cancelled"
+  fi
+fi
 
 if [ "${WAIT_FOR_RUN}" = "1" ]; then
-  run_id="${run_url##*/}"
   echo "==> Waiting for run ${run_id}"
   gh run watch "${run_id}" --repo botiverse/mobile --exit-status
 fi

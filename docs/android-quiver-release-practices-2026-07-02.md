@@ -227,8 +227,9 @@ package pin with `QUIVER_CLI_PACKAGE`.
 ## GitHub Actions Release Dispatch
 
 The full operational order is [Android Release SOP](android-release-sop.md).
-Use the dispatch wrapper only after its preflight is green; it creates a Hands
-**draft** and cannot activate a public release:
+The dispatch wrapper creates a Hands **draft** and cannot activate a public
+release. By default it dispatches the draft build and runs preflight in
+parallel; a failed preflight cancels the run it just dispatched:
 
 ```bash
 scripts/release_android_quiver_github.sh \
