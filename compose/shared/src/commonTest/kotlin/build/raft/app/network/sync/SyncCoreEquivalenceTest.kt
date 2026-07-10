@@ -124,4 +124,36 @@ class SyncCoreEquivalenceTest {
             assertEquals(expected, actual, "outcome mismatch at step $i (ordinal ${step["ordinal"]})")
         }
     }
+
+    /**
+     * Coverage guard (T4a rule: a fixture migration must not silently narrow the
+     * baseline). The equivalence oracle must exercise every outcome class this
+     * single-epoch contiguous suite is responsible for; if a re-generated fixture
+     * drops one, CI would otherwise stay green while the oracle shrinks. Assert
+     * each required kind appears at least once so any narrowing is a named RED.
+     */
+    @Test
+    fun fixtureCoversRequiredOutcomeKinds() {
+        val fixture = Json.parseToJsonElement(SYNC_CORE_MIXED_FIXTURE_JSON).jsonObject
+        val present =
+            fixture["steps"]!!.jsonArray
+                .map { it.jsonObject["expectedOutcome"]!!.jsonObject["kind"]!!.jsonPrimitive.content }
+                .toSet()
+        val missing = REQUIRED_OUTCOME_KINDS - present
+        assertTrue(
+            missing.isEmpty(),
+            "equivalence fixture silently narrowed coverage — missing required outcome kind(s): " +
+                "$missing (present: $present). A fixture migration must not drop an outcome class.",
+        )
+    }
+
+    private companion object {
+        /**
+         * Outcome classes the single-epoch contiguous equivalence suite must cover.
+         * gap_repair_requested = RFC 043 three-way gap / stop-gate decision. The
+         * multi-epoch + sparse batch (full T4d 7/11-12) extends this set with
+         * max_advanced / epoch_rebaseline_requested once those fixtures land.
+         */
+        val REQUIRED_OUTCOME_KINDS = setOf("applied", "duplicate_dropped", "gap_repair_requested")
+    }
 }
