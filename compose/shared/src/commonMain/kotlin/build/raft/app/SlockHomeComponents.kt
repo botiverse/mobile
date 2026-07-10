@@ -2508,57 +2508,75 @@ private fun SlockTiltedLogoBadge(
 ) {
     // Render the chrome as final vector geometry, then tilt the complete
     // foreground as one layer so text, icon, and unread marker share the angle.
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-        TiltedBadgeChrome(
-            color = SlockColor.ShadowBlack,
-            modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-        )
-        TiltedBadgeChrome(
-            color = SlockColor.TextBlack,
-            modifier = Modifier.matchParentSize()
-        )
-        Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
-            com.tencent.kuikly.compose.foundation.layout.Row(
-                modifier = Modifier.padding(
-                    horizontal = HomeServerBadgeHorizontalInset,
-                    vertical = HomeServerBadgeVerticalInset
-                ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                if (showDropdown) {
-                    Spacer(Modifier.width(HomeServerBadgeContentGap))
-                    SlockLucideIcon(
-                        SlockLucideIconName.ChevronDown,
-                        Modifier.size(HomeServerBadgeChevronSize),
-                        color = SlockColor.BrandYellowArgb
-                    )
+    Box(modifier = modifier) {
+        TiltedBadgeChrome(modifier = Modifier.matchParentSize())
+        Box(modifier = Modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
+                com.tencent.kuikly.compose.foundation.layout.Row(
+                    modifier = Modifier.padding(
+                        horizontal = HomeServerBadgeHorizontalInset,
+                        vertical = HomeServerBadgeVerticalInset
+                    ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                    if (showDropdown) {
+                        Spacer(Modifier.width(HomeServerBadgeContentGap))
+                        SlockLucideIcon(
+                            SlockLucideIconName.ChevronDown,
+                            Modifier.size(HomeServerBadgeChevronSize),
+                            color = SlockColor.BrandYellowArgb
+                        )
+                    }
                 }
+                if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
             }
-            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
     }
 }
 
 @Composable
-private fun TiltedBadgeChrome(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
+private fun TiltedBadgeChrome(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val corners = homeServerBadgeTiltCorners(size.width, size.height)
-        drawPath(
-            path =
-                Path().apply {
-                    moveTo(corners[0].x, corners[0].y)
-                    lineTo(corners[1].x, corners[1].y)
-                    lineTo(corners[2].x, corners[2].y)
-                    lineTo(corners[3].x, corners[3].y)
-                    close()
-                },
-            color = color
+        val layers = homeServerBadgeChromeLayers(
+            widthPx = size.width,
+            heightPx = size.height,
+            shadowOffsetPx = HomeSmallShadowOffset.toPx()
         )
+        drawPath(path = homeServerBadgePath(layers.shadowCorners), color = SlockColor.ShadowBlack)
+        drawPath(path = homeServerBadgePath(layers.mainCorners), color = SlockColor.TextBlack)
     }
+}
+
+private fun homeServerBadgePath(corners: List<Offset>): Path =
+    Path().apply {
+        moveTo(corners[0].x, corners[0].y)
+        lineTo(corners[1].x, corners[1].y)
+        lineTo(corners[2].x, corners[2].y)
+        lineTo(corners[3].x, corners[3].y)
+        close()
+    }
+
+internal data class HomeServerBadgeChromeLayers(
+    val mainCorners: List<Offset>,
+    val shadowCorners: List<Offset>
+)
+
+internal fun homeServerBadgeChromeLayers(
+    widthPx: Float,
+    heightPx: Float,
+    shadowOffsetPx: Float
+): HomeServerBadgeChromeLayers {
+    val safeOffset = shadowOffsetPx.coerceAtLeast(0f)
+    val chromeWidth = (widthPx - safeOffset).coerceAtLeast(1f)
+    val chromeHeight = (heightPx - safeOffset).coerceAtLeast(1f)
+    val mainCorners = homeServerBadgeTiltCorners(chromeWidth, chromeHeight)
+    return HomeServerBadgeChromeLayers(
+        mainCorners = mainCorners,
+        shadowCorners = mainCorners.map { corner ->
+            Offset(x = corner.x + safeOffset, y = corner.y + safeOffset)
+        }
+    )
 }
 
 internal fun homeServerBadgeTiltCorners(

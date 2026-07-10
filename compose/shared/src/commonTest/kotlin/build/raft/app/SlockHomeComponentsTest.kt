@@ -128,6 +128,24 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerBadgeChromeReservesShadowWithoutTruncatingMainPath() {
+        val layers = homeServerBadgeChromeLayers(
+            widthPx = 306f,
+            heightPx = 86f,
+            shadowOffsetPx = 6f
+        )
+
+        assertTrue(layers.mainCorners.minOf { it.x } in -0.01f..0.01f)
+        assertTrue(layers.mainCorners.maxOf { it.x } in 299.99f..300.01f)
+        assertTrue(layers.mainCorners.minOf { it.y } in -0.01f..0.01f)
+        assertTrue(layers.mainCorners.maxOf { it.y } in 79.99f..80.01f)
+        assertTrue(layers.shadowCorners.minOf { it.x } in 5.99f..6.01f)
+        assertTrue(layers.shadowCorners.maxOf { it.x } in 305.99f..306.01f)
+        assertTrue(layers.shadowCorners.minOf { it.y } in 5.99f..6.01f)
+        assertTrue(layers.shadowCorners.maxOf { it.y } in 85.99f..86.01f)
+    }
+
+    @Test
     fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
         assertEquals(
             SlockSize.PageHeaderHeight + 4.dp,
