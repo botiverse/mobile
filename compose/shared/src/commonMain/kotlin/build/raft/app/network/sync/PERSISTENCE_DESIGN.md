@@ -4,182 +4,186 @@
 (botiverse/slock PR #4445, staging `6c6229fcf`) · **§9.9 gate criteria:** 王润基 ·
 **Android binding review + compile hard-gate:** Android-Developer-2 (task #494)
 
-**Rev 2** — incorporates the #4445 final read (赵: per-*ingest-call* transaction
-scope) and AD2's T9 doc review (existing `SlockDatabase` is a hard constraint;
-observe-outcome is insufficient; persist fail-stop; server-stable orderKey). Rev 1's
-parallel `sync_fact`/`sync_timeline` tables are **withdrawn** — they were the
-data-layer double-truth this note now explicitly avoids.
+**Rev 3** — folds two review rounds. Rev 1's parallel `sync_fact`/`sync_timeline`
+tables are withdrawn (double-truth). Rev 3 reuses the existing SQLDelight
+`SlockDatabase` and pins the constraints that table-reuse exposed (composite key,
+projector completeness, poisoned-core barrier, FK-safe snapshot). Passed and frozen
+by prior rounds: per-ingest-call transaction scope, fail-stop, SQLDelight reuse,
+canonical server orderKey.
 
-Scope of v1: **messages domain, KT only.** SyncLog (input-stream persistence) is the
-§10-open-question-3 v2 candidate, out of scope. Web IndexedDB adapter is T10 (Aiden,
-task #145).
+Scope of v1: **messages domain, KT only.** SyncLog (input-stream) is §10-open-3 v2.
+Web IndexedDB adapter is T10 (Aiden, task #145).
 
 ---
 
-## 1. Where persistence lives — and the single-writer wrapper
+## 1. Single-writer wrapper — projector, not adjudicator
 
-`SyncCore` is a pure deterministic fold (`SyncCoreTypes.kt`: no transport, no
-persistence, no clock). It stays that way. But persistence **cannot** be driven by
-the ingest *outcome* alone: `MaxAdvanced(scope, seq)` (sparse) and
-`ingestDifference` (N events → final seq) do not carry the facts to write, and
-`Applied(scope, seq)` must not be reverse-engineered into facts (AD2). So the host
-layer is a **single apply-wrapper**, the one path through which sync ingest happens:
+`SyncCore` is a pure fold (`SyncCoreTypes.kt`: no transport/persistence/clock) and
+stays so. Persistence cannot be driven by the ingest *outcome* alone
+(`MaxAdvanced(scope,seq)` / `ingestDifference` don't carry facts; `Applied(scope,seq)`
+must not be reverse-engineered). So there is one **`SyncPersistenceWrapper`** — the
+sole host apply path:
 
 ```
-callers ─▶ SyncPersistenceWrapper.ingestX(input) {           // the ONLY host apply path
-    val (outcome, delta) = core.ingestX(input)                // core stays pure
-    db.transaction {                                          // ONE txn per ingest call
-        applyDelta(delta)        // messageEntity upserts/tombstones for THIS call
-        advanceCursor(outcome)   // syncCursorEntity latestSeq + epoch
-    }                                                          // commit
-    return outcome               // returns only AFTER commit succeeds (fail-stop, §4.3)
+callers ─▶ wrapper.ingestX(input) {
+    core.ingestX(input)                       // core adjudicates (RFC 041 version gates in fold)
+    val rows = projector(core.state(dom,scp)) // deterministic state→rows; NO 2nd fold from input
+    db.transaction { applyRows(rows); advanceCursor(latestSeq, epoch) }  // ONE txn / ingest call
+    // returns ONLY after commit; on failure → §4.3 poison + barrier
 }
 ```
 
-The wrapper holds **input + outcome + canonical post-delta** together — it can
-persist `MaxAdvanced` and difference batches that the bare outcome cannot express.
-The core is never fed backward: the wrapper only *reads* `core` output and *writes*
-storage (AD2's no-second-apply-path — the coordinator must never re-inject into the
-core). This is the mechanical form of the all-day guardrail: **UI/cache derive from
-core applied state; storage is a projection, never a second source of truth.**
+- **Projector, not adjudicator (赵):** version adjudication lives in the fold; storage
+  never re-compares `seq`. A second compare = a second adjudication point = the
+  dual-representation disease. Storage projects the core's already-won post-state —
+  the storage form of "UI reads == core applied, no second truth."
+- **Projector completeness (AD2):** the state→rows projector must persist **all
+  canonical state the fold needs to keep running** — if the messages fold carries
+  revision/tombstone/version metadata, it is projected too, not dropped because
+  storage doesn't compare it. §6.1 round-trip + edit-continuation proves this.
+- **No reverse feed:** the wrapper only reads `core.state()` and writes rows; it never
+  re-injects into the core (AD2 no-second-apply-path).
 
-## 2. Backend split — decided by crash-atomicity (§10.1), on EXISTING tables
+## 2. Backend split — crash-atomicity (§10.1), on EXISTING tables
 
-Per the #4445 discriminator (HanXin): anything that must be crash-consistent with
-message facts lives on the same backend in the same transaction as those facts.
-Crucially, the messages backend already exists — cross-platform SQLDelight
-`SlockDatabase` (Android/iOS/OHOS drivers wired). **We reuse it; we do not add a
-parallel store** (that is the double-truth):
+Anything crash-consistent with message facts shares their backend and transaction.
+The messages backend already exists (cross-platform SQLDelight `SlockDatabase`); we
+reuse it, never a parallel store.
 
 | Datum | Storage (existing unless noted) | Same txn as facts? |
 |---|---|---|
-| message facts | `messageEntity` | — |
-| timeline order | `messageEntity_channelSeq (serverId, channelId, seq)` index | (free, in-row) |
+| message facts (+ FK attachments/reactions/saved) | `messageEntity` (+ FK tables) | — |
+| timeline order | `messageEntity(serverId,channelId,seq,id)` index (§3) | in-row |
 | per-scope watermark | `syncCursorEntity.latestSeq` | **yes** |
-| per-scope **epoch** | `syncCursorEntity.epoch` **(new column, §3)** | **yes** |
-| attachments/reactions/saved | existing FK-`messageEntity` tables | yes (same call) |
-| auth/session token, installation id, flags | MMKV | n/a — independent |
+| per-scope **epoch** | `syncCursorEntity.epoch` **(new column)** | **yes** |
+| auth/session, installation id, flags | MMKV | n/a — independent |
 
-"Watermark-on-MMKV made safe by write ordering" stays rejected (#4445). The
-message+cursor+epoch commit is one SQLite transaction on `SlockDatabase`; MMKV holds
-only data with no cross-atomicity to messages.
+## 3. Schema, key, and the PK migration (AD2 #1)
 
-## 3. Schema — reuse + one migration (no new fact/timeline tables)
-
-`messageEntity` (id PK = messageId; serverId, channelId, **seq**, body,
-messageType, metadataJson, deliveryState, parentMessageId, …) already **is** the
-fact table, and `messageEntity_channelSeq(serverId, channelId, seq)` already **is**
-the ordered timeline. `syncCursorEntity(scopeId, serverId, latestSeq,
-oldest/newestLoadedSeq, …)` already **is** the cursor. The only additions:
-
+`syncCursorEntity` already holds the cursor; add one column:
 ```sql
--- SQLDelight migration N.sqm (versioned; drivers already exist on all 3 platforms):
-ALTER TABLE syncCursorEntity ADD COLUMN epoch TEXT;   -- per-scope epoch (nullable = pre-first-contact)
--- messageEntity.seq already carries the canonical ordering/version gate; no BLOB column,
--- no second fact table. (If a domain needs a body-hash for §9.9 round-trip, add a
--- nullable column here rather than a parallel row — reviewed with AD2.)
+ALTER TABLE syncCursorEntity ADD COLUMN epoch TEXT;   -- nullable = pre-first-contact
 ```
 
-**orderKey = server sparse `seq` + `messageId` (id) tie-break** — RULED (#4445; 赵
-withdrew the insertion-counter idea: a device-local counter misplaces out-of-order
-difference-repaired messages and is non-canonical across devices/TS-KT → T8 red).
-`seq` is server-stable, edits keep the original `seq` (edit-stability for free), and
-snapshots carry+restore the same `seq`. Sparse `seq` (holes allowed) is used for
-ordering/resume only — never to synthesize dense successors.
+**orderKey = server sparse `seq` + `messageId` tie-break** (RULED #4445; a device-local
+counter misplaces out-of-order difference-repair and is non-canonical across
+devices/TS-KT → T8 red). `seq` is server-stable and edits keep it (edit-stability);
+snapshots carry+restore it. Sparse `seq` orders only — never synthesizes dense
+successors. Add the tie-break index and use it for restore reads:
+```sql
+CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, seq, id);
+-- restore/timeline read is canonical, server-backed only:
+--   SELECT ... WHERE serverId=? AND channelId=? AND seq IS NOT NULL ORDER BY seq, id
+-- (NOT the existing selectMessagesForChannel, which sorts by timestampLabel).
+```
+
+**PK migration (must actually remove the single-column PK — AD2):** `messageEntity.id`
+is currently `TEXT PRIMARY KEY`, so the same `id` under two servers/scopes replaces
+each other and `ON CONFLICT(serverId,channelId,id)` collides on `id` first. Two roads,
+decided in the first migration PR:
+
+- **(A) contract invariant:** if the server guarantees `messageId` is **globally
+  unique** (UUID) — this must be stated explicitly in the RFC/type contract, not
+  relied on as an incidental UUID (AD2). Then `id` PK is safe; we only add the
+  composite index above and the conflict target is `id`. **Preferred if the invariant
+  holds** (no FK churn).
+- **(B) composite key migration:** otherwise migrate to a composite PK
+  (`serverId, channelId, id`) or an internal surrogate + composite UNIQUE, and update
+  the `attachmentEntity`/`messageReactionEntity`/`savedMessageEntity` FK references and
+  every `ON CONFLICT` target accordingly.
+
+Road choice is flagged for AD2/contract confirmation before the migration lands; the
+note ships both so code doesn't re-open schema after LGTM.
 
 ## 4. Atomic apply — one ingest call = one transaction
-
-Per the #4445 final read (赵): the transaction-count invariant scopes to the
-**ingest call**, not the frame.
 
 | Ingest call | The single `SlockDatabase.transaction { }` contains |
 |---|---|
 | `ingestFrame` (1 event) | 1 `messageEntity` upsert + cursor(`latestSeq`,`epoch`) |
-| `ingestDifference` (N events) | **N** upserts/tombstones (+FK rows) + **one** cursor advance to `toSeq` |
-| `ingestSnapshot` (rebaseline) | atomic clear of scope's `messageEntity` rows + rebuild + cursor/epoch set |
+| `ingestDifference` (N events) | **N** projected upserts/tombstones + **one** cursor advance to `toSeq` |
+| `ingestSnapshot` (rebaseline) | server-backed clear (§4.4) + rebuild + cursor/epoch set |
 
 ### 4.1 No mid-batch commit
-A difference batch has exactly one commit → "cursor advanced but half the batch's
-facts missing" (and reverse) are unrepresentable, not merely untested.
+One commit per batch → "cursor advanced but half the facts missing" (and reverse) is
+unrepresentable.
 
-### 4.2 Idempotent / version-gated
-Upserts are gated by `seq` (canonical revision gate — **not** an RFC 041 receiver
-version): skip if incoming `seq` ≤ stored for that id. Crash replay of a whole
-ingest call is a no-op.
+### 4.2 Idempotency — cursor-level, not a persistence version gate
+No per-fact `seq` comparison in storage (§1 projector-not-adjudicator). A crash-
+replayed ingest call reproduces the same core post-state → same rows (`ON CONFLICT
+DO UPDATE` no-op). Upserts use **`ON CONFLICT ... DO UPDATE`**, never `INSERT OR
+REPLACE` (which fires `ON DELETE CASCADE` and silently drops attachments/reactions).
 
-### 4.3 Persist fail-stop (AD2 #3, 赵-preferred form)
-The wrapper **does not return ingest-complete until the transaction commits.** If the
-commit fails, the call fails; no subsequent ingest/publish proceeds, and the scope
-enters observable snapshot/restart recovery (`SyncSnapshotReason.SnapshotRequired`).
-This makes "cursor leads facts" impossible **by construction** — same philosophy as
-the transaction-count invariant. §7 carries the sequence diagram + failure matrix.
+### 4.3 Fail-stop = poisoned core + read barrier (AD2 #3, 赵 complete form)
+The wrapper returns ingest-complete only after commit. On commit failure the advanced
+core instance is **permanently unreusable (poisoned)**; a barrier holds until the core
+is **rebuilt from the last committed DB baseline**, and until then **no observer / UI /
+next ingest may read the advanced state** (bare "don't return" is insufficient — a
+concurrent `core.state()` would otherwise leak the uncommitted advance). "Cursor leads
+facts" is impossible by construction.
+
+### 4.4 FK-safe snapshot rebaseline (AD2 #4)
+Rebaseline clears only **server-backed rows (`seq IS NOT NULL`)** for the scope,
+**preserving** pending/optimistic (`deliveryState`) rows and outbox projection, then
+rebuilds from the snapshot. Deletes are scoped (not a whole-scope wipe) so FK-cascade
+never removes still-valid attachments/reactions/saved.
 
 ## 5. Restore / warm start (T4–T5)
 
-On launch, per scope: read `syncCursorEntity` → `{latestSeq, epoch}` and the folded
-state from `messageEntity` in `messageEntity_channelSeq` order → feed the core a
+Per scope: read `syncCursorEntity` → `{latestSeq, epoch}` and the folded state from
+`messageEntity` in `(seq, id)` order (server-backed only) → feed the core a
 `SyncSnapshot(scopeId, watermark=latestSeq, epoch, state)` via the **existing**
-`ingestSnapshot` (reuse, not a new core entrypoint). Then request **difference since
-`latestSeq`** (existing `SyncRequestDescription.Difference`); a gap beyond threshold
-escalates to `Snapshot`. Cold full-fetch becomes incremental resume.
-
-Corrupt DB / `epoch` mismatch / difference `snapshotRequired` → the core already
-routes to a `Snapshot` request. **Deleting `SlockDatabase` is a defined state**
-(cold snapshot hydrate), never silent hole-skipping (T7).
+`ingestSnapshot`. Then request difference since `latestSeq`; gap-over-threshold →
+`Snapshot`. Cold full-fetch becomes incremental resume. Corrupt DB / epoch mismatch /
+`snapshotRequired` → existing `Snapshot` route. Deleting `SlockDatabase` is a defined
+state (cold hydrate), never silent hole-skip (T7).
 
 ## 6. §9.9 acceptance gates → canonical fixture line (#541) (P3, task #493)
 
-All run on the merged #541 canonical fixture. 王润基 owns pass/fail; I write tests.
+Run on the merged #541 fixture; 王润基 owns pass/fail; I write tests.
 
-- **6.1 Round-trip identity** — `state → persist → restore → state'`,
-  `deepEquals` after replaying the fixture (single serializer reused from the
-  equivalence suite — 赵: one serializer = §9.9 cross-platform comparability free).
-- **6.2 Crash-window torn-write (deterministic fault-hook)** — for each ingest call
-  (frame **and** a multi-event difference batch): kill before commit (A) / after (B)
-  / restore; restored state `deepEquals` the complete pre-call **or** post-call state,
-  never torn. The fault-hook is a **synchronous** deterministic hook wrapping the
-  real `transaction { }` (fires at a fixed logical step from the fixture) — it does
-  **not** suspend *inside* the SQLite transaction.
-- **6.3 Persist/restore equivalence (T8 joint-gate seed)** — persisted→restored
-  baseline fed further frames converges outcome-`deepEqual` with the never-persisted
-  run. KT half of the both-ends T8 release gate (TS/KT deepEqual, 赵/王润基 criteria).
+- **6.1 Round-trip identity + projector completeness** — `state → persist → restore →
+  state'`, `deepEquals`; **plus** an edit/stale-continuation leg: after restore, feed
+  the edit events the fixture carries and assert the outcome sequence matches the
+  never-persisted run — proves the projector preserved the fold's revision/tombstone
+  metadata (AD2 #2). Single serializer reused from the equivalence suite (赵).
+- **6.2 Crash-window torn-write** — per ingest call (frame **and** difference batch):
+  kill before/after commit / restore; restored state `deepEquals` complete pre- or
+  post-call state, never torn. Fault-hook is **synchronous**, wraps the real
+  `transaction { }`, fires at a fixed logical step — never suspends *inside* the txn.
+- **6.3 Persist/restore equivalence (T8 seed)** — persisted→restored baseline fed
+  further frames converges outcome-`deepEqual` with the never-persisted run (KT half
+  of the both-ends T8 gate).
 
-## 7. Migration/retirement plan + test matrix (P1's most important section — AD2 #1)
+## 7. Migration/retirement plan + first checklist (AD2 #1 — most important)
 
-**Single-writer migration.** Today various call sites write `messageEntity` directly.
-v1 routes **all sync-domain message writes through `SyncPersistenceWrapper`** so the
-core is the single source of truth; ad-hoc direct writes that bypass the core are
-retired (or, transitionally, made no-ops that defer to the wrapper). Sequenced:
+**Single-writer migration.** Route **all** sync-domain `messageEntity` writes through
+`SyncPersistenceWrapper` (core = single source of truth); ad-hoc direct writers are
+retired or made no-ops deferring to the wrapper — each removal an enumerated diff hunk
+AD2 can verify (no long-lived second writer).
 
-1. add `syncCursorEntity.epoch` (migration N.sqm);
-2. land `SyncPersistenceWrapper` + wire the sync path (frame/difference/snapshot)
-   through it, writing `messageEntity` + `syncCursorEntity` in one txn/call;
-3. redirect existing message read paths to project from `messageEntity` (already the
-   store — mostly a no-op) and **remove** any writer that mutates `messageEntity`
-   outside the wrapper (enumerated in the PR; each removal is a diff hunk AD2 can
-   verify — no long-lived second writer).
-
-`outboxMessageEntity` (sends) and `localSnapshotEntity` (snapshots) already exist and
-are **out of v1 scope** (outbox = the SyncLog-v2 / optimistic-send concern).
+**First migration/query/test checklist (must not re-open schema after LGTM):**
+1. `syncCursorEntity.epoch` column (forward-only .sqm).
+2. PK road (A contract-unique `id`, or B composite/surrogate + FK/conflict-target
+   updates) — decided with AD2/contract before landing.
+3. `messageEntity_channelSeqId(serverId,channelId,seq,id)` index + canonical
+   server-backed restore query (`seq IS NOT NULL ORDER BY seq,id`).
+4. all upserts `ON CONFLICT DO UPDATE` (no `INSERT OR REPLACE`).
+5. server-backed-only snapshot clear preserving pending/outbox.
+6. wrapper single-writer wiring + retirement diff set.
+7. tests: round-trip + edit-continuation, crash-window (frame + difference batch),
+   persist/restore equivalence, ordered-window recent-N after edit + out-of-order
+   repair, persist-fail → poison/barrier → snapshot recovery, migration forward-only.
 
 | Test | Layer | Gate |
 |---|---|---|
-| round-trip identity | commonTest | §9.9 6.1 |
-| crash-window torn-write, frame **and** difference-batch (hook A/B) | commonTest | §9.9 6.2 |
+| round-trip + edit-continuation | commonTest | §9.9 6.1 / AD2 #2 |
+| crash-window (frame + difference-batch) | commonTest | §9.9 6.2 |
 | persist/restore equivalence | commonTest | §9.9 6.3 / T8 |
-| ordered-window recent-N stable after edit + out-of-order difference repair | commonTest | T6 / orderKey |
-| persist-fail → ingest not completed → snapshot recovery | commonTest | §4.3 |
-| SQLDelight migration N.sqm (epoch column) forward-only | commonTest | schema |
-| Android SQLite transaction/index binding | **androidUnitTest + SQLDelight driver** (not instrumentation) | T9 / AD2 |
+| ordered-window stable (edit + out-of-order repair) | commonTest | T6 / orderKey |
+| persist-fail → poison/barrier → snapshot recovery | commonTest | §4.3 |
+| migration forward-only (epoch + PK road) | commonTest | schema |
+| SQLite transaction/index binding | **androidUnitTest + SQLDelight driver** | T9 / AD2 |
 
-Android compile & unit tests are the only hard CI gate (mobile policy); iOS/OHOS
-non-blocking + 30-min fix-forward. AD2 reviews the SQLDelight transaction/index
-implementation on the P1 first commit (task #494).
-
----
-
-**Finalized (was "open") per AD2 review:** backend = existing SQLDelight
-`SlockDatabase` (not raw); orderKey = server `seq` + `id`; fact store = `messageEntity`
-(no BLOB table); version gate = `seq`. **Still for AD2 code review:** exact retirement
-diff set (which current writers of `messageEntity` fold into the wrapper), and whether
-`state` serialization for 6.1 reuses the equivalence-suite serializer directly.
+Android compile & unit tests = the only hard CI gate (mobile policy); iOS/OHOS
+non-blocking + 30-min fix-forward. AD2 reviews the SQLDelight transaction/index +
+PK-road implementation on the P1 first commit (task #494).
