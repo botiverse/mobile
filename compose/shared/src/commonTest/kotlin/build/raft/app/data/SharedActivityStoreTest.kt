@@ -37,6 +37,79 @@ import kotlin.test.assertEquals
 
 class SharedActivityStoreTest {
     @Test
+    fun visibleReplyPrewarmDedupesStableMarkerAndRefetchesNewActivityVersion() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    DataResult.Content(Unit)
+                }
+            )
+        val first = replyPrewarmMarker(activityVersion = "1:first:latest-1")
+        val updated = first.copy(activityVersion = "2:first:latest-2")
+
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(updated)))
+
+        assertEquals(listOf(first, updated), calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun failedVisibleReplyPrewarmRetriesOnlyAfterViewportReentry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var calls = 0
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = {
+                    calls += 1
+                    DataResult.Error(ScreenError(code = "offline", retryable = true))
+                }
+            )
+        val marker = replyPrewarmMarker()
+
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        assertEquals(1, calls)
+
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
+        assertEquals(2, calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReplyPrewarmRunsLatestVersionAfterOlderInFlightCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val releaseFirst = CompletableDeferred<Unit>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val first = replyPrewarmMarker(activityVersion = "1:first:latest-1")
+        val updated = first.copy(activityVersion = "2:first:latest-2")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    if (marker == first) releaseFirst.await()
+                    DataResult.Content(Unit)
+                }
+            )
+
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(first)))
+        store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(updated)))
+        assertEquals(listOf(first), calls)
+
+        releaseFirst.complete(Unit)
+        assertEquals(listOf(first, updated), calls)
+        scope.cancel()
+    }
+
+    @Test
     fun clearSummaryDropsLoadedActivityCountsButKeepsFilter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
@@ -954,6 +1027,9 @@ class SharedActivityStoreTest {
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+        prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
         onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
@@ -965,8 +1041,23 @@ class SharedActivityStoreTest {
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
             persistSlices = persistSlices,
+            prewarmReplyThread = prewarmReplyThread,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
+        )
+
+    private fun replyPrewarmMarker(
+        activityVersion: String = "1:first:latest"
+    ): ActivityReplyThreadPrewarmMarker =
+        ActivityReplyThreadPrewarmMarker(
+            key =
+                ActivityReplyThreadPrewarmKey(
+                    serverId = "server-1",
+                    parentChannelId = "parent-channel",
+                    parentMessageId = "parent-message",
+                    threadChannelId = "thread-channel"
+                ),
+            activityVersion = activityVersion
         )
 
     private class InMemoryPersistStorage : MviPersistStorage {

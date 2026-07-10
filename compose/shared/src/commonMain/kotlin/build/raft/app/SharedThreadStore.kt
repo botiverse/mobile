@@ -8,6 +8,7 @@ import build.raft.app.data.ThreadActionResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.AttachmentUploadResult
+import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.CreateAgentBody
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
@@ -99,10 +100,13 @@ import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -110,6 +114,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -122,6 +127,11 @@ import kotlin.time.TimeSource
 private data class ReplyThreadResolveKey(
     val parentChannelId: String,
     val parentMessageId: String
+)
+
+private data class SharedThreadPayloadCacheKey(
+    val serverId: String,
+    val threadId: String
 )
 
 private data class PendingReactionRealtimeGuard(
@@ -220,6 +230,110 @@ internal class SharedThreadMessageStore(
     }
 }
 
+/**
+ * App-scope first-frame cache shared by Activity prewarm and visible Thread stores.
+ *
+ * Route payloads remain identity/intent-only. Background prewarm writes the same
+ * canonical payload candidate that [SharedThreadStore] reads on start, so opening
+ * a warmed reply thread does not need a second route-owned content model.
+ */
+internal class SharedThreadPayloadStore(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob())
+) {
+    private val payloads = MutableStateFlow<Map<SharedThreadPayloadCacheKey, KuiklyThreadScreenPayload>>(emptyMap())
+    private val prewarmMutex = Mutex()
+    private val prewarmInFlight = mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
+    private val prewarmReady = mutableSetOf<SharedThreadPayloadCacheKey>()
+
+    fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? =
+        payloads.value[SharedThreadPayloadCacheKey(serverId, threadId)]
+            ?: serverId.takeIf { it.isNotBlank() }
+                ?.let { payloads.value[SharedThreadPayloadCacheKey("", threadId)] }
+
+    fun put(serverId: String, threadId: String, payload: KuiklyThreadScreenPayload) {
+        payloads.update { current -> current + (SharedThreadPayloadCacheKey(serverId, threadId) to payload) }
+    }
+
+    fun remove(serverId: String, threadId: String) {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        val legacyKey = SharedThreadPayloadCacheKey("", threadId)
+        payloads.update { current ->
+            current - key - legacyKey
+        }
+    }
+
+    fun values(serverId: String): Collection<KuiklyThreadScreenPayload> =
+        payloads.value.filterKeys { key -> key.serverId == serverId || key.serverId.isBlank() }.values
+
+    suspend fun prewarm(
+        serverId: String,
+        threadId: String,
+        fetch: suspend () -> DataResult<KuiklyThreadScreenPayload>
+    ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        val cached =
+            prewarmMutex.withLock {
+                if (key in prewarmReady) payloads.value[key] else null
+            }
+        if (cached != null) return@coroutineScope DataResult.Content(cached)
+
+        var created: Deferred<DataResult<KuiklyThreadScreenPayload>>? = null
+        val deferred =
+            prewarmMutex.withLock {
+                prewarmInFlight[key]
+                    ?: scope.async(start = CoroutineStart.LAZY) {
+                        try {
+                            val result = fetch()
+                            if (result is DataResult.Content) {
+                                prewarmMutex.withLock { prewarmReady += key }
+                            }
+                            result
+                        } finally {
+                            val currentJob = currentCoroutineContext()[Job]
+                            prewarmMutex.withLock {
+                                if (prewarmInFlight[key] === currentJob) {
+                                    prewarmInFlight.remove(key)
+                                }
+                            }
+                        }
+                    }.also { candidate ->
+                        prewarmInFlight[key] = candidate
+                        created = candidate
+                    }
+            }
+        created?.start()
+        deferred.await()
+    }
+
+    suspend fun joinOrConsumePrewarm(serverId: String, threadId: String): DataResult<KuiklyThreadScreenPayload>? {
+        val key = SharedThreadPayloadCacheKey(serverId, threadId)
+        val lookup =
+            prewarmMutex.withLock {
+                val cached =
+                    if (prewarmReady.remove(key)) {
+                        payloads.value[key]
+                    } else {
+                        null
+                    }
+                SharedThreadPrewarmLookup(cached = cached, inFlight = prewarmInFlight[key])
+            }
+        lookup.cached?.let { return DataResult.Content(it) }
+        return lookup.inFlight?.await()
+    }
+
+    internal fun clearForTest() {
+        prewarmInFlight.values.forEach { it.cancel() }
+        prewarmInFlight.clear()
+        prewarmReady.clear()
+        payloads.value = emptyMap()
+    }
+}
+
+private data class SharedThreadPrewarmLookup(
+    val cached: KuiklyThreadScreenPayload?,
+    val inFlight: Deferred<DataResult<KuiklyThreadScreenPayload>>?
+)
+
 private fun Message.needsSharedThreadMessageStoreHydration(): Boolean =
     body.isBlank() && attachments.isEmpty()
 
@@ -245,6 +359,7 @@ internal class SharedThreadDataSource(
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
     private val messageStore: SharedThreadMessageStore? = null,
+    payloadStore: SharedThreadPayloadStore? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
@@ -278,6 +393,7 @@ internal class SharedThreadDataSource(
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
         messageStore: SharedThreadMessageStore? = null,
+        payloadStore: SharedThreadPayloadStore? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
@@ -291,6 +407,7 @@ internal class SharedThreadDataSource(
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
         messageStore = messageStore,
+        payloadStore = payloadStore,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
@@ -298,13 +415,20 @@ internal class SharedThreadDataSource(
         createAgentCoordinator = createAgentCoordinator
     )
 
-    private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
+    private val payloadCache = payloadStore ?: SharedThreadPayloadStore()
     private val messageResolver = messageStore ?: SharedThreadMessageStore()
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
+    private val cacheServerId = MutableStateFlow("")
 
-    suspend fun readSession(): StoredAuthSession? = sessionStore.readSession()
+    suspend fun readSession(): StoredAuthSession? =
+        sessionStore.readSession()?.also { session ->
+            cacheServerId.value = session.currentServerId.orEmpty()
+        }
 
-    fun cachePayload(payload: KuiklyThreadScreenPayload) {
+    fun cachePayload(
+        payload: KuiklyThreadScreenPayload,
+        serverId: String = cacheServerId.value
+    ) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         val cacheablePayload =
             payload
@@ -312,18 +436,22 @@ internal class SharedThreadDataSource(
                 .withOriginReplyCountAtLeastLoadedReplies()
                 .asLoadedEmptyReplyThreadPayload()
         if (cacheablePayload.hasRenderableThreadContent()) {
-            payloadCache[threadId] =
+            payloadCache.put(
+                serverId,
+                threadId,
                 cacheablePayload.copy(
                     status = if (cacheablePayload.isLoadedEmptyReplyThread()) "empty" else "content",
                     backgroundRefreshing = false,
                     errorCode = null
                 )
+            )
         } else {
-            payloadCache.remove(threadId)
+            payloadCache.remove(serverId, threadId)
         }
     }
 
-    fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? = payloadCache[threadId]
+    fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? =
+        payloadCache.get(cacheServerId.value, threadId)
 
     // Reserved for UNRECOVERABLE scenarios only (task #562 boundary):
     // permission/visibility loss, epoch/server switches, identity proof
@@ -333,7 +461,7 @@ internal class SharedThreadDataSource(
     // stores, the message resolver, or the active screen's in-memory state.
     fun invalidateCachedPayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
-        payloadCache.remove(threadId)
+        payloadCache.remove(cacheServerId.value, threadId)
     }
 
     suspend fun withCachedReplyParentCandidate(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -423,7 +551,7 @@ internal class SharedThreadDataSource(
         val shortId = threadShortId.trim().lowercase()
         if (parentChannelId.isBlank() || shortId.isBlank()) return null
         val matches =
-            payloadCache.values
+            payloadCache.values(cacheServerId.value)
                 .mapNotNull { payload ->
                     val parentMessageId =
                         payload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -813,7 +941,8 @@ internal class SharedThreadDataSource(
 
     suspend fun fetchThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
-        persistResult: Boolean = true
+        persistResult: Boolean = true,
+        reusePrewarm: Boolean = false
     ): DataResult<KuiklyThreadScreenPayload> {
         val session =
             readSession()
@@ -836,6 +965,18 @@ internal class SharedThreadDataSource(
         val threadId =
             resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
+        if (reusePrewarm && threadId != null) {
+            when (val warmed = payloadCache.joinOrConsumePrewarm(session.currentServerId.orEmpty(), threadId)) {
+                is DataResult.Content -> {
+                    cacheReplyThreadResolution(warmed.data)
+                    return warmed
+                }
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission,
+                null -> Unit
+            }
+        }
         val payloadResult =
             if (conversationRepository != null) {
                 if (shouldFetchReplyByParent) {
@@ -898,6 +1039,65 @@ internal class SharedThreadDataSource(
             cachePayload(payload)
         }
         return DataResult.Content(payload)
+    }
+
+    suspend fun prewarmReplyThread(
+        marker: ActivityReplyThreadPrewarmMarker
+    ): DataResult<Unit> {
+        val key = marker.key
+        if (
+            key.serverId.isBlank() ||
+            key.parentChannelId.isBlank() ||
+            key.parentMessageId.isBlank() ||
+            key.threadChannelId.isBlank()
+        ) {
+            return DataResult.Error(ScreenError(code = "thread_prewarm_identity_missing", retryable = false))
+        }
+        val session = readSession() ?: return authSessionRequiredResult()
+        if (session.currentServerId != key.serverId) {
+            return DataResult.Error(ScreenError(code = "thread_prewarm_server_changed", retryable = false))
+        }
+        val basePayload =
+            KuiklyThreadScreenPayload(
+                status = "loading",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = key.threadChannelId,
+                streamChannelId = key.threadChannelId,
+                parentChannelId = key.parentChannelId,
+                parentMessageId = key.parentMessageId,
+                originParentMessageId = key.parentMessageId
+            )
+        val result =
+            payloadCache.prewarm(key.serverId, key.threadChannelId) {
+                val fetched =
+                    fetchInitialReplyThreadPayloadFromRepository(
+                        session = session,
+                        basePayload = basePayload,
+                        requestPriority = DataRequestPriority.Background
+                    )
+                val payload =
+                    when (fetched) {
+                        is DataResult.Content -> fetched.data
+                        is DataResult.Empty ->
+                            if (fetched.reason == EmptyReason.NoMessages) {
+                                basePayload.toEmptyReplyThreadPayload()
+                            } else {
+                                return@prewarm fetched
+                            }
+                        is DataResult.Error -> return@prewarm fetched
+                        is DataResult.NoPermission -> return@prewarm fetched
+                    }
+                cacheReplyThreadResolution(payload)
+                cachePayload(payload, key.serverId)
+                DataResult.Content(payload)
+            }
+        return when (result) {
+            is DataResult.Content -> DataResult.Content(Unit)
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
     }
 
     private suspend fun resolveReplyThreadStream(
@@ -2013,7 +2213,8 @@ internal class SharedThreadDataSource(
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
         session: StoredAuthSession,
         basePayload: KuiklyThreadScreenPayload,
-        includeFollowedSummaries: Boolean = false
+        includeFollowedSummaries: Boolean = false,
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
     ): DataResult<KuiklyThreadScreenPayload> = coroutineScope {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return@coroutineScope DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -2041,7 +2242,8 @@ internal class SharedThreadDataSource(
             async {
                 getReplyParentMessageFromStore(
                     parentChannelId = parentChannelId,
-                    parentMessageId = parentMessageId
+                    parentMessageId = parentMessageId,
+                    requestPriority = requestPriority
                 )
             }
         val initialResult =
@@ -2050,7 +2252,8 @@ internal class SharedThreadDataSource(
                     parentChannelId = ChannelId(parentChannelId),
                     parentMessageId = MessageId(parentMessageId),
                     includeFollowedSummaries = includeFollowedSummaries,
-                    limit = SharedThreadPaging.initialPageSize
+                    limit = SharedThreadPaging.initialPageSize,
+                    priority = requestPriority
                 )
             }
         return@coroutineScope when (initialResult) {
@@ -2105,7 +2308,8 @@ internal class SharedThreadDataSource(
 
     private suspend fun getReplyParentMessageFromStore(
         parentChannelId: String,
-        parentMessageId: String
+        parentMessageId: String,
+        requestPriority: DataRequestPriority = DataRequestPriority.Foreground
     ): Message? {
         val parentChannel = ChannelId(parentChannelId)
         val parentMessage = MessageId(parentMessageId)
@@ -2116,7 +2320,7 @@ internal class SharedThreadDataSource(
                 val startedAt = TimeSource.Monotonic.markNow()
                 val contextResult =
                     fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
-                        repository.getMessageContext(parentMessage, parentChannel)
+                        repository.getMessageContext(parentMessage, parentChannel, requestPriority)
                     }
                 diagnosticsLogger(
                     "thread_parent_context_parallel_result parentChannelId=$parentChannelId " +
@@ -2705,6 +2909,7 @@ internal class SharedThreadStore(
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
+        val session = dataSource.readSession()
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val routeContextPayload =
             dataSource
@@ -2755,14 +2960,13 @@ internal class SharedThreadStore(
             launchBackgroundHomeContextHydration(routeContextPayload)
         }
         delay(SharedThreadFirstFrameDelayMillis)
-        val session = dataSource.readSession()
         if (
             staleTokenStillCurrent(staleToken, "thread_start", "highlight_mentions", routeContextPayload) &&
             (threadId == null || _state.value.payload.sourceThreadId == threadId)
         ) {
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
-        refresh(routeContextPayload, staleToken)
+        refresh(routeContextPayload, staleToken, reusePrewarm = true)
     }
 
     private fun applyRouteIntent(routePayload: KuiklyThreadScreenPayload) {
@@ -2789,7 +2993,8 @@ internal class SharedThreadStore(
 
     private suspend fun refresh(
         basePayload: KuiklyThreadScreenPayload,
-        staleToken: MviStaleToken = routeStaleToken
+        staleToken: MviStaleToken = routeStaleToken,
+        reusePrewarm: Boolean = false
     ) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
@@ -2821,7 +3026,12 @@ internal class SharedThreadStore(
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
-        val result = dataSource.fetchThreadPayload(basePayload, persistResult = true)
+        val result =
+            dataSource.fetchThreadPayload(
+                basePayload = basePayload,
+                persistResult = true,
+                reusePrewarm = reusePrewarm
+            )
         val latest = _state.value.payload
         if (
             !staleTokenStillCurrent(staleToken, "thread_refresh", "after_fetch", basePayload, latest) ||

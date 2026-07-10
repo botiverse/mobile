@@ -36,6 +36,9 @@ import build.raft.app.data.ConversationRepository
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.CreateChannelResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.DataRequestPriority
+import build.raft.app.data.ActivityReplyThreadPrewarmKey
+import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.DirectMessageSnapshot
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeNetworkResponse
@@ -315,6 +318,171 @@ class SharedThreadStoreTest {
 
         dataSource.cachePayload(resolved)
         assertEquals("resolved reply body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
+    }
+
+    @Test
+    fun sharedThreadPayloadStoreNamespacesSameThreadIdByServer() {
+        val store = SharedThreadPayloadStore()
+        val serverOne = basePayload().copy(sourceThreadId = "same-thread", title = "server-one")
+        val serverTwo = basePayload().copy(sourceThreadId = "same-thread", title = "server-two")
+
+        store.put("server-1", "same-thread", serverOne)
+        store.put("server-2", "same-thread", serverTwo)
+
+        assertEquals("server-one", store.get("server-1", "same-thread")?.title)
+        assertEquals("server-two", store.get("server-2", "same-thread")?.title)
+    }
+
+    @Test
+    fun initialThreadFetchJoinsCanonicalPrewarmInFlightWithoutRepositoryRequest() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("channel-1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val warmed =
+            contentPayloadForRoute(
+                base = route,
+                body = "prewarmed reply body",
+                id = "reply-warm",
+                channelId = "thread-m1"
+            )
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        dataSource.readSession()
+        val prewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1") {
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    dataSource.cachePayload(warmed)
+                    DataResult.Content(warmed)
+                }
+            }
+        fetchStarted.await()
+
+        val opened =
+            async {
+                dataSource.fetchThreadPayload(
+                    basePayload = route,
+                    reusePrewarm = true
+                )
+            }
+
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+        releaseFetch.complete(Unit)
+        assertEquals("prewarmed reply body", (opened.await() as DataResult.Content).data.messages.single().body)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+        prewarm.await()
+        appScope.cancel()
+    }
+
+    @Test
+    fun initialThreadFetchConsumesCompletedPrewarmCacheWithoutRepositoryRequest() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val payloadStore = SharedThreadPayloadStore(appScope)
+        val repository = FakeConversationRepository()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val warmed =
+            contentPayloadForRoute(
+                base = route,
+                body = "completed prewarm body",
+                id = "reply-warm",
+                channelId = "thread-m1"
+            )
+        dataSource.readSession()
+        payloadStore.prewarm("server-1", "thread-m1") {
+            dataSource.cachePayload(warmed)
+            DataResult.Content(warmed)
+        }
+
+        val result = dataSource.fetchThreadPayload(basePayload = route, reusePrewarm = true)
+
+        assertEquals("completed prewarm body", (result as DataResult.Content).data.messages.single().body)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+        appScope.cancel()
+    }
+
+    @Test
+    fun activityReplyPrewarmUsesBackgroundRepositoryPriorityAndCanonicalCache() = runBlocking {
+        val payloadStore = SharedThreadPayloadStore()
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("channel-1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                payloadStore = payloadStore
+            )
+        val marker =
+            ActivityReplyThreadPrewarmMarker(
+                key =
+                    ActivityReplyThreadPrewarmKey(
+                        serverId = "server-1",
+                        parentChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        threadChannelId = "thread-m1"
+                    ),
+                activityVersion = "1:reply-1:reply-1"
+            )
+
+        val result = dataSource.prewarmReplyThread(marker)
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf(DataRequestPriority.Background), repository.getReplyThreadPriorities)
+        assertEquals(listOf(DataRequestPriority.Background), repository.getMessageContextPriorities)
+        assertEquals("thread-m1", dataSource.cachedPayload("thread-m1")?.sourceThreadId)
     }
 
     @Test
@@ -7610,6 +7778,8 @@ class SharedThreadStoreTest {
         val getReplyThreadRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
         val getReplyThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getReplyThreadLimits: MutableList<Int> = mutableListOf()
+        val getReplyThreadPriorities: MutableList<DataRequestPriority> = mutableListOf()
+        val getMessageContextPriorities: MutableList<DataRequestPriority> = mutableListOf()
 
         override suspend fun getThread(
             threadId: ThreadId,
@@ -7660,10 +7830,30 @@ class SharedThreadStoreTest {
             return resolvedResult
         }
 
+        override suspend fun getReplyThread(
+            parentChannelId: ChannelId,
+            parentMessageId: MessageId,
+            includeFollowedSummaries: Boolean,
+            limit: Int,
+            priority: DataRequestPriority
+        ): DataResult<ThreadSnapshot> {
+            getReplyThreadPriorities += priority
+            return getReplyThread(parentChannelId, parentMessageId, includeFollowedSummaries, limit)
+        }
+
         override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
             getMessageContextRequests += messageId
             getMessageContextChannelIdRequests += channelId
             return messageContextResult
+        }
+
+        override suspend fun getMessageContext(
+            messageId: MessageId,
+            channelId: ChannelId?,
+            priority: DataRequestPriority
+        ): DataResult<ThreadSnapshot> {
+            getMessageContextPriorities += priority
+            return getMessageContext(messageId, channelId)
         }
 
         override suspend fun loadOlderMessages(

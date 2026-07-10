@@ -31,6 +31,35 @@ import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
     @Test
+    fun replyPrewarmMarkerRequiresVisiblePlannerEligibleUnreadThreadIdentity() {
+        val unreadReply =
+            InboxItem(
+                key = "thread:parent-message",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("parent-channel"),
+                channelName = "general",
+                unreadCount = 2,
+                firstUnreadMessageId = MessageId("reply-1"),
+                latestActivityMessageId = MessageId("reply-2"),
+                threadChannelId = ChannelId("reply-thread"),
+                parentChannelId = ChannelId("parent-channel"),
+                parentMessageId = MessageId("parent-message")
+            )
+
+        val marker = unreadReply.toReplyThreadPrewarmMarker("server-1")
+
+        assertEquals("server-1", marker?.key?.serverId)
+        assertEquals("parent-channel", marker?.key?.parentChannelId)
+        assertEquals("parent-message", marker?.key?.parentMessageId)
+        assertEquals("reply-thread", marker?.key?.threadChannelId)
+        assertEquals("2:reply-1:reply-2:", marker?.activityVersion)
+        assertEquals(null, unreadReply.copy(unreadCount = 0).toReplyThreadPrewarmMarker("server-1"))
+        assertEquals(null, unreadReply.copy(kind = InboxItemKind.Channel).toReplyThreadPrewarmMarker("server-1"))
+        assertEquals(null, unreadReply.copy(threadChannelId = null).toReplyThreadPrewarmMarker("server-1"))
+        assertEquals(null, unreadReply.toReplyThreadPrewarmMarker(""))
+    }
+
+    @Test
     fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, activityPageDidAppearShouldRefresh(0))
         assertEquals(true, activityPageDidAppearShouldRefresh(1))

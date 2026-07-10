@@ -9,10 +9,13 @@ import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
+import build.raft.app.data.ActivityReplyThreadPrewarmKey
+import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealReadReceiptRepository
+import build.raft.app.data.NetworkSlockThreadApi
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedActivitySenderProfile
@@ -33,6 +36,7 @@ import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -147,19 +151,32 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
+    val replyThreadPrewarmDataSource =
+        remember(authStore, networkClient, conversationRepository, sharedStores.threadMessageStore, sharedStores.threadPayloadStore) {
+            SharedThreadDataSource(
+                networkApi = NetworkSlockThreadApi(networkClient),
+                sessionStore = authStore,
+                conversationRepository = conversationRepository,
+                messageStore = sharedStores.threadMessageStore,
+                payloadStore = sharedStores.threadPayloadStore,
+                diagnosticsLogger = { message -> bridge.log("shared_activity_thread_prewarm $message") }
+            )
+        }
     val activityStore =
         remember(
             authStore,
             repository,
             readReceiptRepository,
             conversationRepository,
-            memberRepository
+            memberRepository,
+            replyThreadPrewarmDataSource
         ) {
             sharedStores.getOrCreateHomeActivityStore(
                 inboxRepository = repository,
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
-                memberRepository = memberRepository
+                memberRepository = memberRepository,
+                prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread
             )
         }
     val state by activityStore.state.collectAsState()
@@ -538,6 +555,7 @@ private fun SharedActivityList(
     var previousItems by remember { mutableStateOf<List<InboxItem>>(emptyList()) }
     var pendingUpdateCount by remember { mutableStateOf(0) }
     val scrollScope = rememberCoroutineScope()
+    val latestOnIntent by rememberUpdatedState(onIntent)
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     LaunchedEffect(snapshot.items) {
         val selected = selectedItemKey
@@ -582,6 +600,27 @@ private fun SharedActivityList(
                     onIntent(SharedActivityIntent.LoadMore)
                 }
             }
+    }
+    LaunchedEffect(listState, snapshot.server.id, snapshot.items) {
+        val activityItemsByKey = snapshot.items.associateBy(InboxItem::key)
+        snapshotFlow {
+            listState.layoutInfo.visibleItemsInfo
+                .mapNotNull { itemInfo ->
+                    (itemInfo.key as? String)
+                        ?.let(activityItemsByKey::get)
+                        ?.toReplyThreadPrewarmMarker(snapshot.server.id.value)
+                }
+                .toSet()
+        }
+            .distinctUntilChanged()
+            .collect { markers ->
+                onIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(markers))
+            }
+    }
+    DisposableEffect(listState) {
+        onDispose {
+            latestOnIntent(SharedActivityIntent.PrewarmVisibleReplyThreads(emptySet()))
+        }
     }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         LazyColumn(
@@ -686,6 +725,32 @@ private fun SharedActivityList(
             )
         }
     }
+}
+
+internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
+    if (kind != InboxItemKind.Thread || unreadCount <= 0) return null
+    val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return null
+    val normalizedParentChannelId = parentChannelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedParentMessageId = parentMessageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedThreadChannelId = threadChannelId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (normalizedThreadChannelId == normalizedParentChannelId) return null
+    val activityVersion =
+        listOf(
+            unreadCount.toString(),
+            firstUnreadMessageId?.value.orEmpty(),
+            latestActivityMessageId?.value.orEmpty(),
+            lastMessageId?.value.orEmpty()
+        ).joinToString(":")
+    return ActivityReplyThreadPrewarmMarker(
+        key =
+            ActivityReplyThreadPrewarmKey(
+                serverId = normalizedServerId,
+                parentChannelId = normalizedParentChannelId,
+                parentMessageId = normalizedParentMessageId,
+                threadChannelId = normalizedThreadChannelId
+            ),
+        activityVersion = activityVersion
+    )
 }
 
 @Composable

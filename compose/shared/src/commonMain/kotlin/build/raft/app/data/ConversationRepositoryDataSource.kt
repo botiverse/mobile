@@ -188,6 +188,21 @@ class RealConversationRepository(
         parentMessageId: MessageId,
         includeFollowedSummaries: Boolean,
         limit: Int
+    ): DataResult<ThreadSnapshot> =
+        getReplyThread(
+            parentChannelId = parentChannelId,
+            parentMessageId = parentMessageId,
+            includeFollowedSummaries = includeFollowedSummaries,
+            limit = limit,
+            priority = DataRequestPriority.Foreground
+        )
+
+    override suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean,
+        limit: Int,
+        priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -195,15 +210,23 @@ class RealConversationRepository(
             context = context,
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
-            messageLimit = messageLimit
+            messageLimit = messageLimit,
+            priority = priority
         )
     }
 
-    override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
+    override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> =
+        getMessageContext(messageId, channelId, DataRequestPriority.Foreground)
+
+    override suspend fun getMessageContext(
+        messageId: MessageId,
+        channelId: ChannelId?,
+        priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
-            block = { networkClient.messageContext(DataRequestPriority.Foreground, messageId, channelId) },
+            block = { networkClient.messageContext(priority, messageId, channelId) },
             emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
             source = "messages_context",
             mapper = { bodyText ->
@@ -499,6 +522,7 @@ class RealConversationRepository(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         messageLimit: Int,
+        priority: DataRequestPriority,
         source: String = "messages_channel_reply_thread"
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
@@ -506,7 +530,18 @@ class RealConversationRepository(
             "reply_thread_load_start source=$source parentChannelId=${parentChannelId.value} " +
                 "parentMessageId=${parentMessageId.value} messageLimit=$messageLimit"
         )
-        val createOrOpen = createOrOpenThread(parentChannelId, parentMessageId)
+        val createOrOpen =
+            threadAction(
+                fallbackThreadChannelId = null,
+                fallbackParentMessageId = parentMessageId,
+                source = "thread_create_or_open"
+            ) {
+                networkClient.createOrOpenThread(
+                    priority,
+                    parentChannelId,
+                    parentMessageId.toParentMessageThreadBody()
+                )
+            }
         if (createOrOpen !is DataResult.Content) {
             warningLogger(
                 "reply_thread_load_result source=$source " +
@@ -527,7 +562,7 @@ class RealConversationRepository(
                 emptyReason = EmptyReason.NoMessages,
                 block = {
                     networkClient.channelMessages(
-                        DataRequestPriority.Foreground,
+                        priority,
                         resolvedThreadChannelId,
                         messageLimit
                     )
