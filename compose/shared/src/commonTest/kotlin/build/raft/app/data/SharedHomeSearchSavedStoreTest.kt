@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
@@ -546,6 +547,75 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(listOf("agent-1"), store.state.value.search.selectedSenderIds)
         assertEquals(listOf("agent-1"), search.options?.senderIds)
         scope.cancel()
+    }
+
+    @Test
+    fun scopeFilterSupportsMentionAndSenderTypeMultiSelect() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-scope")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Mentioned))
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Humans))
+
+        assertEquals(listOf(SearchScope.Mentioned, SearchScope.Humans), store.state.value.search.selectedScopes)
+        assertEquals(listOf(SearchScope.Mentioned, SearchScope.Humans), search.options?.scopes)
+        assertEquals("", search.query)
+
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Agents))
+
+        assertEquals(SearchScope.entries, store.state.value.search.selectedScopes)
+        assertEquals(null, search.options?.scopes?.exclusiveSenderTypeWireValue())
+        scope.cancel()
+    }
+
+    @Test
+    fun clearSearchFiltersClearsScopes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-scope-clear")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Agents))
+        val callsBeforeClear = search.calls.size
+        store.dispatch(SharedHomeSearchSavedIntent.ClearSearchFilters)
+
+        assertEquals(emptyList(), store.state.value.search.selectedScopes)
+        assertEquals(false, store.state.value.search.searched)
+        assertEquals(emptyList(), store.state.value.search.items)
+        assertEquals(callsBeforeClear, search.calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun explicitSenderKindOnlyPrunesAnExclusiveConflictingScope() {
+        assertEquals(
+            listOf(SearchScope.Mentioned),
+            listOf(SearchScope.Mentioned, SearchScope.Agents)
+                .withSenderKindConflictResolved(MemberKind.Human)
+        )
+        assertEquals(
+            listOf(SearchScope.Mentioned),
+            listOf(SearchScope.Mentioned, SearchScope.Humans)
+                .withSenderKindConflictResolved(MemberKind.Agent)
+        )
+        assertEquals(
+            SearchScope.entries,
+            SearchScope.entries.withSenderKindConflictResolved(MemberKind.Human)
+        )
     }
 
     private class FakeSavedRepository(

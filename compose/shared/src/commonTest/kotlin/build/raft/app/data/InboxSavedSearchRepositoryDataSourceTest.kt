@@ -374,6 +374,28 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun searchRepositoryForwardsMultiSelectScopeParams() = runBlocking {
+        val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
+        val repository = RealSearchRepository(sampleStore(), network)
+
+        repository.search(
+            serverId = ServerId("server-1"),
+            query = "",
+            options = SearchQueryOptions(scopes = listOf(SearchScope.Mentioned, SearchScope.Humans))
+        )
+        repository.search(
+            serverId = ServerId("server-1"),
+            query = "",
+            options = SearchQueryOptions(scopes = listOf(SearchScope.Humans, SearchScope.Agents))
+        )
+
+        assertEquals("self", network.searchCalls[0].mentionTarget)
+        assertEquals("user", network.searchCalls[0].senderType)
+        assertEquals(null, network.searchCalls[1].mentionTarget)
+        assertEquals(null, network.searchCalls[1].senderType)
+    }
+
+    @Test
     fun repositoriesRequireSelectedSessionServer() = runBlocking {
         val repository = RealInboxRepository(sampleStore(), FakeInboxNetworkClient())
 
@@ -504,6 +526,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
                             offset = query.firstValue("offset")?.toIntOrNull() ?: 0,
                             sort = query.firstValue("sort"),
                             senderIds = query.values("senderId"),
+                            mentionTarget = query.firstValue("mentionTarget"),
+                            senderType = query.firstValue("senderType"),
                             channelId = query.firstValue("channelId"),
                             after = query.firstValue("after"),
                             before = query.firstValue("before")
@@ -530,6 +554,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val offset: Int,
         val sort: String?,
         val senderIds: List<String>,
+        val mentionTarget: String? = null,
+        val senderType: String? = null,
         val channelId: String?,
         val after: String?,
         val before: String?

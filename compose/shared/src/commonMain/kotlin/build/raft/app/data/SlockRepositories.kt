@@ -465,6 +465,7 @@ interface SearchRepository {
 data class SearchQueryOptions(
     val sort: SearchSort = SearchSort.Relevance,
     val senderIds: List<String> = emptyList(),
+    val scopes: List<SearchScope> = emptyList(),
     val channelId: ChannelId? = null,
     val afterIso: String? = null,
     val beforeIso: String? = null
@@ -472,9 +473,23 @@ data class SearchQueryOptions(
 
 fun SearchQueryOptions.hasMeaningfulFilter(): Boolean =
     senderIds.any { it.isNotBlank() } ||
+        scopes.isNotEmpty() ||
         (channelId?.value?.isNotBlank() == true) ||
         !afterIso.isNullOrBlank() ||
         !beforeIso.isNullOrBlank()
+
+enum class SearchScope(val key: String, val label: String) {
+    Mentioned("mentioned", "@ Me"),
+    Humans("humans", "Humans"),
+    Agents("agents", "Agents")
+}
+
+internal fun List<SearchScope>.exclusiveSenderTypeWireValue(): String? {
+    val hasHumans = SearchScope.Humans in this
+    val hasAgents = SearchScope.Agents in this
+    if (hasHumans == hasAgents) return null
+    return if (hasHumans) "user" else "agent"
+}
 
 enum class SearchSort {
     Relevance,
