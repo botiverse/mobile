@@ -15,6 +15,7 @@ import com.tencent.kmm.network.service.NetworkClientConfig
 import com.tencent.kmm.network.service.VBTransportInitHelper
 import kotlinx.coroutines.CancellationException
 import kotlin.concurrent.Volatile
+import kotlin.random.Random
 import kotlin.time.TimeSource
 
 /**
@@ -86,11 +87,13 @@ internal class NetworkKmmSlockHttpExecutor(
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
+        val traceHeaders = networkKmmTraceHeaders(headers)
+        val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
         val requestBytes = bodyText?.encodeToByteArray()?.size ?: 0
         warningLogger(
             "slock_networkkmm_execute_start path=$path method=${method.uppercase()} " +
                 "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
-                "headers=${headers.toSafeHeaderDiagnostics()}"
+                "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
             val request =
@@ -109,14 +112,15 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            headers.forEach { (name, value) -> request.setHeader(name, value) }
+            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
             val response = client.execute(request).toExecutorResponse()
             warningLogger(
                 "slock_networkkmm_execute_finish path=$path method=${method.uppercase()} " +
                     "priority=$priority jsonBody=$jsonBody requestBytes=$requestBytes " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "code=${response.code} clientRequestId=$clientRequestId " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                     (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
             )
             response
@@ -141,11 +145,13 @@ internal class NetworkKmmSlockHttpExecutor(
     ): SlockHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
+        val traceHeaders = networkKmmTraceHeaders(headers)
+        val clientRequestId = traceHeaders.getValue(NETWORK_KMM_REQUEST_ID_HEADER)
         val requestBytes = files.sumOf { it.bytes.size }
         warningLogger(
             "slock_networkkmm_multipart_start path=$path method=POST priority=$priority " +
                 "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
-                "headers=${headers.toSafeHeaderDiagnostics()}"
+                "clientRequestId=$clientRequestId headers=${traceHeaders.toSafeHeaderDiagnostics()}"
         )
         return try {
             val request =
@@ -173,14 +179,15 @@ internal class NetworkKmmSlockHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            headers.forEach { (name, value) -> request.setHeader(name, value) }
+            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
             val response = client.execute(request).toExecutorResponse()
             warningLogger(
                 "slock_networkkmm_multipart_finish path=$path method=POST priority=$priority " +
                     "fields=${fields.size} files=${files.size} requestBytes=$requestBytes " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
-                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "code=${response.code} clientRequestId=$clientRequestId " +
+                    "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                     (response.transportDiagnostics ?: "engine=networkkmm status=none kind=none rawCode=none detail=none")
             )
             response
@@ -219,6 +226,35 @@ private val SensitiveNetworkKmmLogPatterns =
         Regex("""\b((?:eyJ)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.)[A-Za-z0-9_-]+\b"""),
         Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
     )
+
+private const val NETWORK_KMM_REQUEST_ID_HEADER = "x-request-id"
+private const val NETWORK_KMM_TRACEPARENT_HEADER = "traceparent"
+
+internal fun networkKmmTraceHeaders(
+    headers: Map<String, String>,
+    randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
+): Map<String, String> {
+    val requestIdEntry = headers.entries.firstOrNull { it.key.equals(NETWORK_KMM_REQUEST_ID_HEADER, true) }
+    val traceparentEntry = headers.entries.firstOrNull { it.key.equals(NETWORK_KMM_TRACEPARENT_HEADER, true) }
+    if (requestIdEntry != null && traceparentEntry != null) return headers
+
+    val traceId = randomBytes(16).toNonZeroLowerHex()
+    val spanId = randomBytes(8).toNonZeroLowerHex()
+    return buildMap {
+        putAll(headers)
+        if (requestIdEntry == null) put(NETWORK_KMM_REQUEST_ID_HEADER, "mobile-$traceId")
+        if (traceparentEntry == null) put(NETWORK_KMM_TRACEPARENT_HEADER, "00-$traceId-$spanId-01")
+    }
+}
+
+private fun ByteArray.toLowerHex(): String = joinToString(separator = "") { byte ->
+    byte.toUByte().toString(radix = 16).padStart(2, '0')
+}
+
+private fun ByteArray.toNonZeroLowerHex(): String {
+    if (any { it != 0.toByte() }) return toLowerHex()
+    return copyOf().apply { this[lastIndex] = 1 }.toLowerHex()
+}
 
 private fun Map<String, String>.toSafeHeaderDiagnostics(): String {
     if (isEmpty()) return "none"
@@ -311,7 +347,17 @@ private fun NetworkResponse.networkKmmDiagnostics(): String {
     return "engine=networkkmm status=${statusCode ?: "none"} " +
         "kind=${error?.kind ?: "none"} rawCode=$rawCodeLabel detail=$detail " +
         "bodyBytes=${body.bytes?.size ?: 0} errorStatus=${error?.statusCode ?: "none"} " +
-        "totalMs=${timing.totalTimeMs}"
+        "transportId=${timing.transportRequestId ?: "none"} protocol=${timing.protocol ?: "none"} " +
+        "reusedConnection=${timing.reusedConnection ?: "none"} " +
+        "clientQueueMs=${timing.clientQueueTimeMs.toLong()} " +
+        "prepareMs=${timing.requestPreparationTimeMs.toLong()} " +
+        "transportQueueMs=${timing.transportQueueTimeMs.toLong()} " +
+        "dispatcherQueueMs=${timing.dispatcherQueueTimeMs.toLong()} " +
+        "dnsMs=${timing.nameLookupTimeMs.toLong()} connectTotalMs=${timing.connectTimeMs.toLong()} " +
+        "tlsMs=${timing.sslCostTimeMs.toLong()} requestHeadersMs=${timing.requestHeadersTimeMs.toLong()} " +
+        "requestBodyMs=${timing.requestBodyTimeMs.toLong()} " +
+        "responseWaitMs=${timing.responseWaitTimeMs.toLong()} recvMs=${timing.recvTime.toLong()} " +
+        "connectionAttempts=${timing.connectionAttemptCount} totalMs=${timing.totalTimeMs.toLong()}"
 }
 
 internal fun String.sanitizeMultipartFileName(): String =
