@@ -13706,7 +13706,7 @@ private fun ThreadMessageFooterMeta(
                 iconSize = 12.dp,
                 trailingIconName = SlockLucideIconName.Pencil.takeIf { hasReplyDraft },
                 trailingIconSize = 12.dp,
-                color = SlockColor.SurfaceWhite,
+                color = threadRepliesMetaChipColor(replyMetadata),
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
                 clickIdentity = replyClickIdentity,
@@ -13831,6 +13831,13 @@ internal fun threadMessageRepliesMetaLabel(replyMetadata: ThreadReplyMetadata): 
             append(replyMetadata.unreadReplyCount)
             append(" new")
         }
+    }
+
+internal fun threadRepliesMetaChipColor(replyMetadata: ThreadReplyMetadata): Color =
+    if (replyMetadata.unreadReplyCount > 0) {
+        SlockColor.AccentCyan.copy(alpha = 0.2f)
+    } else {
+        SlockColor.SurfaceWhite
     }
 
 internal fun Set<SharedThreadComposerDraftRecord>.toReplyComposerDraftParentMessageIds(): Set<String> =
