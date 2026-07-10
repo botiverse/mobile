@@ -334,6 +334,79 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun sharedThreadPayloadStorePoolsPrewarmRequestsGlobally() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadPayloadStore(
+                scope = appScope,
+                maxConcurrentPrewarms = 2,
+                prewarmStartIntervalMillis = 0
+            )
+        val release = CompletableDeferred<Unit>()
+        val firstTwoStarted = CompletableDeferred<Unit>()
+        var active = 0
+        var maxActive = 0
+        var starts = 0
+        val jobs =
+            (1..3).map { index ->
+                async {
+                    store.prewarm("server-1", "thread-$index") {
+                        active += 1
+                        starts += 1
+                        maxActive = maxOf(maxActive, active)
+                        if (starts == 2) firstTwoStarted.complete(Unit)
+                        release.await()
+                        active -= 1
+                        val payload = basePayload().copy(sourceThreadId = "thread-$index")
+                        store.put("server-1", "thread-$index", payload)
+                        DataResult.Content(payload)
+                    }
+                }
+            }
+
+        firstTwoStarted.await()
+        assertEquals(2, active)
+        assertEquals(2, starts)
+        assertEquals(2, maxActive)
+
+        release.complete(Unit)
+        jobs.forEach { it.await() }
+        assertEquals(3, starts)
+        assertEquals(2, maxActive)
+        appScope.cancel()
+    }
+
+    @Test
+    fun sharedThreadPayloadStoreRateLimitsPrewarmStarts() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadPayloadStore(
+                scope = appScope,
+                maxConcurrentPrewarms = 2,
+                prewarmStartIntervalMillis = 40
+            )
+        val origin = kotlin.time.TimeSource.Monotonic.markNow()
+        val starts = mutableListOf<Long>()
+        val jobs =
+            (1..2).map { index ->
+                async {
+                    store.prewarm("server-1", "thread-$index") {
+                        starts += origin.elapsedNow().inWholeMilliseconds
+                        val payload = basePayload().copy(sourceThreadId = "thread-$index")
+                        store.put("server-1", "thread-$index", payload)
+                        DataResult.Content(payload)
+                    }
+                }
+            }
+
+        jobs.forEach { it.await() }
+
+        assertEquals(2, starts.size)
+        assertTrue(starts[1] - starts[0] >= 30L)
+        appScope.cancel()
+    }
+
+    @Test
     fun initialThreadFetchJoinsCanonicalPrewarmInFlightWithoutRepositoryRequest() = runBlocking {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val payloadStore = SharedThreadPayloadStore(appScope)

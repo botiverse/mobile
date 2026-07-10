@@ -117,7 +117,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -133,6 +135,9 @@ private data class SharedThreadPayloadCacheKey(
     val serverId: String,
     val threadId: String
 )
+
+private const val SharedThreadPrewarmMaxConcurrency = 2
+private const val SharedThreadPrewarmStartIntervalMillis = 100L
 
 private data class PendingReactionRealtimeGuard(
     val messageId: String,
@@ -238,12 +243,17 @@ internal class SharedThreadMessageStore(
  * a warmed reply thread does not need a second route-owned content model.
  */
 internal class SharedThreadPayloadStore(
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob())
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
+    maxConcurrentPrewarms: Int = SharedThreadPrewarmMaxConcurrency,
+    private val prewarmStartIntervalMillis: Long = SharedThreadPrewarmStartIntervalMillis
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadPayloadCacheKey, KuiklyThreadScreenPayload>>(emptyMap())
     private val prewarmMutex = Mutex()
+    private val prewarmPool = Semaphore(maxConcurrentPrewarms.coerceAtLeast(1))
+    private val prewarmStartMutex = Mutex()
     private val prewarmInFlight = mutableMapOf<SharedThreadPayloadCacheKey, Deferred<DataResult<KuiklyThreadScreenPayload>>>()
     private val prewarmReady = mutableSetOf<SharedThreadPayloadCacheKey>()
+    private var lastPrewarmStartedAt: TimeMark? = null
 
     fun get(serverId: String, threadId: String): KuiklyThreadScreenPayload? =
         payloads.value[SharedThreadPayloadCacheKey(serverId, threadId)]
@@ -283,7 +293,11 @@ internal class SharedThreadPayloadStore(
                 prewarmInFlight[key]
                     ?: scope.async(start = CoroutineStart.LAZY) {
                         try {
-                            val result = fetch()
+                            val result =
+                                prewarmPool.withPermit {
+                                    awaitPrewarmStartRateLimit()
+                                    fetch()
+                                }
                             if (result is DataResult.Content) {
                                 prewarmMutex.withLock { prewarmReady += key }
                             }
@@ -321,10 +335,26 @@ internal class SharedThreadPayloadStore(
         return lookup.inFlight?.await()
     }
 
+    private suspend fun awaitPrewarmStartRateLimit() {
+        if (prewarmStartIntervalMillis <= 0L) return
+        prewarmStartMutex.withLock {
+            val elapsedMillis = lastPrewarmStartedAt?.elapsedNow()?.inWholeMilliseconds
+            val remainingMillis =
+                elapsedMillis
+                    ?.let { elapsed -> (prewarmStartIntervalMillis - elapsed).coerceAtLeast(0L) }
+                    ?: 0L
+            if (remainingMillis > 0L) {
+                delay(remainingMillis)
+            }
+            lastPrewarmStartedAt = TimeSource.Monotonic.markNow()
+        }
+    }
+
     internal fun clearForTest() {
         prewarmInFlight.values.forEach { it.cancel() }
         prewarmInFlight.clear()
         prewarmReady.clear()
+        lastPrewarmStartedAt = null
         payloads.value = emptyMap()
     }
 }
