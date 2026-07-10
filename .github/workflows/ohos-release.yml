@@ -442,7 +442,7 @@ jobs:
           } > compose/github-packages.properties
           cat > compose/ohosApp/local.properties <<'PROPERTIES'
           kuikly.projectPath=../
-          kuikly.moduleName=shared
+          kuikly.moduleName=ohosBridge
           kuikly.ohosGradleSettings=settings.ohos.gradle.kts
           PROPERTIES
 
@@ -485,9 +485,9 @@ jobs:
           ./gradlew --no-daemon --console=plain \
             -c settings.ohos.gradle.kts \
             copyNetworkOhosRuntimeLibs \
-            :shared:linkReleaseSharedOhosArm64
+            :ohosBridge:linkReleaseSharedOhosArm64
 
-          shared_output="shared/build/bin/ohosArm64/releaseShared"
+          shared_output="ohosBridge/build/bin/ohosArm64/releaseShared"
           install -Dm755 \
             "$shared_output/libshared.so" \
             ohosApp/entry/libs/arm64-v8a/libshared.so
@@ -497,6 +497,14 @@ jobs:
 
           test -s ohosApp/entry/libs/arm64-v8a/libshared.so
           test -s ohosApp/entry/src/main/cpp/libshared_api.h
+
+          api_header_lines="$(wc -l < "$shared_output/libshared_api.h")"
+          grep -q 'raftInitKuikly' "$shared_output/libshared_api.h"
+          if (( api_header_lines > 500 )); then
+            echo "::error::OHOS bridge C API unexpectedly expanded to $api_header_lines lines"
+            exit 1
+          fi
+          echo "OHOS bridge C API: $api_header_lines lines"
 
       - name: Decode OHOS signing assets
         id: signing

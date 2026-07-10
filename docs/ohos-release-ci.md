@@ -9,7 +9,16 @@ The release link runs in the repository's HarmonyOS toolchain image on
 `blacksmith-16vcpu-ubuntu-2404`. The workflow gives the Gradle and
 Kotlin/Native processes a 24 GB heap and uses one Gradle worker. Do not move
 the release job to a runner with less than 32 GB of memory: the optimized
-`linkReleaseSharedOhosArm64` task exceeds the project's normal 4 GB heap.
+`:ohosBridge:linkReleaseSharedOhosArm64` task exceeds the project's normal
+4 GB heap.
+
+`ohosBridge` is the native binary boundary. It depends on the full `shared`
+KLIB internally but exports only the primitive `raftInitKuikly` C entry point;
+realtime host calls use the existing KNOI bridge. Do not move the shared
+library binary back to `:shared` or export shared UI/model/repository types from
+`ohosBridge`: Kotlin/Native otherwise generates a multi-million-line C adapter
+that makes the release link impractical. Release CI rejects a generated bridge
+header larger than 500 lines as a guard against accidental export expansion.
 
 ## Required repository secrets
 

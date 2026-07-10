@@ -263,3 +263,5 @@ rootProject.buildFileName = buildFileName
 
 include(":shared")
 project(":shared").buildFileName = buildFileName
+include(":ohosBridge")
+project(":ohosBridge").buildFileName = buildFileName
