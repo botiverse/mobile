@@ -66,7 +66,9 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
-    this.setupKnoi();
+    // Crash reporting must install BEFORE any native/KNOI initialization —
+    // a startup-chain crash (like the task #19 resource-bridge SIGSEGV)
+    // is otherwise invisible to Hands.
     // App-owned Hands reporting config (client key is DSN-class: it
     // identifies the app; rotate from the Hands console if leaked).
     Hands.install(
@@ -78,6 +80,7 @@ export default class EntryAbility extends UIAbility {
       },
       this.context,
     );
+    this.setupKnoi();
   }
 
   onDestroy(): void {
