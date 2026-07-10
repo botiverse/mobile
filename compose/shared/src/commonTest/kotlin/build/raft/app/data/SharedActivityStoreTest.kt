@@ -280,6 +280,54 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityTailReplanReschedulesInFlightItemWithoutExceedingOneActive() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val gates = mutableMapOf<ActivityReplyThreadPrewarmMarker, CompletableDeferred<Unit>>()
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        var active = 0
+        var maxActive = 0
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    active += 1
+                    if (active > maxActive) maxActive = active
+                    try {
+                        gates.getOrPut(marker) { CompletableDeferred() }.await()
+                    } finally {
+                        active -= 1
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+        val firstVersion = keyedMarker("A", activityVersion = "v1")
+        val secondVersion = keyedMarker("A", activityVersion = "v2")
+        val below = keyedMarker("B")
+
+        // A(v1) is warmed at the top of the tail and suspends in-flight on its gate.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
+        assertEquals(listOf(firstVersion), calls)
+
+        // Replan while A(v1) is still in-flight: A is re-versioned to v2 and B appears below it.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, below)))
+
+        // The superseded A(v1) is unwound; the tail then reschedules A(v2) and warms B, one at a
+        // time. Release the gates so the serial tail can drain.
+        gates.getOrPut(secondVersion) { CompletableDeferred() }.complete(Unit)
+        gates.getOrPut(below) { CompletableDeferred() }.complete(Unit)
+
+        // A(v2) must be rescheduled (no permanent warm miss) and B must be warmed.
+        assertTrue(secondVersion in calls)
+        assertTrue(below in calls)
+        // The tail never runs more than one prewarm concurrently across the replan.
+        assertTrue(maxActive <= 1)
+        // A(v1)'s stale result is discarded; only the latest version is recorded as warmed.
+        assertEquals(1, calls.count { it == firstVersion })
+        scope.cancel()
+    }
+
+    @Test
     fun clearSummaryDropsLoadedActivityCountsButKeepsFilter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))

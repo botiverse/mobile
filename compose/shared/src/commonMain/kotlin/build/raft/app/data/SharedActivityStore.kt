@@ -80,6 +80,7 @@ class SharedActivityStore internal constructor(
     private val failedReplyPrewarmVersions = mutableMapOf<ActivityReplyThreadPrewarmKey, String>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
     private var tailPrewarmLoopJob: Job? = null
+    private var tailInFlightJob: Job? = null
 
     internal fun updateRuntimeIntegrations(
         authStore: SlockAuthSessionStore = this.authStore,
@@ -252,11 +253,29 @@ class SharedActivityStore internal constructor(
 
         tailPrewarmLoopJob?.cancel()
         tailPrewarmLoopJob = null
+        // The tail is generation-owned: it holds at most ONE in-flight launched job at a time. That
+        // job is launched in the store scope (a sibling of the loop), so cancelling the loop alone
+        // would orphan it. On replan we therefore also cancel the previous generation's single
+        // in-flight tail job. A version change keeps the same key in nextTail (so the key-based
+        // cancelReplyPrewarmJobsNotIn below will NOT reap it), which is exactly the case that would
+        // otherwise leave A(v1) running while A(v2) is skipped as "already active". Cancelling this
+        // Activity-level waiter only unwinds the local await(); the shared app-scope canonical
+        // Deferred keeps running in the pool for any other observers joined to it.
+        val previousInFlight = tailInFlightJob
+        previousInFlight?.cancel()
+        tailInFlightJob = null
         cancelReplyPrewarmJobsNotIn(visibleReplyPrewarmMarkers.keys + nextTail.keys)
 
         if (nextTail.isEmpty()) return
         val ordered = nextTail.values.toList()
-        tailPrewarmLoopJob = scope.launch { runReplyPrewarmTail(ordered) }
+        tailPrewarmLoopJob =
+            scope.launch {
+                // Wait for the superseded in-flight tail job to finish unwinding before evaluating
+                // the new order, so tail concurrency never exceeds one and a re-versioned item is
+                // re-launched (not skipped because its old-version job still looked "active").
+                previousInFlight?.join()
+                runReplyPrewarmTail(ordered)
+            }
     }
 
     private suspend fun runReplyPrewarmTail(orderedMarkers: List<ActivityReplyThreadPrewarmMarker>) {
@@ -265,7 +284,10 @@ class SharedActivityStore internal constructor(
             if (launched >= tailPrewarmDepthCap) return
             if (!shouldLaunchTailPrewarm(marker)) continue
             launched++
-            launchReplyThreadPrewarm(marker).join()
+            val job = launchReplyThreadPrewarm(marker)
+            tailInFlightJob = job
+            job.join()
+            if (tailInFlightJob === job) tailInFlightJob = null
         }
     }
 
@@ -294,6 +316,8 @@ class SharedActivityStore internal constructor(
     private fun clearReplyPrewarmState() {
         tailPrewarmLoopJob?.cancel()
         tailPrewarmLoopJob = null
+        tailInFlightJob?.cancel()
+        tailInFlightJob = null
         replyPrewarmJobs.values.toList().forEach(Job::cancel)
         replyPrewarmJobs.clear()
         visibleReplyPrewarmMarkers = emptyMap()
