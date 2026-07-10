@@ -205,7 +205,6 @@ private val MemberAvatarSize = 34.dp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
-private val MembersHeaderMessageButtonWidth = 92.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
 private val MembersAgentActivityIndicatorLaneWidth = 12.dp
 private val MembersAgentActivityContentGap = 6.dp
@@ -222,6 +221,8 @@ internal enum class MembersAgentDetailTab(
     Workspace("Workspace", SlockLucideIconName.FolderOpen),
     Apps("Apps", SlockLucideIconName.Link2)
 }
+
+internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean = kind == MemberKind.Agent
 
 internal enum class MembersAgentServerRole(
     val wireValue: String,
@@ -3708,7 +3709,6 @@ private fun MembersDetailHeader(
         }
     val avatarClick = onAvatarClick
     val topSafeArea = slockTopSafeAreaPadding()
-    val messageButtonWidth = if (member.kind == MemberKind.Human) 92.dp else MembersHeaderMessageButtonWidth
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -3766,18 +3766,23 @@ private fun MembersDetailHeader(
                     }
                 }
             }
-            SlockBrutalActionButton(
-                label = stringResource(MR.strings.member_label_message),
-                leadingIcon = SlockLucideIconName.MessageSquare,
-                enabled = member.kind != MemberKind.System && !deleted,
-                // Match the three-dot IconButton visual height so both sit on the same row
-                // baseline. SlockBrutalIconButton(size=32) outer box = 32 + 3dp shadow = 35dp;
-                // SlockBrutalActionButton with minHeight=MembersActionSize gives 32 + 3dp
-                // shadow = 35dp outer, aligned.
-                minHeight = MembersActionSize,
-                modifier = Modifier.width(messageButtonWidth),
-                onClick = onOpenDirectMessage
-            )
+            if (membersHeaderMessageUsesIconOnly(member.kind)) {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.MessageSquare,
+                    onClick = onOpenDirectMessage,
+                    enabled = !deleted,
+                    size = MembersActionSize
+                )
+            } else {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.member_label_message),
+                    leadingIcon = SlockLucideIconName.MessageSquare,
+                    enabled = member.kind != MemberKind.System && !deleted,
+                    minHeight = MembersActionSize,
+                    modifier = Modifier.width(92.dp),
+                    onClick = onOpenDirectMessage
+                )
+            }
             if (member.kind == MemberKind.Agent) {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Menu,
