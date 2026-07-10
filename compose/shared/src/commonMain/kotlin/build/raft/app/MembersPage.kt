@@ -229,6 +229,17 @@ internal enum class MembersAgentDetailTab(
     Apps("Apps", SlockLucideIconName.Link2)
 }
 
+@Composable
+private fun MembersAgentDetailTab.localizedLabel(): String =
+    when (this) {
+        MembersAgentDetailTab.Profile -> stringResource(MR.strings.member_label_profile)
+        MembersAgentDetailTab.Activity -> stringResource(MR.strings.member_tab_activity)
+        MembersAgentDetailTab.Chat -> stringResource(MR.strings.member_tab_chat)
+        MembersAgentDetailTab.Reminders -> stringResource(MR.strings.member_tab_reminders)
+        MembersAgentDetailTab.Workspace -> stringResource(MR.strings.member_tab_workspace)
+        MembersAgentDetailTab.Apps -> stringResource(MR.strings.member_tab_apps)
+    }
+
 internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean = kind == MemberKind.Agent
 
 internal enum class MembersAgentServerRole(
@@ -239,6 +250,13 @@ internal enum class MembersAgentServerRole(
     Admin("admin", "Admin", SlockColor.AccentPink),
     Member("member", "Member", SlockColor.AccentLavender)
 }
+
+@Composable
+private fun MembersAgentServerRole.localizedLabel(): String =
+    when (this) {
+        MembersAgentServerRole.Admin -> stringResource(MR.strings.member_role_admin)
+        MembersAgentServerRole.Member -> stringResource(MR.strings.member_role_member)
+    }
 
 internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
     when (this?.trim()?.lowercase()) {
@@ -270,6 +288,8 @@ internal fun membersAgentServerRoleOptions(
 
 private fun String?.normalizedMembersServerRole(): String =
     this?.trim()?.lowercase().orEmpty()
+
+private fun String.membersFormat(value: String): String = replace("%1\$s", value)
 
 internal fun membersCanRemoveHumanMember(
     actorRole: String?,
@@ -479,6 +499,30 @@ internal enum class MembersAgentLifecycleAction(
     val requiresConfirmation: Boolean
         get() = this != Start
 }
+
+@Composable
+private fun MembersAgentLifecycleAction.localizedLabel(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_start_agent)
+        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_reset_runtime_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_delete_agent)
+        MembersAgentLifecycleAction.UnassignMachine -> stringResource(MR.strings.member_action_unassign_machine)
+    }
+
+@Composable
+private fun MembersAgentLifecycleAction.localizedBusyLabel(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_starting)
+        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stopping)
+        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_deleting)
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restarting)
+        MembersAgentLifecycleAction.ResetSession,
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_resetting)
+        MembersAgentLifecycleAction.UnassignMachine -> stringResource(MR.strings.member_action_unassigning)
+    }
 
 private data class MembersAgentActionState(
     val action: MembersAgentLifecycleAction,
@@ -3066,6 +3110,12 @@ private fun MembersDetailContent(
     stableVisualCapture: Boolean = false
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
+    val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
+    val issueReportingUnavailable = stringResource(MR.strings.member_error_issue_unavailable)
+    val avatarEditingUnavailable = stringResource(MR.strings.member_error_avatar_edit_unavailable)
+    val avatarUnchanged = stringResource(MR.strings.member_error_avatar_unchanged)
+    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
+    val avatarSaveErrorTemplate = stringResource(MR.strings.member_error_avatar_save)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val agentStatusIndicatorState =
         if (member.kind == MemberKind.Agent) {
@@ -3249,7 +3299,7 @@ private fun MembersDetailContent(
         if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
         if (!canManage || (agentDetailActions == null && callback == null)) {
-            onUnavailableAction("Agent management is not available.")
+            onUnavailableAction(managementUnavailable)
             return
         }
         if (action.requiresConfirmation && !confirmed) {
@@ -3314,7 +3364,7 @@ private fun MembersDetailContent(
         val callback = onReportAgentIssue
         if (diagnosticInFlight != null) return
         if (agentDetailActions == null && callback == null) {
-            onUnavailableAction("Agent issue reporting is not available.")
+            onUnavailableAction(issueReportingUnavailable)
             return
         }
         scope.launch {
@@ -3362,7 +3412,7 @@ private fun MembersDetailContent(
     fun saveAvatar(avatarUrl: String?) {
         val callback = onUpdateAgentProfile
         if (!canManage || deleted || callback == null) {
-            onUnavailableAction("Agent avatar editing is not available.")
+            onUnavailableAction(avatarEditingUnavailable)
             return
         }
         scope.launch {
@@ -3387,13 +3437,13 @@ private fun MembersDetailContent(
                     showAvatarPicker = false
                 }
                 is DataResult.Empty -> {
-                    onUnavailableAction("Avatar unchanged")
+                    onUnavailableAction(avatarUnchanged)
                 }
                 is DataResult.NoPermission -> {
-                    onUnavailableAction("No permission: ${result.blocker.code}")
+                    onUnavailableAction(permissionErrorTemplate.membersFormat(result.blocker.code))
                 }
                 is DataResult.Error -> {
-                    onUnavailableAction("Avatar save failed: ${result.error.code}")
+                    onUnavailableAction(avatarSaveErrorTemplate.membersFormat(result.error.code))
                 }
             }
         }
@@ -3812,7 +3862,7 @@ private fun MembersDetailHeader(
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val headerMetaLabel =
         when {
-            deleted -> "Deleted"
+            deleted -> stringResource(MR.strings.member_status_deleted)
             member.kind == MemberKind.Agent ->
                 summary?.description?.takeIf { it.isNotBlank() }
                     ?: member.description?.takeIf { it.isNotBlank() }
@@ -3953,7 +4003,7 @@ private fun MembersDetailSummary(
     val summary = detail?.summary
     val statusLabel =
         if (deleted) {
-            "Deleted"
+            stringResource(MR.strings.member_status_deleted)
         } else {
             membersLiveAgentStatusLabel(
                 indicatorState = agentStatusIndicatorState,
@@ -4037,7 +4087,7 @@ private fun MembersDetailActions(
             modifier = Modifier.weight(1f)
         )
         MembersDetailActionButton(
-            label = "Copy ID",
+            label = stringResource(MR.strings.member_action_copy_id),
             iconName = SlockLucideIconName.Copy,
             enabled = true,
             onClick = onCopyMemberId,
@@ -4050,22 +4100,24 @@ private fun MembersDetailActions(
 // action button label, message is user-facing copy, warning banner shows the
 // message only (never repeats the title), and the confirm button carries the
 // action label with warning/destructive color.
+@Composable
 private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction): String =
     when (action) {
-        MembersAgentLifecycleAction.Stop -> "Stop Agent"
-        MembersAgentLifecycleAction.Delete -> "Delete Agent"
-        else -> action.label
+        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
+        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_delete_agent)
+        else -> action.localizedLabel()
     }
 
+@Composable
 private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
         MembersAgentLifecycleAction.Stop ->
-            "Are you sure you want to stop \"$agentName\"? The agent will stop processing messages."
+            stringResource(MR.strings.member_dialog_confirm_stop).replace("%1\$s", agentName)
         MembersAgentLifecycleAction.Delete ->
-            "Are you sure you want to delete \"$agentName\"? This will remove all associated data and cannot be undone."
+            stringResource(MR.strings.member_dialog_confirm_delete).replace("%1\$s", agentName)
         MembersAgentLifecycleAction.UnassignMachine ->
-            "Are you sure you want to unassign the machine from \"$agentName\"?"
-        else -> "Are you sure you want to ${action.label.lowercase()} \"$agentName\"?"
+            stringResource(MR.strings.member_dialog_confirm_unassign).replace("%1\$s", agentName)
+        else -> "Are you sure you want to ${action.localizedLabel().lowercase()} \"$agentName\"?"
     }
 
 @Composable
@@ -4343,7 +4395,7 @@ private fun MembersRestartResetDialog(
     onDismiss: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "Restart ${agentName.uppercase()}",
+        title = stringResource(MR.strings.member_dialog_restart_title).replace("%1\$s", agentName.uppercase()),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 520.dp,
@@ -4380,7 +4432,7 @@ private fun MembersRestartResetDialog(
         }
         if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
             MembersRestartResetNotice(
-                text = "This will permanently delete all workspace files including MEMORY.md and notes/. This cannot be undone.",
+                text = stringResource(MR.strings.member_dialog_full_reset_warning),
                 color = SlockColor.AccentOrange
             )
         }
@@ -4400,7 +4452,7 @@ private fun MembersRestartResetDialog(
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
-                label = if (busy) "Restarting..." else selectedAction.restartResetButtonLabel(),
+                label = if (busy) stringResource(MR.strings.member_action_restarting) else selectedAction.restartResetButtonLabel(),
                 leadingIcon = SlockLucideIconName.RotateCcw,
                 enabled = !busy,
                 backgroundColor = selectedAction.restartResetAccentColor(),
@@ -4491,20 +4543,22 @@ private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
         this == MembersAgentLifecycleAction.ResetSession ||
         this == MembersAgentLifecycleAction.ResetFull
 
+@Composable
 private fun MembersAgentLifecycleAction.restartResetTitle(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> "RESTART"
-        MembersAgentLifecycleAction.ResetSession -> "RESET SESSION & RESTART"
-        MembersAgentLifecycleAction.ResetFull -> "FULL RESET & RESTART"
-        else -> label.uppercase()
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent).uppercase()
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session).uppercase()
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart).uppercase()
+        else -> localizedLabel().uppercase()
     }
 
+@Composable
 private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> "Restart"
-        MembersAgentLifecycleAction.ResetSession -> "Reset Session & Restart"
-        MembersAgentLifecycleAction.ResetFull -> "Full Reset & Restart"
-        else -> label
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        else -> localizedLabel()
     }
 
 private fun MembersAgentLifecycleAction.restartResetButtonMinWidth(): Dp =
@@ -4515,14 +4569,15 @@ private fun MembersAgentLifecycleAction.restartResetButtonMinWidth(): Dp =
         else -> 136.dp
     }
 
+@Composable
 private fun MembersAgentLifecycleAction.restartResetDescription(): String =
     when (this) {
         MembersAgentLifecycleAction.Restart ->
-            "Stop and restart the agent process. Keeps the runtime session and workspace files."
+            stringResource(MR.strings.member_dialog_restart_description)
         MembersAgentLifecycleAction.ResetSession ->
-            "Clear the runtime session and restart. Workspace files (MEMORY.md, notes/) are preserved."
+            stringResource(MR.strings.member_dialog_reset_session_description)
         MembersAgentLifecycleAction.ResetFull ->
-            "Clear the runtime session, delete all workspace files, and restart from scratch."
+            stringResource(MR.strings.member_dialog_full_reset_description)
         else -> ""
     }
 
@@ -4637,10 +4692,11 @@ private fun MembersAgentTabBar(
     }
 }
 
+@Composable
 private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
     SlockTabSpec(
         key = this,
-        label = label,
+        label = localizedLabel(),
         iconName = iconName,
         width =
             when (this) {
@@ -4671,7 +4727,7 @@ private fun MembersAgentDetailStateNotice(
         }
     val privateMessage =
         if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
-            "Profile is public. Activity, Chat, Reminders, Workspace, and Apps are hidden for this account."
+            stringResource(MR.strings.member_state_private_hidden)
         } else {
             null
         }
@@ -4721,7 +4777,7 @@ private fun MembersAgentRuntimeErrorBanner(
                 pulsing = false
             )
             Text(
-                text = if (canViewPrivate) errorText else "Agent encountered an error",
+                text = if (canViewPrivate) errorText else stringResource(MR.strings.member_state_agent_error),
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
@@ -4746,7 +4802,7 @@ private fun MembersAgentRuntimeErrorBanner(
                     onClick = onViewLogs
                 )
                 SlockBrutalActionButton(
-                    label = "Copy info",
+                    label = stringResource(MR.strings.member_action_copy_info),
                     leadingIcon = SlockLucideIconName.Copy,
                     minWidth = 92.dp,
                     minHeight = 30.dp,
@@ -4813,7 +4869,7 @@ private fun MembersHumanProfileSummary(
                 overflow = TextOverflow.Ellipsis
             )
             if (member.membershipStatus == "removed") {
-                MembersHumanRoleChip("Removed", SlockColor.EmptyStateGray)
+                MembersHumanRoleChip(stringResource(MR.strings.member_role_removed), SlockColor.EmptyStateGray)
             }
         }
     }
@@ -4826,10 +4882,10 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle("DESCRIPTION")
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_description).uppercase())
         val descriptionMissing = member.description.isNullOrBlank()
         Text(
-            text = member.description?.takeIf { it.isNotBlank() } ?: "No description",
+            text = member.description?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_state_no_description),
             style = SlockType.Body.copy(
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
@@ -4855,10 +4911,10 @@ private fun MembersHumanInfoSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle("INFO")
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
         MembersHumanInfoItem(label = stringResource(MR.strings.member_label_role)) {
             MembersHumanRoleChip(
-                label = member.roleDescription?.takeIf { it.isNotBlank() } ?: "Member",
+                label = member.roleDescription?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_role_member),
                 backgroundColor = member.membersHumanRoleChipColor()
             )
         }
@@ -4930,7 +4986,7 @@ private fun MembersHumanRoleChip(
 
 @Composable
 private fun MembersAgentServerRoleChip(role: MembersAgentServerRole?) {
-    val label = role?.label ?: "No role"
+    val label = role?.localizedLabel() ?: stringResource(MR.strings.member_role_none)
     val backgroundColor = role?.backgroundColor ?: SlockColor.EmptyStateGray
     Box(
         modifier = Modifier
@@ -4977,7 +5033,7 @@ private fun MembersAgentServerRoleEditor(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = role.label,
+                text = role.localizedLabel(),
                 style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 modifier = Modifier.weight(1f),
@@ -5080,7 +5136,7 @@ private fun MembersHumanCreatedAgentsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            MembersDetailSectionTitle("CREATED AGENTS")
+            MembersDetailSectionTitle(stringResource(MR.strings.member_section_created_agents).uppercase())
             Text(
                 text = createdAgents.size.toString(),
                 style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -5117,7 +5173,7 @@ private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle("ACTIONS")
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).uppercase())
         SlockBrutalActionButton(
             label = stringResource(MR.strings.member_action_remove_member),
             leadingIcon = SlockLucideIconName.Trash2,
@@ -5531,6 +5587,13 @@ private fun MembersAgentProfileTab(
     val scope = rememberCoroutineScope()
     val deleted = summary?.deletedAt?.isNotBlank() == true
     val canEdit = canManage && !deleted
+    val profileEditingUnavailable = stringResource(MR.strings.member_error_profile_edit_unavailable)
+    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
+    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
+    val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
+    val permissionErrorTemplate = stringResource(MR.strings.member_error_permission)
+    val saveErrorTemplate = stringResource(MR.strings.member_error_save)
+    val descriptionTooLongTemplate = stringResource(MR.strings.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
     // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
@@ -5582,17 +5645,17 @@ private fun MembersAgentProfileTab(
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
         if (!canEdit || (agentDetailActions == null && callback == null) || savingDisplayName) {
-            onUnavailableAction("Agent profile editing is not available.")
+            onUnavailableAction(profileEditingUnavailable)
             return
         }
         val next = draftDisplayName.trim()
         if (next.isBlank()) {
             if (storeBackedProfileEdit) {
                 profileStore.dispatch(
-                    SharedAgentDetailIntent.SetDisplayNameError("Display name is required")
+                    SharedAgentDetailIntent.SetDisplayNameError(displayNameRequired)
                 )
             } else {
-                localDisplayNameError = "Display name is required"
+                localDisplayNameError = displayNameRequired
             }
             return
         }
@@ -5636,7 +5699,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission -> {
-                    val error = "No permission: ${result.blocker.code}"
+                    val error = permissionErrorTemplate.membersFormat(result.blocker.code)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
                     } else {
@@ -5644,7 +5707,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.Error -> {
-                    val error = "Save failed: ${result.error.code}"
+                    val error = saveErrorTemplate.membersFormat(result.error.code)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
                     } else {
@@ -5661,12 +5724,12 @@ private fun MembersAgentProfileTab(
     fun saveRole() {
         val callback = onUpdateAgentProfile
         if (!canEdit || (agentDetailActions == null && callback == null) || savingRole) {
-            onUnavailableAction("Agent profile editing is not available.")
+            onUnavailableAction(profileEditingUnavailable)
             return
         }
         val next = draftRole.trim()
         if (next.length > MembersAgentProfileDescriptionMaxLength) {
-            val error = "Description must be at most $MembersAgentProfileDescriptionMaxLength characters"
+            val error = descriptionTooLongTemplate.membersFormat(MembersAgentProfileDescriptionMaxLength.toString())
             if (storeBackedProfileEdit) {
                 profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
             } else {
@@ -5714,7 +5777,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission -> {
-                    val error = "No permission: ${result.blocker.code}"
+                    val error = permissionErrorTemplate.membersFormat(result.blocker.code)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -5722,7 +5785,7 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.Error -> {
-                    val error = "Save failed: ${result.error.code}"
+                    val error = saveErrorTemplate.membersFormat(result.error.code)
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
                     } else {
@@ -5739,7 +5802,7 @@ private fun MembersAgentProfileTab(
     fun saveServerRole() {
         val callback = onUpdateAgentProfile
         if (!canEditServerRole || (agentDetailActions == null && callback == null) || savingServerRole) {
-            onUnavailableAction("Agent role editing is not available.")
+            onUnavailableAction(roleEditingUnavailable)
             return
         }
         val next = draftServerRole
@@ -5777,9 +5840,9 @@ private fun MembersAgentProfileTab(
                     serverRoleMenuExpanded = false
                 }
                 is DataResult.NoPermission ->
-                    serverRoleError = "No permission: ${result.blocker.code}"
+                    serverRoleError = permissionErrorTemplate.membersFormat(result.blocker.code)
                 is DataResult.Error ->
-                    serverRoleError = "Save failed: ${result.error.code}"
+                    serverRoleError = saveErrorTemplate.membersFormat(result.error.code)
             }
             savingServerRole = false
         }
@@ -5788,7 +5851,7 @@ private fun MembersAgentProfileTab(
     fun saveRuntimeConfig(nextConfig: RuntimeConfig) {
         val callback = onUpdateAgentProfile
         if (!canEdit || (agentDetailActions == null && callback == null) || savingRuntimeConfig) {
-            onUnavailableAction("Runtime config editing is not available.")
+            onUnavailableAction(runtimeEditingUnavailable)
             return
         }
         val currentConfig = summary.toMembersRuntimeConfig(member)
@@ -5834,9 +5897,9 @@ private fun MembersAgentProfileTab(
                     }
                 }
                 is DataResult.NoPermission ->
-                    runtimeConfigError = "No permission: ${result.blocker.code}"
+                    runtimeConfigError = permissionErrorTemplate.membersFormat(result.blocker.code)
                 is DataResult.Error ->
-                    runtimeConfigError = "Save failed: ${result.error.code}"
+                    runtimeConfigError = saveErrorTemplate.membersFormat(result.error.code)
             }
             savingRuntimeConfig = false
         }
@@ -5844,9 +5907,9 @@ private fun MembersAgentProfileTab(
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
         if (deleted) {
-            MembersDetailSection(title = "DELETED") {
-                MembersDetailField("Status", "Deleted")
-                MembersDetailField("Deleted at", summary.deletedAt.orDash())
+            MembersDetailSection(title = stringResource(MR.strings.member_status_deleted).uppercase()) {
+                MembersDetailField(stringResource(MR.strings.member_label_status), stringResource(MR.strings.member_status_deleted))
+                MembersDetailField(stringResource(MR.strings.member_label_deleted_at), summary.deletedAt.orDash())
             }
         }
 
@@ -6067,7 +6130,7 @@ private fun MembersAgentProfileTab(
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionDivider()
-            MembersDetailSectionTitle("INFO")
+            MembersDetailSectionTitle(stringResource(MR.strings.member_section_info).uppercase())
             // Role row: React keeps this as a label affordance plus an inline role chip/editor,
             // not the compact two-column metadata row used by Computer/Created/Creator.
             Column(
@@ -6178,7 +6241,7 @@ private fun MembersAgentProfileTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Computer",
+                    text = stringResource(MR.strings.member_label_computer),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
@@ -6192,7 +6255,7 @@ private fun MembersAgentProfileTab(
                     overflow = TextOverflow.Ellipsis
                 )
                 val machineStatusLabel =
-                    if (summary?.machineId != null) "Connected" else "Offline"
+                    if (summary?.machineId != null) stringResource(MR.strings.member_label_connected) else stringResource(MR.strings.member_label_offline)
                 Text(
                     text = machineStatusLabel,
                     style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
@@ -6213,7 +6276,7 @@ private fun MembersAgentProfileTab(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Created",
+                        text = stringResource(MR.strings.member_label_created),
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = SlockColor.TextMutedGray,
                         modifier = Modifier.width(86.dp)
@@ -6234,7 +6297,7 @@ private fun MembersAgentProfileTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Creator",
+                    text = stringResource(MR.strings.member_label_creator),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
@@ -6300,7 +6363,7 @@ private fun MembersAgentProfileTab(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
                 MembersEditableSectionTitleRow(
-                    title = "RUNTIME CONFIG",
+                    title = stringResource(MR.strings.member_section_runtime_config).uppercase(),
                     showEdit = canEdit && !editingRuntimeConfig,
                     onEditClick = {
                         runtimeConfigError = null
@@ -6377,10 +6440,10 @@ private fun MembersAgentProfileActionsSection(
     val primaryAction = membersPrimaryLifecycleAction(status, deleted = false)
     val primaryLabel =
         when (primaryAction) {
-            MembersAgentLifecycleAction.Start -> "Start Agent"
-            MembersAgentLifecycleAction.Stop -> "Stop Agent"
-            null -> "Start Agent"
-            else -> primaryAction.label
+            MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_start_agent)
+            MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
+            null -> stringResource(MR.strings.member_action_start_agent)
+            else -> primaryAction.localizedLabel()
         }
     val primaryBusy = lifecycleInFlight == primaryAction?.actionKey
     val copyState = diagnosticActionState?.takeIf { it.actionKey == "copy" }
@@ -6392,10 +6455,10 @@ private fun MembersAgentProfileActionsSection(
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle("ACTIONS")
+        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions).uppercase())
         if (primaryAction != null) {
             SlockBrutalActionButton(
-                label = if (primaryBusy) primaryAction.profileActionBusyLabel() else primaryLabel,
+            label = if (primaryBusy) primaryAction.localizedBusyLabel() else primaryLabel,
                 leadingIcon = primaryAction.iconName,
                 enabled = lifecycleInFlight == null,
                 minHeight = 42.dp,
@@ -6412,7 +6475,7 @@ private fun MembersAgentProfileActionsSection(
             onClick = onOpenRestartReset
         )
         SlockBrutalActionButton(
-            label = copyState?.successLabel ?: "Copy Diagnostic Info",
+            label = copyState?.successLabel ?: stringResource(MR.strings.member_action_copy_diagnostic_info),
             leadingIcon = if (copyState?.successLabel != null) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
             enabled = !diagnosticBusy,
             minHeight = 42.dp,
@@ -6420,7 +6483,7 @@ private fun MembersAgentProfileActionsSection(
             onClick = onCopyDiagnostics
         )
         SlockBrutalActionButton(
-            label = if (reportState?.inProgress == true) "Reporting..." else "Report Issue",
+            label = if (reportState?.inProgress == true) stringResource(MR.strings.member_action_reporting) else stringResource(MR.strings.member_action_report_issue),
             leadingIcon = SlockLucideIconName.Bug,
             enabled = !diagnosticBusy,
             backgroundColor = SlockColor.AccentOrange,
@@ -6429,7 +6492,7 @@ private fun MembersAgentProfileActionsSection(
             onClick = onReportIssue
         )
         SlockBrutalActionButton(
-            label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) "Deleting..." else "Delete Agent",
+            label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(MR.strings.member_action_deleting) else stringResource(MR.strings.member_action_delete_agent),
             leadingIcon = SlockLucideIconName.Trash2,
             enabled = lifecycleInFlight == null,
             backgroundColor = SlockColor.AccentRed,
@@ -6439,17 +6502,6 @@ private fun MembersAgentProfileActionsSection(
         )
     }
 }
-
-private fun MembersAgentLifecycleAction.profileActionBusyLabel(): String =
-    when (this) {
-        MembersAgentLifecycleAction.Start -> "Starting..."
-        MembersAgentLifecycleAction.Stop -> "Stopping..."
-        MembersAgentLifecycleAction.Delete -> "Deleting..."
-        MembersAgentLifecycleAction.Restart -> "Restarting..."
-        MembersAgentLifecycleAction.ResetSession -> "Resetting..."
-        MembersAgentLifecycleAction.ResetFull -> "Resetting..."
-        MembersAgentLifecycleAction.UnassignMachine -> "Unassigning..."
-    }
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -6464,39 +6516,39 @@ private fun MembersAgentRuntimeConfigRows(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        MembersAgentRuntimeConfigField("Runtime") {
+        MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_runtime)) {
             MembersAgentRuntimeChip(
                 label = getRuntimeDisplayName(runtimeId),
                 kind = MembersAgentRuntimeChipKind.Runtime
             )
         }
-        MembersAgentRuntimeConfigField("Model") {
+        MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model)) {
             MembersAgentRuntimeChip(
                 label = getModelLabel(runtimeId, runtimeConfig.toMembersRuntimeModelValue()),
                 kind = MembersAgentRuntimeChipKind.Model
             )
         }
         if (supportsRuntimeReasoningEffort(runtimeId)) {
-            MembersAgentRuntimeConfigField("Reasoning") {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_reasoning)) {
                 MembersAgentRuntimeChip(
-                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: "Default",
+                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(MR.strings.member_label_default),
                     kind = MembersAgentRuntimeChipKind.Reasoning
                 )
             }
         }
         if (supportsRuntimeFastMode(runtimeId)) {
-            MembersAgentRuntimeConfigField("Mode") {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_mode)) {
                 MembersAgentRuntimeChip(
-                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) "Fast" else "Default",
+                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(MR.strings.member_label_fast) else stringResource(MR.strings.member_label_default),
                     kind = MembersAgentRuntimeChipKind.Mode
                 )
             }
         }
         if (runtimeId == "claude") {
-            MembersAgentRuntimeConfigField("Provider") {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
                 val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
                 Text(
-                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: "Default",
+                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_label_default),
                     style = SlockType.Caption.copy(
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
@@ -6507,10 +6559,10 @@ private fun MembersAgentRuntimeConfigRows(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            MembersAgentRuntimeConfigField("Command") {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_command)) {
                 val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
                 Text(
-                    text = command ?: "Default",
+                    text = command ?: stringResource(MR.strings.member_label_default),
                     style = SlockType.Caption.copy(
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
@@ -7042,7 +7094,9 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle("SKILLS ($totalSkills)")
+        MembersDetailSectionTitle(
+            stringResource(MR.strings.member_section_skills_count).replace("%1\$s", totalSkills.toString())
+        )
         if (groups.isEmpty()) {
             Text(
                 text = stringResource(MR.strings.member_state_no_skills),
@@ -7202,7 +7256,10 @@ private fun MembersAgentCreatedAgentsSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            MembersDetailSectionTitle("CREATED AGENTS", modifier = Modifier.weight(1f))
+            MembersDetailSectionTitle(
+                stringResource(MR.strings.member_section_created_agents).uppercase(),
+                modifier = Modifier.weight(1f)
+            )
             Text(
                 text = createdAgents.size.toString(),
                 style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -7293,13 +7350,13 @@ private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Text(
-            text = "AGENT CHANNELS AND DMS",
+            text = stringResource(MR.strings.member_section_agent_channels_dms).uppercase(),
             style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
         Text(
-            text = "CHANNELS",
+            text = stringResource(MR.strings.member_section_channels).uppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
@@ -7323,7 +7380,7 @@ private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier
                 .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
         )
         Text(
-            text = "AGENT PRIVATE CHATS",
+            text = stringResource(MR.strings.member_section_private_chats).uppercase(),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
@@ -7390,7 +7447,7 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary) {
                     color = SlockColor.TextMutedGrayArgb
                 )
                 Text(
-                    text = "MUTED",
+                    text = stringResource(MR.strings.member_label_muted).uppercase(),
                     style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
                         .withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextMutedGray
@@ -7428,7 +7485,7 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Agent DM",
+                text = stringResource(MR.strings.member_label_agent_dm),
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                 color = SlockColor.TextMutedGray
             )
@@ -7469,7 +7526,7 @@ private fun MembersAgentDmRow(row: AgentDmSummary) {
             )
         }
         Text(
-            text = "ACTIVITY ONLY",
+            text = stringResource(MR.strings.member_label_activity_only).uppercase(),
             style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
@@ -7655,7 +7712,7 @@ private fun MembersAgentWorkspaceTab(
     modifier: Modifier = Modifier
 ) {
     MembersDetailSection(
-        title = "WORKSPACE",
+        title = stringResource(MR.strings.member_section_workspace).uppercase(),
         modifier = modifier,
         framed = false,
         trailingContent = {
@@ -7670,7 +7727,10 @@ private fun MembersAgentWorkspaceTab(
         when (treeState) {
             MembersAgentWorkspaceTreeState.Idle,
             MembersAgentWorkspaceTreeState.Loading ->
-                MembersDetailField("State", stringResource(MR.strings.member_state_loading_workspace))
+                MembersDetailField(
+                    stringResource(MR.strings.member_label_status),
+                    stringResource(MR.strings.member_state_workspace_loading)
+                )
             MembersAgentWorkspaceTreeState.Empty ->
                 MembersWorkspaceEmptyState(stringResource(MR.strings.member_state_no_files), onRefresh)
             is MembersAgentWorkspaceTreeState.Error ->
@@ -7705,7 +7765,7 @@ private fun MembersWorkspaceTreeView(
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
     }
     if (rows.isEmpty()) {
-        MembersDetailField("Files", stringResource(MR.strings.member_state_no_files))
+        MembersDetailField(stringResource(MR.strings.member_section_workspace), stringResource(MR.strings.member_state_no_files))
         return
     }
     LazyColumn(
@@ -7843,7 +7903,7 @@ private fun MembersAgentAppsTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MembersDetailSection(title = "CONNECTED APPS", modifier = modifier) {
+    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps).uppercase(), modifier = modifier) {
         Text(
             text = "Apps this agent has logged into with Raft Agent Login",
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
@@ -7866,7 +7926,10 @@ private fun MembersAgentAppsTab(
                 val activeItems = appLogins?.items.orEmpty()
                     .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
                 if (activeItems.isEmpty()) {
-                    MembersDetailField("Apps", stringResource(MR.strings.member_state_no_connected_apps))
+                    MembersDetailField(
+                        stringResource(MR.strings.member_tab_apps),
+                        stringResource(MR.strings.member_state_no_connected_apps)
+                    )
                 } else {
                     activeItems.forEach { item ->
                         MembersAgentAppLoginCard(
@@ -7916,7 +7979,7 @@ private fun MembersAgentAppLoginCard(
                     )
                 }
             }
-            MembersAgentAppLoginStatusBadge("Active")
+            MembersAgentAppLoginStatusBadge(stringResource(MR.strings.member_label_active))
         }
         item.clientDescription?.takeIf { it.isNotBlank() }?.let {
             Text(
@@ -7992,9 +8055,12 @@ private fun MembersAgentActivityTab(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            MembersDetailSectionTitle("ACTIVITY DIAGNOSTICS", modifier = Modifier.weight(1f))
+            MembersDetailSectionTitle(
+                stringResource(MR.strings.member_section_activity_diagnostics).uppercase(),
+                modifier = Modifier.weight(1f)
+            )
             SlockBrutalActionButton(
-                label = if (copySucceeded) "Copied" else "Copy",
+                label = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
                 leadingIcon = if (copySucceeded) SlockLucideIconName.Check else SlockLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
                 minHeight = 32.dp,
@@ -8015,7 +8081,7 @@ private fun MembersAgentActivityTab(
         if (rows.isEmpty()) {
             SlockEmptyState(
                 title = stringResource(MR.strings.member_state_no_activity),
-                detail = "Start the agent to see its activity log.",
+                detail = stringResource(MR.strings.member_state_activity_start_agent),
                 iconName = SlockLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -8149,7 +8215,7 @@ private fun MembersAgentActivityRow(
             }
             if (longBody) {
                 Text(
-                    text = if (expanded) "Show less" else "Show more",
+                    text = if (expanded) stringResource(MR.strings.member_label_show_less) else stringResource(MR.strings.member_label_show_more),
                     style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
                         .withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextBlack,
@@ -8450,12 +8516,12 @@ private fun MembersAgentPermissionsTab(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = if (isCustom) "Customized permissions" else "Using default permissions",
+                    text = if (isCustom) stringResource(MR.strings.member_status_permissions_custom) else stringResource(MR.strings.member_status_permissions_default),
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    text = if (isCustom) "New capabilities stay off until you turn them on for this agent." else "New default capabilities are enabled automatically for this agent.",
+                    text = if (isCustom) stringResource(MR.strings.member_hint_permissions_custom) else stringResource(MR.strings.member_hint_permissions_default),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray
                 )
@@ -8477,8 +8543,8 @@ private fun MembersAgentPermissionsTab(
         val notificationGroups = membersAgentScopeGroups.filter { it.section == "notifications" }
         val cliGroups = membersAgentScopeGroups.filter { it.section == "cli" }
 
-        PermissionsSection(title = stringResource(MR.strings.member_label_notifications_inbox), description = "Controls what can wake the agent or enter its inbox.", groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
-        PermissionsSection(title = stringResource(MR.strings.member_role_raft_cli), description = "Controls what the agent can actively do through slock CLI commands.", groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(MR.strings.member_label_notifications_inbox), description = stringResource(MR.strings.member_hint_permissions_notifications), groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(MR.strings.member_role_raft_cli), description = stringResource(MR.strings.member_hint_permissions_cli), groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
 
         // Action bar
         Row(
@@ -8487,7 +8553,7 @@ private fun MembersAgentPermissionsTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             SlockBrutalActionButton(
-                label = if (saving) "Saving…" else "Save permissions",
+                label = if (saving) stringResource(MR.strings.common_loading) else stringResource(MR.strings.member_action_save_permissions),
                 onClick = {
                     scope.launch { save() }
                 },
@@ -8496,7 +8562,7 @@ private fun MembersAgentPermissionsTab(
                 minWidth = 132.dp
             )
             SlockBrutalActionButton(
-                label = "Discard",
+                label = stringResource(MR.strings.member_action_discard),
                 onClick = ::discard,
                 enabled = !saving && isDirty,
                 minWidth = 88.dp

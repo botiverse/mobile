@@ -99,6 +99,43 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun memberDetailActionAndStateResourcesAreGenerated() {
+        listOf(
+            MR.strings.member_tab_activity,
+            MR.strings.member_tab_chat,
+            MR.strings.member_tab_reminders,
+            MR.strings.member_tab_workspace,
+            MR.strings.member_tab_apps,
+            MR.strings.member_action_copy_id,
+            MR.strings.member_action_delete_agent,
+            MR.strings.member_action_restart_session,
+            MR.strings.member_state_profile_loading,
+            MR.strings.member_state_private_hidden,
+            MR.strings.member_state_workspace_loading,
+            MR.strings.member_state_no_connected_apps,
+            MR.strings.member_section_activity_diagnostics,
+            MR.strings.member_action_save_permissions,
+            MR.strings.member_hint_permissions_notifications,
+            MR.strings.member_hint_permissions_cli
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "member detail static copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.member_dialog_restart_title,
+            MR.strings.member_section_skills_count
+        ).forEach { resource ->
+            assertTrue(
+                resource.format(listOf("Agent")) is ResourceFormattedStringDesc,
+                "formatted member copy must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun homeSearchActivityAndSavedPanelResourcesAreGenerated() {
         listOf(
             MR.strings.search_section_channels_dms,
