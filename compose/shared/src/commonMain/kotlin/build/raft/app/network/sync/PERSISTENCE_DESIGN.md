@@ -1,206 +1,185 @@
 # KT Sync-Core Persistence — Implementation Design Note (P1 / task #491)
 
 **Owner:** HanXin · **Contract source of truth:** RFC 043 §9.9 + §10.1 amendment
-(botiverse/slock PR #4445, staging `6c6229fcf`) · **Verifier of §9.9 gates:** 王润基 ·
+(botiverse/slock PR #4445, staging `6c6229fcf`) · **§9.9 gate criteria:** 王润基 ·
 **Android binding review + compile hard-gate:** Android-Developer-2 (task #494)
 
-This note is the first P1 deliverable. It fixes the KT-side implementation shape
-so P1–P3 code (schema → adapter → wiring → §9.9 gates) can be built and reviewed
-against a written design rather than discovered in the PR. It does **not** restate
-the contract; where behaviour is contended, RFC 043 (as amended by #4445) wins.
+**Rev 2** — incorporates the #4445 final read (赵: per-*ingest-call* transaction
+scope) and AD2's T9 doc review (existing `SlockDatabase` is a hard constraint;
+observe-outcome is insufficient; persist fail-stop; server-stable orderKey). Rev 1's
+parallel `sync_fact`/`sync_timeline` tables are **withdrawn** — they were the
+data-layer double-truth this note now explicitly avoids.
 
-Scope of v1: **messages domain, KT only.** SyncLog (input-stream persistence) is
-the §10-open-question-3 v2 candidate and is explicitly out of scope here — v1 ships
-the ruled folded-state+cursor form. web IndexedDB adapter is T10 (Aiden, task #145).
+Scope of v1: **messages domain, KT only.** SyncLog (input-stream persistence) is the
+§10-open-question-3 v2 candidate, out of scope. Web IndexedDB adapter is T10 (Aiden,
+task #145).
 
 ---
 
-## 1. Where persistence lives
+## 1. Where persistence lives — and the single-writer wrapper
 
-`SyncCore` is a pure deterministic fold (`SyncCoreTypes.kt`: "no transport, no
-persistence, no ambient clock or randomness"). It stays that way. Persistence is a
-**host concern** implemented behind a narrow adapter the core never sees:
+`SyncCore` is a pure deterministic fold (`SyncCoreTypes.kt`: no transport, no
+persistence, no clock). It stays that way. But persistence **cannot** be driven by
+the ingest *outcome* alone: `MaxAdvanced(scope, seq)` (sparse) and
+`ingestDifference` (N events → final seq) do not carry the facts to write, and
+`Applied(scope, seq)` must not be reverse-engineered into facts (AD2). So the host
+layer is a **single apply-wrapper**, the one path through which sync ingest happens:
 
 ```
-SyncCore (pure fold) ──emits──▶ applied facts + SyncScopeState{appliedSeq, epoch}
-        ▲                                     │
-        │ restore(state, watermark, epoch)    │ persist(frame outcome)
-        │                                     ▼
-   SyncPersistenceCoordinator ──────▶ SyncStorageAdapter (§10.1 narrow KV)
-                                              │
-                                    ┌─────────┴─────────┐
-                                 SQLite               MMKV
-                          (message window +      (auth/session,
-                           watermark + epoch:     installation id,
-                           crash-atomic unit)     flags — independent)
+callers ─▶ SyncPersistenceWrapper.ingestX(input) {           // the ONLY host apply path
+    val (outcome, delta) = core.ingestX(input)                // core stays pure
+    db.transaction {                                          // ONE txn per ingest call
+        applyDelta(delta)        // messageEntity upserts/tombstones for THIS call
+        advanceCursor(outcome)   // syncCursorEntity latestSeq + epoch
+    }                                                          // commit
+    return outcome               // returns only AFTER commit succeeds (fail-stop, §4.3)
+}
 ```
 
-The core is **not** modified to write storage inline. A thin
-`SyncPersistenceCoordinator` observes each ingest outcome and drives the adapter;
-on launch it reads the adapter and calls the core's existing hydrate path
-(`ingestSnapshot`, see §5). This keeps the equivalence suite (kt/TS core) untouched
-— persistence is tested as a *separate* layer plus the §9.9 gates.
+The wrapper holds **input + outcome + canonical post-delta** together — it can
+persist `MaxAdvanced` and difference batches that the bare outcome cannot express.
+The core is never fed backward: the wrapper only *reads* `core` output and *writes*
+storage (AD2's no-second-apply-path — the coordinator must never re-inject into the
+core). This is the mechanical form of the all-day guardrail: **UI/cache derive from
+core applied state; storage is a projection, never a second source of truth.**
 
-## 2. Backend split — decided by crash-atomicity, not by store type (§10.1)
+## 2. Backend split — decided by crash-atomicity (§10.1), on EXISTING tables
 
-Per the #4445 discriminator (HanXin): **anything that must be crash-consistent with
-message facts lives on the same backend in the same transaction as those facts.**
+Per the #4445 discriminator (HanXin): anything that must be crash-consistent with
+message facts lives on the same backend in the same transaction as those facts.
+Crucially, the messages backend already exists — cross-platform SQLDelight
+`SlockDatabase` (Android/iOS/OHOS drivers wired). **We reuse it; we do not add a
+parallel store** (that is the double-truth):
 
-| Datum | Backend | Why |
+| Datum | Storage (existing unless noted) | Same txn as facts? |
 |---|---|---|
-| message facts (folded domain state) | SQLite | pageable window, range scan, prune |
-| per-scope **watermark** (`appliedSeq`) | **SQLite, same txn as facts** | advances with apply, gates difference — torn = message loss |
-| per-scope **epoch** | **SQLite, same txn as facts** | epoch/fact mismatch = the rollback disease |
-| timeline index | **SQLite, same txn as facts** | index-in-separate-txn = renamed torn window (#4445 §9.9 count invariant) |
-| auth/session token, installation id, feature flags | MMKV | truly independent of message facts |
+| message facts | `messageEntity` | — |
+| timeline order | `messageEntity_channelSeq (serverId, channelId, seq)` index | (free, in-row) |
+| per-scope watermark | `syncCursorEntity.latestSeq` | **yes** |
+| per-scope **epoch** | `syncCursorEntity.epoch` **(new column, §3)** | **yes** |
+| attachments/reactions/saved | existing FK-`messageEntity` tables | yes (same call) |
+| auth/session token, installation id, flags | MMKV | n/a — independent |
 
-"Watermark-on-MMKV made safe by write ordering" is **rejected** by contract —
-correctness that depends on an ordering discipline is correctness anyone can
-silently break. The crash-window gate (§6.2) exists so we never rely on it.
+"Watermark-on-MMKV made safe by write ordering" stays rejected (#4445). The
+message+cursor+epoch commit is one SQLite transaction on `SlockDatabase`; MMKV holds
+only data with no cross-atomicity to messages.
 
-## 3. SQLite schema — two keyspaces, one narrow KV interface
+## 3. Schema — reuse + one migration (no new fact/timeline tables)
 
-Both keyspaces are plain KV rows; the interface stays `get/put/prefix/scanPrefix`
-(no engine-specific semantics leak into the core — the tdlib-on-web fork is the
-named cautionary precedent in §10.1).
+`messageEntity` (id PK = messageId; serverId, channelId, **seq**, body,
+messageType, metadataJson, deliveryState, parentMessageId, …) already **is** the
+fact table, and `messageEntity_channelSeq(serverId, channelId, seq)` already **is**
+the ordered timeline. `syncCursorEntity(scopeId, serverId, latestSeq,
+oldest/newestLoadedSeq, …)` already **is** the cursor. The only additions:
 
 ```sql
--- Fact space: point lookup / update by message id. Editing a message rewrites here.
-CREATE TABLE sync_fact (
-  k     TEXT PRIMARY KEY,   -- 'fact:' || serverId || ':' || scope || ':' || messageId
-  ver   INTEGER NOT NULL,   -- version-gated max-by-version apply (RFC 041)
-  value BLOB    NOT NULL    -- serialized fact
-);
-
--- Timeline index: ordered window. Prefix scan by (serverId,scope) yields orderKey order.
-CREATE TABLE sync_timeline (
-  k       TEXT PRIMARY KEY, -- 'tl:' || serverId || ':' || scope || ':' || orderKey || ':' || messageId
-  fact_id TEXT NOT NULL     -- -> sync_fact.k
-);
-
--- Per-scope sync cursor + epoch. One row per (serverId,scope). Committed WITH facts.
-CREATE TABLE sync_scope_cursor (
-  k         TEXT PRIMARY KEY, -- 'cur:' || serverId || ':' || scope
-  watermark INTEGER NOT NULL, -- = SyncScopeState.appliedSeq
-  epoch     TEXT               -- nullable = pre-first-contact
-);
+-- SQLDelight migration N.sqm (versioned; drivers already exist on all 3 platforms):
+ALTER TABLE syncCursorEntity ADD COLUMN epoch TEXT;   -- per-scope epoch (nullable = pre-first-contact)
+-- messageEntity.seq already carries the canonical ordering/version gate; no BLOB column,
+-- no second fact table. (If a domain needs a body-hash for §9.9 round-trip, add a
+-- nullable column here rather than a parallel row — reviewed with AD2.)
 ```
 
-Key rules (from #4445 §10.1):
-- **fact key** `serverId:scope:messageId` — locates a fact; scanning it sorts by
-  *message id* (arbitrary), so it can NOT define a timeline window on its own.
-- **timeline key** encodes `orderKey`: `serverId:scope:orderKey:messageId`.
-  `orderKey` = the per-scope **monotonic insertion order** (≈ `scopeSeq` at first
-  apply). Edits/deletes rewrite the *fact* or add a tombstone; they do **not** move
-  the timeline position → the window is stable across edit/restore.
-- **global seq is sparse** (has holes) → used only as a monotonic ordering/resume
-  cursor, **never** to synthesize dense ranges. `orderKey` ordering is by-prefix-scan
-  in key order, which tolerates holes.
-- **read/prefs (receiver-family state)** keep an independent key namespace and are
-  never merged into `sync_fact`.
+**orderKey = server sparse `seq` + `messageId` (id) tie-break** — RULED (#4445; 赵
+withdrew the insertion-counter idea: a device-local counter misplaces out-of-order
+difference-repaired messages and is non-canonical across devices/TS-KT → T8 red).
+`seq` is server-stable, edits keep the original `seq` (edit-stability for free), and
+snapshots carry+restore the same `seq`. Sparse `seq` (holes allowed) is used for
+ordering/resume only — never to synthesize dense successors.
 
-`orderKey` byte-encoding must be order-preserving as a TEXT prefix (zero-padded
-fixed-width, or a lexical-sortable varint). Exact encoding finalized in code and
-reviewed by AD2 (Android collation/index) before P1 first commit lands.
+## 4. Atomic apply — one ingest call = one transaction
 
-## 4. Atomic apply — one ingest call = one transaction (P1 core, task #491)
+Per the #4445 final read (赵): the transaction-count invariant scopes to the
+**ingest call**, not the frame.
 
-The transaction-count invariant scopes to the **ingest call**, not the individual
-frame (赵, #4445 final read): a single frame is just the 1-fact special case. Each
-ingest applies its facts + timeline rows + cursor/epoch in **exactly one**
-`withTransaction { }`, so there is no mid-batch commit point that a crash could
-tear:
-
-| Ingest call | One transaction contains |
+| Ingest call | The single `SlockDatabase.transaction { }` contains |
 |---|---|
-| `ingestFrame` (1 event) | 1 fact upsert + 1 timeline upsert + cursor/epoch bump |
-| `ingestDifference` (N events) | **N** fact upserts + N timeline upserts + **one** cursor advance to `toSeq` |
-| `ingestSnapshot` (rebaseline) | clear scope facts/timeline + rebuild from snapshot state + cursor/epoch set |
+| `ingestFrame` (1 event) | 1 `messageEntity` upsert + cursor(`latestSeq`,`epoch`) |
+| `ingestDifference` (N events) | **N** upserts/tombstones (+FK rows) + **one** cursor advance to `toSeq` |
+| `ingestSnapshot` (rebaseline) | atomic clear of scope's `messageEntity` rows + rebuild + cursor/epoch set |
 
-Facts + timeline + cursor + epoch of a call commit or roll back **together**. A
-difference batch never leaves "cursor advanced but half the facts missing" (or the
-reverse) — the two failure shapes 赵 flagged are impossible because there is only
-one commit for the whole batch. Fact upserts are version-gated (skip if incoming
-`ver` ≤ stored); replay after a crash is idempotent by `messageId`/`ver`.
-Duplicate/gap/violation outcomes drive **no** fact write (a cursor bump only where
-the contract says the watermark advanced).
+### 4.1 No mid-batch commit
+A difference batch has exactly one commit → "cursor advanced but half the batch's
+facts missing" (and reverse) are unrepresentable, not merely untested.
 
-Prune (task #492/#493, T6): capacity/tombstone eviction deletes timeline rows in an
-`orderKey` range **and** their referenced facts in the **same** transaction — never
-a fact without its index entry or vice-versa.
+### 4.2 Idempotent / version-gated
+Upserts are gated by `seq` (canonical revision gate — **not** an RFC 041 receiver
+version): skip if incoming `seq` ≤ stored for that id. Crash replay of a whole
+ingest call is a no-op.
+
+### 4.3 Persist fail-stop (AD2 #3, 赵-preferred form)
+The wrapper **does not return ingest-complete until the transaction commits.** If the
+commit fails, the call fails; no subsequent ingest/publish proceeds, and the scope
+enters observable snapshot/restart recovery (`SyncSnapshotReason.SnapshotRequired`).
+This makes "cursor leads facts" impossible **by construction** — same philosophy as
+the transaction-count invariant. §7 carries the sequence diagram + failure matrix.
 
 ## 5. Restore / warm start (T4–T5)
 
-On launch, per persisted scope, the coordinator rebuilds the core via its existing
-hydrate path — no new core entrypoint:
-
-1. read `sync_scope_cursor` → `{watermark, epoch}` and the folded state assembled
-   from `sync_fact` (in `sync_timeline` order);
-2. feed the core a `SyncSnapshot(scopeId, watermark, epoch, state)` — the same type
-   already consumed by `ingestSnapshot`. The core resumes as if freshly hydrated.
-3. the sync layer then requests **difference since `watermark`** (existing
-   `SyncRequestDescription.Difference`); a gap beyond threshold escalates to
-   `Snapshot` (existing path). Cold full-fetch becomes incremental resume.
+On launch, per scope: read `syncCursorEntity` → `{latestSeq, epoch}` and the folded
+state from `messageEntity` in `messageEntity_channelSeq` order → feed the core a
+`SyncSnapshot(scopeId, watermark=latestSeq, epoch, state)` via the **existing**
+`ingestSnapshot` (reuse, not a new core entrypoint). Then request **difference since
+`latestSeq`** (existing `SyncRequestDescription.Difference`); a gap beyond threshold
+escalates to `Snapshot`. Cold full-fetch becomes incremental resume.
 
 Corrupt DB / `epoch` mismatch / difference `snapshotRequired` → the core already
-routes to a `Snapshot` request (`SyncSnapshotReason.EpochMismatch/SnapshotRequired`).
-**Deleting the local DB is a defined state**, not a failure: it degrades to a cold
-snapshot hydrate. No silent hole-skipping (T7).
+routes to a `Snapshot` request. **Deleting `SlockDatabase` is a defined state**
+(cold snapshot hydrate), never silent hole-skipping (T7).
 
 ## 6. §9.9 acceptance gates → canonical fixture line (#541) (P3, task #493)
 
-All three run on the merged canonical fixture (#541) — the natural carrier; no new
-harness. 王润基 owns the pass/fail criteria; I write the tests.
+All run on the merged #541 canonical fixture. 王润基 owns pass/fail; I write tests.
 
-### 6.1 Round-trip identity
-`state → persist(adapter) → restore → state'`; assert `state' deepEquals state`
-after replaying the canonical fixture. A serializer divergence is the
-dual-representation disease.
+- **6.1 Round-trip identity** — `state → persist → restore → state'`,
+  `deepEquals` after replaying the fixture (single serializer reused from the
+  equivalence suite — 赵: one serializer = §9.9 cross-platform comparability free).
+- **6.2 Crash-window torn-write (deterministic fault-hook)** — for each ingest call
+  (frame **and** a multi-event difference batch): kill before commit (A) / after (B)
+  / restore; restored state `deepEquals` the complete pre-call **or** post-call state,
+  never torn. The fault-hook is a **synchronous** deterministic hook wrapping the
+  real `transaction { }` (fires at a fixed logical step from the fixture) — it does
+  **not** suspend *inside* the SQLite transaction.
+- **6.3 Persist/restore equivalence (T8 joint-gate seed)** — persisted→restored
+  baseline fed further frames converges outcome-`deepEqual` with the never-persisted
+  run. KT half of the both-ends T8 release gate (TS/KT deepEqual, 赵/王润基 criteria).
 
-### 6.2 Crash-window torn-write (deterministic fault-hook)
-For each ingest call (frame **and** a multi-event `ingestDifference` batch): kill
-**before** the storage commit (run A) and **after** it (run B); restore. Assert the
-restored state `deepEquals` **either** the complete pre-call state **or** the
-complete post-call state — never a torn mix. The transaction **count invariant**:
-exactly one commit per ingest call carries all of its facts + timeline + cursor +
-epoch; a separate index/cursor commit — or a per-frame commit *inside* a difference
-batch — is a renamed torn window and fails by construction. The difference-batch leg
-is essential: a mid-batch commit point does not exist, so "cursor advanced but half
-the batch's facts missing" (and its reverse) are unrepresentable, not merely
-untested.
+## 7. Migration/retirement plan + test matrix (P1's most important section — AD2 #1)
 
-### 6.3 Persist/restore equivalence (T8 joint gate seed)
-A persisted-then-restored baseline fed further frames converges
-**outcome-deepEqual** with the never-persisted run. This is the KT half of the
-both-ends T8 release gate (TS/KT outcome deepEqual, 赵/王润基 criteria).
+**Single-writer migration.** Today various call sites write `messageEntity` directly.
+v1 routes **all sync-domain message writes through `SyncPersistenceWrapper`** so the
+core is the single source of truth; ad-hoc direct writes that bypass the core are
+retired (or, transitionally, made no-ops that defer to the wrapper). Sequenced:
 
-### Fault-hook injection points (for 6.2, supplied by P1)
-The coordinator's `withTransaction { }` boundary exposes two test-only suspension
-points, injected via a `SyncStorageFaultHook` (no-op in production, deterministic in
-tests — no timing/threads):
-- `beforeCommit(frame)` — kill here ⇒ run A (nothing persisted for this frame);
-- `afterCommit(frame)` — kill here ⇒ run B (full frame persisted).
-Determinism requirement (§9.9): the hook fires at a fixed logical step, driven by the
-fixture, not wall-clock — so the kill point is reproducible in CI.
+1. add `syncCursorEntity.epoch` (migration N.sqm);
+2. land `SyncPersistenceWrapper` + wire the sync path (frame/difference/snapshot)
+   through it, writing `messageEntity` + `syncCursorEntity` in one txn/call;
+3. redirect existing message read paths to project from `messageEntity` (already the
+   store — mostly a no-op) and **remove** any writer that mutates `messageEntity`
+   outside the wrapper (enumerated in the PR; each removal is a diff hunk AD2 can
+   verify — no long-lived second writer).
 
-## 7. Build / test matrix
+`outboxMessageEntity` (sends) and `localSnapshotEntity` (snapshots) already exist and
+are **out of v1 scope** (outbox = the SyncLog-v2 / optimistic-send concern).
 
 | Test | Layer | Gate |
 |---|---|---|
 | round-trip identity | commonTest | §9.9 6.1 |
-| crash-window torn-write (hook A/B) | commonTest | §9.9 6.2 |
+| crash-window torn-write, frame **and** difference-batch (hook A/B) | commonTest | §9.9 6.2 |
 | persist/restore equivalence | commonTest | §9.9 6.3 / T8 |
-| ordered-window recent-N stable after edit/restore | commonTest | T6 |
-| fact/index atomic prune | commonTest | T6 |
-| Android SQLite transaction/index binding | androidTest | T9 / AD2 review |
+| ordered-window recent-N stable after edit + out-of-order difference repair | commonTest | T6 / orderKey |
+| persist-fail → ingest not completed → snapshot recovery | commonTest | §4.3 |
+| SQLDelight migration N.sqm (epoch column) forward-only | commonTest | schema |
+| Android SQLite transaction/index binding | **androidUnitTest + SQLDelight driver** (not instrumentation) | T9 / AD2 |
 
-Android compile & tests are the only hard CI gate (mobile gate policy); iOS/OHOS
-non-blocking + 30-min fix-forward. AD2 reviews the Android SQLite transaction/index
+Android compile & unit tests are the only hard CI gate (mobile policy); iOS/OHOS
+non-blocking + 30-min fix-forward. AD2 reviews the SQLDelight transaction/index
 implementation on the P1 first commit (task #494).
 
 ---
 
-**Open for finalization in code (flagged for AD2 review):** exact `orderKey`
-byte-encoding (order-preserving TEXT), SQLite driver/txn API on KMP (SQLDelight vs
-raw), and whether the fact `value` BLOB reuses the equivalence-suite serializer
-(preferred — one serializer, one §9.9 round-trip).
+**Finalized (was "open") per AD2 review:** backend = existing SQLDelight
+`SlockDatabase` (not raw); orderKey = server `seq` + `id`; fact store = `messageEntity`
+(no BLOB table); version gate = `seq`. **Still for AD2 code review:** exact retirement
+diff set (which current writers of `messageEntity` fold into the wrapper), and whether
+`state` serialization for 6.1 reuses the equivalence-suite serializer directly.
