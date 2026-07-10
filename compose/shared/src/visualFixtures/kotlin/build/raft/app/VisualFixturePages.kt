@@ -257,6 +257,22 @@ internal class ComposeAuthChooseServerVisualPage : BasePager() {
     }
 }
 
+@Page("compose_auth_email_verification_visual", supportInLocal = true)
+internal class ComposeAuthEmailVerificationVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthEmailVerificationVisualContent() }
+    }
+}
+
+@Page("compose_app_shell_restore_splash_visual", supportInLocal = true)
+internal class ComposeAppShellRestoreSplashVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AppShellRestoreSplashContent() }
+    }
+}
+
 @Page("compose_auth_login_inputs", supportInLocal = true)
 internal class ComposeAuthLoginInputsVisualPage : BasePager() {
     override fun willInit() {
@@ -270,6 +286,14 @@ internal class ComposeAuthRegisterInputsVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { AuthRegisterInputsVisualScreen() }
+    }
+}
+
+@Page("compose_auth_forgot_password_sent_visual", supportInLocal = true)
+internal class ComposeAuthForgotPasswordSentVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthForgotPasswordSentVisualScreen() }
     }
 }
 

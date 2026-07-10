@@ -2092,14 +2092,9 @@ class SlockAppShellTest {
 
     @Test
     fun serverGatePinsSignOutForSessionRefreshRecovery() {
-        assertEquals(
-            true,
-            serverGateShouldPinSignOut(
-                "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
-            )
-        )
-        assertEquals(false, serverGateShouldPinSignOut(null))
-        assertEquals(false, serverGateShouldPinSignOut("Could not load servers."))
+        assertTrue(serverGateShouldPinSignOut(serverGateUnauthenticatedMessage()))
+        assertFalse(serverGateShouldPinSignOut(null))
+        assertFalse(serverGateShouldPinSignOut(AuthGateMessage.Dynamic("Could not load servers.")))
     }
 
 }

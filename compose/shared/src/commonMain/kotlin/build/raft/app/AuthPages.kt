@@ -1170,6 +1170,19 @@ internal fun AuthRegisterInputsVisualScreen() {
 }
 
 @Composable
+internal fun AuthForgotPasswordSentVisualScreen() {
+    ForgotPasswordContent(
+        email = "visual.reset@raft.build",
+        sending = false,
+        sent = true,
+        errorMessage = null,
+        onEmailChange = {},
+        onSubmit = {},
+        onBackToSignIn = {}
+    )
+}
+
+@Composable
 internal fun LoginContent(
     email: String,
     password: String,
@@ -1220,7 +1233,7 @@ internal fun LoginContent(
     ) {
         AuthCenterMark()
         Text(
-            text = "Sign In",
+            text = stringResource(MR.strings.auth_title_sign_in),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
@@ -1285,7 +1298,12 @@ internal fun LoginContent(
             // canSubmit sent the button into the generic disabled palette
             // (#FFD8E5 + white text = unreadable white-on-white, task #372).
             AuthActionButton(
-                text = if (submitting) "Signing in…" else "Sign In",
+                text =
+                    if (submitting) {
+                        stringResource(MR.strings.auth_state_signing_in)
+                    } else {
+                        stringResource(MR.strings.auth_action_sign_in)
+                    },
                 onClick = submitCurrentDraft,
                 tone = AuthButtonTone.Pink,
                 enabled = !formBusy,
@@ -1303,7 +1321,18 @@ internal fun LoginContent(
                 val socialEnabled = socialSubmittingProvider == null
                 if (AuthProvider.Google in visibleSocialProviders) {
                     AuthActionButton(
-                        text = if (socialSubmittingProvider == AuthProvider.Google) "Opening Google" else "Continue with Google",
+                        text =
+                            if (socialSubmittingProvider == AuthProvider.Google) {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_opening_provider,
+                                    listOf(AuthProvider.Google.providerDisplayName())
+                                ).localized()
+                            } else {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_continue_with_provider,
+                                    listOf(AuthProvider.Google.providerDisplayName())
+                                ).localized()
+                            },
                         onClick = { onSocialSignIn(AuthProvider.Google) },
                         tone = AuthButtonTone.White,
                         enabled = socialEnabled,
@@ -1314,7 +1343,18 @@ internal fun LoginContent(
                 }
                 if (AuthProvider.GitHub in visibleSocialProviders) {
                     AuthActionButton(
-                        text = if (socialSubmittingProvider == AuthProvider.GitHub) "Opening GitHub" else "Continue with GitHub",
+                        text =
+                            if (socialSubmittingProvider == AuthProvider.GitHub) {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_opening_provider,
+                                    listOf(AuthProvider.GitHub.providerDisplayName())
+                                ).localized()
+                            } else {
+                                StringDesc.ResourceFormatted(
+                                    MR.strings.auth_action_continue_with_provider,
+                                    listOf(AuthProvider.GitHub.providerDisplayName())
+                                ).localized()
+                            },
                         onClick = { onSocialSignIn(AuthProvider.GitHub) },
                         tone = AuthButtonTone.Black,
                         enabled = socialEnabled,
@@ -1328,8 +1368,11 @@ internal fun LoginContent(
                 onOpenTerms = onOpenTerms,
                 onOpenPrivacy = onOpenPrivacy
             )
-            AuthTextLink("Forgot Password?") { onForgotPassword() }
-            AuthInlineAction("No account?", "Create One") { onCreateAccount() }
+            AuthTextLink(stringResource(MR.strings.auth_link_forgot_password)) { onForgotPassword() }
+            AuthInlineAction(
+                stringResource(MR.strings.auth_prompt_no_account),
+                stringResource(MR.strings.auth_action_create_one)
+            ) { onCreateAccount() }
         }
     }
 }
@@ -1377,7 +1420,7 @@ internal fun RegisterContent(
     ) {
         AuthCenterMark()
         Text(
-            text = "Create Account",
+            text = stringResource(MR.strings.auth_title_create_account),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
@@ -1389,7 +1432,7 @@ internal fun RegisterContent(
             AuthTextField(
                 name,
                 onNameChange,
-                "Name",
+                stringResource(MR.strings.auth_label_name),
                 placeholder = stringResource(MR.strings.auth_password_pattern),
                 isError = !nameError.isNullOrBlank(),
                 errorText = nameError,
@@ -1400,7 +1443,7 @@ internal fun RegisterContent(
             AuthTextField(
                 email,
                 onEmailChange,
-                "Email",
+                stringResource(MR.strings.auth_label_email),
                 isError = !emailError.isNullOrBlank(),
                 errorText = emailError,
                 focusRequester = emailFocusRequester,
@@ -1410,7 +1453,7 @@ internal fun RegisterContent(
             AuthTextField(
                 password,
                 onPasswordChange,
-                "Password",
+                stringResource(MR.strings.auth_label_password),
                 placeholder = stringResource(MR.strings.auth_password_min_length),
                 isError = !passwordError.isNullOrBlank(),
                 errorText = passwordError,
@@ -1421,7 +1464,12 @@ internal fun RegisterContent(
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Creating account…" else "Create Account",
+                text =
+                    if (submitting) {
+                        stringResource(MR.strings.auth_state_creating_account)
+                    } else {
+                        stringResource(MR.strings.auth_action_create_account)
+                    },
                 onClick = submitIfAllowed,
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit,
@@ -1431,7 +1479,10 @@ internal fun RegisterContent(
                 preserveDisabledVisual = true,
                 variant = AuthActionButtonVariant.Large
             )
-            AuthInlineAction("Already have an account?", "Sign In") { onBackToSignIn() }
+            AuthInlineAction(
+                stringResource(MR.strings.auth_prompt_already_have_account),
+                stringResource(MR.strings.auth_action_sign_in)
+            ) { onBackToSignIn() }
         }
     }
 }
@@ -1454,13 +1505,13 @@ internal fun ForgotPasswordContent(
     ) {
         AuthCenterMark()
         Text(
-            text = "Reset Password",
+            text = stringResource(MR.strings.auth_title_reset_password),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
-            text = "Enter your email and we'll send you a link to reset your password.",
+            text = stringResource(MR.strings.auth_hint_reset_password),
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -1484,20 +1535,30 @@ internal fun ForgotPasswordContent(
             )
             AuthError(errorMessage)
             if (sent) {
+                val resetEmail = email.ifBlank { stringResource(MR.strings.auth_fallback_your_email) }
                 AuthSuccessNotice(
                     title = stringResource(MR.strings.auth_check_email_title),
-                    detail = "If an account exists with ${email.ifBlank { "your email" }}, we've sent a password reset link."
+                    detail =
+                        StringDesc.ResourceFormatted(
+                            MR.strings.auth_notice_password_reset_sent,
+                            listOf(resetEmail)
+                        ).localized()
                 )
             }
             AuthActionButton(
-                text = if (sending) "Sending…" else "Send Reset Link",
+                text =
+                    if (sending) {
+                        stringResource(MR.strings.auth_state_sending)
+                    } else {
+                        stringResource(MR.strings.auth_action_send_reset_link)
+                    },
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
                 enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
             )
-            AuthTextLink("Back to Sign In") { onBackToSignIn() }
+            AuthTextLink(stringResource(MR.strings.auth_link_back_to_sign_in)) { onBackToSignIn() }
         }
     }
 }
@@ -1518,13 +1579,17 @@ private fun AuthLegalAcceptanceContent(
     AuthScaffold(contentScrollable = true) {
         AuthCenterMark()
         Text(
-            text = "$providerName Sign In",
+            text =
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_title_provider_sign_in,
+                    listOf(providerName)
+                ).localized(),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
-            text = "Review and accept Raft's Terms of Service and Privacy Policy to create this account.",
+            text = stringResource(MR.strings.auth_hint_legal_acceptance),
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -1535,7 +1600,12 @@ private fun AuthLegalAcceptanceContent(
             AuthLegalNotice(onOpenTerms = onOpenTerms, onOpenPrivacy = onOpenPrivacy)
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Continuing…" else "Continue",
+                text =
+                    if (submitting) {
+                        stringResource(MR.strings.auth_state_continuing)
+                    } else {
+                        stringResource(MR.strings.auth_action_continue)
+                    },
                 onClick = onContinue,
                 tone = AuthButtonTone.Pink,
                 enabled = canSubmit && accepted && !submitting,
@@ -1543,7 +1613,7 @@ private fun AuthLegalAcceptanceContent(
                 preserveDisabledVisual = true,
                 variant = AuthActionButtonVariant.Large
             )
-            AuthTextLink("Back to Sign In") { onBackToSignIn() }
+            AuthTextLink(stringResource(MR.strings.auth_link_back_to_sign_in)) { onBackToSignIn() }
         }
     }
 }
@@ -1559,7 +1629,7 @@ private fun AuthLegalNotice(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
-            "By continuing, you agree to the",
+            stringResource(MR.strings.auth_legal_notice_prefix),
             style = AuthLegalNoticeTextStyle,
             color = AuthLegalNoticeTextColor,
             textAlign = TextAlign.Center,
@@ -1577,7 +1647,7 @@ private fun AuthLegalNotice(
                 modifier = Modifier.clickable { onOpenTerms() }
             )
             Text(
-                " and ",
+                stringResource(MR.strings.auth_legal_notice_connector),
                 style = AuthLegalNoticeTextStyle,
                 color = AuthLegalNoticeTextColor,
                 modifier = Modifier.authPageStaticTextFocus()
@@ -1589,7 +1659,7 @@ private fun AuthLegalNotice(
                 modifier = Modifier.clickable { onOpenPrivacy() }
             )
             Text(
-                ".",
+                stringResource(MR.strings.auth_legal_notice_suffix),
                 style = AuthLegalNoticeTextStyle,
                 color = AuthLegalNoticeTextColor,
                 modifier = Modifier.authPageStaticTextFocus()
@@ -1618,14 +1688,14 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "I agree to the ",
+                    stringResource(MR.strings.auth_terms_agreement_prefix),
                     style = AuthTermsTextStyle,
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
                 Text(stringResource(MR.strings.auth_link_terms_of_service), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
                 Text(
-                    " and",
+                    stringResource(MR.strings.auth_terms_agreement_connector),
                     style = AuthTermsTextStyle,
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
@@ -1633,13 +1703,17 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "acknowledge the ",
+                    stringResource(MR.strings.auth_terms_agreement_acknowledgement),
                     style = AuthTermsTextStyle,
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
                 Text(stringResource(MR.strings.auth_link_privacy_policy), style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
-                Text(".", style = AuthTermsTextStyle, color = AuthTermsTextColor)
+                Text(
+                    stringResource(MR.strings.auth_terms_agreement_suffix),
+                    style = AuthTermsTextStyle,
+                    color = AuthTermsTextColor
+                )
             }
         }
     }
