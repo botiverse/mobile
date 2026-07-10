@@ -136,7 +136,11 @@ class AgentRuntimeConfigTest {
         assertTrue(supportsRuntimeCustomModelName("codex"))
         assertTrue(supportsRuntimeCustomModelName("cursor"))
         assertTrue(supportsRuntimeCustomModelName("pi"))
-        assertFalse(supportsRuntimeCustomModelName("opencode"))
+        assertTrue(supportsRuntimeCustomModelName("opencode"))
+        assertTrue(supportsRuntimeCustomModelName("gemini"))
+        assertTrue(supportsRuntimeCustomModelName("antigravity"))
+        assertTrue(supportsRuntimeCustomModelName("machine-runtime"))
+        assertFalse(supportsRuntimeCustomModelName(""))
     }
 
     // ── buildRuntimeConfig ──
