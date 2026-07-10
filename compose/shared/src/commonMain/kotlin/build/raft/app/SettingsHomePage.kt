@@ -446,6 +446,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
@@ -484,6 +485,23 @@ private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 private const val AUTH_CHOOSE_SERVER_SKIP_INITIAL_LOAD = "slockAuthChooseServerSkipInitialLoad"
 private const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLanding"
 private const val APP_SHELL_AUTH_GATE_INSTANCE_ID = "slockAuthGateInstanceId"
+
+internal sealed interface AuthGateMessage {
+    data class Dynamic(val value: String) : AuthGateMessage
+
+    data class Static(
+        val value: StringDesc,
+        val pinSignOut: Boolean = false
+    ) : AuthGateMessage
+}
+
+@Composable
+private fun AuthGateMessage?.localizedMessage(): String? =
+    when (this) {
+        is AuthGateMessage.Dynamic -> value
+        is AuthGateMessage.Static -> value.localized()
+        null -> null
+    }
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
@@ -2155,7 +2173,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 diagnosticsLogger = slockLogger("SlockSettings", "shared_settings")
             )
         }
-    var authGateMessage by remember { mutableStateOf<String?>(null) }
+    var authGateMessage by remember { mutableStateOf<AuthGateMessage?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
@@ -2518,7 +2536,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         "app_shell_auth_loss_effect decision=auth_required " +
                             "reason=${decision.reason} source=${resolution.signal.source}"
                     )
-                    authGateMessage = "Session expired"
+                    authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     resetAppShellSessionState()
                 }
@@ -2541,7 +2559,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         bridge.logWarn("app_shell_home_auth_error_gate code=$error")
-        authGateMessage = "Sign in to continue."
+        authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_sign_in_continue.desc())
         authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
         resetAppShellSessionState()
     }
@@ -2604,8 +2622,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return
         }
         SharedAuthGateState.AuthRequired -> {
-            LaunchedEffect(authGateMessage) {
-                pager.openLoginReplacingCurrentPage(authGateMessage)
+            val localizedAuthGateMessage = authGateMessage.localizedMessage()
+            LaunchedEffect(localizedAuthGateMessage) {
+                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage)
             }
             AppShellRestoreSplashContent()
             return
@@ -10771,8 +10790,9 @@ private fun AuthChooseServerPageContent() {
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authDataSource = sharedStores.authDataSource
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
     var restoreAttempt by remember { mutableStateOf(0) }
+    val errorMessage = errorPresentation.localizedMessage()
 
     LaunchedEffect(fromShell, skipInitialLoad) {
         authDataSource.logDiagnostics(
@@ -10790,9 +10810,9 @@ private fun AuthChooseServerPageContent() {
                         "selectedServer=${!restored?.selectedServerId.isNullOrBlank()} " +
                         "restoreAttempt=$restoreAttempt"
                 )
-                errorMessage =
+                errorPresentation =
                     if (restored == null) {
-                        "Sign in before choosing a server."
+                        AuthGateMessage.Static(MR.strings.auth_error_choose_server_sign_in_required.desc())
                     } else {
                         null
                     }
@@ -10802,7 +10822,7 @@ private fun AuthChooseServerPageContent() {
                 authDataSource.logDiagnostics(
                     "auth_choose_server_page_session result=failure restoreAttempt=$restoreAttempt"
                 )
-                errorMessage = "Could not restore your session."
+                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_restore_session.desc())
             }
     }
 
@@ -10812,9 +10832,11 @@ private fun AuthChooseServerPageContent() {
                 AppShellRestoreSplashContent()
             } else {
                 AppShellAuthErrorContent(
-                    message = errorMessage ?: "Sign in before choosing a server.",
+                    message =
+                        errorMessage
+                            ?: stringResource(MR.strings.auth_error_choose_server_sign_in_required),
                     onRetry = {
-                        errorMessage = null
+                        errorPresentation = null
                         session = null
                         restoreAttempt += 1
                     },
@@ -10856,6 +10878,30 @@ internal fun AuthChooseServerVisualContent() {
         session = session,
         authDataSource = authDataSource,
         onReady = {},
+        onSignOut = {}
+    )
+}
+
+@Composable
+internal fun AuthEmailVerificationVisualContent() {
+    val session =
+        remember {
+            authChooseServerVisualSession().let { base ->
+                base.copy(user = base.user.copy(emailVerified = false))
+            }
+        }
+    val store = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val authDataSource =
+        remember(store, session) {
+            SharedAuthDataSource(
+                api = AuthChooseServerVisualApi(session.user, session.servers),
+                sessionStore = store
+            )
+        }
+    AppShellEmailVerificationGateContent(
+        session = session,
+        authDataSource = authDataSource,
+        onRefresh = {},
         onSignOut = {}
     )
 }
@@ -11060,8 +11106,9 @@ private fun AppShellServerGateContent(
         mutableStateOf(!authChooseServerShouldSkipInitialLoad(skipInitialLoad, session.servers.size))
     }
     var loadAttempt by remember { mutableStateOf(0) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    val showPinnedSignOut = serverGateShouldPinSignOut(errorMessage)
+    var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
+    val errorMessage = errorPresentation.localizedMessage()
+    val showPinnedSignOut = serverGateShouldPinSignOut(errorPresentation)
 
     LaunchedEffect(loadAttempt) {
         if (authChooseServerShouldSkipInitialLoad(skipInitialLoad, latestSession.servers.size)) {
@@ -11078,19 +11125,19 @@ private fun AppShellServerGateContent(
                     "auth_choose_server_load_result result=success serversCount=${result.data.servers.size} selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
                 )
                 latestSession = result.data
-                errorMessage = null
+                errorPresentation = null
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=${result.code}")
-                errorMessage = result.message
+                errorPresentation = AuthGateMessage.Dynamic(result.message)
             }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=unauthenticated action=stay_on_server_picker")
-                errorMessage = serverGateUnauthenticatedMessage()
+                errorPresentation = serverGateUnauthenticatedMessage()
             }
             null -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=exception")
-                errorMessage = "Could not load servers."
+                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_load_servers.desc())
             }
         }
         loadingServers = false
@@ -11121,15 +11168,24 @@ private fun AppShellServerGateContent(
         Text(
             text =
                 when (mode) {
-                    "create" -> "Create server"
-                    "empty" -> if (loadingServers) "Checking servers" else "Create your first server"
-                    else -> "Choose server"
+                    "create" -> stringResource(MR.strings.auth_server_title_create)
+                    "empty" ->
+                        if (loadingServers) {
+                            stringResource(MR.strings.auth_server_title_checking)
+                        } else {
+                            stringResource(MR.strings.auth_server_title_first)
+                        }
+                    else -> stringResource(MR.strings.auth_server_title_choose)
                 },
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(
-            text = "Signed in as ${latestSession.user.bestDisplayName}",
+            text =
+                StringDesc.ResourceFormatted(
+                    MR.strings.auth_server_signed_in_as,
+                    listOf(latestSession.user.bestDisplayName)
+                ).localized(),
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center
@@ -11138,7 +11194,7 @@ private fun AppShellServerGateContent(
             AuthError(errorMessage)
             if (showPinnedSignOut) {
                 AuthActionButton(
-                    text = "Sign out",
+                    text = stringResource(MR.strings.auth_action_sign_out),
                     onClick = {
                         pendingServerId = "__logout__"
                         loading = true
@@ -11149,16 +11205,16 @@ private fun AppShellServerGateContent(
             }
             if (loadingServers) {
                 Text(
-                    text = "Loading your servers...",
+                    text = stringResource(MR.strings.auth_server_loading),
                     style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     textAlign = TextAlign.Center
                 )
             } else if (latestSession.servers.isEmpty() && errorMessage != null) {
                 AuthActionButton(
-                    text = "Retry",
+                    text = stringResource(MR.strings.auth_action_retry),
                     onClick = {
-                        errorMessage = null
+                        errorPresentation = null
                         loadAttempt += 1
                     },
                     tone = AuthButtonTone.Pink,
@@ -11166,7 +11222,7 @@ private fun AppShellServerGateContent(
                 )
             } else if (mode == "create") {
                 Text(
-                    text = "Create the workspace you want to land in. You can rename it later in settings.",
+                    text = stringResource(MR.strings.auth_server_create_hint),
                     style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -11180,7 +11236,7 @@ private fun AppShellServerGateContent(
                             createSlug = authCreateServerSlugFromName(it)
                         }
                     },
-                    label = "Server name",
+                    label = stringResource(MR.strings.auth_label_server_name),
                     required = true,
                     enabled = !loading
                 )
@@ -11190,15 +11246,20 @@ private fun AppShellServerGateContent(
                         createSlugTouched = true
                         createSlug = authCreateServerSlugFromName(it)
                     },
-                    label = "URL slug",
+                    label = stringResource(MR.strings.auth_label_server_slug),
                     placeholder = "my-team",
                     enabled = !loading
                 )
                 AuthActionButton(
-                    text = if (loading) "Creating..." else "Create server",
+                    text =
+                        if (loading) {
+                            stringResource(MR.strings.auth_state_creating_server)
+                        } else {
+                            stringResource(MR.strings.auth_action_create_server)
+                        },
                     onClick = {
                         loading = true
-                        errorMessage = null
+                        errorPresentation = null
                         pendingServerId = "__create__"
                     },
                     tone = AuthButtonTone.Pink,
@@ -11206,7 +11267,12 @@ private fun AppShellServerGateContent(
                     loading = loading
                 )
                 AuthActionButton(
-                    text = if (latestSession.servers.isEmpty()) "Back" else "Back to servers",
+                    text =
+                        if (latestSession.servers.isEmpty()) {
+                            stringResource(MR.strings.auth_action_back)
+                        } else {
+                            stringResource(MR.strings.auth_action_back_to_servers)
+                        },
                     onClick = { mode = if (latestSession.servers.isEmpty()) "empty" else "choose" },
                     tone = AuthButtonTone.White,
                     enabled = !loading
@@ -11221,20 +11287,20 @@ private fun AppShellServerGateContent(
                         title = server.name,
                         subtitle =
                             if (pendingServerId == server.id) {
-                                "Opening..."
+                                stringResource(MR.strings.auth_state_opening_server)
                             } else {
                                 "/${server.slug.orEmpty().ifBlank { server.id }}"
                             },
                         enabled = !loading,
                         onClick = {
                             loading = true
-                            errorMessage = null
+                            errorPresentation = null
                             pendingServerId = server.id
                         }
                     )
                 }
                 AuthActionButton(
-                    text = "+ Create new server",
+                    text = stringResource(MR.strings.auth_action_create_new_server),
                     onClick = { mode = "create" },
                     tone = AuthButtonTone.Yellow,
                     enabled = !loading
@@ -11242,7 +11308,7 @@ private fun AppShellServerGateContent(
             }
             if (!showPinnedSignOut) {
                 SlockLinkButton(
-                    text = "Sign out",
+                    text = stringResource(MR.strings.auth_action_sign_out),
                     enabled = !loading,
                     onClick = {
                         pendingServerId = "__logout__"
@@ -11262,7 +11328,7 @@ private fun AppShellServerGateContent(
                     onSessionCleared(clearedSession)
                     onSignOut()
                 }
-                is SharedAuthResult.Failure -> errorMessage = result.message
+                is SharedAuthResult.Failure -> errorPresentation = AuthGateMessage.Dynamic(result.message)
                 SharedAuthResult.Unauthenticated -> {
                     onSessionCleared(clearedSession)
                     onSignOut()
@@ -11289,11 +11355,11 @@ private fun AppShellServerGateContent(
             }
             is SharedAuthResult.Failure -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=failure code=${result.code}")
-                errorMessage = result.message
+                errorPresentation = AuthGateMessage.Dynamic(result.message)
             }
             SharedAuthResult.Unauthenticated -> {
                 authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=unauthenticated action=stay_on_server_picker")
-                errorMessage = serverGateUnauthenticatedMessage()
+                errorPresentation = serverGateUnauthenticatedMessage()
             }
         }
     }
@@ -11315,11 +11381,14 @@ private val AuthCreateServerSlugDisallowed = Regex("[^a-z0-9-]")
 internal fun authCreateServerSlugFromName(value: String): String =
     value.lowercase().replace(AuthCreateServerSlugDisallowed, "-")
 
-private fun serverGateUnauthenticatedMessage(): String =
-    "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
+internal fun serverGateUnauthenticatedMessage(): AuthGateMessage =
+    AuthGateMessage.Static(
+        MR.strings.auth_error_session_refresh_choose_server.desc(),
+        pinSignOut = true
+    )
 
-internal fun serverGateShouldPinSignOut(errorMessage: String?): Boolean =
-    errorMessage == serverGateUnauthenticatedMessage()
+internal fun serverGateShouldPinSignOut(errorPresentation: AuthGateMessage?): Boolean =
+    (errorPresentation as? AuthGateMessage.Static)?.pinSignOut == true
 
 @Composable
 private fun AppShellServerEmptyState(
@@ -11331,13 +11400,13 @@ private fun AppShellServerEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "You don't have a server yet. Create one to unlock channels, agents, and activity in the app.",
+            text = stringResource(MR.strings.auth_server_empty_hint),
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthActionButton(
-            text = "Create new server",
+            text = stringResource(MR.strings.auth_action_create_new_server),
             onClick = onCreateServer,
             tone = AuthButtonTone.Pink
         )
@@ -11368,13 +11437,13 @@ private fun AppShellAuthErrorContent(
     ) {
         AuthLogoBadge("RAFT")
         Text(
-            text = "Session error",
+            text = stringResource(MR.strings.auth_title_session_error),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         AuthError(message)
-        AuthActionButton(text = "Retry", onClick = onRetry, tone = AuthButtonTone.Pink)
-        AuthActionButton(text = "Sign In", onClick = onSignIn, tone = AuthButtonTone.White)
+        AuthActionButton(text = stringResource(MR.strings.auth_action_retry), onClick = onRetry, tone = AuthButtonTone.Pink)
+        AuthActionButton(text = stringResource(MR.strings.auth_action_sign_in), onClick = onSignIn, tone = AuthButtonTone.White)
     }
 }
 
@@ -11386,38 +11455,40 @@ private fun AppShellEmailVerificationGateContent(
     onSignOut: () -> Unit
 ) {
     var loading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var sentMessage by remember { mutableStateOf<String?>(null) }
+    var errorPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
+    var sentPresentation by remember { mutableStateOf<AuthGateMessage?>(null) }
     var pendingResendNonce by remember { mutableStateOf(0) }
     var pendingSignOut by remember { mutableStateOf(false) }
     val accountEmail = session.user.email.takeIf { it.isNotBlank() }
+    val errorMessage = errorPresentation.localizedMessage()
+    val sentMessage = sentPresentation.localizedMessage()
 
     LaunchedEffect(pendingResendNonce) {
         if (pendingResendNonce == 0) return@LaunchedEffect
         val result =
             runCatchingPreservingCancellation { authDataSource.resendVerification() }
-                .getOrElse {
-                    SharedAuthResult.Failure(
-                        SharedAuthErrorCode.Unknown,
-                        "Could not send the verification email. Try again."
-                    )
-                }
+                .getOrNull()
         loading = false
         when (result) {
             is SharedAuthResult.Success -> {
-                errorMessage = null
-                sentMessage = "Verification email sent. Check your inbox, then refresh."
+                errorPresentation = null
+                sentPresentation = AuthGateMessage.Static(MR.strings.auth_notice_verification_email_sent.desc())
                 authDataSource.logDiagnostics("auth_resend_verification_result result=success")
             }
             is SharedAuthResult.Failure -> {
-                sentMessage = null
-                errorMessage = result.message
+                sentPresentation = null
+                errorPresentation = AuthGateMessage.Dynamic(result.message)
                 authDataSource.logDiagnostics("auth_resend_verification_result result=failure code=${result.code}")
             }
             SharedAuthResult.Unauthenticated -> {
-                sentMessage = null
-                errorMessage = "Your session needs to be refreshed. Sign out and sign in again."
+                sentPresentation = null
+                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_session_refresh.desc())
                 authDataSource.logDiagnostics("auth_resend_verification_result result=unauthenticated")
+            }
+            null -> {
+                sentPresentation = null
+                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_verification_email_send.desc())
+                authDataSource.logDiagnostics("auth_resend_verification_result result=failure code=exception")
             }
         }
     }
@@ -11433,30 +11504,38 @@ private fun AppShellEmailVerificationGateContent(
     AuthScaffold {
         AuthLogoBadge("RAFT")
         Text(
-            text = "Verify your email",
+            text = stringResource(MR.strings.auth_title_verify_email),
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         Text(
             text =
                 if (accountEmail != null) {
-                    "We sent a verification link to $accountEmail. Verify your email to unlock Raft, then refresh."
+                    StringDesc.ResourceFormatted(
+                        MR.strings.auth_hint_verify_email_address,
+                        listOf(accountEmail)
+                    ).localized()
                 } else {
-                    "Verify your email to unlock Raft. Resend the verification link, then refresh."
+                    stringResource(MR.strings.auth_hint_verify_email)
                 },
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthFormColumn {
-            sentMessage?.let { AuthSuccessNotice(title = "Email sent", detail = it) }
+            sentMessage?.let {
+                AuthSuccessNotice(
+                    title = stringResource(MR.strings.auth_title_email_sent),
+                    detail = it
+                )
+            }
             AuthError(errorMessage)
             AuthActionButton(
-                text = "Resend verification email",
+                text = stringResource(MR.strings.auth_action_resend_verification),
                 onClick = {
                     loading = true
-                    errorMessage = null
-                    sentMessage = null
+                    errorPresentation = null
+                    sentPresentation = null
                     pendingResendNonce += 1
                 },
                 tone = AuthButtonTone.Pink,
@@ -11464,18 +11543,18 @@ private fun AppShellEmailVerificationGateContent(
                 loading = loading
             )
             AuthActionButton(
-                text = "I've verified — refresh",
+                text = stringResource(MR.strings.auth_action_verified_refresh),
                 onClick = onRefresh,
                 tone = AuthButtonTone.White,
                 enabled = !loading
             )
             SlockLinkButton(
-                text = "Sign out",
+                text = stringResource(MR.strings.auth_action_sign_out),
                 enabled = !loading,
                 onClick = {
                     loading = true
-                    errorMessage = null
-                    sentMessage = null
+                    errorPresentation = null
+                    sentPresentation = null
                     pendingSignOut = true
                 }
             )
@@ -15990,7 +16069,7 @@ private fun AppShellRestoreSplashContent() {
         AppShellRestoreLogoBadge("RAFT")
         Spacer(Modifier.height(34.dp))
         Text(
-            text = "WHERE HUMANS AND AI AGENTS\nCOLLABORATE",
+            text = stringResource(MR.strings.auth_restore_tagline),
             style =
                 SlockType.SectionLabel
                     .withSlockFontWeight(FontWeight.Bold)

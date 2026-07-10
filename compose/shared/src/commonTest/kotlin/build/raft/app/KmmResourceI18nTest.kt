@@ -208,7 +208,40 @@ class KmmResourceI18nTest {
             MR.strings.auth_terms_agreement_prefix,
             MR.strings.auth_terms_agreement_connector,
             MR.strings.auth_terms_agreement_acknowledgement,
-            MR.strings.auth_terms_agreement_suffix
+            MR.strings.auth_terms_agreement_suffix,
+            MR.strings.auth_error_session_expired,
+            MR.strings.auth_error_sign_in_continue,
+            MR.strings.auth_error_choose_server_sign_in_required,
+            MR.strings.auth_error_restore_session,
+            MR.strings.auth_error_load_servers,
+            MR.strings.auth_error_session_refresh_choose_server,
+            MR.strings.auth_server_title_create,
+            MR.strings.auth_server_title_checking,
+            MR.strings.auth_server_title_first,
+            MR.strings.auth_server_title_choose,
+            MR.strings.auth_action_sign_out,
+            MR.strings.auth_action_retry,
+            MR.strings.auth_server_loading,
+            MR.strings.auth_server_create_hint,
+            MR.strings.auth_label_server_name,
+            MR.strings.auth_label_server_slug,
+            MR.strings.auth_state_creating_server,
+            MR.strings.auth_action_create_server,
+            MR.strings.auth_action_back,
+            MR.strings.auth_action_back_to_servers,
+            MR.strings.auth_state_opening_server,
+            MR.strings.auth_action_create_new_server,
+            MR.strings.auth_server_empty_hint,
+            MR.strings.auth_title_session_error,
+            MR.strings.auth_error_verification_email_send,
+            MR.strings.auth_notice_verification_email_sent,
+            MR.strings.auth_error_session_refresh,
+            MR.strings.auth_title_verify_email,
+            MR.strings.auth_hint_verify_email,
+            MR.strings.auth_title_email_sent,
+            MR.strings.auth_action_resend_verification,
+            MR.strings.auth_action_verified_refresh,
+            MR.strings.auth_restore_tagline
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,
@@ -220,7 +253,9 @@ class KmmResourceI18nTest {
             MR.strings.auth_action_continue_with_provider,
             MR.strings.auth_action_opening_provider,
             MR.strings.auth_notice_password_reset_sent,
-            MR.strings.auth_title_provider_sign_in
+            MR.strings.auth_title_provider_sign_in,
+            MR.strings.auth_server_signed_in_as,
+            MR.strings.auth_hint_verify_email_address
         ).forEach { resource ->
             assertTrue(
                 resource.format(listOf("Google")) is ResourceFormattedStringDesc,
