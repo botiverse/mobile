@@ -46,6 +46,37 @@ internal data class SlockAnchoredPopoverPosition(
 )
 
 @Composable
+internal fun SlockModalAnchoredPopover(
+    anchor: Offset,
+    contentSize: Size,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewportGap: Float = SlockFloatingDefaultViewportGap,
+    horizontalOffset: Float = 0f,
+    verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
+    verticalOffsetAbove: Float = verticalOffset,
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    horizontalAutoFlip: Boolean = false,
+    content: @Composable (Modifier, SlockAnchoredPopoverPosition) -> Unit
+) {
+    Modal(onWillDismiss = { onDismiss() }) {
+        SlockAnchoredPopover(
+            anchor = anchor,
+            contentSize = contentSize,
+            onDismiss = onDismiss,
+            modifier = modifier,
+            viewportGap = viewportGap,
+            horizontalOffset = horizontalOffset,
+            verticalOffset = verticalOffset,
+            verticalOffsetAbove = verticalOffsetAbove,
+            verticalPlacement = verticalPlacement,
+            horizontalAutoFlip = horizontalAutoFlip,
+            content = content
+        )
+    }
+}
+
+@Composable
 internal fun SlockAnchoredPopover(
     anchor: Offset,
     contentSize: Size,
@@ -54,6 +85,7 @@ internal fun SlockAnchoredPopover(
     viewportGap: Float = SlockFloatingDefaultViewportGap,
     horizontalOffset: Float = 0f,
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
+    verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
     // #223: when true, the popover flips to the left of the anchor if
     // there is no room on the right. Used by SlockBaseMenuOverlay so
@@ -71,6 +103,7 @@ internal fun SlockAnchoredPopover(
             viewportGap = viewportGap,
             horizontalOffset = horizontalOffset,
             verticalOffset = verticalOffset,
+            verticalOffsetAbove = verticalOffsetAbove,
             verticalPlacement = verticalPlacement,
             horizontalAutoFlip = horizontalAutoFlip
         ) ?: return@SlockFloatingOverlayHost
@@ -207,6 +240,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     viewportGap: Float = SlockFloatingDefaultViewportGap,
     horizontalOffset: Float = 0f,
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
+    verticalOffsetAbove: Float = verticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
     // #223: when true, place content to the left of the anchor (anchor
     // is treated as the content's right edge) when there is no room on
@@ -233,6 +267,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
         contentHeight = contentSize.height,
         viewportHeight = size.height,
         verticalOffset = verticalOffset,
+        verticalOffsetAbove = verticalOffsetAbove,
         viewportGap = viewportGap,
         verticalPlacement = verticalPlacement
     )
@@ -292,6 +327,7 @@ internal fun slockVerticalPosition(
     contentHeight: Float,
     viewportHeight: Float,
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
+    verticalOffsetAbove: Float = verticalOffset,
     viewportGap: Float = SlockFloatingDefaultViewportGap,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below
 ): Float {
@@ -300,7 +336,7 @@ internal fun slockVerticalPosition(
     if (verticalPlacement == SlockFloatingVerticalPlacement.Below) {
         return belowY.coerceIn(viewportGap, maxY)
     }
-    val aboveY = localAnchorY - contentHeight - verticalOffset
+    val aboveY = localAnchorY - contentHeight - verticalOffsetAbove
     val belowFits = belowY + contentHeight <= viewportHeight - viewportGap
     val aboveFits = aboveY >= viewportGap
     return when {
