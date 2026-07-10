@@ -2,12 +2,13 @@ package build.raft.app
 
 import build.raft.app.markdown.normalizeThreadMarkdownBody
 
-internal const val ThreadLongMessagePreviewLineLimit = 12
+internal const val ThreadLongMessagePreviewLineLimit = 3
 internal const val ThreadLongMessagePreviewCharLimit = 1_200
 
 internal data class ThreadLongMessageRenderPlan(
     val collapsible: Boolean,
     val collapsedBody: String,
+    val collapsedDisplayText: String,
     val lineCount: Int
 )
 
@@ -21,6 +22,7 @@ internal fun threadLongMessageRenderPlan(
         return ThreadLongMessageRenderPlan(
             collapsible = false,
             collapsedBody = normalizedBody,
+            collapsedDisplayText = normalizedBody,
             lineCount = 0
         )
     }
@@ -43,6 +45,7 @@ internal fun threadLongMessageRenderPlan(
         return ThreadLongMessageRenderPlan(
             collapsible = false,
             collapsedBody = normalizedBody,
+            collapsedDisplayText = normalizedBody,
             lineCount = lineCount
         )
     }
@@ -62,6 +65,7 @@ internal fun threadLongMessageRenderPlan(
             } else {
                 "$preview\n${openFence.first.toString().repeat(openFence.second)}"
             },
+        collapsedDisplayText = preview.trimEnd() + "…",
         lineCount = lineCount
     )
 }

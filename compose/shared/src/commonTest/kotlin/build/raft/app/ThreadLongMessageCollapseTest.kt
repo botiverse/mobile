@@ -16,7 +16,30 @@ class ThreadLongMessageCollapseTest {
 
         assertFalse(plan.collapsible)
         assertEquals(body, plan.collapsedBody)
+        assertEquals(body, plan.collapsedDisplayText)
         assertEquals(2, plan.lineCount)
+    }
+
+    @Test
+    fun threeLineMessageIsNotCollapsible() {
+        val body = "first\nsecond\nthird"
+
+        val plan = threadLongMessageRenderPlan(body)
+
+        assertFalse(plan.collapsible)
+        assertEquals(body, plan.collapsedDisplayText)
+        assertEquals(3, plan.lineCount)
+    }
+
+    @Test
+    fun defaultCollapsedPreviewKeepsThreeLinesAndAddsEllipsis() {
+        val body = (1..8).joinToString("\n") { line -> "log line $line" }
+
+        val plan = threadLongMessageRenderPlan(body)
+
+        assertTrue(plan.collapsible)
+        assertEquals((1..3).joinToString("\n") { line -> "log line $line" }, plan.collapsedBody)
+        assertEquals("log line 1\nlog line 2\nlog line 3…", plan.collapsedDisplayText)
     }
 
     @Test
@@ -27,6 +50,7 @@ class ThreadLongMessageCollapseTest {
 
         assertTrue(plan.collapsible)
         assertEquals((1..12).joinToString("\n") { line -> "log line $line" }, plan.collapsedBody)
+        assertEquals((1..11).joinToString("\n", postfix = "\nlog line 12…") { line -> "log line $line" }, plan.collapsedDisplayText)
         assertTrue(plan.lineCount > 12)
     }
 
@@ -38,6 +62,8 @@ class ThreadLongMessageCollapseTest {
 
         assertTrue(plan.collapsible)
         assertEquals(ThreadLongMessagePreviewCharLimit, plan.collapsedBody.length)
+        assertEquals(ThreadLongMessagePreviewCharLimit + 1, plan.collapsedDisplayText.length)
+        assertTrue(plan.collapsedDisplayText.endsWith("…"))
     }
 
     @Test

@@ -12274,15 +12274,25 @@ private fun ThreadLongMessageToggle(
     expanded: Boolean,
     onClick: () -> Unit
 ) {
-    Text(
-        text = stringResource(if (expanded) MR.strings.thread_show_less else MR.strings.thread_show_more),
-        style =
-            SlockType.Caption
-                .copy(fontSize = 11.sp, lineHeight = 15.sp, color = SlockColor.TextBlack)
-                .withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp)
-    )
+    Row(
+        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(
+            text = stringResource(if (expanded) MR.strings.thread_show_less else MR.strings.thread_show_more),
+            style =
+                SlockType.Caption
+                    .copy(fontSize = 11.sp, lineHeight = 15.sp, color = SlockColor.TextBlack)
+                    .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        SlockLucideIcon(
+            if (expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
+            modifier = Modifier.size(12.dp),
+            color = "#FF000000"
+        )
+    }
 }
 
 internal fun threadDateDividerTextStyle(): TextStyle =
@@ -12584,6 +12594,14 @@ private fun ThreadMessageCard(
                                     }
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
+                                } else if (showLongMessageToggle && !longMessageExpanded) {
+                                    Text(
+                                        text = longMessagePlan.collapsedDisplayText,
+                                        style = ThreadMessageBodyTextStyle,
+                                        color = SlockColor.TextBlack,
+                                        maxLines = ThreadLongMessagePreviewLineLimit,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 } else if (richContentEnabled) {
                                     val markdownRenderSignature =
                                         remember(message.id, bodyForRender) {
