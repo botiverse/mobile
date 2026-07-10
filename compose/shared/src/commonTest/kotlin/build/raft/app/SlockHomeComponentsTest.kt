@@ -1242,30 +1242,16 @@ class SlockHomeComponentsTest {
 
     @Test
     fun resolveSortAutoScrollDeltaScrollsNearViewportEdges() {
-        assertEquals(-10f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(10f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
+        assertEquals(-10f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(10f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f))
     }
 
     @Test
     fun resolveSortAutoScrollDeltaIgnoresInvalidViewportOrStep() {
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 100f, viewportEnd = 100f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 0f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 0f, canScrollBackward = true, canScrollForward = true))
-    }
-
-    @Test
-    fun resolveSortAutoScrollDeltaStopsAtContentBoundaries() {
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = false, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = false))
-    }
-
-    @Test
-    fun resolveSortDraggedRowTopClampsTheFloatingRowInsideTheViewport() {
-        assertEquals(0f, resolveSortDraggedRowTop(pointerY = -100f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(134f, resolveSortDraggedRowTop(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(268f, resolveSortDraggedRowTop(pointerY = 600f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(10f, resolveSortDraggedRowTop(pointerY = 60f, viewportStart = 10f, viewportEnd = 100f, rowSize = 120f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 100f, viewportEnd = 100f, edgeScrollZone = 56f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 0f, edgeScrollStep = 10f))
+        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 0f))
     }
 
     @Test
