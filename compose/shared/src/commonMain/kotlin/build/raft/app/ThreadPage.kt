@@ -8458,7 +8458,7 @@ private fun ThreadPageContent(
                             if (forwardMessageSelection.forwardableMessages.isEmpty()) {
                                 onThreadEvent(
                                     "forwardMessagesFailed",
-                                    ThreadNestedForwardUnsupportedMessage,
+                                    forwardMessageSelection.threadForwardSelectionFailureMessage(),
                                     null,
                                     null
                                 )
@@ -8608,6 +8608,8 @@ private fun ThreadPageContent(
             "forwardTargets" ->
                 ThreadForwardTargetModal(
                     selectedCount = forwardMessageSelection.forwardableMessages.size,
+                    skippedCount = forwardMessageSelection.skippedCount,
+                    nestedForwardCount = forwardMessageSelection.nestedForwardCount,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
@@ -11276,26 +11278,61 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
 
 internal const val ThreadNestedForwardUnsupportedMessage =
     "Forwarded messages can't be forwarded. Select the original message instead."
+internal const val ThreadUnsupportedSourceMessage =
+    "Tasks, system messages, and action messages can't be forwarded. Select an ordinary message instead."
 
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<KuiklyThreadMessageItem>,
-    val skippedForwardedBundleCount: Int
+    val skippedCount: Int,
+    val nestedForwardCount: Int
 )
 
 internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
-    val forwardableMessages = filter { message -> message.forwardBundle == null }
+    val forwardableMessages = filter { message -> message.isForwardableOrdinaryChatMessage() }
     return ThreadForwardMessageSelection(
         forwardableMessages = forwardableMessages,
-        skippedForwardedBundleCount = size - forwardableMessages.size
+        skippedCount = size - forwardableMessages.size,
+        nestedForwardCount = count { message -> message.forwardBundle != null }
     )
 }
 
+private fun KuiklyThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
+    messageType.equals("Chat", ignoreCase = true) &&
+        deliveryState == ThreadMessageDeliverySent &&
+        forwardBundle == null &&
+        taskId == null &&
+        taskNumber == null &&
+        taskStatus == null &&
+        metadata["kind"] != "action-card"
+
 internal fun String.threadForwardErrorMessage(): String =
-    if (trim().lowercase() in setOf("unsupport", "unsupported")) {
+    when (trim().lowercase()) {
+        "unsupport",
+        "unsupported",
+        "forwarded_source_not_supported" -> ThreadNestedForwardUnsupportedMessage
+        "unsupported_source_message" -> ThreadUnsupportedSourceMessage
+        else -> this
+    }
+
+internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureMessage(): String =
+    if (nestedForwardCount == skippedCount) {
         ThreadNestedForwardUnsupportedMessage
     } else {
-        this
+        ThreadUnsupportedSourceMessage
     }
+
+internal fun threadForwardSkippedWarning(
+    skippedCount: Int,
+    nestedForwardCount: Int
+): String? {
+    if (skippedCount <= 0) return null
+    val skippedLabel = if (skippedCount == 1) "1 selected message was" else "$skippedCount selected messages were"
+    return if (nestedForwardCount == skippedCount) {
+        "$skippedLabel skipped because forwarded messages can't be forwarded again."
+    } else {
+        "$skippedLabel skipped. Forwarded bundles, tasks, system messages, and action messages can't be forwarded."
+    }
+}
 
 private fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
     (listOfNotNull(originMessage) + messages)
@@ -16210,6 +16247,8 @@ internal fun ThreadForwardModalVisualScreen() {
         }
     ThreadForwardTargetModal(
         selectedCount = 2,
+        skippedCount = 0,
+        nestedForwardCount = 0,
         query = "",
         loading = false,
         targets = targets,
@@ -16370,6 +16409,8 @@ internal fun ThreadForwardBundleVisualScreen() {
 @Composable
 private fun ThreadForwardTargetModal(
     selectedCount: Int,
+    skippedCount: Int,
+    nestedForwardCount: Int,
     query: String,
     loading: Boolean,
     targets: List<ThreadForwardTargetItem>,
@@ -16408,6 +16449,23 @@ private fun ThreadForwardTargetModal(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+            }
+            threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                            .background(SlockColor.BrandYellow.copy(alpha = 0.18f))
+                            .border(SlockStroke.Default, SlockColor.BrandYellow)
+                            .padding(10.dp)
+                ) {
+                    Text(
+                        text = warning,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextBlack
+                    )
+                }
             }
             SharedHomeSearchInput(
                 query = query,
