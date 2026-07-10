@@ -447,8 +447,7 @@ data class AgentCreatorSummary(
     val id: String,
     val name: String,
     val displayName: String? = null,
-    val avatarUrl: String? = null,
-    val gravatarHash: String? = null
+    val avatarUrl: String? = null
 )
 
 data class AgentCreatedSummary(
@@ -805,7 +804,6 @@ data class AccountProfileSnapshot(
     val email: String,
     val avatarLabel: String,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val verified: Boolean = false,
     val roleLabel: String? = null
 )

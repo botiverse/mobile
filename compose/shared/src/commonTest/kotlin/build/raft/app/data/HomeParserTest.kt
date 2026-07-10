@@ -4,7 +4,6 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
-import build.raft.app.model.toGravatarAvatarUrl
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -45,7 +44,6 @@ class HomeParserTest {
                             peerId = "agent-1",
                             peerName = "agent-one",
                             peerDisplayName = "Agent One",
-                            peerGravatarHash = "abc123",
                             peerAvatarUrl = null
                         )
                     ),
@@ -75,8 +73,7 @@ class HomeParserTest {
         val peerProfile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
         assertEquals("agent-1", peerProfile.id.value)
         assertNull(peerProfile.avatarUrl)
-        assertEquals("abc123", peerProfile.gravatarHash)
-        assertEquals("abc123".toGravatarAvatarUrl(), peerProfile.avatarWireValueForRenderedAvatar())
+        assertEquals("pixel:robot", peerProfile.avatarWireValueForRenderedAvatar())
         assertEquals(6, snapshot.unreadTotal)
     }
 
@@ -240,8 +237,7 @@ class HomeParserTest {
                             peerId = "agent-1",
                             peerName = "agent-one",
                             peerDisplayName = "Agent One",
-                            peerAvatarUrl = "https://cdn.slock.ai/a.png",
-                            peerGravatarHash = "abc"
+                            peerAvatarUrl = "https://cdn.slock.ai/a.png"
                         )
                     )
             )
@@ -255,7 +251,6 @@ class HomeParserTest {
         val profile = payload.directMessagePeerProfiles(ServerId("server-1")).single()
         assertEquals("agent-1", profile.id.value)
         assertEquals("https://cdn.slock.ai/a.png", profile.avatarUrl)
-        assertEquals("abc", profile.gravatarHash)
     }
 
     @Test

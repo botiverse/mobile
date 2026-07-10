@@ -70,7 +70,7 @@ internal class SlockSqlDatabase(
             ?: RelationalValue.Null
 
     companion object {
-        const val DatabaseName: String = "slock_cache.db"
+        const val DatabaseName: String = "slock_cache_v2.db"
 
         val Schema = SlockDatabase.Schema
     }

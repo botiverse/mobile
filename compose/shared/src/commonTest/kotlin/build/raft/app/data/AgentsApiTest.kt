@@ -35,7 +35,6 @@ class AgentsApiTest {
         assertEquals("Artin", detail.creator?.displayName)
         assertEquals("artin", detail.creator?.name)
         assertEquals("pixel:user", detail.creator?.avatarUrl)
-        assertEquals("hash-1", detail.creator?.gravatarHash)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
         assertEquals("Helper", detail.createdAgents.single().displayName)
         val created = assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data

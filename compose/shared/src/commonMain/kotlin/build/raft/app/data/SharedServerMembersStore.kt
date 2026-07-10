@@ -1497,7 +1497,6 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         serverRole = serverRole ?: seed.serverRole,
         email = email ?: seed.email,
         avatarUrl = avatarUrl ?: seed.avatarUrl,
-        gravatarHash = gravatarHash ?: seed.gravatarHash,
         avatar = avatar ?: seed.avatar,
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
@@ -1545,7 +1544,6 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
                     kind = member.kind,
                     description = member.description?.trim()?.takeIf { it.isNotBlank() },
                     avatarWireValue = avatar.effectiveAvatarWireValue,
-                    gravatarHash = avatar.gravatarHash,
                     avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
                         ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
                     memberId = member.id.value
@@ -1572,7 +1570,6 @@ private fun List<SharedMembersMemberSuggestion>.mergeServerMembersMentionChannel
                         sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
                         description = existing.description ?: suggestion.description,
                         avatarWireValue = existing.avatarWireValue.preferServerMembersConcreteSuggestionAvatar(suggestion.avatarWireValue),
-                        gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash,
                         memberId = existing.memberId ?: suggestion.memberId
                     )
                 else -> existing
@@ -1643,7 +1640,6 @@ private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
         kind = patch.kind,
         description = description ?: patch.description,
         avatarWireValue = avatarWireValue.preferServerMembersConcreteSuggestionAvatar(patch.avatarWireValue),
-        gravatarHash = gravatarHash ?: patch.gravatarHash,
         avatarLabel = avatarLabel.ifBlank { patch.avatarLabel },
         memberId = memberId ?: patch.memberId
     )

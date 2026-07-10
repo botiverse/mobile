@@ -317,7 +317,6 @@ private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile =
         displayName = authorName.ifBlank { authorId },
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
-        gravatarHash = gravatarHash,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
         agentStatus = AgentStatus.fromWireValue(authorAgentStatus)

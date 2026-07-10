@@ -9,7 +9,6 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SessionSnapshot
-import build.raft.app.model.toGravatarAvatarReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -185,7 +184,6 @@ data class StoredAuthUser(
     val displayName: String? = null,
     val description: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val emailVerified: Boolean? = null,
     val preferredTimeFormat: String? = null,
     val timeFormat: String? = null
@@ -204,10 +202,7 @@ data class StoredAuthUser(
             kind = MemberKind.Human,
             description = description,
             avatarUrl = avatarUrl,
-            gravatarHash = gravatarHash,
-            avatar =
-                avatarUrl?.let(AvatarReference::fromWireValue)
-                    ?: gravatarHash?.toGravatarAvatarReference(),
+            avatar = avatarUrl?.let(AvatarReference::fromWireValue),
             avatarLabel = bestDisplayName.take(1).uppercase(),
             presence = Presence.Active
         )

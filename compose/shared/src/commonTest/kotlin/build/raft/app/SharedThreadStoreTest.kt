@@ -1050,7 +1050,6 @@ class SharedThreadStoreTest {
                 dmPeerName = null,
                 dmPeerAvatarUrl = null,
                 dmPeerAvatarLabel = null,
-                dmPeerGravatarUrl = null
             )
 
         val payload = current.withContentSliceFrom(networkPatch)
@@ -1070,7 +1069,6 @@ class SharedThreadStoreTest {
         assertEquals("artin", payload.dmPeerName)
         assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
         assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
         assertEquals("artin", headerDisplay.title)
         assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
@@ -1092,7 +1090,6 @@ class SharedThreadStoreTest {
                     dmPeerName = null,
                     dmPeerAvatarUrl = null,
                     dmPeerAvatarLabel = null,
-                    dmPeerGravatarUrl = null
                 )
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -1107,7 +1104,6 @@ class SharedThreadStoreTest {
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
         assertEquals(null, payload.dmPeerAvatarLabel)
-        assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("cached body", payload.messages.single().body)
         scope.cancel()
     }
@@ -1133,7 +1129,6 @@ class SharedThreadStoreTest {
                 dmPeerName = "Product-UX-Designer",
                 dmPeerAvatarUrl = "pixel:tree",
                 dmPeerAvatarLabel = "PU",
-                dmPeerGravatarUrl = null
             )
         val networkPatch =
             contentPayload("network body").copy(
@@ -1144,7 +1139,6 @@ class SharedThreadStoreTest {
                 dmPeerName = "Product-UX-Designer",
                 dmPeerAvatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
                 dmPeerAvatarLabel = "PU",
-                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
             )
 
         val payload = current.withContentSliceFrom(networkPatch)
@@ -1153,7 +1147,6 @@ class SharedThreadStoreTest {
         assertEquals("Product-UX-Designer", payload.dmPeerName)
         assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
         assertEquals("PU", payload.dmPeerAvatarLabel)
-        assertEquals(null, payload.dmPeerGravatarUrl)
         assertEquals("network body", payload.messages.single().body)
     }
 
@@ -2997,7 +2990,6 @@ class SharedThreadStoreTest {
         assertEquals("artin", payload.dmPeerName)
         assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
         assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
         assertEquals(emptyList(), payload.messages.map { it.body })
         scope.cancel()
     }
@@ -3030,7 +3022,6 @@ class SharedThreadStoreTest {
                                     handle = "product-ux",
                                     kind = MemberKind.Agent,
                                     avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                                    gravatarHash = "agent-hash"
                                 ),
                             timestampLabel = "2026-06-21T15:32:00Z",
                             body = "cached agent dm body"
@@ -3052,7 +3043,6 @@ class SharedThreadStoreTest {
                 dmPeerName = "Product-UX-Designer",
                 dmPeerAvatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
                 dmPeerAvatarLabel = "PU",
-                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
             )
 
         store.accept(SharedThreadIntent.Start(gravatarSeed))
@@ -3062,7 +3052,6 @@ class SharedThreadStoreTest {
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("Product-UX-Designer", payload.dmPeerName)
         assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerAvatarUrl)
-        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.dmPeerGravatarUrl)
         assertEquals(emptyList(), payload.messages.map { it.body })
         scope.cancel()
     }
@@ -3209,12 +3198,10 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
         assertEquals(null, payload.messages.single().avatarWireValue)
-        assertEquals(null, payload.messages.single().gravatarHash)
         val cachedAuthor = localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author
         assertNull(cachedAuthor)
         val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single()
         assertEquals(null, cachedMessage?.avatarWireValue)
-        assertEquals(null, cachedMessage?.gravatarHash)
     }
 
     @Test
@@ -3229,7 +3216,6 @@ class SharedThreadStoreTest {
                             handle = "product-ux",
                             kind = MemberKind.Agent,
                             avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                            gravatarHash = "agent-hash",
                             avatar = AvatarReference.Pixel("tree")
                         )
                     )
@@ -3247,7 +3233,6 @@ class SharedThreadStoreTest {
         val message = payload.messages.single()
         assertEquals("Product-UX-Designer", message.authorName)
         assertEquals(null, message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
     }
 
     @Test
@@ -3298,7 +3283,6 @@ class SharedThreadStoreTest {
                             handle = "product-ux",
                             kind = MemberKind.Agent,
                             avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                            gravatarHash = "agent-hash"
                         )
                 )
         val repository =
@@ -3364,8 +3348,7 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(emptyList(), memberRepository.serverMemberRequests)
         assertEquals("agent task parent", payload.originMessage?.body)
-        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", payload.originMessage?.avatarWireValue)
-        assertEquals("agent-hash", payload.originMessage?.gravatarHash)
+        assertEquals("pixel:robot", payload.originMessage?.avatarWireValue)
     }
 
     @Test
@@ -3456,7 +3439,6 @@ class SharedThreadStoreTest {
 
         val message = payload.messages.single()
         assertEquals(null, message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
     }
 
     @Test
@@ -3549,7 +3531,6 @@ class SharedThreadStoreTest {
                 dmPeerName = "Cindy",
                 dmPeerAvatarUrl = "pixel:cindy",
                 dmPeerAvatarLabel = "CI",
-                dmPeerGravatarUrl = null,
                 focusedMessageId = "parent-1"
             )
 
@@ -3758,7 +3739,6 @@ class SharedThreadStoreTest {
                                                     handle = "product-ux",
                                                     kind = MemberKind.Agent,
                                                     avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
-                                                    gravatarHash = "agent-hash"
                                                 )
                                         )
                                 )
@@ -3789,8 +3769,7 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
         val message = payload.messages.single()
-        assertEquals("https://www.gravatar.com/avatar/agent-hash?s=52&d=404", message.avatarWireValue)
-        assertEquals("agent-hash", message.gravatarHash)
+        assertEquals("pixel:robot", message.avatarWireValue)
         assertEquals(emptyList(), memberRepository.serverMemberRequests)
     }
 
@@ -5253,12 +5232,10 @@ class SharedThreadStoreTest {
 
         val message = store.state.value.payload.messages.single { it.id == "m2" }
         assertEquals("pixel:robot", message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
         assertNull(localStore.readThread(ThreadId("channel-1")))
         // task #562: cache snapshot carries the same resolved avatar fields.
         val cachedMessage = dataSource.cachedPayload("channel-1")?.messages?.single { it.id == "m2" }
         assertEquals("pixel:robot", cachedMessage?.avatarWireValue)
-        assertEquals(null, cachedMessage?.gravatarHash)
         scope.cancel()
     }
 
@@ -8025,7 +8002,6 @@ class SharedThreadStoreTest {
             dmPeerName = "artin",
             dmPeerAvatarUrl = "pixel:crown",
             dmPeerAvatarLabel = "AR",
-            dmPeerGravatarUrl = "https://www.gravatar.com/avatar/artin"
         )
 
     private fun replyRouteWithWrongHint(): KuiklyThreadScreenPayload =

@@ -41,7 +41,7 @@ import kotlinx.serialization.json.Json
  *
  * Message footer metadata mirrors React's `MessageItem`: task badge fields,
  * reply/new counts, and reactions are parsed here when the message route emits
- * them. Member-profile-only fields (`avatarWireValue`, `gravatarHash`) and
+ * them. Member-profile-only `avatarWireValue` and
  * system-detail fields (`systemEventType`, `metadata`) are still populated by
  * their dedicated upstream joins.
  */
@@ -266,7 +266,6 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         isOwn = currentUserId != null && senderId == currentUserId,
         avatarLabel = resolvedName.take(1).uppercase(),
         avatarWireValue = null,
-        gravatarHash = null,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         seq = seq,

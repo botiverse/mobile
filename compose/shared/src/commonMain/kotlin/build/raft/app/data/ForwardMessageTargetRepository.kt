@@ -44,7 +44,6 @@ data class ForwardMessageTarget(
     val title: String,
     val subtitle: String = "",
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val avatarLabel: String = title.take(1).uppercase(),
     val channelId: ChannelId? = null,
     val memberId: MemberId? = null,
@@ -302,7 +301,6 @@ internal data class ForwardTargetSearchItemDto(
     val title: String,
     val subtitle: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val avatarLabel: String? = null,
     val channelId: String? = null,
     val joined: Boolean? = null,
@@ -364,7 +362,6 @@ private fun ForwardTargetSearchItemDto.toForwardMessageTarget(): ForwardMessageT
         title = cleanTitle,
         subtitle = subtitle?.trim()?.takeIf { it.isNotBlank() }.orEmpty(),
         avatarWireValue = avatarUrl?.trim()?.takeIf { it.isNotBlank() },
-        gravatarHash = gravatarHash?.trim()?.takeIf { it.isNotBlank() },
         avatarLabel = avatarLabel?.trim()?.takeIf { it.isNotBlank() } ?: cleanTitle.take(1).uppercase(),
         channelId = cleanChannelId,
         memberId =

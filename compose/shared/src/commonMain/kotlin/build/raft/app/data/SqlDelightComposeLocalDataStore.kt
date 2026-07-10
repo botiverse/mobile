@@ -348,7 +348,6 @@ internal class SqlDelightComposeLocalDataStore(
             handle = handle,
             kind = kind.toStoredKind(),
             avatarUrl = avatarUrl,
-            gravatarHash = gravatarHash,
             avatarLabel = avatarLabel,
             presence = presence.name,
             description = description,

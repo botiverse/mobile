@@ -195,7 +195,6 @@ CREATE TABLE memberProfileEntity (
   handle TEXT NOT NULL,
   kind TEXT NOT NULL,
   avatarUrl TEXT,
-  gravatarHash TEXT,
   avatarLabel TEXT,
   presence TEXT,
   description TEXT,
@@ -670,14 +669,13 @@ INSERT OR REPLACE INTO memberProfileEntity(
   handle,
   kind,
   avatarUrl,
-  gravatarHash,
   avatarLabel,
   presence,
   description,
   roleDescription,
   membershipStatus,
   lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectMemberSnapshot:
 SELECT *

@@ -68,7 +68,6 @@ data class HomeDirectMessageWireDto(
     val peerDisplayName: String? = null,
     val peerDescription: String? = null,
     val peerAvatarUrl: String? = null,
-    val peerGravatarHash: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false
@@ -247,7 +246,7 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         peerDisplayName?.takeIf { it.isNotBlank() }
             ?: peerName.takeIf { it.isNotBlank() }
             ?: id
-    if (peerAvatarUrl.isNullOrBlank() && peerGravatarHash.isNullOrBlank()) {
+    if (peerAvatarUrl.isNullOrBlank()) {
         warningLogger("dm_avatar_missing source=home_direct_messages peerId=$peerId peerName=$displayName")
     }
     return HomeDirectMessageRow(
@@ -280,7 +279,6 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): Me
             ?: peerName.takeIf { it.isNotBlank() }
             ?: cleanPeerId
     val directAvatarUrl = peerAvatarUrl?.takeIf { it.isNotBlank() }
-    val gravatarHash = peerGravatarHash?.takeIf { it.isNotBlank() }
     return MemberProfile(
         id = MemberId(cleanPeerId),
         displayName = displayName,
@@ -288,7 +286,6 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): Me
         kind = if (peerType.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
         description = peerDescription?.takeIf { it.isNotBlank() },
         avatarUrl = directAvatarUrl,
-        gravatarHash = gravatarHash,
         avatar = directAvatarUrl?.let { AvatarReference.fromWireValue(it) },
         avatarLabel = displayName.take(1).uppercase(),
         serverId = serverId

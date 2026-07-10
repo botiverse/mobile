@@ -5466,8 +5466,7 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         emptyDetail = patch.emptyDetail,
         dmPeerName = dmPeerName,
         dmPeerAvatarUrl = dmPeerAvatarUrl,
-        dmPeerAvatarLabel = dmPeerAvatarLabel,
-        dmPeerGravatarUrl = dmPeerGravatarUrl
+        dmPeerAvatarLabel = dmPeerAvatarLabel
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
@@ -5811,7 +5810,6 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         isOwn = update.isOwn,
         avatarLabel = update.avatarLabel.ifBlank { avatarLabel },
         avatarWireValue = update.avatarWireValue ?: avatarWireValue,
-        gravatarHash = update.gravatarHash ?: gravatarHash,
         timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
         seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
@@ -6057,7 +6055,6 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerName = safeDirectMessagePeerName,
         dmPeerAvatarUrl = null,
         dmPeerAvatarLabel = safeDirectMessagePeerName?.take(2)?.uppercase(),
-        dmPeerGravatarUrl = null,
         activityMuted = conversation.activityMuted,
         muteFromSeq = conversation.muteFromSeq,
         activityMuteSupported = conversation.activityMuteSupported
@@ -6222,7 +6219,6 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
         handle = authorName.removePrefix("@"),
         kind = if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
         avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
         presence = Presence.Offline,
@@ -6282,8 +6278,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             kind = author.kind,
             id = author.id.value,
             avatarWireValue = author.avatar?.wireValue,
-            avatarUrl = author.avatarUrl,
-            gravatarHash = author.gravatarHash
+            avatarUrl = author.avatarUrl
         )
     return KuiklyThreadMessageItem(
         id = id.value,
@@ -6302,7 +6297,6 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         isOwn = currentUserId != null && author.id.value == currentUserId,
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
-        gravatarHash = resolvedAvatar.gravatarHash,
         senderMembershipStatus =
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },

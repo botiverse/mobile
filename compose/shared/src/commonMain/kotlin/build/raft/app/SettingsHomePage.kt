@@ -9201,7 +9201,6 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
                 email = profile.email,
                 avatarLabel = profile.avatarLabel,
                 avatarUrl = profile.avatarUrl,
-                gravatarHash = profile.gravatarHash,
                 verified = profile.verified,
                 roleLabel = profile.roleLabel.orEmpty()
             ),
@@ -9238,7 +9237,6 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
                 email = user?.email.orEmpty(),
                 avatarLabel = displayName.take(2).uppercase(),
                 avatarUrl = user?.avatarUrl,
-                gravatarHash = user?.gravatarHash,
                 verified = user?.emailVerified == true,
                 roleLabel = session?.currentServerSummary()?.role.orEmpty()
             ),
@@ -12099,9 +12097,6 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
     val avatarWireValue =
         profile.avatarWireValue()
             ?: avatarWireValue()
-    val gravatarHash =
-        profile.string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
-            ?: string("gravatarHash", "gravatar_hash", "gravatar", "gravatarMd5", "gravatar_md5")
     val agentStatus = AgentStatus.fromWireValue(profile.string("agentStatus", "activity", "status") ?: string("agentStatus", "activity", "status"))
     return MemberProfile(
         id = MemberId(id),
@@ -12111,7 +12106,6 @@ private fun JsonObject.toSharedMemberProfile(defaultKind: MemberKind? = null): M
         description = profile.string("description") ?: string("description"),
         roleDescription = profile.string("roleDescription", "role") ?: string("roleDescription", "role"),
         avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = displayName.take(1).uppercase(),
         presence = (profile.string("presence", "availability") ?: string("presence", "availability")).toSharedPresence(),

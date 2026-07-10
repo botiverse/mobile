@@ -584,17 +584,15 @@ private fun List<MemberProfile>.homeDirectMessageAvatarSeedDiagnostics(
     val withAvatar = count { profile ->
         !profile.avatar?.wireValue.isNullOrBlank() || !profile.avatarUrl.isNullOrBlank()
     }
-    val withGravatar = count { !it.gravatarHash.isNullOrBlank() }
     val sample =
         take(6)
             .joinToString(separator = ";") { profile ->
                 val avatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
                 "member=${profile.id.value.take(64)}:" +
-                    "avatar=${avatarWireValue.slockAvatarDiagnosticsSource()}:" +
-                    "gravatar=${profile.gravatarHash.slockAvatarDiagnosticsSource()}"
+                    "avatar=${avatarWireValue.slockAvatarDiagnosticsSource()}"
             }
     return "home_dm_avatar_seed serverId=${serverId.value} store=$storeAvailable " +
-        "peers=$size withAvatar=$withAvatar withGravatar=$withGravatar sample=$sample"
+        "peers=$size withAvatar=$withAvatar sample=$sample"
 }
 
 private fun Throwable.safeHomeDiagnosticsType(): String =
