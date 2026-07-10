@@ -3427,6 +3427,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 )
                 if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, nextTab)) {
                     homeFocusLossDismissEpoch += 1
+                    homeShellStore.dispatch(
+                        SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher)
+                    )
                 }
                 selectAppShellTab(nextTab, directChildSwitch = true)
                 if (isRetainedAppShellTab(nextTab)) {
