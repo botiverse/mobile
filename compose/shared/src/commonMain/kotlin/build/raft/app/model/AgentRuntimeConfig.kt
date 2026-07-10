@@ -238,8 +238,15 @@ const val RUNTIME_PROVIDER_MODE_CUSTOM: String = "custom"
 
 fun supportsRuntimeApiUrl(runtime: String): Boolean = runtime == "claude"
 
-fun supportsRuntimeCustomModelName(runtime: String): Boolean =
-    runtime == "claude" || runtime == "codex" || runtime == "cursor" || runtime == "copilot" || runtime == "pi"
+/**
+ * Every selectable runtime keeps an escape hatch for a model id that is not in
+ * the machine-discovered catalog. The catalog is advisory, not an allow-list:
+ * users must still be able to enter a runtime-specific/custom model value.
+ *
+ * Keep this future-compatible with machine-provided runtime ids instead of
+ * maintaining another runtime allow-list beside [RUNTIMES].
+ */
+fun supportsRuntimeCustomModelName(runtime: String): Boolean = runtime.isNotBlank()
 
 fun supportsRuntimeFastMode(runtime: String): Boolean = RUNTIME_FAST_MODE_RUNTIMES.contains(runtime)
 

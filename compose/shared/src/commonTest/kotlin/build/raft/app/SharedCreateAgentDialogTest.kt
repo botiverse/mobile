@@ -1,9 +1,11 @@
 package build.raft.app
 
 import build.raft.app.model.RUNTIME_PROVIDER_MODE_CUSTOM
+import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
+import build.raft.app.model.supportsRuntimeCustomModelName
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -170,6 +172,22 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun everySelectableRuntimeKeepsCustomModelAsLastOption() {
+        RUNTIMES.filter { it.supported }.forEach { runtime ->
+            val items =
+                createAgentModelDropdownItems(
+                    runtime = runtime.id,
+                    runtimeModelsOverride =
+                        listOf(SharedCreateAgentRuntimeModelOption("machine-model", "Machine Model")),
+                    allowCustomModel = supportsRuntimeCustomModelName(runtime.id)
+                )
+
+            assertEquals(CREATE_AGENT_CUSTOM_MODEL_ID, items.last().id, runtime.id)
+            assertTrue(items.last().custom, runtime.id)
+        }
+    }
+
+    @Test
     fun modelDropdownCanHideCustomOptionForRuntimesWithoutCustomModels() {
         val items = createAgentModelDropdownItems("opencode", allowCustomModel = false)
 
@@ -299,6 +317,34 @@ class SharedCreateAgentDialogTest {
         val avatarUrl = assertNotNull(request.avatarUrl)
         assertTrue(avatarUrl.startsWith("pixel:"))
         assertTrue(avatarUrl.removePrefix("pixel:") in PixelAvatarPickerKeys)
+    }
+
+    @Test
+    fun customModelSelectionAcceptsAndSavesUserInputForPreviouslyGatedRuntime() {
+        val request =
+            buildSharedCreateAgentDialogSubmit(
+                name = "OpenCode Agent",
+                description = "",
+                selectedMachineId = "machine-1",
+                requiredComputer = null,
+                external = false,
+                runtime = "opencode",
+                model = "catalog-model",
+                customModelMode = true,
+                customModelName = " vendor/private-opencode-model ",
+                providerMode = "default",
+                providerApiUrl = "",
+                providerApiKey = "",
+                fastMode = false,
+                reasoningEffort = null,
+                envVarEntries = emptyList(),
+                command = ""
+            ).toCreateAgentRequest()
+
+        assertEquals(
+            RuntimeModelConfig.Custom("vendor/private-opencode-model"),
+            assertNotNull(request.runtimeConfig).model
+        )
     }
 
     @Test
