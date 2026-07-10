@@ -4654,10 +4654,16 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                    val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
+                    dataSource.rememberReplyParentCandidate(
+                        parentChannelId = parentChannelId,
+                        parentMessage = parentMessage,
+                        threadChannelId = parentReplyMetadata.threadChannelId
+                    )
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
-                            parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
+                            parentChannelId = parentChannelId,
                             threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
@@ -4901,10 +4907,16 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
+                    val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()
+                    dataSource.rememberReplyParentCandidate(
+                        parentChannelId = parentChannelId,
+                        parentMessage = parentMessage,
+                        threadChannelId = parentReplyMetadata.threadChannelId
+                    )
                     val loadingPayload =
                         renderedThread.replyThreadLoadingPayload(
                             parentMessageId = parentMessage.id,
-                            parentChannelId = renderedThread.replyParentChannelIdForNestedOpen(),
+                            parentChannelId = parentChannelId,
                             threadChannelId = parentReplyMetadata.threadChannelId,
                             focusedMessageId = parentReplyMetadata.firstUnreadReplyMessageId
                         )
