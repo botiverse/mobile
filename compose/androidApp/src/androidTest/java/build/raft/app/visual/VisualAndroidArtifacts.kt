@@ -44,11 +44,26 @@ internal object VisualAndroidArtifacts {
         }
     }
 
+    // The exact artifact filenames a single case produces. Matching on these
+    // (not a `startsWith(caseId)` / `caseId%` prefix) prevents a case whose id
+    // is a prefix of another — e.g. "…auth.forgot-password" vs
+    // "…auth.forgot-password.sent" — from deleting the other's already-written
+    // files when it runs later in the shard. (#461) Mirrors the exact set
+    // enumerated by clearMirroredCaseArtifacts for internal storage.
+    private fun caseArtifactNames(caseId: String): List<String> =
+        listOf(
+            "$caseId.png",
+            "$caseId.metadata.json",
+            "$caseId.failure.png",
+            "$caseId.failure.json"
+        )
+
     fun deleteCaseArtifacts(caseId: String) {
         deleteExistingMediaStoreDownloadsForCase(caseId)
+        val names = caseArtifactNames(caseId).toSet()
         publicOutputDir()
             .listFiles()
-            ?.filter { file -> file.name.startsWith(caseId) }
+            ?.filter { file -> file.name in names }
             ?.forEach { file -> file.delete() }
     }
 
@@ -93,8 +108,12 @@ internal object VisualAndroidArtifacts {
             return
         }
         val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
-        val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
-        val selectionArgs = arrayOf("$caseId%")
+        // Exact per-case names, not a `caseId%` prefix — a prefix LIKE would drop
+        // a longer case's downloads (e.g. "…forgot-password.sent"). See
+        // caseArtifactNames. (#461)
+        val names = caseArtifactNames(caseId)
+        val selection = names.joinToString(" OR ") { "${MediaStore.Downloads.DISPLAY_NAME} = ?" }
+        val selectionArgs = names.toTypedArray()
         deleteMatchingMediaStoreDownloads(resolver, selection, selectionArgs)
     }
 
