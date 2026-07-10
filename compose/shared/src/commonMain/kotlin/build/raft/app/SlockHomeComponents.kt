@@ -4163,7 +4163,7 @@ private fun DefaultUserAvatarIcon(avatarSize: Dp) {
 }
 
 private val SlockPresence.homeRowColor: Color
-    get() = when (this) { SlockPresence.Online -> SlockColor.AccentLime; SlockPresence.Offline -> SlockColor.EmptyStateGray; SlockPresence.Unknown -> SlockColor.BrandYellow }
+    get() = when (this) { SlockPresence.Online -> SlockColor.AccentLime; SlockPresence.Offline -> SlockColor.StatusNeutralGray; SlockPresence.Unknown -> SlockColor.BrandYellow }
 
 @Composable
 private fun PixelAvatar(

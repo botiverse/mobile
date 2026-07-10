@@ -72,13 +72,13 @@ internal fun slockAgentStatusIndicatorState(
                 AgentStatus.Thinking -> SlockColor.BrandYellow
                 AgentStatus.Idle -> SlockColor.AccentLime
                 AgentStatus.Disconnected,
-                AgentStatus.Offline -> SlockColor.EmptyStateGray
+                AgentStatus.Offline -> SlockColor.StatusNeutralGray
                 AgentStatus.Error -> SlockColor.AccentOrange
                 null ->
                     when (presence) {
                         Presence.Active -> SlockColor.AccentLime
                         Presence.Away -> SlockColor.BrandYellow
-                        Presence.Offline -> SlockColor.EmptyStateGray
+                        Presence.Offline -> SlockColor.StatusNeutralGray
                     }
             },
         pulsing = status == AgentStatus.Working || status == AgentStatus.Thinking,

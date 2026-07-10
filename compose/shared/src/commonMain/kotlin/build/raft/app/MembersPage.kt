@@ -5117,7 +5117,7 @@ private fun MembersAgentProfileHeader(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SlockStatusIndicator(
-                        color = agentStatusIndicatorState?.color ?: SlockColor.EmptyStateGray,
+                        color = agentStatusIndicatorState?.color ?: SlockColor.StatusNeutralGray,
                         size = 8.dp,
                         pulsing = agentStatusIndicatorState?.pulsing == true
                     )
@@ -8442,7 +8442,7 @@ private fun MembersListRow(
         }
         if (member.kind == MemberKind.Agent) {
             SlockStatusIndicator(
-                color = agentStatusDisplayState?.color ?: SlockColor.EmptyStateGray,
+                color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
                 size = MemberStatusDotSize,
                 pulsing = agentStatusDisplayState?.pulsing == true
             )
@@ -9010,7 +9010,7 @@ private fun String.membersActivityAccentColor(): Color =
             SlockColor.BrandYellow
         "running", "active", "online", "compaction_finished", "subagent_completed" -> SlockColor.AccentLime
         "text", "message", "output" -> SlockColor.AccentCyan
-        "offline", "disconnected", "subagent_suspended" -> SlockColor.EmptyStateGray
+        "offline", "disconnected", "subagent_suspended" -> SlockColor.StatusNeutralGray
         "system", "slock_action", "compaction_started" -> SlockColor.AccentOrange
         else -> SlockColor.BrandYellow
     }
