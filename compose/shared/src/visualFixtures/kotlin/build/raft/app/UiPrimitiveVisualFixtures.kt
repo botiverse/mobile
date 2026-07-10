@@ -353,7 +353,10 @@ internal fun UiSlugInputVisualContent() {
         modifier =
             Modifier
                 .width(342.dp)
-                .height(122.dp)
+                // Content-sized: the old fixed 122.dp couldn't hold 2x42dp rows +
+                // 16dp gap + 32dp padding, so the constraint compressed each input
+                // to ~26dp - react's boxes are 44 css px tall (same clip family as
+                // the form-field fixture fix).
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
