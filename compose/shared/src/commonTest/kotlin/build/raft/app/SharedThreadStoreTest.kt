@@ -1258,7 +1258,9 @@ class SharedThreadStoreTest {
                 delay(1)
             }
         }
-        assertTrue(homeRequested.isCompleted)
+        withTimeout(1_000) {
+            homeRequested.await()
+        }
         releaseHome.complete(Unit)
         scope.cancel()
     }
@@ -3884,6 +3886,82 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun visibleReplyMetadataSeedsSharedStoreForDirectReplyThreadFetch() = runBlocking {
+        val messageStore = SharedThreadMessageStore()
+        val parent = contentPayload("parent body").messages.single()
+        SharedThreadDataSource(
+            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            messageStore = messageStore
+        ).rememberReplyParentCandidate(
+            parentChannelId = "channel-1",
+            parentMessage = parent,
+            threadChannelId = "thread-m1"
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResultsById =
+                    mapOf(
+                        ThreadId("thread-m1") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    messages =
+                                        listOf(
+                                            message(
+                                                threadId = "thread-m1",
+                                                id = "reply-1",
+                                                seq = 2,
+                                                body = "reply body"
+                                            )
+                                        ),
+                                    parentMessage = null,
+                                    conversation =
+                                        conversationSummary("thread-m1").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("thread-m1"),
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("channel-1"),
+                                                    parentMessageId = MessageId("m1"),
+                                                    streamChannelId = ChannelId("thread-m1")
+                                                )
+                                        )
+                                )
+                            )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                messageStore = messageStore
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                originMessage = null,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getMessageContextRequests)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+    }
+
+    @Test
     fun resolvedParentPairSeedsReplyThreadResolveCache() = runBlocking {
         val repository =
             FakeConversationRepository(
@@ -3926,10 +4004,11 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", openedPayload.streamChannelId)
         assertEquals(emptyList(), repository.createOrOpenRequests)
         assertEquals(
-            listOf(ChannelId("channel-1") to MessageId("m1"), ChannelId("channel-1") to MessageId("m1")),
+            listOf(ChannelId("channel-1") to MessageId("m1")),
             repository.getReplyThreadRequests
         )
-        assertEquals(listOf(false, false), repository.getReplyThreadIncludeFollowedSummaries)
+        assertEquals(listOf(false), repository.getReplyThreadIncludeFollowedSummaries)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
     }
 
     @Test
@@ -6283,8 +6362,8 @@ class SharedThreadStoreTest {
         assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
         assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(emptyList(), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
     }
 
     @Test
@@ -6711,8 +6790,8 @@ class SharedThreadStoreTest {
 
         val cached = localStore.readThread(ThreadId("thread-m1"))
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(emptyList(), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests.takeLast(1))
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("", payload.title)
         assertEquals("#general", payload.subtitle)
