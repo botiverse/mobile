@@ -1776,7 +1776,6 @@ class ThreadPayloadTest {
             "dmPeerName",
             "dmPeerAvatarUrl",
             "dmPeerAvatarLabel",
-            "dmPeerGravatarUrl"
         ).forEach { forbidden ->
             assertFalse(forbidden in names, "$forbidden must stay outside compose_thread launch pageData")
         }
@@ -1864,7 +1863,6 @@ class ThreadPayloadTest {
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
         assertEquals(null, payload.dmPeerAvatarLabel)
-        assertEquals(null, payload.dmPeerGravatarUrl)
     }
 
     @Test
@@ -1930,7 +1928,6 @@ class ThreadPayloadTest {
         assertEquals("artin", headerDisplay.title)
         assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.memberScopedMentions)
@@ -1956,9 +1953,7 @@ class ThreadPayloadTest {
         assertEquals("Product-UX-Designer", headerDisplay.title)
         assertEquals(null, headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
         assertEquals(null, payload.dmPeerAvatarUrl)
-        assertEquals(null, payload.dmPeerGravatarUrl)
     }
 
     @Test
@@ -2346,7 +2341,6 @@ class ThreadPayloadTest {
                 dmPeerMemberId = "agent-1",
                 dmPeerName = null,
                 dmPeerAvatarUrl = null,
-                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent"
             )
         val projection =
             SharedConversationDirectoryProjection(
@@ -2368,7 +2362,6 @@ class ThreadPayloadTest {
         assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
         assertEquals("agent-1", headerDisplay.dmPeerMemberId)
-        assertEquals("https://www.gravatar.com/avatar/agent", headerDisplay.dmPeerGravatarUrl)
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)

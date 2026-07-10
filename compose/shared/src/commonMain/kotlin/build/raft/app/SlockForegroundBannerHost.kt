@@ -18,7 +18,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
-import build.raft.app.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -509,7 +508,6 @@ private fun MemberProfile.explicitForegroundBannerAvatarWireValue(): String? =
         ?.wireValue
         ?.takeIf { it.isNotBlank() }
         ?: avatarUrl?.takeIf { it.isNotBlank() }
-        ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
 
 /**
  * task #425 part 2: conversation identity derived from the server-provided

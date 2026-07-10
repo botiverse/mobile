@@ -30,7 +30,6 @@ internal fun ConversationSummary.toConversationHeaderEntry(): SharedConversation
         avatarWireValue = null,
         avatarLabel = displayName.take(2).uppercase(),
         dmPeerMemberId = presenceMemberId?.value,
-        gravatarUrl = null
     )
 }
 

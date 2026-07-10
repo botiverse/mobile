@@ -697,8 +697,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             id = "artin",
             name = "artin",
             displayName = "artin",
-            avatarUrl = "pixel:user",
-            gravatarHash = null
+            avatarUrl = "pixel:user"
         ),
         envVarNames = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER"),
         createdAgents = listOf(
@@ -2284,8 +2283,17 @@ private fun MemberDetailRoutePageShell(
 internal fun MembersAgentDetailVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
+    val member =
+        if (pager.pageData.params.optBoolean("legacyGravatar")) {
+            membersAgentDetailVisualMember.copy(
+                avatar = null,
+                avatarUrl = "https://www.gravatar.com/avatar/legacy-visual-hash?s=52&d=404"
+            )
+        } else {
+            membersAgentDetailVisualMember
+        }
     MembersDetailContent(
-        member = membersAgentDetailVisualMember,
+        member = member,
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
         canViewPrivateAgentSurfaces = { _, _ -> true },
         canManageAgent = { _, _ -> true },
@@ -2530,7 +2538,6 @@ private fun JSONObject?.toMemberProfile(): MemberProfile {
         roleDescription = optNullableString("roleDescription"),
         email = optNullableString("email"),
         avatarUrl = optNullableString("avatarUrl"),
-        gravatarHash = optNullableString("gravatarHash"),
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = optString("avatarLabel").ifBlank { optString("displayName").take(1).uppercase() },
         presence = optString("presence").toPresence(),
@@ -8463,7 +8470,7 @@ private fun MembersAvatar(
     modifier: Modifier = Modifier
 ) {
     val resolvedAvatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id.value)
-    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
+    val fallbackAvatarWireValue = remember(member.avatar, member.avatarUrl, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     val avatarWireValue = resolvedAvatarWireValue ?: fallbackAvatarWireValue
@@ -8702,7 +8709,6 @@ private fun AgentCreatorSummary.toMemberProfile(): MemberProfile? {
         handle = name,
         kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = display.take(1).uppercase()
     )

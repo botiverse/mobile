@@ -27,7 +27,6 @@ internal data class WireForwardMessageItem(
     val avatarLabel: String? = null,
     val avatarWireValue: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val timestampLabel: String? = null,
     val createdAt: String? = null,
     val body: String? = null,
@@ -130,7 +129,6 @@ private fun WireForwardMessageItem.toForwardMessageItem(): ForwardMessageItem? {
             ?: "",
         avatarLabel = avatarLabel?.takeIf { it.isNotBlank() } ?: resolvedAuthorName.take(1).uppercase(),
         avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: avatarUrl?.takeIf { it.isNotBlank() },
-        gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
         timestampLabel = timestampLabel?.takeIf { it.isNotBlank() } ?: createdAt.orEmpty(),
         body = body?.takeIf { it.isNotBlank() } ?: content.orEmpty(),
         attachmentCount = attachmentCount?.takeIf { it > 0 } ?: attachments.size

@@ -28,7 +28,6 @@ data class SharedMembersMemberSuggestion(
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val memberId: String? = null
 )

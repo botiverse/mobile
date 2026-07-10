@@ -119,7 +119,6 @@ import build.raft.app.markdown.threadMarkdownTagActivationKey
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
-import build.raft.app.model.isGravatarAvatarWireValue
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
@@ -135,7 +134,6 @@ import build.raft.app.model.formatSlockTimestampLabel
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.slockEpochMillisUtcIso
-import build.raft.app.model.toGravatarAvatarUrl
 import build.raft.app.model.SlockTimeFormat24Hour
 import build.raft.app.model.SlockTimeContext
 import build.raft.app.model.ServerId
@@ -606,7 +604,6 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerName: String? = null,
     val dmPeerAvatarUrl: String? = null,
     val dmPeerAvatarLabel: String? = null,
-    val dmPeerGravatarUrl: String? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false
@@ -828,7 +825,6 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
         displayName = authorName.ifBlank { authorId },
         handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = threadAuthorKind(),
-        gravatarHash = gravatarHash,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
         agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
@@ -879,7 +875,6 @@ internal data class KuiklyThreadMessageItem(
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val authorAgentStatus: String? = null,
@@ -967,7 +962,6 @@ private fun buildThreadPendingSendMessage(
         isOwn = true,
         avatarLabel = authorName.take(1).uppercase(),
         avatarWireValue = user?.avatarUrl,
-        gravatarHash = user?.gravatarHash,
         timestampLabel = timestampLabel,
         randomId = context.randomId?.takeIf { it.isNotBlank() },
         body = context.body,
@@ -2664,7 +2658,6 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                    gravatarUrl = message.threadAvatarGravatarUrl(),
                     status = null
                 )
                 Column(
@@ -8787,7 +8780,6 @@ private fun ThreadPageHeader(
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
                     avatarLabel = headerDisplay.dmPeerAvatarLabel,
-                    gravatarUrl = headerDisplay.dmPeerGravatarUrl,
                     onClick =
                         headerDisplay.dmPeerMemberId
                             ?.takeIf { it.isNotBlank() }
@@ -8877,7 +8869,6 @@ internal fun String?.threadChannelHeaderIcon(): SlockLucideIconName =
 private fun ThreadDmPeerAvatarTile(
     avatarWireValue: String?,
     avatarLabel: String,
-    gravatarUrl: String? = null,
     onClick: (() -> Unit)? = null
 ) {
     Box(
@@ -8890,8 +8881,7 @@ private fun ThreadDmPeerAvatarTile(
             avatarWireValue = avatarWireValue,
             label = avatarLabel,
             avatarSize = ThreadHeaderChannelTileSize,
-            borderWidth = SlockStroke.Default,
-            gravatarUrl = gravatarUrl
+            borderWidth = SlockStroke.Default
         )
     }
 }
@@ -8986,7 +8976,6 @@ private fun ThreadComposerContentWithSuggestions(
                         kind = suggestion.kind,
                         description = suggestion.description,
                         avatarWireValue = suggestion.avatarWireValue,
-                        gravatarHash = suggestion.gravatarHash,
                         avatarLabel = suggestion.avatarLabel,
                         memberId = suggestion.memberId
                     )
@@ -12275,7 +12264,6 @@ private fun ThreadMessageCard(
     val avatarWireValue =
         rememberSlockMemberAvatarWireValue(memberAvatarResolver, message.authorId)
             ?: message.resolvedThreadAvatarWireValue()
-    val avatarGravatarUrl = message.threadAvatarGravatarUrl()
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
@@ -12346,7 +12334,6 @@ private fun ThreadMessageCard(
                         timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
-                        gravatarUrl = avatarGravatarUrl,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
@@ -12583,7 +12570,6 @@ private fun ThreadMessageCard(
                         timestampLabel = compactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
-                        gravatarUrl = avatarGravatarUrl,
                         status = agentStatus,
                         statusPulsing = !isMessageListScrolling,
                         muted = authorBadgeLabel != null,
@@ -13381,30 +13367,10 @@ internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     val resolution = resolveAvatarSlot(
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
         id = authorId.ifBlank { authorName },
-        avatarWireValue = avatarWireValue,
-        gravatarHash = gravatarHash
+        avatarWireValue = avatarWireValue
     )
-    val effectiveAvatarWireValue = resolution.effectiveAvatarWireValue
-    if (effectiveAvatarWireValue?.isGravatarAvatarWireValue() == true) {
-        logThreadAvatarDiagnostic(
-            reason = if (isAgent) "render_agent_gravatar" else "render_human_gravatar",
-            message = this,
-            resolvedAvatarWireValue = effectiveAvatarWireValue,
-            profileKind = null,
-            profileAvatarWireValue = null,
-            profileAvatarUrl = null,
-            profileGravatarHash = null,
-            homeAvatarWireValue = null
-        )
-    }
-    return effectiveAvatarWireValue
+    return resolution.effectiveAvatarWireValue
 }
-
-internal fun KuiklyThreadMessageItem.threadAvatarGravatarUrl(): String? =
-    gravatarHash
-        ?.takeIf { threadAuthorBadgeLabel() == null }
-        ?.takeIf { it.isNotBlank() }
-        ?.toGravatarAvatarUrl()
 
 private fun String.isLikelyThreadAgentId(): Boolean =
     startsWith("agent", ignoreCase = true) ||
@@ -14783,7 +14749,6 @@ private fun ThreadMessageAvatarSlot(
     timestampLabel: String,
     avatarLabel: String,
     avatarWireValue: String?,
-    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
     muted: Boolean = false,
@@ -14808,7 +14773,6 @@ private fun ThreadMessageAvatarSlot(
                     ThreadMessageAvatar(
                         avatarLabel = avatarLabel,
                         avatarWireValue = avatarWireValue,
-                        gravatarUrl = gravatarUrl,
                         status = status,
                         statusPulsing = statusPulsing,
                         muted = muted,
@@ -14839,7 +14803,6 @@ private fun ThreadMessageAvatarSlot(
 private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true,
     muted: Boolean = false,
@@ -14878,8 +14841,7 @@ private fun ThreadMessageAvatar(
                     label = avatarLabel,
                     modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                     avatarSize = 36.dp,
-                    borderWidth = SlockStroke.Default,
-                    gravatarUrl = gravatarUrl
+                    borderWidth = SlockStroke.Default
                 )
                 if (muted) {
                     Box(
@@ -14898,7 +14860,6 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    gravatarUrl: String? = null,
     status: SlockAgentStatusIndicatorState?,
     statusPulsing: Boolean = true
 ) {
@@ -14922,8 +14883,7 @@ private fun ThreadMessageStaticAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
                 avatarSize = 36.dp,
-                borderWidth = SlockStroke.Default,
-                gravatarUrl = gravatarUrl
+                borderWidth = SlockStroke.Default
             )
         }
     }
@@ -16002,8 +15962,7 @@ private fun ThreadForwardBundleMessageRow(
             SlockAvatar(
                 avatarWireValue = avatarWireValue,
                 label = item.avatarLabel.ifBlank { item.authorName.take(1) },
-                avatarSize = 32.dp,
-                gravatarUrl = item.gravatarHash?.toGravatarAvatarUrl()
+                avatarSize = 32.dp
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -16098,7 +16057,6 @@ private data class ThreadForwardTargetItem(
     val subtitle: String,
     val kind: ThreadForwardTargetKind,
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val avatarLabel: String = title.take(1).uppercase(),
     val forwardTarget: ForwardMessageTarget? = null
 )
@@ -16125,7 +16083,6 @@ private fun ForwardMessageTarget.toThreadForwardTargetItem(): ThreadForwardTarge
                     ThreadForwardTargetKind.Member
             },
         avatarWireValue = avatarWireValue,
-        gravatarHash = gravatarHash,
         avatarLabel = avatarLabel,
         forwardTarget = this
     )
@@ -16522,8 +16479,7 @@ private fun ThreadForwardTargetRow(
                         avatarWireValue = target.avatarWireValue,
                         label = target.avatarLabel,
                         avatarSize = 38.dp,
-                        borderWidth = 0.dp,
-                        gravatarUrl = target.gravatarHash?.toGravatarAvatarUrl()
+                        borderWidth = 0.dp
                     )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

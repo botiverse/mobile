@@ -10,7 +10,6 @@ import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -424,7 +423,6 @@ internal data class KuiklyComposerMemberItem(
     val kind: MemberKind = MemberKind.Human,
     val description: String? = null,
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val memberId: String? = null
 )
@@ -2142,8 +2140,7 @@ private fun ComposerMemberSuggestionRow(
                 avatarWireValue = member.avatarWireValue,
                 label = member.avatarLabel.ifBlank { member.displayName },
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                borderWidth = SlockStroke.Thin,
-                gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
+                borderWidth = SlockStroke.Thin
             )
         }
         Spacer(modifier = Modifier.width(ComposerMemberSuggestionAvatarNameGap))
@@ -2320,8 +2317,7 @@ private fun PendingMentionActionRow(
                 avatarWireValue = targetAvatarWireValue,
                 label = targetAvatarLabel,
                 avatarSize = 24.dp,
-                borderWidth = SlockStroke.Default,
-                gravatarUrl = targetSuggestion?.gravatarHash?.toGravatarAvatarUrl()
+                borderWidth = SlockStroke.Default
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

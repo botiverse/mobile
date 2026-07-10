@@ -186,7 +186,6 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
         description = description,
         roleDescription = roleDescription,
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = avatar,
         avatarLabel = avatarLabel,
         presence = presence,
@@ -197,13 +196,11 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
 // Avatar priority helpers
 data class AvatarSlotResolution(
     val displayAvatarWireValue: String?,
-    val gravatarHash: String?,
     val fallbackAvatarWireValue: String?
 ) {
     val effectiveAvatarWireValue: String?
         get() =
             displayAvatarWireValue
-                ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
                 ?: fallbackAvatarWireValue
 }
 
@@ -212,8 +209,7 @@ fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
+        avatarUrl = avatarUrl
     )
 
 fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
@@ -224,43 +220,37 @@ fun MemberProfile.avatarWireValueForRenderedAvatar(): String? =
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
+        avatarUrl = avatarUrl
     )
 
 fun avatarWireValueForAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
+    avatarUrl: String? = null
 ): String? =
     resolveAvatarSlot(
         kind = kind,
         id = id,
         avatarWireValue = avatarWireValue,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
+        avatarUrl = avatarUrl
     ).effectiveAvatarWireValue
 
 fun avatarWireValueForRenderedAvatar(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
+    avatarUrl: String? = null
 ): String? {
     val explicitAvatarWireValue =
-        avatarWireValue?.takeIf { it.isNotBlank() }
-            ?: avatarUrl?.takeIf { it.isNotBlank() }
+        avatarWireValue?.appAvatarWireValueOrNull()
+            ?: avatarUrl?.appAvatarWireValueOrNull()
     return explicitAvatarWireValue
-        ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
         ?: avatarWireValueForAvatarSlot(
             kind = kind,
             id = id,
             avatarWireValue = null,
-            avatarUrl = null,
-            gravatarHash = null
+            avatarUrl = null
         )
 }
 
@@ -268,24 +258,19 @@ fun resolveAvatarSlot(
     kind: MemberKind,
     id: String,
     avatarWireValue: String?,
-    avatarUrl: String? = null,
-    gravatarHash: String? = null
+    avatarUrl: String? = null
 ): AvatarSlotResolution {
     val wireValue =
-        avatarWireValue
-            ?.takeIf { it.isNotBlank() }
-            ?: avatarUrl?.takeIf { it.isNotBlank() }
-    val cleanGravatarHash = gravatarHash?.takeIf { it.isNotBlank() }
+        avatarWireValue?.appAvatarWireValueOrNull()
+            ?: avatarUrl?.appAvatarWireValueOrNull()
     if (kind != MemberKind.Agent) {
         return AvatarSlotResolution(
             displayAvatarWireValue = wireValue,
-            gravatarHash = cleanGravatarHash,
             fallbackAvatarWireValue = null
         )
     }
     return AvatarSlotResolution(
         displayAvatarWireValue = wireValue,
-        gravatarHash = cleanGravatarHash,
         fallbackAvatarWireValue = agentAvatarFallbackWireValue(id)
     )
 }
@@ -293,20 +278,14 @@ fun resolveAvatarSlot(
 fun agentAvatarFallbackWireValue(id: String): String =
     "pixel:robot"
 
-fun String.isGravatarAvatarWireValue(): Boolean =
+fun String.isLegacyGravatarAvatarUrl(): Boolean =
     contains("gravatar.com/avatar", ignoreCase = true)
+
+fun String.appAvatarWireValueOrNull(): String? =
+    trim()
+        .takeIf { it.isNotBlank() }
+        ?.takeUnless { it.isLegacyGravatarAvatarUrl() }
 
 fun String.isAgentFallbackAvatarWireValue(): Boolean =
     equals(agentAvatarFallbackWireValue(""), ignoreCase = true) ||
         startsWith("random:", ignoreCase = true)
-
-// Gravatar helpers
-fun String.toGravatarAvatarUrl(): String =
-    "https://www.gravatar.com/avatar/${trim().lowercase()}?s=52&d=404"
-
-fun String.toGravatarAvatarReference(): AvatarReference =
-    when {
-        startsWith("http://") || startsWith("https://") ->
-            AvatarReference.Url(this)
-        else -> AvatarReference.Url(toGravatarAvatarUrl())
-    }

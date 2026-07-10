@@ -456,7 +456,6 @@ private data class AgentCreatorWireDto(
     val name: String,
     val displayName: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
 )
 
 private fun AgentWireDto.toSummary(): AgentSummary? {
@@ -531,8 +530,7 @@ private fun AgentCreatorWireDto.toDomain(): AgentCreatorSummary? {
         id = id,
         name = name,
         displayName = displayName,
-        avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash
+        avatarUrl = avatarUrl
     )
 }
 

@@ -7,43 +7,32 @@ import kotlin.test.assertTrue
 
 class ThreadAvatarResolutionTest {
     @Test
-    fun agentThreadAvatarUsesUploadedOrGravatarBeforeRobotFallback() {
+    fun agentThreadAvatarUsesAppAvatarThenRobotFallback() {
         val uploadedAgent =
             KuiklyThreadMessageItem(
                 id = "m1",
                 authorId = "agent-1",
                 authorName = "Build Bot",
                 authorKind = "agent",
-                avatarWireValue = "https://cdn.slock.ai/avatars/agents/agent-1.webp",
-                gravatarHash = "agenthash"
+                avatarWireValue = "https://cdn.slock.ai/avatars/agents/agent-1.webp"
             )
         assertEquals(
             "https://cdn.slock.ai/avatars/agents/agent-1.webp",
             uploadedAgent.resolvedThreadAvatarWireValue()
         )
-        assertEquals(
-            "https://www.gravatar.com/avatar/agenthash?s=52&d=404",
-            uploadedAgent.threadAvatarGravatarUrl()
-        )
-
-        val gravatarAgent =
+        val legacyHashAgent =
             uploadedAgent.copy(
                 id = "m2",
-                avatarWireValue = null,
-                gravatarHash = "agenthash"
+                avatarWireValue = null
             )
-        assertEquals(
-            "https://www.gravatar.com/avatar/agenthash?s=52&d=404",
-            gravatarAgent.resolvedThreadAvatarWireValue()
-        )
+        assertEquals("pixel:robot", legacyHashAgent.resolvedThreadAvatarWireValue())
 
-        val fallbackAgent =
+        val legacyUrlAgent =
             uploadedAgent.copy(
                 id = "m3",
-                avatarWireValue = null,
-                gravatarHash = null
+                avatarWireValue = "https://www.gravatar.com/avatar/agenthash?s=52&d=404"
             )
-        assertEquals("pixel:robot", fallbackAgent.resolvedThreadAvatarWireValue())
+        assertEquals("pixel:robot", legacyUrlAgent.resolvedThreadAvatarWireValue())
     }
 
     @Test

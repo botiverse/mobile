@@ -224,7 +224,7 @@ sealed class AvatarReference {
                 normalized.startsWith("pixel:") ->
                     Pixel(normalized.removePrefix("pixel:").ifBlank { "robot" })
                 normalized.startsWith("http://") || normalized.startsWith("https://") ->
-                    Url(normalized)
+                    normalized.takeUnless { it.isLegacyGravatarAvatarUrl() }?.let(::Url)
                 else -> null
             }
         }
@@ -242,7 +242,6 @@ data class MemberProfile(
     val serverRole: String? = null,
     val email: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
@@ -266,7 +265,6 @@ data class AgentProfile(
     val description: String? = null,
     val roleDescription: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val avatar: AvatarReference? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
@@ -343,7 +341,6 @@ data class ForwardMessageItem(
     val authorKind: String = "",
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
-    val gravatarHash: String? = null,
     val timestampLabel: String = "",
     val body: String = "",
     val attachmentCount: Int = 0

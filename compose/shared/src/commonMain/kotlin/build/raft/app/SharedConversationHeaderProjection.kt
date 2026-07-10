@@ -11,8 +11,7 @@ internal data class SharedConversationHeaderEntry(
     val subtitle: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(2).uppercase(),
-    val dmPeerMemberId: String? = null,
-    val gravatarUrl: String? = null
+    val dmPeerMemberId: String? = null
 )
 
 internal data class ConversationAccessCandidate(
@@ -30,8 +29,7 @@ internal data class ThreadHeaderDisplayModel(
     val channelKind: String,
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
-    val dmPeerMemberId: String? = null,
-    val dmPeerGravatarUrl: String? = null
+    val dmPeerMemberId: String? = null
 )
 
 internal sealed interface ThreadHeaderProjectionInput {
@@ -79,8 +77,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderProjectionRoutePayload(): Kui
         memberCandidates = emptyList(),
         dmPeerName = null,
         dmPeerAvatarUrl = null,
-        dmPeerAvatarLabel = null,
-        dmPeerGravatarUrl = null
+        dmPeerAvatarLabel = null
     )
 
 internal fun ThreadHeaderProjectionInput.stableProjection(
@@ -153,7 +150,6 @@ internal fun ThreadHeaderDisplayModel.headerDisplayDiagnostics(): String =
         append(" dmPeerAvatar=").append(dmPeerAvatarWireValue.headerAvatarDiagnosticValue())
         append(" dmPeerAvatarLabel=").append(dmPeerAvatarLabel.headerDiagnosticValue())
         append(" dmPeerMemberId=").append(dmPeerMemberId.headerDiagnosticValue())
-        append(" dmPeerGravatar=").append(dmPeerGravatarUrl.headerAvatarDiagnosticValue())
         append("}")
     }
 
@@ -173,7 +169,6 @@ internal fun KuiklyThreadScreenPayload.headerRouteDiagnostics(): String =
         append(" dmPeerName=").append(dmPeerName.headerDiagnosticValue())
         append(" dmPeerAvatar=").append(dmPeerAvatarUrl.headerAvatarDiagnosticValue())
         append(" dmPeerAvatarLabel=").append(dmPeerAvatarLabel.headerDiagnosticValue())
-        append(" dmPeerGravatar=").append(dmPeerGravatarUrl.headerAvatarDiagnosticValue())
         append(" title=").append(title.headerDiagnosticValue())
         append(" subtitle=").append(subtitle.headerDiagnosticValue())
         append("}")
@@ -241,8 +236,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
                 dmPeerAvatarLabel =
                     header?.avatarLabel?.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
-                dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId,
-                dmPeerGravatarUrl = header?.gravatarUrl
+                dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
@@ -294,8 +288,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 dmPeerAvatarLabel =
                     directory.avatarLabel.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
-                dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId,
-                dmPeerGravatarUrl = dmPeerGravatarUrl
+                dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId
             )
         }
         KuiklyThreadSurfaceKind.Channel ->

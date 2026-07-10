@@ -1117,6 +1117,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersLegacyGravatarFallback() {
+        captureKmpComponentCase(
+            caseId = "screens.members.agent-detail.legacy-gravatar-fallback",
+            pageName = "compose_members_agent_detail_visual",
+            pageData = JSONObject().put("legacyGravatar", true),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.members.panel",

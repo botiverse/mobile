@@ -67,7 +67,6 @@ class SharedServerMembersStoreTest {
                     member("agent-1", "Build Agent").copy(
                         kind = MemberKind.Agent,
                         avatarUrl = "https://cdn.slock.ai/agent.png",
-                        gravatarHash = "agent-hash"
                     )
                 )
         )
@@ -77,7 +76,6 @@ class SharedServerMembersStoreTest {
         val member = entry?.members?.single()
         assertEquals("agent-1", member?.id?.value)
         assertEquals("https://cdn.slock.ai/agent.png", member?.avatarUrl)
-        assertEquals("agent-hash", member?.gravatarHash)
         assertEquals(0, repository.getMembersCalls)
     }
 

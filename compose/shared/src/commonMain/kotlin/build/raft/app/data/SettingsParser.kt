@@ -27,7 +27,6 @@ private data class WireAccountUser(
     val displayName: String? = null,
     val description: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val emailVerified: Boolean = false,
     val preferredLanguage: String? = null,
     val targetLanguage: String? = null,
@@ -84,7 +83,6 @@ fun parseSharedAccountSettingsSnapshot(
             email = user.email,
             avatarLabel = displayName.take(2).uppercase(),
             avatarUrl = user.avatarUrl,
-            gravatarHash = user.gravatarHash,
             verified = user.emailVerified,
             roleLabel = fallbackRole?.toSettingsRoleLabel(),
         ),
@@ -439,7 +437,6 @@ private data class WireServerMemberProfile(
     val description: String? = null,
     val avatarUrl: String? = null,
     val role: String? = null,
-    val gravatarHash: String? = null,
 )
 
 fun parseSharedSettingsMemberProfiles(bodyText: String): List<MemberProfile>? = runCatching {
@@ -457,7 +454,6 @@ private fun WireServerMemberProfile.toMemberProfile(): MemberProfile {
         description = description,
         roleDescription = role?.toSettingsRoleLabel(),
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
         agentStatus = AgentStatus.Offline,

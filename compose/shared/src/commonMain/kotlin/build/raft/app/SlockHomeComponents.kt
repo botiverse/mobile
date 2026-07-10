@@ -31,6 +31,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.parseSlockTimestampEpochMillisOrNull
 import build.raft.app.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
@@ -4057,23 +4058,23 @@ internal fun SlockAvatar(
     label: String,
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = SlockStroke.Thin,
-    gravatarUrl: String? = null
+    borderWidth: Dp = SlockStroke.Thin
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
     // Thread — that's a lot of recompositions on scroll, so we want to know whether
     // it's the identify / http-fetch / render / fallback-default that's hot.
-    val pixelSpec = remember(avatarWireValue) {
+    val displayAvatarWireValue = avatarWireValue?.appAvatarWireValueOrNull()
+    val pixelSpec = remember(displayAvatarWireValue) {
         traceMarkdownSectionNonComposable(SlockAvatarTraceNames.IDENTIFY) {
-            avatarWireValue?.toPixelAvatarSpec()
+            displayAvatarWireValue?.toPixelAvatarSpec()
         }
     }
     when {
-        pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, avatarWireValue?.length ?: 0) {
+        pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
         }
-        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(
+        displayAvatarWireValue?.startsWith("http://") == true || displayAvatarWireValue?.startsWith("https://") == true -> Box(
             modifier = modifier
                 .size(width = avatarSize, height = avatarSize)
                 .background(SlockColor.AccentLavender)
@@ -4082,12 +4083,11 @@ internal fun SlockAvatar(
         ) {
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
-                source = avatarWireValue,
-                fallbackSource = gravatarUrl,
+                source = displayAvatarWireValue,
                 modifier = Modifier.fillMaxSize()
             )
         }
-        else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, avatarWireValue?.length ?: 0) {
+        else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, displayAvatarWireValue?.length ?: 0) {
             DefaultUserAvatar(modifier, avatarSize, borderWidth)
         }
     }
@@ -4096,13 +4096,8 @@ internal fun SlockAvatar(
 @Composable
 private fun SlockAvatarHttpImage(
     source: String,
-    modifier: Modifier = Modifier,
-    fallbackSource: String? = null
+    modifier: Modifier = Modifier
 ) {
-    // #225 fix: HTTP avatar (e.g. peerAvatarUrl) may fail to load; if a
-    // Gravatar URL is provided, retry with it before showing the user icon
-    // underneath. Mirrors React AvatarSlot / GravatarAvatar chain.
-    //
     // Implementation note: Kuikly's `KuiklyPainter` (returned by
     // `com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter`) drives
     // its `StateFlow<State>` from native `applyTo(view)` callbacks. The
@@ -4113,29 +4108,8 @@ private fun SlockAvatarHttpImage(
     // (`onDraw` -> `imageCacheManager.loadImage(src)`) and the underlying
     // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
     // once the fetch completes. We therefore render Image unconditionally
-    // and keep a time-bound fallback as a safety net for the case where the
-    // fetch never completes (e.g. server-side 4xx, blocked network).
-    var primaryFailed by remember(source) { mutableStateOf(false) }
-    val showFallback = primaryFailed && !fallbackSource.isNullOrBlank()
-    val effectiveSource = if (showFallback) fallbackSource else source
-    val painter = rememberAsyncImagePainter(model = effectiveSource)
-    val painterState = painter.state.collectAsState()
-    val isError = painterState.value is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Error
-    LaunchedEffect(effectiveSource) {
-        kotlinx.coroutines.delay(AvatarFallbackSwapDelayMs)
-        val currentState = painterState.value
-        val stillLoading =
-            currentState is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Loading ||
-                currentState is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Empty
-        if (stillLoading && !primaryFailed && !fallbackSource.isNullOrBlank()) {
-            primaryFailed = true
-        }
-    }
-    LaunchedEffect(effectiveSource, isError) {
-        if (isError && !primaryFailed && !fallbackSource.isNullOrBlank()) {
-            primaryFailed = true
-        }
-    }
+    // and the default app avatar underneath remains visible when loading fails.
+    val painter = rememberAsyncImagePainter(model = source)
     Image(
         painter = painter,
         contentDescription = null,
@@ -4143,8 +4117,6 @@ private fun SlockAvatarHttpImage(
         contentScale = ContentScale.FillBounds
     )
 }
-
-private const val AvatarFallbackSwapDelayMs: Long = 1500L
 
 @Composable
 private fun DefaultUserAvatar(

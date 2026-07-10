@@ -36,7 +36,6 @@ private data class WireServerMember(
     val description: String? = null,
     val avatarUrl: String? = null,
     val role: String? = null,
-    val gravatarHash: String? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val createdAgents: List<WireAgent> = emptyList(),
@@ -76,7 +75,6 @@ private data class WireChannelHuman(
     val description: String? = null,
     val avatarUrl: String? = null,
     val role: String? = null,
-    val gravatarHash: String? = null,
 )
 
 @Serializable
@@ -90,7 +88,6 @@ private data class WireAgent(
     val displayName: String? = null,
     val description: String? = null,
     val avatarUrl: String? = null,
-    val gravatarHash: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
     val role: String? = null,
@@ -626,7 +623,6 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         serverRole = role?.normalizedServerRoleOrNull(),
         email = email?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
@@ -651,7 +647,6 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         roleDescription = role?.toSettingsLabel(),
         serverRole = role?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
@@ -674,7 +669,6 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         roleDescription = runtime,
         serverRole = role?.normalizedServerRoleOrNull(),
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence =
@@ -724,7 +718,6 @@ private fun WireAgent.toAgentProfile(): AgentProfile {
         description = description,
         roleDescription = runtime,
         avatarUrl = avatarUrl,
-        gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence = agentStatus?.presence ?: Presence.Offline,

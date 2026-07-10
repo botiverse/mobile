@@ -3163,7 +3163,6 @@ private fun StoredAuthSession.toAccountSettingsSnapshot(): AccountSettingsSnapsh
                 email = user.email,
                 avatarLabel = user.bestDisplayName.take(2).uppercase(),
                 avatarUrl = user.avatarUrl,
-                gravatarHash = user.gravatarHash,
                 verified = user.emailVerified == true,
                 roleLabel = currentServer()?.role
         ),
