@@ -96,6 +96,7 @@ import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
@@ -116,7 +117,11 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
@@ -161,6 +166,11 @@ private val HomeServerSwitcherRowMinHeight = 52.dp
 private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = SlockLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
+private const val HomeServerBadgeTiltDegrees = -2f
+private val HomeServerBadgeHorizontalInset = 14.dp
+private val HomeServerBadgeVerticalInset = 6.dp
+private val HomeServerBadgeContentGap = 6.dp
+private val HomeServerBadgeChevronSize = 16.dp
 private val SlockSortEdgeScrollZone = 56.dp
 private val SlockSortEdgeScrollStep = 10.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
@@ -2402,7 +2412,7 @@ private fun HomeTitlebar(
                     showDropdown = true,
                     tilted = true,
                     unread = hasOtherServerUnread,
-                    textStyle = SlockType.Button.copy(fontSize = 16.sp, lineHeight = 20.sp)
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
                 )
             }
             val blankModifier =
@@ -2430,7 +2440,7 @@ private fun SlockLogoBadge(
     showDropdown: Boolean = false,
     tilted: Boolean = true,
     unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
     if (tilted) {
         SlockTiltedLogoBadge(text = text, modifier = modifier, showDropdown = showDropdown, unread = unread, textStyle = textStyle)
@@ -2458,65 +2468,101 @@ private fun SlockTiltedLogoBadge(
     modifier: Modifier = Modifier,
     showDropdown: Boolean = false,
     unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
+    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
 ) {
-    SlockRotatedLogoBadge(
-        text = text,
-        modifier = modifier,
-        showDropdown = showDropdown,
-        unread = unread,
-        textStyle = textStyle
-    )
-}
-
-@Composable
-private fun SlockRotatedLogoBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    showDropdown: Boolean = false,
-    unread: Boolean = false,
-    textStyle: TextStyle = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp)
-) {
-    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset).rotate(-2f)) {
-        RectBadgeChrome(
+    // Render the chrome as final vector geometry, then tilt the complete
+    // foreground as one layer so text, icon, and unread marker share the angle.
+    Box(modifier = modifier.padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+        TiltedBadgeChrome(
             color = SlockColor.ShadowBlack,
-            borderColor = Color.Transparent,
             modifier = Modifier.matchParentSize().offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
         )
-        RectBadgeChrome(
+        TiltedBadgeChrome(
             color = SlockColor.TextBlack,
-            borderColor = SlockColor.BorderBlack,
             modifier = Modifier.matchParentSize()
         )
-        com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier =
-                Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-            if (showDropdown) {
-                Spacer(Modifier.width(4.dp))
-                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
+        Box(modifier = Modifier.rotate(HomeServerBadgeTiltDegrees)) {
+            com.tencent.kuikly.compose.foundation.layout.Row(
+                modifier = Modifier.padding(
+                    horizontal = HomeServerBadgeHorizontalInset,
+                    vertical = HomeServerBadgeVerticalInset
+                ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+                if (showDropdown) {
+                    Spacer(Modifier.width(HomeServerBadgeContentGap))
+                    SlockLucideIcon(
+                        SlockLucideIconName.ChevronDown,
+                        Modifier.size(HomeServerBadgeChevronSize),
+                        color = SlockColor.BrandYellowArgb
+                    )
+                }
             }
+            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
         }
-        if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
 @Composable
-private fun RectBadgeChrome(
+private fun TiltedBadgeChrome(
     color: Color,
-    borderColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val borderedModifier =
-        if (borderColor == Color.Transparent) {
-            modifier.background(color)
-        } else {
-            modifier.background(color).border(SlockStroke.Default, borderColor)
-        }
-    Box(borderedModifier)
+    Canvas(modifier = modifier) {
+        val corners = homeServerBadgeTiltCorners(size.width, size.height)
+        drawPath(
+            path =
+                Path().apply {
+                    moveTo(corners[0].x, corners[0].y)
+                    lineTo(corners[1].x, corners[1].y)
+                    lineTo(corners[2].x, corners[2].y)
+                    lineTo(corners[3].x, corners[3].y)
+                    close()
+                },
+            color = color
+        )
+    }
 }
+
+internal fun homeServerBadgeTiltCorners(
+    widthPx: Float,
+    heightPx: Float,
+    tiltDegrees: Float = HomeServerBadgeTiltDegrees
+): List<Offset> {
+    val safeWidth = widthPx.coerceAtLeast(1f)
+    val safeHeight = heightPx.coerceAtLeast(1f)
+    val angle = (tiltDegrees * PI / 180.0).toFloat()
+    val cosAngle = cos(angle)
+    val sinAngle = sin(angle)
+    val sinMagnitude = abs(sinAngle)
+    val denominator = (cosAngle * cosAngle - sinMagnitude * sinMagnitude).coerceAtLeast(0.01f)
+    val rectWidth = ((safeWidth * cosAngle - safeHeight * sinMagnitude) / denominator).coerceAtLeast(1f)
+    val rectHeight = ((safeHeight * cosAngle - safeWidth * sinMagnitude) / denominator).coerceAtLeast(1f)
+    val centerX = safeWidth / 2f
+    val centerY = safeHeight / 2f
+    val halfWidth = rectWidth / 2f
+    val halfHeight = rectHeight / 2f
+    return listOf(
+        rotateHomeBadgePoint(-halfWidth, -halfHeight, cosAngle, sinAngle, centerX, centerY),
+        rotateHomeBadgePoint(halfWidth, -halfHeight, cosAngle, sinAngle, centerX, centerY),
+        rotateHomeBadgePoint(halfWidth, halfHeight, cosAngle, sinAngle, centerX, centerY),
+        rotateHomeBadgePoint(-halfWidth, halfHeight, cosAngle, sinAngle, centerX, centerY)
+    )
+}
+
+private fun rotateHomeBadgePoint(
+    x: Float,
+    y: Float,
+    cosAngle: Float,
+    sinAngle: Float,
+    centerX: Float,
+    centerY: Float
+): Offset =
+    Offset(
+        x = centerX + x * cosAngle - y * sinAngle,
+        y = centerY + x * sinAngle + y * cosAngle
+    )
 
 @Composable
 private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
