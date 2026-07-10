@@ -67,7 +67,11 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
 
 const val LOGIN_PAGE = "compose_login"
@@ -109,6 +113,20 @@ private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvid
 
 private fun currentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource =
     SlockSharedStoreRegistry.get(bridge).createAuthDataSourceForCurrentEnvironment()
+
+private sealed interface AuthErrorPresentation {
+    data class Dynamic(val message: String) : AuthErrorPresentation
+
+    data class Static(val message: StringDesc) : AuthErrorPresentation
+}
+
+@Composable
+private fun AuthErrorPresentation?.localizedMessage(): String? =
+    when (this) {
+        is AuthErrorPresentation.Dynamic -> message
+        is AuthErrorPresentation.Static -> message.localized()
+        null -> null
+    }
 
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : build.raft.app.base.BasePager() {
@@ -164,6 +182,7 @@ private fun LoginScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
+    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
     var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
@@ -177,13 +196,19 @@ private fun LoginScreen() {
         val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
-                .getOrElse { SharedAuthResult.Failure(build.raft.app.data.SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
+                .getOrNull()
         pendingLogin = null
+        if (result == null) {
+            state = state.copy(submitting = false, errorMessage = null)
+            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_login_setup.desc())
+            return@LaunchedEffect
+        }
         when (result) {
             is SharedAuthResult.Success -> {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        errorPresentation = null
                         val destination = postAuthRouteDestination(result.data)
                         authDataSource.logDiagnostics(
                             "auth_post_success_route page=${destination.pageName} source=login " +
@@ -195,14 +220,21 @@ private fun LoginScreen() {
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
                             submitting = false,
-                            errorMessage = "Could not finish sign-in setup locally. Try again."
-                        )
+                            errorMessage = null
+                        ).also {
+                            errorPresentation =
+                                AuthErrorPresentation.Static(MR.strings.auth_error_local_session_setup.desc())
+                        }
                 }
             }
-            is SharedAuthResult.Failure ->
-                state = state.copy(submitting = false, errorMessage = result.message)
-            SharedAuthResult.Unauthenticated ->
-                state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
+            is SharedAuthResult.Failure -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
+            }
+            SharedAuthResult.Unauthenticated -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_login_failed.desc())
+            }
         }
     }
 
@@ -216,12 +248,21 @@ private fun LoginScreen() {
         if (code == 0 || response?.optString("status") == "error") {
             state = state.copy(
                 submitting = false,
-                errorMessage =
-                    response?.optString("message").takeUnless { it.isNullOrBlank() }
-                        ?: "${effect.provider.providerDisplayName()} sign-in is unavailable. Try email sign-in."
+                errorMessage = null
             )
+            errorPresentation =
+                response?.optString("message")
+                    .takeUnless { it.isNullOrBlank() }
+                    ?.let(AuthErrorPresentation::Dynamic)
+                    ?: AuthErrorPresentation.Static(
+                        StringDesc.ResourceFormatted(
+                            MR.strings.auth_error_provider_unavailable,
+                            listOf(effect.provider.providerDisplayName())
+                        )
+                    )
         } else {
             state = state.copy(submitting = false, errorMessage = null)
+            errorPresentation = null
         }
     }
 
@@ -240,6 +281,7 @@ private fun LoginScreen() {
             slockLogDebug("SlockAuth", "login_submit_skip surface=auth_page reason=in_flight")
             return
         }
+        errorPresentation = null
         val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
         slockLogDebug(
             "SlockAuth",
@@ -264,17 +306,24 @@ private fun LoginScreen() {
         email = state.email,
         password = state.password,
         submitting = state.submitting,
-        errorMessage = state.errorMessage ?: routeMessage,
+        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage ?: routeMessage,
         emailError = state.emailFormatError,
         passwordError = state.passwordError,
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
-        onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
-        onPasswordChange = { state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state },
+        onEmailChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state
+        },
+        onPasswordChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state
+        },
         onSubmit = { submitLogin() },
         onSubmitValues = { emailValue, passwordValue -> submitLogin(emailValue, passwordValue) },
         onSocialSignIn = { provider ->
             state = state.copy(submitting = false, errorMessage = null)
+            errorPresentation = null
             socialSubmittingProvider = provider
             pendingSocialAuth =
                 PendingSocialAuth(
@@ -334,10 +383,10 @@ private fun AuthLegalAcceptanceScreen() {
     val codeVerifier = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_VERIFIER_KEY) }
     var accepted by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
-    var errorMessage by remember {
-        mutableStateOf(
+    var errorPresentation by remember {
+        mutableStateOf<AuthErrorPresentation?>(
             if (code.isBlank() || codeVerifier.isBlank()) {
-                "Sign-in request expired. Try again."
+                AuthErrorPresentation.Static(MR.strings.auth_error_request_expired.desc())
             } else {
                 null
             }
@@ -346,6 +395,13 @@ private fun AuthLegalAcceptanceScreen() {
     var pending by remember { mutableStateOf<PendingMobileOAuthLegalAcceptance?>(null) }
     val providerName = remember(providerId) { providerId.mobileOAuthProviderDisplayName() }
     val socialProviders = remember(paramsSignature) { pager.pageData.params.authRouteSocialProviders() }
+    val providerCancelledMessage =
+        remember(providerName) {
+            StringDesc.ResourceFormatted(
+                MR.strings.auth_provider_cancelled,
+                listOf(providerName)
+            )
+        }.localized()
 
     LaunchedEffect(pending) {
         val effect = pending ?: return@LaunchedEffect
@@ -358,17 +414,23 @@ private fun AuthLegalAcceptanceScreen() {
                     platform = platform,
                     acceptLegalTerms = true
                 )
-            }.getOrElse {
-                SharedAuthResult.Failure(
-                    build.raft.app.data.SharedAuthErrorCode.Unknown,
-                    "$providerName sign-in could not finish setup. Try again."
-                )
-            }
+            }.getOrNull()
         pending = null
+        if (result == null) {
+            submitting = false
+            errorPresentation =
+                AuthErrorPresentation.Static(
+                    StringDesc.ResourceFormatted(
+                        MR.strings.auth_error_provider_setup,
+                        listOf(providerName)
+                    )
+                )
+            return@LaunchedEffect
+        }
         when (result) {
             is SharedAuthResult.Success -> {
                 submitting = false
-                errorMessage = null
+                errorPresentation = null
                 val destination = postAuthRouteDestination(result.data)
                 authDataSource.logDiagnostics(
                     "auth_post_success_route page=${destination.pageName} source=mobile_oauth_legal " +
@@ -379,11 +441,17 @@ private fun AuthLegalAcceptanceScreen() {
             }
             is SharedAuthResult.Failure -> {
                 submitting = false
-                errorMessage = result.message
+                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
             }
             SharedAuthResult.Unauthenticated -> {
                 submitting = false
-                errorMessage = "$providerName sign-in failed. Try again."
+                errorPresentation =
+                    AuthErrorPresentation.Static(
+                        StringDesc.ResourceFormatted(
+                            MR.strings.auth_error_provider_failed,
+                            listOf(providerName)
+                        )
+                    )
             }
         }
     }
@@ -392,13 +460,13 @@ private fun AuthLegalAcceptanceScreen() {
         providerName = providerName,
         accepted = accepted,
         submitting = submitting,
-        errorMessage = errorMessage,
+        errorMessage = errorPresentation.localizedMessage(),
         canSubmit = code.isNotBlank() && codeVerifier.isNotBlank(),
         onAcceptedChange = { accepted = it },
         onContinue = {
             if (submitting || !accepted || code.isBlank() || codeVerifier.isBlank()) return@AuthLegalAcceptanceContent
             submitting = true
-            errorMessage = null
+            errorPresentation = null
             pending =
                 PendingMobileOAuthLegalAcceptance(
                     nonce = (pending?.nonce ?: 0) + 1,
@@ -411,7 +479,7 @@ private fun AuthLegalAcceptanceScreen() {
                 LOGIN_PAGE,
                 loginPageData(
                     replaceCurrent = true,
-                    message = "$providerName sign-in was cancelled.",
+                    message = providerCancelledMessage,
                     socialProviders = socialProviders
                 )
             )
@@ -427,6 +495,7 @@ private fun RegisterScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
+    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
 
     LaunchedEffect(pendingRegister) {
@@ -439,18 +508,19 @@ private fun RegisterScreen() {
                     email = effect.email,
                     password = effect.password
                 )
-            }.getOrElse {
-                SharedAuthResult.Failure(
-                    build.raft.app.data.SharedAuthErrorCode.Unknown,
-                    "Create account could not finish setup. Try again."
-                )
-            }
+            }.getOrNull()
         pendingRegister = null
+        if (result == null) {
+            state = state.copy(submitting = false, errorMessage = null)
+            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_register_setup.desc())
+            return@LaunchedEffect
+        }
         when (result) {
             is SharedAuthResult.Success -> {
                 when (authDataSource.postAuthSessionReadback(result.data)) {
                     PostAuthSessionReadback.Ready -> {
                         state = state.copy(submitting = false, errorMessage = null)
+                        errorPresentation = null
                         val destination = postAuthRouteDestination(result.data)
                         authDataSource.logDiagnostics(
                             "auth_post_success_route page=${destination.pageName} source=register " +
@@ -462,14 +532,21 @@ private fun RegisterScreen() {
                     PostAuthSessionReadback.Missing ->
                         state = state.copy(
                             submitting = false,
-                            errorMessage = "Could not finish sign-in setup locally. Try again."
-                        )
+                            errorMessage = null
+                        ).also {
+                            errorPresentation =
+                                AuthErrorPresentation.Static(MR.strings.auth_error_local_session_setup.desc())
+                        }
                 }
             }
-            is SharedAuthResult.Failure ->
-                state = state.copy(submitting = false, errorMessage = result.message)
-            SharedAuthResult.Unauthenticated ->
-                state = state.copy(submitting = false, errorMessage = "Create account failed. Try again.")
+            is SharedAuthResult.Failure -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
+            }
+            SharedAuthResult.Unauthenticated -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_register_failed.desc())
+            }
         }
     }
 
@@ -478,14 +555,24 @@ private fun RegisterScreen() {
         email = state.email,
         password = state.password,
         submitting = state.submitting,
-        errorMessage = state.errorMessage,
+        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
         nameError = state.nameError,
         emailError = state.emailFormatError,
         passwordError = state.passwordError,
-        onNameChange = { state = reducer.reduce(state, CreateAccountFormEvent.NameChanged(it)).state },
-        onEmailChange = { state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state },
-        onPasswordChange = { state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state },
+        onNameChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, CreateAccountFormEvent.NameChanged(it)).state
+        },
+        onEmailChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
+        },
+        onPasswordChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state
+        },
         onSubmit = {
+            errorPresentation = null
             val update = reducer.reduce(state, CreateAccountFormEvent.Submit)
             state = update.state
             when (val effect = update.effect) {
@@ -514,6 +601,7 @@ private fun ForgotPasswordScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
+    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
     var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
 
     LaunchedEffect(pendingForgotPassword) {
@@ -521,32 +609,43 @@ private fun ForgotPasswordScreen() {
         val authDataSource = currentEnvironmentAuthDataSource(bridge)
         val result =
             runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
-                .getOrElse {
-                    SharedAuthResult.Failure(
-                        build.raft.app.data.SharedAuthErrorCode.Unknown,
-                        "Reset password could not finish setup. Try again."
-                    )
-                }
+                .getOrNull()
         pendingForgotPassword = null
+        if (result == null) {
+            state = state.copy(submitting = false, sent = false, errorMessage = null)
+            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_password_reset_setup.desc())
+            return@LaunchedEffect
+        }
         state =
             when (result) {
                 is SharedAuthResult.Success ->
                     state.copy(submitting = false, sent = true, errorMessage = null)
-                is SharedAuthResult.Failure ->
-                    state.copy(submitting = false, sent = false, errorMessage = result.message)
-                SharedAuthResult.Unauthenticated ->
-                    state.copy(submitting = false, sent = false, errorMessage = "Reset password failed. Try again.")
+                is SharedAuthResult.Failure -> {
+                    errorPresentation = AuthErrorPresentation.Dynamic(result.message)
+                    state.copy(submitting = false, sent = false, errorMessage = null)
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_password_reset_failed.desc())
+                    state.copy(submitting = false, sent = false, errorMessage = null)
+                }
             }
+        if (result is SharedAuthResult.Success) {
+            errorPresentation = null
+        }
     }
 
     ForgotPasswordContent(
         email = state.email,
         sending = state.submitting,
         sent = state.sent,
-        errorMessage = state.errorMessage,
+        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
         emailError = state.emailFormatError,
-        onEmailChange = { state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state },
+        onEmailChange = {
+            errorPresentation = null
+            state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state
+        },
         onSubmit = {
+            errorPresentation = null
             val update = reducer.reduce(state, ForgotPasswordFormEvent.Submit)
             state = update.state
             when (val effect = update.effect) {
