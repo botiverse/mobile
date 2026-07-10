@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-${QUIVER_CLI:-hands}}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-${QUIVER_CLI_PACKAGE:-@botiverse/hands-cli@0.5.1}}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-${QUIVER_CLI_PACKAGE:-@botiverse/hands-cli@0.5.4}}"
 APP_SLUG="${HANDS_APP_SLUG:-${QUIVER_APP_SLUG:-raft-android}}"
 CHANNEL="${HANDS_CHANNEL:-${QUIVER_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
@@ -103,7 +103,7 @@ Environment overrides:
   HANDS_API=https://hands.build
   HANDS_AUTH_TOKEN=<agent or CI bearer token>
   HANDS_CLI=hands
-  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.1
+  HANDS_CLI_PACKAGE=@botiverse/hands-cli@0.5.4
   SLOCK_ANDROID_VERSION_MAJOR=1
   SLOCK_ANDROID_VERSION_MINOR=0
   SLOCK_ANDROID_VERSION_PATCH=0
@@ -292,6 +292,15 @@ if [ -f "${MAPPING_PATH}" ]; then
 fi
 if [ -n "${SYMBOL_ARCHIVE}" ]; then
   HANDS_ARGS+=(--symbols "${SYMBOL_ARCHIVE}")
+fi
+# Generate archive-patcher delta patches from the last N published versions so
+# clients on recent versions download a small patch instead of the full APK.
+# Works for drafts too (CI creates drafts): patches are stored on the new build
+# and offered once it's published. CI has a JDK; set SLOCK_DELTA_VERSIONS=0 to
+# disable. (Hands CLI >= 0.5.4.)
+DELTA_VERSIONS="${SLOCK_DELTA_VERSIONS:-3}"
+if [ "${DELTA_VERSIONS}" != "0" ]; then
+  HANDS_ARGS+=(--generate-deltas "${DELTA_VERSIONS}")
 fi
 
 run_hands "${HANDS_ARGS[@]}"
