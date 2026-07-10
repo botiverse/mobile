@@ -72,6 +72,33 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun homeShellStringResourcesAreGenerated() {
+        val homeResources = listOf(
+            MR.strings.home_nav_search,
+            MR.strings.home_nav_activity,
+            MR.strings.home_nav_followed_threads,
+            MR.strings.home_nav_saved,
+            MR.strings.home_section_channels,
+            MR.strings.home_section_joint_channels,
+            MR.strings.home_section_direct_messages,
+            MR.strings.home_section_pinned,
+            MR.strings.home_action_pin,
+            MR.strings.home_action_unpin,
+            MR.strings.home_action_mark_as_read,
+            MR.strings.home_action_mark_as_unread,
+            MR.strings.home_action_mute,
+            MR.strings.home_action_unmute
+        )
+
+        homeResources.forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "home shell resources must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun threadComposerActionStringResourcesAreGenerated() {
         val desc: StringDesc = MR.strings.thread_composer_insert_newline.desc()
         assertTrue(

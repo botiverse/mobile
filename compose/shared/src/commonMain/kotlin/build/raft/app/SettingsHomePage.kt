@@ -12325,6 +12325,7 @@ private fun SharedHomeScreen(
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
                 activityUnreadCount = activityUnreadCount
             )
+            val homeShellLabels = SlockHomeShellLabels.localized()
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -12361,6 +12362,7 @@ private fun SharedHomeScreen(
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
+                labels = homeShellLabels,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                 onServerSelected = { serverId ->
@@ -15188,6 +15190,7 @@ private fun SharedHomeSessionShell(
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
+        labels = SlockHomeShellLabels.localized(),
         onInlineErrorAction = onInlineErrorAction,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,

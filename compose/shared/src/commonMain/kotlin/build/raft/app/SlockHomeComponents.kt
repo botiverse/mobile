@@ -322,7 +322,7 @@ data class SlockHomeShellLabels(
 ) {
     companion object {
         @Composable
-        fun unused(): SlockHomeShellLabels = SlockHomeShellLabels(
+        fun localized(): SlockHomeShellLabels = SlockHomeShellLabels(
             search = stringResource(MR.strings.home_nav_search),
             inbox = stringResource(MR.strings.home_nav_activity),
             followedThreads = stringResource(MR.strings.home_nav_followed_threads),
@@ -335,7 +335,8 @@ data class SlockHomeShellLabels(
             unpin = stringResource(MR.strings.home_action_unpin),
             markAsRead = stringResource(MR.strings.home_action_mark_as_read),
             markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
-            mute = stringResource(MR.strings.home_action_mute)
+            mute = stringResource(MR.strings.home_action_mute),
+            unmute = stringResource(MR.strings.home_action_unmute)
         )
     }
 }
@@ -513,7 +514,7 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
-        labels = payload.labels,
+        labels = SlockHomeShellLabels.localized(),
         onServerBadgeClick = { unsupportedStandaloneHomeAction("toggleServerSwitcher") },
         onServerSwitcherDismiss = { unsupportedStandaloneHomeAction("dismissServerSwitcher") },
         onServerSelected = { unsupportedStandaloneHomeAction("selectServer", it) },
