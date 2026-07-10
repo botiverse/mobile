@@ -872,7 +872,9 @@ class SharedAuthDataSource(
         // between (the #466/#489 lost-update). `updateMetadata` reads-latest-in-lock and is fail-closed
         // against any token change, so it can never overwrite a concurrently-committed rotation.
         var persisted: StoredAuthSession? = null
-        sessionStore.updateMetadata { latest ->
+        // expectedAccountId guards against a login switching accounts between our capture and this
+        // write — never apply this account's metadata onto a different account's session (#466).
+        sessionStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
             latest.copy(
                 user = metadata.user,
                 servers = metadata.servers,

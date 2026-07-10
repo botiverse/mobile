@@ -35,8 +35,12 @@ interface SlockAuthSessionStore {
     // never be able to clobber a concurrently-committed token rotation (the auth_restore
     // metadata write that overwrote the socket coordinator's successor in #466/#489).
 
+    // Default bodies below are a non-atomic fallback (readSession→saveSession) so incidental test
+    // fakes need not reimplement them. The REAL stores (KeyValueAuthSessionStore / InMemory…)
+    // OVERRIDE these with the shared-lock atomic versions that actually close #466.
+
     /** Intentional full replace — login/register only; the only verb that sets tokens from scratch. */
-    suspend fun replaceAuthenticatedSession(session: StoredAuthSession)
+    suspend fun replaceAuthenticatedSession(session: StoredAuthSession) = saveSession(session)
 
     /**
      * CAS token rotation (coordinator / token-owner only). Rotates only if the store's LATEST
@@ -48,15 +52,38 @@ interface SlockAuthSessionStore {
         expectedRefreshToken: String,
         newAccessToken: String,
         newRefreshToken: String,
-    ): Boolean
+    ): Boolean {
+        val current = readSession() ?: return false
+        if (current.accessToken != expectedAccessToken || current.refreshToken != expectedRefreshToken) {
+            return false
+        }
+        saveSession(current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken))
+        return true
+    }
 
     /**
      * Metadata-only atomic update. [transform] runs (non-suspending) on the store's LATEST
      * session inside the write lock and may change user/servers/selection only — it MUST NOT
      * change tokens (enforced fail-closed). Tokens always come from the latest session, never
      * from a captured snapshot.
+     *
+     * [expectedAccountId] guards account identity (#466): if non-null and the latest session
+     * belongs to a DIFFERENT account (e.g. a login switched accounts between the caller's capture
+     * and this write), the update is a no-op — stale-account metadata must never land on the new
+     * account. Pass the `user.id` of the session the metadata was computed against.
      */
-    suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession)
+    suspend fun updateMetadata(
+        expectedAccountId: String?,
+        transform: (StoredAuthSession) -> StoredAuthSession,
+    ) {
+        val current = readSession() ?: return
+        if (expectedAccountId != null && current.user.id != expectedAccountId) return
+        val updated = transform(current)
+        require(updated.accessToken == current.accessToken && updated.refreshToken == current.refreshToken) {
+            "updateMetadata transform must not change access/refresh tokens"
+        }
+        saveSession(updated)
+    }
 }
 
 interface SlockAuthServerSelectionMemory {
@@ -289,10 +316,14 @@ class InMemorySlockAuthSessionStore(
         return applied
     }
 
-    override suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession) {
+    override suspend fun updateMetadata(
+        expectedAccountId: String?,
+        transform: (StoredAuthSession) -> StoredAuthSession,
+    ) {
         var newFingerprint: String? = null
         mutex.withLock {
             val current = session ?: return@withLock
+            if (expectedAccountId != null && current.user.id != expectedAccountId) return@withLock
             val updated = transform(current)
             require(
                 updated.accessToken == current.accessToken && updated.refreshToken == current.refreshToken
@@ -388,10 +419,16 @@ class KeyValueAuthSessionStore(
         return applied
     }
 
-    override suspend fun updateMetadata(transform: (StoredAuthSession) -> StoredAuthSession) {
+    override suspend fun updateMetadata(
+        expectedAccountId: String?,
+        transform: (StoredAuthSession) -> StoredAuthSession,
+    ) {
         var newFingerprint: String? = null
         mutex.withLock {
             val current = readSessionRecordLocked() ?: return@withLock
+            // Account-generation guard (#466): never apply stale-account metadata onto a session
+            // that was switched to a different account since the caller captured it.
+            if (expectedAccountId != null && current.user.id != expectedAccountId) return@withLock
             val updated = transform(current)
             // Fail-closed: metadata transform MUST NOT change tokens. Token rotation is
             // rotateTokensIfMatch's job ONLY; this is what stops the #466 lost-update overwrite.

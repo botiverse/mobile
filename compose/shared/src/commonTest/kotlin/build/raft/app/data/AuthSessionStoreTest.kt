@@ -177,12 +177,64 @@ class AuthSessionStoreTest {
         assertEquals("token-successor", store.readSession()?.accessToken)
 
         // metadata writer commits its (now stale-token) capture as a metadata-only update
-        store.updateMetadata { latest -> latest.copy(user = captured.user.copy(displayName = "Renamed")) }
+        store.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+            latest.copy(user = captured.user.copy(displayName = "Renamed"))
+        }
 
         val final = store.readSession()!!
         assertEquals("token-successor", final.accessToken) // successor preserved, NOT clobbered
         assertEquals("token-successor-r", final.refreshToken)
         assertEquals("Renamed", final.user.displayName) // metadata applied
+    }
+
+    @Test
+    fun refreshOnlyRotationIsPreservedAgainstStaleMetadata() = runBlocking {
+        // #496 (Artea Xiaomi, 2nd device): android_socket rotated only the REFRESH (access unchanged),
+        // then a stale metadata write must not revert it. Mirrors the Xiaomi trace exactly.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
+        val captured = store.readSession()!!
+
+        // refresh-only rotation: access stays token-a, refresh token-r -> token-r2
+        assertTrue(store.rotateTokensIfMatch("token-a", "token-r", "token-a", "token-r2"))
+        assertEquals("token-a", store.readSession()?.accessToken)
+        assertEquals("token-r2", store.readSession()?.refreshToken)
+
+        store.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+            latest.copy(user = captured.user.copy(displayName = "Renamed"))
+        }
+
+        val final = store.readSession()!!
+        assertEquals("token-a", final.accessToken)
+        assertEquals("token-r2", final.refreshToken) // refresh successor preserved
+        assertEquals("Renamed", final.user.displayName)
+    }
+
+    @Test
+    fun updateMetadataSkipsWhenAccountSwitched() = runBlocking {
+        // #466 account-generation guard: after a metadata writer captures account A, a login replaces
+        // the session with account B; A's metadata write must NOT land on B.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // account user-1
+        val capturedA = store.readSession()!!
+
+        // account switch: B is a different account
+        val accountB = sampleSession().copy(
+            user = StoredAuthUser(id = "user-2", email = "b@slock.ai", displayName = "B"),
+            accessToken = "b-access",
+            refreshToken = "b-refresh",
+        )
+        store.replaceAuthenticatedSession(accountB)
+
+        // A's stale metadata write (expected account = user-1) is a no-op on B (user-2)
+        store.updateMetadata(expectedAccountId = capturedA.user.id) { latest ->
+            latest.copy(user = capturedA.user.copy(displayName = "A-Renamed"))
+        }
+
+        val final = store.readSession()!!
+        assertEquals("user-2", final.user.id) // still account B
+        assertEquals("B", final.user.displayName) // A's metadata did NOT land
+        assertEquals("b-access", final.accessToken)
     }
 
     @Test
@@ -197,7 +249,11 @@ class AuthSessionStoreTest {
         val captured = a.readSession()!!
 
         val rotate = async { b.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r") }
-        val meta = async { a.updateMetadata { latest -> latest.copy(user = captured.user.copy(displayName = "Renamed")) } }
+        val meta = async {
+            a.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+                latest.copy(user = captured.user.copy(displayName = "Renamed"))
+            }
+        }
         rotate.await()
         meta.await()
 
@@ -212,7 +268,7 @@ class AuthSessionStoreTest {
         val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
         store.replaceAuthenticatedSession(sampleSession())
         assertFailsWith<IllegalArgumentException> {
-            store.updateMetadata { latest -> latest.copy(accessToken = "sneaky") }
+            store.updateMetadata(expectedAccountId = null) { latest -> latest.copy(accessToken = "sneaky") }
         }
         assertEquals("token-a", store.readSession()?.accessToken) // unchanged
     }
