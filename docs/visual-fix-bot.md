@@ -14,29 +14,77 @@ Pipeline at a glance:
 
 ```
 nightly AI analysis → candidate selection → true-value-chain patch
+      → adversarial review (fresh session, loop to convergence, 2-3 round cap)
       → CI capture on PR head → measure-first pixel verification
-      → 3-column evidence (react target | before | after)
-      → adversarial review (2–4 rounds) → merge
+      → 3-column evidence (react target | before | after) embedded in PR body
+      → owner review → merge
 ```
 
 ---
 
 ## 1. Nightly analysis (analysis half)
 
-> (analysis half) — nightly AI diff analysis over the published run: what it
-> reads, how divergences are scored, output format. To be filled by CC-Wow2.
+The nightly `Visual Testing` run publishes captures first, then a separate
+`ai-analysis` job (cancellable, generation-guarded) analyzes every changed
+pair and republishes under the same run id. Contracts:
+
+- Model: the `PI_API_KEY` / `PI_MODEL` gateway (currently MiniMax-M3). Input =
+  the pair's side-by-side PNG + case metadata + declared divergences; output =
+  a JSON analysis per case-pair (`severity`, `summary[]`, `likelyCauses[]`,
+  `suggestedFixes[]`, `suggestedOwner`) stored in the published site payload
+  (`home-cases.json` → `pairs{}.analysis`).
+- Caching: keyed on a perceptual fingerprint (32x32 grayscale, Hamming <= 4)
+  plus a pixel-mismatch delta buster — NEVER on byte hashes (captures are not
+  byte-stable across runs). Steady state re-analyzes only cases whose pixels
+  actually changed.
+- The analysis is an INDICTMENT, not a verdict: every suggestion must be
+  re-derived from react source before any patch (section 3).
 
 ## 2. Candidate selection (analysis half)
 
-> (analysis half) — worst-first over `vt_sweep` + `platformDivergences.json`;
-> fixture-vs-mapping classification; how a candidate becomes a PR. To be filled
-> by CC-Wow2.
+Pull the latest published `home-cases.json` and filter:
+
+1. **Scope gate (hard, owner-set): only `components.ui.*` cases** — the raft-ui
+   component library. `screens.*` and page-level composites are report-only,
+   never auto-patched.
+2. **Class gate**: only style/token-level suggestions (color, font weight,
+   spacing constants, fixture values). Semantics, layout, geometry,
+   interaction → report-only.
+3. **Registry gate**: skip cases whose divergence is declared in
+   `platformDivergences.json` (slock repo) — those are attributed, not bugs.
+4. **Worst-first** by pair similarity; then EYE-CHECK the side-by-side PNG
+   before adopting (analyses can be stale: check whether a fix merged after
+   the run's capture time already covers it — never double-patch).
+5. **Fixture-vs-mapping classification** for state-dependent diffs: if the two
+   fixtures seed DIFFERENT states, fix the fixture (react's seed is truth);
+   only if the same state renders different pixels is it a mapping/render fix.
+
+A candidate becomes one PR per blade: single value (or one react rule with its
+mechanical consequences), title prefixed `visual-fix:`, sync link to
+#wg-nightly-visual-fix on open.
 
 ## 3. True-value-chain patch (analysis half)
 
-> (analysis half) — deriving the react true value (e.g. group-opacity flattened
-> composites, token lookups) and the minimal call-site change. To be filled by
-> CC-Wow2.
+Every patch value must carry a complete chain from react source, anchored to
+file:line in the commit message: component class → token definition → final
+composited hex. Rules learned the hard way:
+
+- **CSS group opacity ≠ per-part alpha.** React "disabled" states are usually
+  a whole-element `opacity-N` — the browser flattens each part against what's
+  beneath it INSIDE the group, then dims. On android use PRECOMPUTED OPAQUE
+  composite values (over the fixture's backdrop, normally white), never live
+  alpha (only exact over the page backdrop) and never `graphicsLayer` alpha
+  (Kuikly drops offset-shadow children under group alpha).
+- **`Color.copy(alpha=)` REPLACES alpha** — it does not multiply. Deriving a
+  dimmed color from an already-translucent one this way raises it.
+- Per-callsite react overrides exist (e.g. `disabled:opacity-50` utilities
+  beat the component base rule) — the truth chain must state WHICH rule the
+  paired fixture actually renders.
+- **Blast radius census**: list every consumer of the changed
+  constant/default; each must move TOWARD react under the same react rule, or
+  the change is narrowed to the call site.
+- **Never pin the old value in tests**; test assertions may only pin
+  react-derived values (with the derivation in a comment).
 
 ---
 
@@ -155,7 +203,25 @@ prefix-type caseIds will silently lose images by run order.
 
 ## 10. Adversarial review & merge (analysis half)
 
-> (analysis half) — independent skeptic rounds (drives fix to convergence over
-> 2–4 rounds); commit-message arithmetic gets re-derived; every round in the PR
-> comments; scope rules (e.g. `components.ui.*`) gate borderline candidates to an
-> artin decision. To be filled by CC-Wow2.
+After each PR opens (and after EVERY code change to it), an independent
+reviewer session with NO shared context — only the PR diff and the two repos —
+tries to REFUTE the patch: re-derive the truth chain from react source,
+recompute every hex, re-census the blast radius, check for test-pinning and
+registry-dodging.
+
+- Verdicts (`REFUTED` / `WEAKENED` / `UNREFUTED` / `CONVERGED`) are posted as
+  PR comments — the durable handoff artifact; the loop survives any session.
+- Routing: REFUTED → PR to draft, human review. WEAKENED with concrete
+  catches → fold each confirmed catch as a follow-up commit → RE-REVIEW
+  (code changed = new round). UNREFUTED/CONVERGED → verification round
+  (section 4).
+- Cap: 2-3 folding rounds; if still finding code-level issues, stop and
+  escalate to a human. (Reference sample: PR #568 ran 4 rounds — caught a
+  missed edit, refuted the patch's own construction, confirmed convergence,
+  then vetted a follow-up fixture commit.)
+- Borderline scope (a change straddling `components.ui.*` and screen files)
+  is never self-adjudicated: present the evidence and let the owner decide.
+
+**Merge**: only after verification PASS + 3-column evidence embedded in the PR
+body + owner (artin) approval. Interactive batches may merge on his explicit
+nod; nightly batches stay open for morning review.
