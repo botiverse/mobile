@@ -16056,7 +16056,7 @@ private fun AppShellSilentRestoreContent() {
 }
 
 @Composable
-private fun AppShellRestoreSplashContent() {
+internal fun AppShellRestoreSplashContent() {
     Column(
         modifier =
             Modifier
