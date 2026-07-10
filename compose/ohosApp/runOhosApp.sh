@@ -3,6 +3,12 @@
 set -e
 
 echo "working path: $(pwd)"
+
+echo "sync OHOS native runtime libraries"
+./gradlew --no-daemon --console=plain \
+  -c settings.ohos.gradle.kts \
+  copyNetworkOhosRuntimeLibs
+
 pushd ohosApp
 SDK_HOME=/Applications/DevEco-Studio.app/Contents
 export DEVECO_SDK_HOME=$SDK_HOME/sdk
