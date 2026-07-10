@@ -84,6 +84,43 @@ class SlockKuiklyNotificationLaunchTest {
     }
 
     @Test
+    fun feedbackShareEnvironmentOmitsDisplayAndSocketDetails() {
+        val exportText =
+            formatMergedSettingsDiagnosticsExportText(
+                about =
+                    mapOf(
+                        "appName" to "Raft",
+                        "versionLabel" to "1.2.3",
+                        "versionCodeLabel" to "123",
+                        "buildLabel" to "123",
+                        "sourceLabel" to "abc123",
+                        "packageName" to "build.raft.app",
+                        "platformLabel" to "Android 16 / SDK 36",
+                        "sdkLabel" to "36",
+                        "deviceLabel" to "Google Pixel",
+                        "modelLabel" to "Pixel",
+                        "installTimeLabel" to "2026-07-09T00:00:00Z",
+                        "screenLabel" to "1080x2400 px",
+                        "densityLabel" to "2.75 (440 dpi)",
+                        "fontScaleLabel" to "1.0",
+                        "sessionStatusLabel" to "Signed in",
+                        "signedInUserLabel" to "Artin",
+                        "selectedServerLabel" to "Botiverse",
+                        "socketStatusLabel" to "active"
+                    ),
+                recentLogs = "",
+                hasFallbackDiagnosticsLogs = false
+            )
+
+        val feedbackEnvironment = settingsFeedbackShareEnvironmentSection(exportText)
+
+        listOf("App:", "Version:", "Version code:", "Build:", "Source:", "Platform:", "SDK:", "Device:", "Model:")
+            .forEach { label -> assertTrue("missing $label", feedbackEnvironment.contains(label)) }
+        listOf("Package:", "Install time:", "Screen:", "Density:", "Font scale:", "Session:", "Signed in user:", "Selected server:", "Socket:")
+            .forEach { label -> assertFalse("feedback copy included $label", feedbackEnvironment.contains(label)) }
+    }
+
+    @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {
         val pageData =
             SlockKuiklyActivity.buildUnreadNotificationThreadPageData(

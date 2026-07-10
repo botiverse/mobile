@@ -446,6 +446,7 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals("Copy environment info", copyEnvironmentRow.title)
         assertEquals("Copy", copyEnvironmentRow.status)
         assertTrue(copyEnvironmentRow.enabled)
+        assertFalse(rows.any { it.key == "feedback" })
     }
 
     @Test

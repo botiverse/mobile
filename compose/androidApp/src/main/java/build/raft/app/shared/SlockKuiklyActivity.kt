@@ -202,6 +202,25 @@ internal fun settingsDiagnosticsEnvironmentSection(exportText: String): String {
     return exportText.substring(sectionStart, sectionEnd).trim()
 }
 
+internal fun settingsFeedbackShareEnvironmentSection(exportText: String): String {
+    val allowedLabels =
+        setOf(
+            "App",
+            "Version",
+            "Version code",
+            "Build",
+            "Source",
+            "Platform",
+            "SDK",
+            "Device",
+            "Model"
+        )
+    return settingsDiagnosticsEnvironmentSection(exportText)
+        .lineSequence()
+        .filter { line -> line.substringBefore(":").trim() in allowedLabels }
+        .joinToString("\n")
+}
+
 private fun Map<String, Any>.diagnosticsStringValue(key: String): String =
         this[key]?.toString().orEmpty()
 
@@ -3571,7 +3590,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun buildQuiverFeedbackShareText(ticketId: String, description: String): String {
-        val environment = settingsDiagnosticsEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
+        val environment = settingsFeedbackShareEnvironmentSection(buildMergedSettingsDiagnosticsExportText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
                         .apply { timeZone = TimeZone.getTimeZone("UTC") }

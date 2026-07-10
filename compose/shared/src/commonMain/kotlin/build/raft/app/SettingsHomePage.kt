@@ -408,6 +408,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.text.SelectionContainer
+import com.tencent.kuikly.compose.text.rememberSelectionContainerState
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.material3.pullToRefreshItem
 import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
@@ -1385,8 +1387,20 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
         SlockTabItemPayload(
             key = "about",
             title = "About",
-            subtitle = "Version, diagnostics, feedback",
+            subtitle = "Version and diagnostics",
             iconName = SlockLucideIconName.BadgeInfo
+        ),
+        SlockTabItemPayload(
+            key = SettingsDestinationQuiverFeedback,
+            title = "Send feedback",
+            subtitle = "Report a problem or suggestion",
+            iconName = SlockLucideIconName.MessageSquarePlus
+        ),
+        SlockTabItemPayload(
+            key = SettingsDestinationReleaseNotes,
+            title = "Release Notes",
+            subtitle = "Product changes and migration notes",
+            iconName = SlockLucideIconName.FileText
         ),
         SlockTabItemPayload(
             key = "router",
@@ -1436,6 +1450,12 @@ private val settingsVisualItems = listOf(
         title = "Computers",
         subtitle = "Connected machines and workspaces",
         iconName = SlockLucideIconName.Monitor
+    ),
+    SlockTabItemPayload(
+        key = SettingsDestinationQuiverFeedback,
+        title = "Send feedback",
+        subtitle = "Report a problem or suggestion",
+        iconName = SlockLucideIconName.MessageSquarePlus
     ),
     SlockTabItemPayload(
         key = "release-notes",
@@ -4103,7 +4123,7 @@ private fun SettingsAppShellContent(
         onBack = {
             when (selectedDestination) {
                 SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
-                SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationAbout)
+                SettingsDestinationQuiverFeedback -> onDestinationChange(SettingsDestinationHome)
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
                 SettingsDestinationOpenSourceLicenses -> onDestinationChange(SettingsDestinationAbout)
                 else -> onDestinationChange(SettingsDestinationHome)
@@ -4606,8 +4626,7 @@ private fun SettingsAppShellContent(
                         settingsCapabilities.prefetchReleaseNotes(url)
                     },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
-                    onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
-                    onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                    onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) }
                 )
             SettingsDestinationOpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(
@@ -8134,8 +8153,7 @@ private fun SharedSettingsAboutContent(
     onCheckQuiverUpdate: () -> Unit,
     onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
-    onCopyEnvironmentInfo: () -> Unit,
-    onSendFeedback: () -> Unit
+    onCopyEnvironmentInfo: () -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -8158,7 +8176,6 @@ private fun SharedSettingsAboutContent(
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
-            "feedback" -> onSendFeedback()
         }
     }
 }
@@ -8533,7 +8550,7 @@ private fun SharedQuiverFeedbackContent(
                 SettingsQuiverFeedbackEntry(
                     id = 0,
                     kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                    title = "Quiver",
+                    title = "Feedback",
                     body = "请反馈问题。每次发送都会创建一条反馈消息，并自动复制可分享的结果。"
                 )
             )
@@ -8649,7 +8666,7 @@ private fun SharedQuiverFeedbackContent(
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Quiver unavailable",
+                                    title = "Feedback",
                                     body = "settings_feedback_submit_unavailable"
                                 )
                     }
@@ -8727,7 +8744,7 @@ private fun SharedQuiverFeedbackContent(
                             SettingsQuiverFeedbackEntry(
                                 id = -1,
                                 kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                                title = "Quiver",
+                                title = "Feedback",
                                 body = "Submitting feedback and preparing the copied reference..."
                             ),
                         onCopy = {}
@@ -8813,7 +8830,7 @@ private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(id: Int): Set
     SettingsQuiverFeedbackEntry(
         id = id,
         kind = SettingsQuiverFeedbackEntryKind.Quiver,
-        title = "Quiver result",
+        title = "Feedback",
         body =
             listOf(
                 "Submitted ${ticketId.take(8).ifBlank { "feedback" }}.",
@@ -8877,13 +8894,16 @@ private fun SettingsQuiverFeedbackConversationRow(
                 color = SlockColor.TextBlack
             )
             entry.detail?.takeIf { it.isNotBlank() }?.let { detail ->
-                Text(
-                    text = detail,
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 6,
-                    overflow = TextOverflow.Ellipsis
-                )
+                SelectionContainer(
+                    state = rememberSelectionContainerState(),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = detail,
+                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
             }
             entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
                 SlockBrutalActionButton(
@@ -9084,9 +9104,17 @@ private fun appShellSettingsHomePayload(
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
                     title = "About",
-                    subtitle = "Version, diagnostics, feedback",
+                    subtitle = "Version and diagnostics",
                     iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
+                    section = "About"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationQuiverFeedback,
+                    title = "Send feedback",
+                    subtitle = "Report a problem or suggestion",
+                    iconName = SlockLucideIconName.MessageSquarePlus,
+                    selected = selectedDestination == SettingsDestinationQuiverFeedback,
                     section = "About"
                 ),
                 SlockTabItemPayload(
@@ -10280,16 +10308,6 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     title = "Copy environment info",
                                     detail = "Copy the same sanitized environment used for diagnostics and feedback.",
                                     status = "Copy",
-                                    enabled = true
-                                )
-                            )
-                            add(
-                                KuiklySharedSettingsRow(
-                                    key = "feedback",
-                                    iconName = SlockLucideIconName.MessageSquare,
-                                    title = "Send feedback",
-                                    detail = "Report a problem or suggestion. Device diagnostics are attached and you get a copyable ticket reference for the community.",
-                                    status = "Send",
                                     enabled = true
                                 )
                             )
@@ -17570,7 +17588,7 @@ private fun settingsRouteVisualHomeSnapshot(selectedDestination: SharedSettingsD
                 SharedSettingsNavItem(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, settingsVisualFixtureValues.serverPlan.replaceFirstChar { it.uppercase() }, selectedDestination == SharedSettingsDestination.Billing),
                 SharedSettingsNavItem(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination == SharedSettingsDestination.Administration),
                 SharedSettingsNavItem(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination == SharedSettingsDestination.ConnectedApps),
-                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
+                SharedSettingsNavItem(SharedSettingsDestination.About, "About", "Version and diagnostics", SlockLucideIconName.BadgeInfo, null, selectedDestination == SharedSettingsDestination.About)
             )
     )
 }

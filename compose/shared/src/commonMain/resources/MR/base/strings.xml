@@ -49,7 +49,7 @@
     <string name="settings_billing_title">Billing</string>
     <string name="settings_storage_title">Storage</string>
     <string name="settings_about_title">About</string>
-    <string name="settings_about_subtitle">Version, diagnostics, feedback</string>
+    <string name="settings_about_subtitle">Version and diagnostics</string>
     <string name="settings_release_notes_title">Release Notes</string>
     <string name="settings_members_title">Members</string>
     <string name="settings_quiver_title">Hands</string>
