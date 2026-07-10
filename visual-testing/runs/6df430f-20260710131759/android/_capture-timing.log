@@ -1,0 +1,42 @@
+36582 START captureAuthLoginSigning
+44975 OK captureAuthLoginSigning durationMs=8417
+45282 START captureUiButtonStates
+49017 OK captureUiButtonStates durationMs=3729
+49328 START captureThreadMessageRowRichContent
+53711 OK captureThreadMessageRowRichContent durationMs=4383
+54045 START captureChannelSettingsPanel
+58673 OK captureChannelSettingsPanel durationMs=4632
+59097 START captureHomeTitlebarStates
+63539 OK captureHomeTitlebarStates durationMs=4443
+63604 START captureUiTextareaStates
+67881 OK captureUiTextareaStates durationMs=4278
+67985 START captureNavigationTabbarStates
+71078 OK captureNavigationTabbarStates durationMs=3092
+71218 START captureTokenPalette
+74790 OK captureTokenPalette durationMs=3571
+75114 START captureChannelMembersPanel
+79902 OK captureChannelMembersPanel durationMs=4788
+80245 START captureThreadMessageSharePreview
+83515 OK captureThreadMessageSharePreview durationMs=3271
+83740 START captureMembersCreateAgentClaudeCustomProviderDialog
+88987 OK captureMembersCreateAgentClaudeCustomProviderDialog durationMs=5246
+89162 START captureMembersHumanDetailProfileScreen
+93802 OK captureMembersHumanDetailProfileScreen durationMs=4639
+93979 START captureMembersAgentDetailRemindersScreen
+99748 OK captureMembersAgentDetailRemindersScreen durationMs=5769
+100077 START captureSettingsAdministrationOnboarding
+103659 OK captureSettingsAdministrationOnboarding durationMs=3572
+103848 START captureRaftUiWipOverlayShellsStates
+106882 OK captureRaftUiWipOverlayShellsStates durationMs=3034
+107032 START captureAuthForgotPasswordScreen
+120589 OK captureAuthForgotPasswordScreen durationMs=13585
+120670 START captureMembersAgentDetailProfile
+126230 OK captureMembersAgentDetailProfile durationMs=5560
+126510 START captureHomeSavedResults
+132305 OK captureHomeSavedResults durationMs=5795
+132379 START captureRaftUiControlledOpenOverlays
+135047 OK captureRaftUiControlledOpenOverlays durationMs=2668
+135167 START captureSettingsConnectedAppsFullHeight
+140468 OK captureSettingsConnectedAppsFullHeight durationMs=5305
+140695 START captureAuthChooseServerScreen
+146816 OK captureAuthChooseServerScreen durationMs=6121

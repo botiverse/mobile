@@ -1,19 +1,19 @@
 # Raft Visual Testing
 
-Generated: 2026-07-09 22:25:37 UTC
-Latest run: 4890633-20260709221654
-Latest commit: 4890633-20260709221654
-Commit subject: fix(diagnostics): isolate auth critical journal (#484)
+Generated: 2026-07-10 13:20:29 UTC
+Latest run: 6df430f-20260710131759
+Latest commit: 6df430f-20260710131759
+Commit subject: fix(ohos): sync native runtimes before local run (#558)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-AI analysis: ready 85 / total 89, pending 4
+Summary: total 89, same 0, pass 0, basic-pass 6, different 79, missing 4
+AI analysis: ready 71 / total 89, pending 18
 Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 89, same 0, pass 0, basic-pass 5, different 80, missing 4
-- react__ios: total 89, same 0, pass 11, basic-pass 8, different 59, missing 11
+- react__android: total 89, same 0, pass 0, basic-pass 6, different 79, missing 4
+- react__ios: total 89, same 0, pass 12, basic-pass 8, different 58, missing 11
 - android__ios: total 89, same 0, pass 17, basic-pass 12, different 52, missing 8
 
 ## Capture Type Coverage
@@ -116,6 +116,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 6df430f-20260710131759: react vs android, total 89, pass 0, basic-pass 6, different 79, matrix runs/6df430f-20260710131759/component-matrix.json, page runs/6df430f-20260710131759/
 - 4890633-20260709221654: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/4890633-20260709221654/component-matrix.json, page runs/4890633-20260709221654/
 - b7cbd7d-20260709142821: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/b7cbd7d-20260709142821/component-matrix.json, page runs/b7cbd7d-20260709142821/
 - 3748ea5-20260709083602: react vs android, total 89, pass 0, basic-pass 5, different 82, matrix runs/3748ea5-20260709083602/component-matrix.json, page runs/3748ea5-20260709083602/

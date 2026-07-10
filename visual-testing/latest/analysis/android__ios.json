@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-09T22:25:35.955Z",
+  "generatedAt": "2026-07-10T13:20:27.640Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 89,
-    "ready": 81,
-    "pending": 8
+    "ready": 69,
+    "pending": 20
   },
   "cases": [
     {
@@ -75,68 +75,29 @@
     },
     {
       "id": "components.ui.badge.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83fe4000c001e000c001e01fc03fe2000fffefffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-07-09T22:22:27.640Z",
-      "severity": "low",
-      "summary": [
-        "Badge components (SHARED, INSTALLED, UPDATE, BUILT IN, task #273, INSTALL) render with matching colors, borders, text content, and row layout on both Android and iOS.",
-        "iOS canvas is larger (1170x2532) so absolute badge sizes scale up proportionally while maintaining the same internal proportions; no clipping or missing elements detected.",
-        "Top-right platform tag differs only in label text ('ANDROID' vs 'IOS'), which is expected for the diagnostic overlay.",
-        "Pixel-perfect similarity is 99.62% with only 0.38% mismatch, indicating the two ends are essentially isomorphic within tolerance.",
-        "No visible differences in typography weight, spacing, alignment, state indicator rendering, or component bounds between the two sides."
-      ],
-      "likelyCauses": [
-        "Differences are within the configured 0.38% pixel mismatch tolerance and likely attributable to sub-pixel anti-aliasing rather than real layout divergence.",
-        "Canvas size mismatch (baseline manually cropped to 342x92 vs full iOS 1170x2532) amplifies per-pixel noise in the comparison metric."
-      ],
-      "suggestedOwner": "kuikly-render",
-      "suggestedFixes": [
-        "No action required — the iOS render is isomorphic to the Android baseline within tolerance; the test correctly reports pass.",
-        "If the rgbSimilarity gap (87.5%) needs to be tightened, tighten ignoreAntialiasing handling or increase the pixelRatio tolerance in test config.",
-        "Optionally crop the iOS canvas to component bounds for a fairer like-for-like comparison against the Android crop."
-      ],
-      "intentional": [
-        "Platform tag in top-right ('ANDROID' vs 'IOS') is an intentional diagnostic overlay difference.",
-        "Badge content and styling parity across the SHARED/INSTALLED/UPDATE/BUILT IN/task #273/INSTALL states."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.00381746128191629
+      "status": "pending",
+      "imageHash": "p1:1ff03fe0000c001e000c001e01fc03fe0000fffe83fcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-10T13:20:25.796Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.003926830585598395
     },
     {
       "id": "components.ui.form-field.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc1ffc3ffe80000012000000028005000600f803f28000000287fd0dfe07fd0ffefbfdfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe1ff0fffe0000fffe0008fffe0008fffe0000fffe0008fffe0000fffe0000fffe0000fffe0860fffe0000fffe0000fffe1fff",
-      "generatedAt": "2026-07-09T22:22:27.633Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows a large system QuickType/gesture-typing onboarding overlay covering the lower two-thirds of the screen (rounded card with gray placeholder and 'Speed up your typing by sliding your finger across the letters to compose a word.' plus a blue 'Continue' button); Android has no such overlay.",
-        "Below the 'SERVER NAME' field on Android there is a visible red error message 'Name is required'; on iOS the error message is missing even though the field is in the same error state.",
-        "iOS Email input shows a visible focus caret (vertical bar) just after the first character 'c', whereas Android does not show an active caret/highlight — focus state styling differs.",
-        "The field rectangle corners/shadows on iOS appear slightly softer/rounder with a subtle drop-shadow on the right edge that is absent on Android, hinting at differing border/shadow tokens per platform.",
-        "Vertical spacing between the Email field, Description label and Description field is slightly larger on iOS, leading to a taller overall form on the iOS render vs. Android."
-      ],
-      "likelyCauses": [
-        "iOS-only system tutorial sheet (QuickType / continuous-path typing introduction) is being shown over the form during the test, masking downstream state.",
-        "Form validation error rendering ('Name is required') is not wired up for the iOS Kuikly end, or the error node lives in a layer the overlay covers/its conditional hides differently per platform.",
-        "Platform-specific input view: iOS native UITextField shows caret + focus ring that isn't mapped to the Kuikly focus-state visuals used on Android.",
-        "Container elevation/shadow and spacing tokens diverge between Kuikly's iOS and Android adapters (different padding/corner radii)."
-      ],
-      "suggestedOwner": "Kuikly Forms / Input platform-bridge owner (Android↔iOS parity)",
-      "suggestedFixes": [
-        "Dismiss or suppress the iOS system QuickType onboarding sheet (e.g., skip the tutorial in test mode) before capturing the visual so the form state's lower portion is visible.",
-        "Ensure the field-level error message ('Name is required') is rendered by the Kuikly iOS bridge the same way as on Android — verify the error node mount/visibility condition matches.",
-        "Unify focus styling: hide the native caret/focus ring or apply the Kuikly focus-state border consistently on iOS to match Android.",
-        "Normalize padding, corner radius and elevation tokens for the TextField/Container across iOS and Android in the Kuikly design system.",
-        "Re-capture the iOS screenshot after fixing the above and verify pixel-perfect similarity rises above the current ~58.7%."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.41266793589068473
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc1ffc3ffe80000012000000028005000600f803f28000000287fd0dfe00010ff6f8016012ffff0006fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe1ff0fffe0000fffe0008fffe0008fffe0000fffe0008fffe0000fffe0000fffe0000fffe0860fffe0000fffe0000fffe1fff",
+      "generatedAt": "2026-07-10T13:20:25.801Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.41779074006562156
     },
     {
       "id": "components.ui.textarea.states",
@@ -261,37 +222,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-07-09T22:22:34.790Z",
-      "severity": "low",
-      "summary": [
-        "Both ends render the same four status dots (green, orange, gray, blue) and the pink 'Waiting pulse' indicator with matching colors.",
-        "The 'Waiting pulse' label text appears slightly larger and heavier on the iOS side compared to Android.",
-        "Inter-dot horizontal spacing between the four status dots is marginally wider on the iOS render.",
-        "Horizontal gap between the pink dot and the 'Waiting pulse' label is slightly greater on iOS.",
-        "Vertical positioning of the dots and label is consistent between ends within sub-pixel tolerance."
-      ],
-      "likelyCauses": [
-        "Platform default font weight/size mapping (iOS San Francisco vs Android Roboto) inflating glyph metrics on iOS.",
-        "Density/scale conversion producing slightly larger dp-to-pt mapping on iOS for the same declared size.",
-        "Kuikly typography token not normalized across platforms, falling back to system defaults."
-      ],
-      "suggestedOwner": "Kuikly UI / design-system team",
-      "suggestedFixes": [
-        "Normalize StatusDot and 'Waiting pulse' label to an explicit cross-platform font family (e.g., system-ui with matching metrics) and explicit weight/size tokens.",
-        "Verify the Kuikly StatusDot component enforces consistent inner spacing tokens on both Android and iOS.",
-        "Add a visual regression snapshot tolerance for StatusDot states covering dot size, dot spacing, and label gap.",
-        "Audit the Waiting pulse text style to use the same design-token values for fontSize and fontWeight on both platforms.",
-        "Consider adding a density-independent sizing assertion in the component to guard against platform scale drift."
-      ],
-      "intentional": [
-        "Color palette of the four status dots is intentionally identical across platforms.",
-        "Pink 'Waiting pulse' indicator color matches by design."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffe83fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "generatedAt": "2026-07-10T13:20:25.970Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.001551086266726065
     },
     {
@@ -422,7 +361,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2727207977207977
+      "metricMismatch": 0.27273024938901713
     },
     {
       "id": "components.ui.section-eyebrow.states",
@@ -942,7 +881,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05086989103576778
+      "metricMismatch": 0.050866177880395935
     },
     {
       "id": "components.thread.header.states",
@@ -1011,7 +950,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03942898421571406
+      "metricMismatch": 0.039434047609403056
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1077,7 +1016,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.047023737189613946
+      "metricMismatch": 0.04722424757969779
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1110,7 +1049,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04985856253628762
+      "metricMismatch": 0.05005907292637146
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1145,7 +1084,7 @@
     {
       "id": "components.thread.forward-modal",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc1ffe1ffc7ffe7ffc7ffe7ffc3ffc7ffc7ffc7ffc7ffc7ffc7fc07fc07f007f000000000000000000000000000000000000000000ffffffff",
+      "imageHash": "p1:ffffffff00000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc1ffe1ffc7ffe7ffc7ffe7ffc3ffc7ffc3ffc7ffc7ffc7ffc7fc07fc07f007f000000000000000000000000000000000000000000ffffffff",
       "generatedAt": "2026-07-09T14:38:31.753Z",
       "severity": "low",
       "summary": [
@@ -1175,12 +1114,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.03627482750705502
+      "metricMismatch": 0.03627516506663431
     },
     {
       "id": "components.thread.comment-anchor",
       "status": "ready",
-      "imageHash": "p1:ffffffff0000000000000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7bfe7afc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc00000000000000000000000000000000000000000000000080018001ffffffff",
+      "imageHash": "p1:ffffffff0000000000000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc70fe72fc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc7ffc00000000000000000000000000000000000000000000000080018001ffffffff",
       "generatedAt": "2026-07-09T14:38:32.708Z",
       "severity": "low",
       "summary": [
@@ -1209,12 +1148,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04954935796168025
+      "metricMismatch": 0.04954226921051563
     },
     {
       "id": "components.home.titlebar.states",
       "status": "ready",
-      "imageHash": "p1:0ffc0ffc7ffe7ffe7002700200020002000200027ffe7fdefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "imageHash": "p1:0ffc0ffc7ffe7ffe6002600200020002000200027ffe7edefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-09T14:38:33.283Z",
       "severity": "low",
       "summary": [
@@ -1240,7 +1179,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0065128745223531626
+      "metricMismatch": 0.006799800164729031
     },
     {
       "id": "components.home.notification-center.states",
@@ -1472,7 +1411,7 @@
     {
       "id": "components.home.create-channel.dialog",
       "status": "ready",
-      "imageHash": "p1:ffffffff000000000000000000000000000000007ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc2ffc4ffc3ffc7ffc7ffc7ffc3ffc7ffc2ffc6ffc3ffc7ffc0ffcfe773ffcffff3ffcffff3ffcffff0ffcffff7ffcfffd7f00bffd3c008ff100008ff10000ffff00009ff90000ffffffffffff",
+      "imageHash": "p1:ffffffff000000000000000000000000000000007ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc2ffc4ffc3ffc7ffc7ffc7ffc3ffc7ffc2ffc6ffc3ffc7ffc0ffcfe773ffcffff3ffcffff3ffcffff0ffcffff7ffcfffd7f00bffd3c008ff100008ff10000ffff00009ff90000ffffffffffff",
       "generatedAt": "2026-07-09T22:23:06.673Z",
       "severity": "medium",
       "summary": [
@@ -1497,110 +1436,46 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3670865907832732
+      "metricMismatch": 0.36708557810453546
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc3dfc29f82df83ffc3ffc2dfc09fc3ffc3ffc39fc3ffc3ffc3ffc3ffc000423fc07fc00f43ffc07fc3ffc3ffc3ff43ffc7ffc3ff43ffc3ffc07fc3ffc3ffc2ffc3ffc3ffc80003ffcffff2ffcffff3ffcffff2ffcffff2ffcfff83ffcbff83ffc8ff03ffc0ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-09T22:23:08.128Z",
-      "severity": "high",
-      "summary": [
-        "iOS view is scrolled/clipped — only COMPUTER, NAME, DESCRIPTION, RUNTIME, and partial MODEL field are visible; REASONING, MODE, Fast mode, Advanced, Cancel, and Create Agent are hidden behind the keyboard.",
-        "Android shows a pink error banner 'Failed to create agent' at the top of the dialog; iOS has no such error banner.",
-        "iOS software keyboard is open and overlays the lower half of the dialog, while Android has no keyboard and renders the full form including footer buttons.",
-        "Required-field asterisks render in pink/red on iOS but the COMPUTER/NAME labels appear slightly differently weighted/spaced compared to Android (tighter vertical rhythm on iOS).",
-        "Dialog outer padding/insets differ: Android form fields use larger vertical gaps and the footer is visible; iOS is compressed and the field at MODEL is cut off mid-component."
-      ],
-      "likelyCauses": [
-        "Initial focus on a text field on iOS triggers the on-screen keyboard which resizes/repositions the scrollable dialog area, cropping the lower form fields and action buttons.",
-        "No auto-scroll-to-focused-field or keyboard-avoidance behavior is applied to the Kuikly dialog on iOS, so the viewport does not pan to keep the focused input visible.",
-        "Android has a hardware keyboard or no focused input, so the soft keyboard never appears and the full layout is shown.",
-        "The 'Failed to create agent' error banner is rendered only after submission and was triggered on Android but not on iOS (or iOS submitted without an error), producing state divergence between the two captures."
-      ],
-      "suggestedOwner": "kuikly-mobile-dialog-owner",
-      "suggestedFixes": [
-        "Add keyboard-avoidance / insets handling on iOS so the dialog scrolls the focused input above the keyboard and keeps the primary 'Create Agent' button reachable.",
-        "Set the iOS dialog to an internal ScrollView with a min-height that always exposes the footer (Cancel / Create Agent) or pin the footer above the keyboard.",
-        "Ensure both platforms render the same error/empty states for the 'Failed to create agent' banner so the captured state matches.",
-        "Normalize form label and required-asterisk styling (color, weight, spacing) across Android and iOS Kuikly renderers.",
-        "When the keyboard opens, auto-scroll the form to the focused field and verify the next required field plus submit action remain visible."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3927026370154332
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003ffc3dfc29f82df83ffc3ffc2dfc09fc3ffc3ffc39fc7ffc3ffc3ffc3ffc000423fc0ffc00f43ffc3ffc3ffc3ffc3ff43ffc7ffc3ff43ffc3ffc07fc3ffc3ffc2ffc3ffc3ffc80003ffcffff27fcffff3ffcffff2ffcffff2ffcfff83ffcbff83ffc8ff03ffc0ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-10T13:20:26.820Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3930479604650221
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc3ffc3ffc3ffc0004000407fc07fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff27fcfff82ffcbff83ffc8ff03f800ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-09T22:23:10.529Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows an on-screen keyboard covering the lower half of the dialog, obscuring Provider/Model/Reasoning fields and Cancel/Create Agent buttons that are fully visible on Android.",
-        "iOS Runtime select value reads 'Codex CLI' while Android shows 'Claude Code', indicating different runtime selection state across platforms.",
-        "Provider field and helper text ('Default leaves Claude Code provider settings...') are completely hidden on iOS due to keyboard overlap.",
-        "Reasoning field and primary action buttons (Cancel, Create Agent) are not visible on iOS, preventing form submission visibility.",
-        "Dialog bounds on iOS appear taller/extended relative to viewport, while Android fully fits within the 390×844 frame with no keyboard occlusion."
-      ],
-      "likelyCauses": [
-        "iOS hardware/software keyboard appearance is not being accounted for in the dialog scroll/resize logic on this Kuikly-rendered iOS end.",
-        "Form scroll container does not auto-scroll to active input or apply bottom inset to accommodate keyboard on iOS.",
-        "Possible difference in runtime state seed between Android and iOS test runs (Runtime default value mismatch).",
-        "Dialog max-height or scroll behavior differs between platform implementations, leaving iOS content pinned and clipped behind keyboard."
-      ],
-      "suggestedOwner": "kuikly-forms-dialog-mobile",
-      "suggestedFixes": [
-        "Add keyboard-aware insets to the dialog scroll container on iOS so the Create Agent / Cancel buttons remain reachable when the keyboard is open.",
-        "Auto-scroll the focused field (e.g., Model) into view on input focus, matching Android behavior where the whole form stays accessible.",
-        "Unify default Runtime selection across platforms or reset state to a shared default before rendering the dialog for visual comparison.",
-        "Verify dialog content height fits within viewport minus keyboard height on iOS (1170×2532 / 390×844 logical points) and add bottom safe-area padding.",
-        "Re-run Slock capture with the keyboard dismissed on iOS to isolate real layout regressions from keyboard-overlap artifacts."
-      ],
-      "intentional": [
-        "On-screen keyboard rendering is platform-native and expected on iOS when an input has focus."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3147695818311932
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc7ffc3ffc3ffc000400043ffc0ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff27fcfff82ffcbff83ffc8ff03f800ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-10T13:20:26.828Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.31476755647371757
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "ready",
-      "imageHash": "p1:efffffff000000003ffc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc3ffc3ffc3ffc0004000407fc07fc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff003cfff83ffcbff83ffc8ff03f840ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-09T22:23:12.254Z",
-      "severity": "high",
-      "summary": [
-        "iOS side displays an on-screen keyboard covering roughly the bottom half of the dialog, while Android shows the full form with Cancel and Create Agent buttons visible",
-        "iOS runtime selection shows 'Codex CLI' vs Android's 'Claude Code' — different runtime values rendered (likely text content/state difference, not a styling bug)",
-        "Lower form fields on iOS (Model selector with refresh icon, and subsequent fields) are clipped/obscured by the keyboard, hiding content Android renders fully",
-        "Action footer with Cancel and Create Agent buttons is not visible on iOS, while it is clearly rendered at the bottom of the Android dialog",
-        "Both sides otherwise align on title, COMPUTER dropdown, Suggested computer hint, NAME input, DESCRIPTION textarea, and 72/3000 counter"
-      ],
-      "likelyCauses": [
-        "iOS keyboard is active because a text field has focus on iOS but not on Android, indicating inconsistent auto-focus behavior across platforms",
-        "iOS Kuikly render may not be accounting for keyboard insets or scroll-into-view, causing the form to be covered instead of pushed/scrolled up",
-        "Form state (runtime value, possibly model) differs between the two captures, suggesting the snapshots were taken at different interaction states",
-        "Different viewport/scroll handling between Android and iOS Kuikly bridges when the soft keyboard appears"
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly input-focus team",
-      "suggestedFixes": [
-        "Normalize auto-focus behavior so that opening the dialog does not auto-focus a field on iOS (or apply it consistently on Android)",
-        "Implement proper KeyboardAvoidingView / keyboard inset handling on iOS so the dialog scrolls the focused field above the keyboard",
-        "Ensure Cancel/Create Agent buttons remain reachable when the keyboard is open (sticky footer or scroll-to-bottom)",
-        "Recapture both screenshots with identical form state (same Runtime/Provider values) and without the keyboard for an apples-to-apples diff",
-        "Add a platform-agnostic 'dismiss keyboard' guard before taking visual baseline snapshots"
-      ],
-      "intentional": [
-        "Runtime value difference ('Codex CLI' vs 'Claude Code') may be a legitimate state difference if the test fixture was set differently per platform"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.31491439489069817
+      "status": "pending",
+      "imageHash": "p1:efffffff000000003ffc3dfc2df82df83ffc3ffc29fc09fc3ffc3ffc3ffc7ffc3ffc3ffc000400043ffc0ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff203cfff83ffcbff83ffc8ff03f840ff03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-10T13:20:26.884Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.31492215876102136
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -1700,7 +1575,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4031686717705675
+      "metricMismatch": 0.4031676590918297
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1730,175 +1605,73 @@
     },
     {
       "id": "components.settings.page.states",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-09T22:23:17.228Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an on-screen keyboard occluding the lower half of the page; Android does not.",
-        "On iOS, the DISPLAY NAME input field shows a blinking/focused text caret (cursor) inside the field; Android shows no caret.",
-        "On iOS, the Save Profile button is clipped/cut off at the bottom by the keyboard; Android shows it fully visible.",
-        "On iOS, the lower page sections (Change password, Session, Log out) are completely hidden behind the keyboard; Android renders them fully visible."
-      ],
-      "likelyCauses": [
-        "iOS automatically shows the system software keyboard when a TextField gains focus, whereas Android's capture did not trigger one.",
-        "The focus state of the DISPLAY NAME field differs between platforms (focused on iOS, unfocused on Android).",
-        "No keyboard-avoiding / inset adjustment applied to the iOS scroll container, causing content to be hidden rather than scrolled above the keyboard.",
-        "Test harness state synchronization mismatch: iOS capture was taken while user was editing a field."
-      ],
-      "suggestedOwner": "Kuikly cross-platform input/scroll team (TextField + keyboard insets)",
-      "suggestedFixes": [
-        "Dismiss the keyboard before capturing the iOS baseline, or blur active fields prior to screenshot.",
-        "Apply consistent keyboard-avoiding behavior (e.g., useWindowInsets / adjustsWhenKeyboardAppears) so the page scrolls above the keyboard on iOS.",
-        "Normalize focus state across platforms in the Slock test (tap an empty area / call blur) so neither side is captured mid-edit.",
-        "Ensure the DISPLAY NAME TextField does not auto-focus on page open on iOS, or align auto-focus behavior with Android.",
-        "Verify scrollContainer/ScrollView bottom inset accounts for keyboardHeight on iOS so Save Profile and Log out remain reachable."
-      ],
-      "intentional": [
-        "Showing a software keyboard on iOS when a text field is focused is platform-native and expected."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3134109045246486
+      "status": "pending",
+      "imageHash": "p1:3ffe3ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff74ff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-10T13:20:27.016Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3134085416075938
     },
     {
       "id": "components.settings.account.page",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-09T22:23:17.369Z",
-      "severity": "medium",
-      "summary": [
-        "iOS (right) has the on-screen keyboard visible, occluding the lower half of the Connected accounts section, the Change password row, the Session section header, and the entire Log out section; Android (left) shows these sections fully without keyboard occlusion",
-        "Android shows two visible input fields (NAME and DISPLAY NAME) while iOS shows the NAME input only partially rendered and the DISPLAY NAME input partially overlapped by the keyboard, with clipped/partial field bounds",
-        "iOS shows an active focus state on the DISPLAY NAME field (cursor visible mid-text) whereas Android shows no active focus indication on the form fields"
-      ],
-      "likelyCauses": [
-        "The Display Name input has focus on iOS, triggering the system software keyboard which overlays the lower portion of the screen",
-        "Test state mismatch: the iOS screenshot was captured while a field was focused, but the Android screenshot was captured with no field focused and the keyboard dismissed",
-        "Possible missing handling in the Slock visual test harness to dismiss the keyboard / blur inputs before capturing the iOS snapshot"
-      ],
-      "suggestedOwner": "mobile-platform / visual-qa",
-      "suggestedFixes": [
-        "Add a pre-capture step that taps a non-focusable area or sends a blur command so the iOS keyboard is dismissed before screenshotting",
-        "If the focused state is intentional, move the page scroll position so the keyboard does not occlude the Log out and Change password sections, or scroll the focused field into view above the keyboard",
-        "Compare at a normalized scroll-offset and keyboard-dismissed state for parity testing; surface keyboard occlusion as a separate test scenario rather than mixing it into the page snapshot",
-        "Verify the Connect buttons in the Connected accounts row remain fully visible and not clipped by the keyboard on smaller viewports"
-      ],
-      "intentional": [
-        "Log out subtitle copy 'Sign out on this device' (Android) vs 'Sign out of this browser' (iOS/web) is a known platform-appropriate difference; both are correct for their platform and should not be aligned"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3134109045246486
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff74ff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff070000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-10T13:20:27.023Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3134085416075938
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff79ff75ff7fff77ff787f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff970000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-09T22:23:18.024Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows a visible system keyboard overlay covering the lower half of the screen, hiding Connected accounts, GitHub row, Change password, Session and Log out sections",
-        "On iOS the Display Name input shows an active focus state (text caret blinking) with a cursor visible between 'b' and 'rtin' while Android shows the unfocused state",
-        "Android renders the full scrollable Account page with Profile, Connected accounts, Change password, Session, and Log out visible; iOS only shows up to the top of the Google Connected row before the keyboard intercepts"
-      ],
-      "likelyCauses": [
-        "iOS Display Name TextField receives initial focus and triggers the native keyboard, occluding content below",
-        "Android equivalent TextField does not auto-focus or its native IME does not appear in this render",
-        "No scroll adjustment or keyboard-avoiding behavior to push hidden content into view on iOS",
-        "Viewport height calculation on iOS does not account for keyboard insets, causing the lower sections to be clipped rather than pushed up"
-      ],
-      "suggestedOwner": "kuikly-ios-input",
-      "suggestedFixes": [
-        "Set TextField autoFocus=false (or platform-conditional) so iOS does not bring up the keyboard on mount",
-        "Add keyboard-avoiding scroll/resize behavior so the form scrolls to keep the focused field visible",
-        "Ensure ContentInsetAdjustmentBehavior and safe-area-inset-bottom include keyboard height on iOS",
-        "Verify focus state rendering (caret styling) is consistent across platforms once the keyboard issue is fixed",
-        "Consider applying equivalent non-focusing initial state on Android for parity, or explicitly allow focused state only when user taps the field"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3127908075775374
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff74ff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7b9f77df7f3077307ff970000fff70000c3070bb4ff070000fff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
+      "generatedAt": "2026-07-10T13:20:27.026Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3127884446604826
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "ready",
-      "imageHash": "p1:2ffe2ffe9fff9fff83ff83ffffffffffcfffffff8ff70ff783f783f78ff70ff79ff75ff7fff77ff787f747f79fe78ff780070007fe377e378337837783f783f780f740f7b1f761f7f3077307ff077f07fff77ff6c3070290bf070000fff72236e1f7000081f73100bfe7066080070e6097f700008007000081d70000ffffffff",
-      "generatedAt": "2026-07-09T22:24:23.387Z",
-      "severity": "high",
-      "summary": [
-        "iOS view has the on-screen keyboard open, which occludes lower content (GitHub Connect row and the Change password section); Android shows the full form with CURRENT PASSWORD, NEW PASSWORD (placeholder 'Min 8 characters'), and CONFIRM PASSWORD fields visible.",
-        "DISPLAY NAME input on iOS shows a blinking text caret/cursor inside the field; Android shows no active caret (no focused/editable field visible).",
-        "'Save Profile' button on iOS sits closer to the Email row (tighter spacing) and overlaps/nudges against the Email text, while on Android it has clear vertical spacing below the email row.",
-        "Connected accounts card on iOS has its bottom-right corner clipped/overlapped by the keyboard panel; on Android the card renders with full height and two visible rows (Google + GitHub).",
-        "Top-bar gap between the Account title and the divider line is visibly larger on iOS than Android; iOS header region has more vertical whitespace."
-      ],
-      "likelyCauses": [
-        "iOS is in active text-input mode for the DISPLAY NAME field, which is platform-correct behavior but is being captured into the diff without normalizing the keyboard inset.",
-        "Different default safe-area / keyboard-avoidance handling between the Android and iOS Kuikly renders; iOS may not be shrinking/scrolling the scroll container to keep the focused field + the rest of the form reachable while the soft keyboard is up.",
-        "Slight differences in text-input caret rendering between the two platforms (iOS shows a native caret in the EditableText view).",
-        "Inconsistent vertical spacing token between the Email row and the Save Profile button across the two renderers."
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly renderer team (focus + keyboard-avoidance behavior)",
-      "suggestedFixes": [
-        "Normalize screenshot capture: dismiss the soft keyboard (tap-out / unfocus) before snapshotting, or capture a second 'keyboard-dismissed' frame for the iOS baseline.",
-        "Ensure the Account screen's scroll view applies iOS keyboard avoidance (contentInset / keyboardLayoutGuide equivalent in Kuikly) so the focused field and the form below stay reachable above the keyboard.",
-        "Verify the spacing token between the Email row and Save Profile button is identical on both platforms; align via shared design token rather than per-platform padding.",
-        "For the password-expanded snapshot specifically, focus the CURRENT PASSWORD (not DISPLAY NAME) field before capture, or unfocus before capture, so the keyboard state is consistent with the Android reference.",
-        "Add a visual-regression guard that fails the diff when a soft keyboard is visible on only one side."
-      ],
-      "intentional": [
-        "The iOS native on-screen keyboard itself is platform-expected behavior when a text field is focused."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2637754688702556
+      "status": "pending",
+      "imageHash": "p1:2ffe2ffe9fff9fff83ff83ffffffffffcfffffff8ff70ff783f783f78ff70ff7bff77ff7fff77ff797f747f79fe78ff780070007fe377e378337837783f783f780f740f7b1f761f7f3077307ff077f07fff77ff6c3070290bf070000fff72236e1f7000081f73100bfe7066080070e60bff700008007000081d70000ffffffff",
+      "generatedAt": "2026-07-10T13:20:27.079Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2638230647709321
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff7a01740178ff79ff7fff77ff7f7f77ff787f787f78fa780078ff74007fe377e3783f783f783f783f7bc075c178007400781f740f7f7e70b90f7070000ff972236c3070000cf073580a0f706e080270e60c0070000e1f70000a1f70000ffffffff",
-      "generatedAt": "2026-07-09T22:23:24.205Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows a keyboard overlay covering the bottom portion of the screen, including 'Connected accounts', Google/GitHub rows, 'Provider link failed' error, and 'Change password' section — Android does not.",
-        "iOS 'DISPLAY NAME' input has a visible text caret/cursor rendered inside the field (between 'a' and 'rtin'), while Android does not show a caret — likely iOS has an active focused/edited state.",
-        "iOS 'DISPLAY NAME' input has a thicker black border (active/focused state) compared to Android's lighter border.",
-        "iOS top-bar yellow tag reads 'iOS'; Android reads 'ANDROID' — labels are intentional platform identifiers but differ as expected.",
-        "iOS profile card appears to have slightly different vertical padding/spacing vs Android, especially around the avatar row."
-      ],
-      "likelyCauses": [
-        "iOS keyboard auto-presents on focus, occluding lower content; Android's IME either wasn't triggered or uses a different insets policy.",
-        "iOS renders a native text caret on the focused TextField while Android either hides it or uses a different focus indicator style.",
-        "The two platforms disagree on how to indicate focused/unfocused input state (border weight).",
-        "Layout resize/scroll behavior differs when the keyboard appears: iOS may not be scrolling/resizing the ScrollView to keep the focused field in view the way Android does."
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly input & IME team",
-      "suggestedFixes": [
-        "Make the iOS end programmatically dismiss the keyboard before snapshot, or compare only the unfocused state to isolate layout diffs.",
-        "Ensure the page ScrollView uses adjustResize (Android) / contentInsetAdjustmentBehavior (iOS) consistently so content remains scrollable above the keyboard.",
-        "Unify focus-indicator styling (border weight and caret visibility) across Android and iOS by normalizing the TextField's focused props in Kuikly.",
-        "Compare with the keyboard hidden (and no active caret) to verify whether remaining ~29% mismatch is purely the IME overlay or a deeper layout drift.",
-        "Add a tolerance-aware crop that excludes the keyboard region when present, or capture the screen with focus lost for isomorphic comparison."
-      ],
-      "intentional": [
-        "Platform label tag at top-right differs ('ANDROID' vs 'iOS').",
-        "The profile card content, avatar placeholder, error banners, Retry button, Verified badge, and Google/GitHub rows are present on both ends."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.29114311175922547
+      "status": "pending",
+      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff78ff7a01740179ff75ff7fff77ff7fff77ff797f757f78fa780078ff74007fe377e3783f783f783f783f7bc075c178007400781f740f7f7e70b90f7070000ff972236c3070000cf073580a0f706e080270e60c0070000e1f70000a1f70000ffffffff",
+      "generatedAt": "2026-07-10T13:20:27.118Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.29114074884217067
     },
     {
       "id": "components.settings.server.profile",
       "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:1ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:24.747Z",
       "severity": "medium",
       "summary": [
@@ -1923,12 +1696,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.304196878249011
+      "metricMismatch": 0.30419485289153536
     },
     {
       "id": "components.settings.administration.admins",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8fff0ff79ff31ff783f3000780030007bff33ff7bff37ff7bbf33bf7800300078007800787f307f786030e07ba037e07bf030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8fff0ff79ff31ff783f3000780030007bff37ff7bff37ff7bbf33bf7800300078007800787f307f786030e07ba037e07bf030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:24.789Z",
       "severity": "high",
       "summary": [
@@ -1953,12 +1726,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.29006393378431294
+      "metricMismatch": 0.2900625835459959
     },
     {
       "id": "components.settings.administration.invites",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:25.919Z",
       "severity": "medium",
       "summary": [
@@ -1986,12 +1759,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.administration.join-links",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:31.718Z",
       "severity": "medium",
       "summary": [
@@ -2022,12 +1795,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:31.728Z",
       "severity": "medium",
       "summary": [
@@ -2055,12 +1828,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.administration.onboarding",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:32.062Z",
       "severity": "medium",
       "summary": [
@@ -2091,12 +1864,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.administration.member-permissions",
       "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:32.259Z",
       "severity": "medium",
       "summary": [
@@ -2127,12 +1900,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.administration.translation",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff33ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
+      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7a3f33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000ffff0000ffffffff",
       "generatedAt": "2026-07-09T22:23:33.325Z",
       "severity": "medium",
       "summary": [
@@ -2164,7 +1937,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30416312229108433
+      "metricMismatch": 0.3041610969336088
     },
     {
       "id": "components.settings.billing.page",
@@ -2196,37 +1969,16 @@
     },
     {
       "id": "components.settings.language-region.page",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff803f803fbfff3fff83f703f783f303f3a81328178633067780030007801300178bf30bf782d302f78ff30ff78003000787f307f380030007800f000f8ff30ff7bff37ff78ff31ff783e303e780030007bff31ff7807300f780f300f787f307f380078007fffffffffffffffffffffffffffe7ffeffffffff",
-      "generatedAt": "2026-07-09T22:23:39.672Z",
-      "severity": "low",
-      "summary": [
-        "Layout and component structure are visually isomorphic between Android and iOS renders.",
-        "Translation Mode segmented control: 'Manual' is the selected state (yellow) on both sides — no divergence.",
-        "Preferred Language dropdown shows 'English' on both sides; Timezone dropdown shows 'Asia/Shanghai' on both sides.",
-        "Time Format segmented control: '24-hour' is selected (yellow) on both sides — state matches.",
-        "Save buttons are in the disabled/pink state on both sides."
-      ],
-      "likelyCauses": [
-        "Native font rendering differences (SF Pro on iOS vs Roboto/system font on Android) producing subtle glyph weight/metrics variation.",
-        "Anti-aliasing and subpixel rendering differences between Android and iOS text rasterizers.",
-        "Minor DPR/scale rounding differences between 390×844 (Android) and 1170×2532 (iOS) capture canvases."
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Verify the Kuikly text style tokens (fontFamily, fontWeight, fontSize) resolve to platform-appropriate fonts on both ends; consider normalizing to a shared webfont if exact parity is required.",
-        "Confirm segmented control, dropdown, and Save button components use shared design tokens for colors, borders, and padding across Android and iOS targets.",
-        "Accept platform-native text rendering differences if the design spec allows ~5–8% pixel variance; otherwise enforce a single font stack via the component layer.",
-        "Re-run visual diff with ignoreAntialiasing enabled (already on) and DPR-normalized canvases to confirm structural isomorphism."
-      ],
-      "intentional": [
-        "Platform-native font rendering may be acceptable per design spec.",
-        "Disabled Save button styling (pink) is consistent and intended until form changes."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.07897915232038455
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff803f803fbfff3fff83f703f783f303f7be537ad786f3477780030007801300178bb34bb780f300f78ff30ff78003000787f307f780030007800f83ef8ff30ff7bff37ff78ff31ff783e303e780030007bff31ff7807300f780f300f787f307f780078007fffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-10T13:20:27.324Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08082526565938886
     },
     {
       "id": "components.settings.appearance.page",
@@ -2368,7 +2120,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2381,7 +2133,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2394,7 +2146,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2407,7 +2159,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2420,7 +2172,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2433,7 +2185,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.694Z",
+      "generatedAt": "2026-07-10T13:20:27.327Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2642,7 +2394,7 @@
     {
       "id": "screens.home.loading",
       "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000004000400cffe4ffecffe4ffe8ffe4ffecffe4ffec7fe47fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe3ffec1fe41fc9fde9f7e9ffe9ffe9fde9f7ebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe0000fffe0000fffe000000027ffefff81fff",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000cffe4ffecffe4ffe8ffe4ffecffe4ffec7fe47fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe3ffec1fe41fc9fde9f7e9ffe9ffe9fde9f7ebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe0000fffe0000fffe000000027ffefffa1fff",
       "generatedAt": "2026-07-09T22:23:47.550Z",
       "severity": "medium",
       "summary": [
@@ -2672,7 +2424,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04422773119455581
+      "metricMismatch": 0.044487989630169755
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2748,7 +2500,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.873Z",
+      "generatedAt": "2026-07-10T13:20:27.519Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2761,7 +2513,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-09T22:25:35.873Z",
+      "generatedAt": "2026-07-10T13:20:27.519Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
