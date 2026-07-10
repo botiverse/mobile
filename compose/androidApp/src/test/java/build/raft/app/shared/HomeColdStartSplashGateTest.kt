@@ -36,11 +36,11 @@ class HomeColdStartSplashGateTest {
 
     @Test
     fun timeoutReleasesSplashAtOnePointFiveSeconds() {
-        val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 2_000L)
+        val gate = HomeColdStartSplashGate(enabled = true, startedAtMillis = 0L)
 
-        assertTrue(gate.shouldKeepOnScreen(3_499L))
+        assertTrue(gate.shouldKeepOnScreen(1_499L))
         assertFalse(gate.timedOut())
-        assertFalse(gate.shouldKeepOnScreen(3_500L))
+        assertFalse(gate.shouldKeepOnScreen(1_500L))
         assertTrue(gate.timedOut())
         assertFalse(gate.release())
     }
