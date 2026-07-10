@@ -49,7 +49,7 @@
     <string name="settings_billing_title">账单</string>
     <string name="settings_storage_title">存储</string>
     <string name="settings_about_title">关于</string>
-    <string name="settings_about_subtitle">版本、诊断、反馈</string>
+    <string name="settings_about_subtitle">版本与诊断</string>
     <string name="settings_release_notes_title">更新日志</string>
     <string name="settings_members_title">成员</string>
     <string name="settings_quiver_title">Hands</string>
