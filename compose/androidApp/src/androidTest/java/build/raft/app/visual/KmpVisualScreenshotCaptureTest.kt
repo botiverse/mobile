@@ -1358,7 +1358,16 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureSettingsNotificationsPage() {
-        captureKmpSettingsPageCase("components.settings.notifications.page", "notifications")
+        captureKmpComponentCase(
+            caseId = "components.settings.notifications.page",
+            pageName = "compose_settings_route_visual",
+            pageData =
+                JSONObject()
+                    .put("destination", "notifications")
+                    .put("fixtureKey", "canonical"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
     }
 
     @Test

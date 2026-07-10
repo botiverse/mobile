@@ -4589,6 +4589,7 @@ private fun SettingsAppShellContent(
                     notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                     preferenceBusy = settingsState.actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && settingsState.actionState.inProgress,
                     foregroundKeepAliveBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_KEEP_ALIVE && settingsState.actionState.inProgress,
+                    foregroundMessageBannersBusy = settingsState.actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && settingsState.actionState.inProgress,
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
                         if (enabled) {
@@ -4600,6 +4601,10 @@ private fun SettingsAppShellContent(
                         if (enabled) {
                             onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
                         }
+                    },
+                    onForegroundMessageBannersChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
+                        onForegroundMessageBannersSelected(enabled)
                     },
                     onServerMuteChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetServerMute(enabled))
@@ -4625,10 +4630,6 @@ private fun SettingsAppShellContent(
                     onCompactConsecutiveMessagesChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
-                    },
-                    onForegroundMessageBannersChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetForegroundMessageBanners(enabled))
-                        onForegroundMessageBannersSelected(enabled)
                     },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
@@ -5667,7 +5668,6 @@ private fun SettingsMobileContent(
     onLocaleChange: (String) -> Unit,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
-    onForegroundMessageBannersChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
@@ -5702,13 +5702,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
-                )
-            }
-            item {
-                SettingsForegroundMessageBannersCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onForegroundMessageBannersChange = onForegroundMessageBannersChange
                 )
             }
             item {
@@ -5852,54 +5845,6 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
-        }
-    }
-}
-
-@Composable
-private fun SettingsForegroundMessageBannersCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onForegroundMessageBannersChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && actionState.inProgress
-    val preference = snapshot.foregroundMessageBanners
-    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageCircle, title = "Foreground message banners") {
-        SettingsFormDetailText(preference.detail)
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onForegroundMessageBannersChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = preference.statusLabel,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = if (preference.enabled) "Show banners while Raft is open" else "Do not show foreground banners",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            SlockSwitchButton(
-                checked = preference.enabled,
-                enabled = preference.available && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -6120,8 +6065,10 @@ private fun SettingsNotificationsContent(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
+    foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
+    onForegroundMessageBannersChange: (Boolean) -> Unit,
     onServerMuteChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
@@ -6158,8 +6105,10 @@ private fun SettingsNotificationsContent(
                         notificationPreferenceSnapshot = notificationPreferenceSnapshot,
                         preferenceBusy = preferenceBusy,
                         foregroundKeepAliveBusy = foregroundKeepAliveBusy,
+                        foregroundMessageBannersBusy = foregroundMessageBannersBusy,
                         onNotificationPreferenceChange = onNotificationPreferenceChange,
                         onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
+                        onForegroundMessageBannersChange = onForegroundMessageBannersChange,
                         onPermission = onPermission,
                         onSettings = onSettings,
                         onTest = onTest
@@ -6193,78 +6142,174 @@ private fun SettingsPushStatusCard(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     preferenceBusy: Boolean,
     foregroundKeepAliveBusy: Boolean,
+    foregroundMessageBannersBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onForegroundKeepAlivePreferenceChange: (Boolean) -> Unit,
+    onForegroundMessageBannersChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Show system notifications") {
-        SettingsNotificationActionRow(
-            title = "Notification permission",
-            detail = snapshot.notificationPermission.detail,
+    val anyActionBusy = actionState?.inProgress == true
+    val permissionGranted = settingsNotificationPermissionGranted(snapshot.notificationPermission.statusLabel)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingsNotificationSectionLabel("System")
+        SettingsNotificationPermissionBanner(
             status = snapshot.notificationPermission.statusLabel,
-            buttonLabel = actionState.statusFor(MOBILE_ACTION_PERMISSION, "Request permission"),
-            enabled = snapshot.notificationPermission.available && actionState?.inProgress != true,
-            iconName = SlockLucideIconName.BellRing,
-            onClick = onPermission
+            detail = snapshot.notificationPermission.detail,
+            permissionGranted = permissionGranted,
+            permissionAvailable = snapshot.notificationPermission.available,
+            settingsAvailable = snapshot.notificationSettings.available,
+            busy = anyActionBusy,
+            onPermission = onPermission,
+            onSettings = onSettings
         )
-        SettingsFormDivider()
-        SettingsSegmentedControlField(
-            detail = "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build.",
-            selectedValue = if (notificationPreferenceSnapshot.enabled) "enabled" else "disabled",
-            options =
-                listOf(
-                    SegmentedControlOption("enabled", "Enabled", SlockLucideIconName.BellRing),
-                    SegmentedControlOption("disabled", "Disabled", SlockLucideIconName.Bell)
-                ),
-            onValueSelected = { onNotificationPreferenceChange(it == "enabled") },
-            enabled = !preferenceBusy
-        )
-        SettingsFormDivider()
-        SettingsSegmentedControlField(
-            detail = "Keep realtime connected while the app is backgrounded without posting a persistent service notification. The OS may still limit long background sessions.",
-            selectedValue = if (notificationPreferenceSnapshot.foregroundKeepAliveEnabled) "enabled" else "disabled",
-            options =
-                listOf(
-                    SegmentedControlOption("enabled", "Keep alive", SlockLucideIconName.Activity),
-                    SegmentedControlOption("disabled", "Normal", SlockLucideIconName.Bell)
-                ),
-            onValueSelected = { onForegroundKeepAlivePreferenceChange(it == "enabled") },
-            enabled = !foregroundKeepAliveBusy
-        )
-        SettingsFormDivider()
-        SlockBrutalActionButton(
-            // task #90: Don't use actionState.statusFor here — that
-            // helper would render "Saved" on success completion of the
-            // openNotificationSettings action, which is semantically wrong
-            // for a "open system settings" button. "Manage notifications"
-            // is the persistent label; in-progress is signaled via
-            // `enabled` below.
-            label = "Manage notifications",
-            onClick = onSettings,
-            enabled = snapshot.notificationSettings.available && actionState?.inProgress != true,
-            leadingIcon = SlockLucideIconName.Settings,
-            backgroundColor = SlockColor.SurfaceWhite
-        )
-        SettingsFormDivider()
-        SettingsNotificationActionRow(
-            title = "Test notification",
-            detail = snapshot.testNotification.detail,
-            status = snapshot.testNotification.statusLabel,
-            buttonLabel = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, snapshot.testNotification.statusLabel.ifBlank { "Send test" }),
-            enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && actionState?.inProgress != true,
-            iconName = SlockLucideIconName.Send,
-            onClick = onTest
-        )
-        if (actionState?.let {
-                it.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_FOREGROUND_KEEP_ALIVE, MOBILE_ACTION_SETTINGS, MOBILE_ACTION_TEST_NOTIFICATION) &&
-                    it.errorCode != null
-            } == true
-        ) {
+        if (actionState?.action in setOf(MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS) && actionState?.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
+
+        SettingsNotificationSectionLabel("On this device")
+        SettingsNotificationPreferenceGroup {
+            SettingsNotificationToggleRow(
+                title = "Message notifications",
+                detail = "Show a system notification for new unread messages while Raft is in the background.",
+                checked = notificationPreferenceSnapshot.enabled,
+                enabled = !preferenceBusy,
+                onCheckedChange = onNotificationPreferenceChange
+            )
+            SettingsNotificationDivider()
+            SettingsNotificationToggleRow(
+                title = "Background realtime",
+                detail = "Keep realtime connected in the background. Android may still pause long-running sessions.",
+                checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
+                enabled = !foregroundKeepAliveBusy,
+                onCheckedChange = onForegroundKeepAlivePreferenceChange
+            )
+            SettingsNotificationDivider()
+            SettingsNotificationToggleRow(
+                title = "Foreground message banners",
+                detail = snapshot.foregroundMessageBanners.detail,
+                checked = snapshot.foregroundMessageBanners.enabled,
+                enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
+                onCheckedChange = onForegroundMessageBannersChange
+            )
+            SettingsNotificationDivider()
+            SettingsNotificationActionRow(
+                title = "Send a test notification",
+                detail = snapshot.testNotification.detail,
+                status = snapshot.testNotification.statusLabel.ifBlank { "Ready" },
+                enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
+                onClick = onTest
+            )
+            if (actionState?.action in setOf(
+                    MOBILE_ACTION_NOTIFICATION_PREFERENCE,
+                    MOBILE_ACTION_FOREGROUND_KEEP_ALIVE,
+                    MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
+                ) && actionState?.errorCode != null
+            ) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    SettingsFormErrorText(actionState.errorCode.orEmpty())
+                }
+            }
+            if (actionState?.action == MOBILE_ACTION_TEST_NOTIFICATION && actionState.errorCode != null) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    SettingsFormErrorText(actionState.errorCode.orEmpty())
+                }
+            }
+        }
     }
+}
+
+internal fun settingsNotificationPermissionGranted(status: String): Boolean =
+    status.trim().lowercase() in setOf("allowed", "granted", "enabled", "on")
+
+@Composable
+private fun SettingsNotificationSectionLabel(label: String) {
+    Text(
+        text = label.uppercase(),
+        style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+        color = SlockColor.TextMutedGray,
+        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, top = 4.dp, bottom = 2.dp)
+    )
+}
+
+@Composable
+private fun SettingsNotificationPermissionBanner(
+    status: String,
+    detail: String,
+    permissionGranted: Boolean,
+    permissionAvailable: Boolean,
+    settingsAvailable: Boolean,
+    busy: Boolean,
+    onPermission: () -> Unit,
+    onSettings: () -> Unit
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (permissionGranted) SlockColor.AccentLime else SlockColor.BrandYellow)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = settingsAvailable && !busy, onClick = onSettings),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(
+                if (permissionGranted) SlockLucideIconName.ShieldCheck else SlockLucideIconName.Bell,
+                modifier = Modifier.size(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = if (permissionGranted) "Notifications allowed" else "Notification access needed",
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = detail.ifBlank { status.ifBlank { "Open Android settings to review notification access." } },
+                    style = SlockType.Caption.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
+        }
+        if (!permissionGranted) {
+            SlockBrutalActionButton(
+                label = "Request permission",
+                onClick = onPermission,
+                enabled = permissionAvailable && !busy,
+                leadingIcon = SlockLucideIconName.Bell,
+                backgroundColor = SlockColor.SurfaceWhite,
+                minWidth = 0.dp,
+                minHeight = 36.dp,
+                shadowOffset = 0.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsNotificationPreferenceGroup(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Thin, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun SettingsNotificationDivider() {
+    Box(Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack))
 }
 
 @Composable
@@ -6272,29 +6317,67 @@ private fun SettingsNotificationActionRow(
     title: String,
     detail: String,
     status: String,
-    buttonLabel: String,
     enabled: Boolean,
-    iconName: SlockLucideIconName,
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        verticalAlignment = Alignment.Top
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled, onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text(status, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-            detail.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+            Text(
+                text = title,
+                style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SettingsFormDetailText(detail)
         }
-        SlockBrutalActionButton(
-            label = buttonLabel,
-            onClick = onClick,
-            enabled = enabled,
-            leadingIcon = iconName,
-            backgroundColor = SlockColor.SurfaceWhite,
-            minWidth = 108.dp
+        Text(
+            text = status,
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
+        SlockLucideIcon(SlockLucideIconName.Send, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun SettingsNotificationToggleRow(
+    title: String,
+    detail: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onCheckedChange(!checked) }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = title,
+                style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SettingsFormDetailText(detail)
+        }
+        SlockSwitchButton(checked = checked, enabled = enabled)
     }
 }
 
@@ -6305,20 +6388,21 @@ private fun SettingsServerMuteCard(
     onServerMuteChange: (Boolean) -> Unit
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
-    SettingsFormSectionCard(iconName = SlockLucideIconName.VolumeX, title = "Workspace mute") {
-        SettingsSegmentedControlField(
-            detail = snapshot.muteServer.detail,
-            selectedValue = if (snapshot.muteServer.enabled) "muted" else "unmuted",
-            options =
-                listOf(
-                    SegmentedControlOption("unmuted", "Unmuted", SlockLucideIconName.BellRing),
-                    SegmentedControlOption("muted", "Muted", SlockLucideIconName.VolumeX)
-                ),
-            onValueSelected = { onServerMuteChange(it == "muted") },
-            enabled = snapshot.muteServer.available && !busy
-        )
-        if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SettingsNotificationSectionLabel("Workspace")
+        SettingsNotificationPreferenceGroup {
+            SettingsNotificationToggleRow(
+                title = "Mute this workspace",
+                detail = snapshot.muteServer.detail,
+                checked = snapshot.muteServer.enabled,
+                enabled = snapshot.muteServer.available && !busy,
+                onCheckedChange = onServerMuteChange
+            )
+            if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    SettingsFormErrorText(actionState.errorCode)
+                }
+            }
         }
     }
 }
@@ -16661,8 +16745,10 @@ private fun SettingsVisualNotificationsContent() {
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         foregroundKeepAliveBusy = false,
+        foregroundMessageBannersBusy = false,
         onNotificationPreferenceChange = {},
         onForegroundKeepAlivePreferenceChange = {},
+        onForegroundMessageBannersChange = {},
         onServerMuteChange = {},
         onPermission = {},
         onSettings = {},
