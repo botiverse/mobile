@@ -228,6 +228,17 @@
     <string name="auth_check_email_title">请检查您的邮箱</string>
     <string name="auth_diagnostics_label">认证诊断</string>
     <string name="auth_provider_cancelled">%1$s 登录已取消。</string>
+    <string name="auth_error_login_setup">登录初始化未能完成。请重试。</string>
+    <string name="auth_error_local_session_setup">无法在本地完成登录设置。请重试。</string>
+    <string name="auth_error_login_failed">登录失败。请重试。</string>
+    <string name="auth_error_provider_unavailable">%1$s 登录暂不可用。请使用邮箱登录。</string>
+    <string name="auth_error_request_expired">登录请求已过期。请重试。</string>
+    <string name="auth_error_provider_setup">%1$s 登录初始化未能完成。请重试。</string>
+    <string name="auth_error_provider_failed">%1$s 登录失败。请重试。</string>
+    <string name="auth_error_register_setup">创建账号初始化未能完成。请重试。</string>
+    <string name="auth_error_register_failed">创建账号失败。请重试。</string>
+    <string name="auth_error_password_reset_setup">重置密码初始化未能完成。请重试。</string>
+    <string name="auth_error_password_reset_failed">密码重置失败。请重试。</string>
     <string name="agent_create_label_name">名称</string>
     <string name="agent_create_label_description">描述</string>
     <string name="agent_create_label_computer">设备</string>

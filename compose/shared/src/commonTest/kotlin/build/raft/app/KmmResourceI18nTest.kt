@@ -119,6 +119,40 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun authErrorPresentationResourcesAreGenerated() {
+        val staticResources =
+            listOf(
+                MR.strings.auth_error_login_setup,
+                MR.strings.auth_error_local_session_setup,
+                MR.strings.auth_error_login_failed,
+                MR.strings.auth_error_request_expired,
+                MR.strings.auth_error_register_setup,
+                MR.strings.auth_error_register_failed,
+                MR.strings.auth_error_password_reset_setup,
+                MR.strings.auth_error_password_reset_failed
+            )
+
+        staticResources.forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "auth error resources must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.auth_error_provider_unavailable,
+            MR.strings.auth_error_provider_setup,
+            MR.strings.auth_error_provider_failed,
+            MR.strings.auth_provider_cancelled
+        ).forEach { resource ->
+            assertTrue(
+                resource.format(listOf("Google")) is ResourceFormattedStringDesc,
+                "provider auth resources must support formatted StringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API

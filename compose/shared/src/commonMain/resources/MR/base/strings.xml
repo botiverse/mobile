@@ -228,6 +228,17 @@
     <string name="auth_check_email_title">Check your email</string>
     <string name="auth_diagnostics_label">Auth diagnostics</string>
     <string name="auth_provider_cancelled">%1$s sign-in was cancelled.</string>
+    <string name="auth_error_login_setup">Sign in could not finish setup. Try again.</string>
+    <string name="auth_error_local_session_setup">Could not finish sign-in setup locally. Try again.</string>
+    <string name="auth_error_login_failed">Sign in failed. Try again.</string>
+    <string name="auth_error_provider_unavailable">%1$s sign-in is unavailable. Try email sign-in.</string>
+    <string name="auth_error_request_expired">Sign-in request expired. Try again.</string>
+    <string name="auth_error_provider_setup">%1$s sign-in could not finish setup. Try again.</string>
+    <string name="auth_error_provider_failed">%1$s sign-in failed. Try again.</string>
+    <string name="auth_error_register_setup">Create account could not finish setup. Try again.</string>
+    <string name="auth_error_register_failed">Create account failed. Try again.</string>
+    <string name="auth_error_password_reset_setup">Reset password could not finish setup. Try again.</string>
+    <string name="auth_error_password_reset_failed">Reset password failed. Try again.</string>
     <string name="agent_create_label_name">Name</string>
     <string name="agent_create_label_description">Description</string>
     <string name="agent_create_label_computer">Computer</string>
