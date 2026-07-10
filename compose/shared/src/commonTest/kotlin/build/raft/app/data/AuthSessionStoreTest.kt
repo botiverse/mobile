@@ -3,6 +3,8 @@ package build.raft.app.data
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
@@ -279,6 +281,42 @@ class AuthSessionStoreTest {
         store.replaceAuthenticatedSession(sampleSession())
         assertFalse(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
         assertEquals("token-a", store.readSession()?.accessToken) // not overwritten
+    }
+
+    @Test
+    fun authSessionEventsAreVisibleAcrossStoreInstances() = runBlocking {
+        // #466 gate: an event from store instance B (e.g. the socket coordinator) must reach an
+        // observer on instance A (e.g. AppShell) — the bus is process-wide shared, not per-instance.
+        // Without the companion-shared flow, A's observer silently misses B's mutations (the exact
+        // gap that would break #560's push seam).
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        a.replaceAuthenticatedSession(sampleSession()) // emitted before A subscribes (replay=0)
+
+        val eventOnA = async(start = CoroutineStart.UNDISPATCHED) { a.authSessionEvents.first() }
+        b.rotateTokensIfMatch("token-a", "token-r", "token-a2", "token-r2")
+
+        val event = withTimeoutOrNull(1000) { eventOnA.await() }
+        assertTrue(event is AuthSessionEvent.TokensRotated) // B's rotation seen by A's observer
+    }
+
+    @Test
+    fun authSessionEventGenerationsAreMonotonicAndTyped() = runBlocking {
+        // generation is assigned INSIDE the store lock so consumers can order events by generation
+        // regardless of delivery order (rapid rotate→clear never reorders semantically).
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val collected = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.take(3).toList() }
+        store.replaceAuthenticatedSession(sampleSession()) // Authenticated
+        store.rotateTokensIfMatch("token-a", "token-r", "token-a2", "token-r2") // TokensRotated
+        store.clearSession(reason = "user_logout") // Cleared(Logout)
+
+        val events = withTimeoutOrNull(1000) { collected.await() }!!
+        assertTrue(events[0] is AuthSessionEvent.Authenticated)
+        assertTrue(events[1] is AuthSessionEvent.TokensRotated)
+        assertTrue(events[2] is AuthSessionEvent.Cleared)
+        assertEquals(AuthSessionClearReason.Logout, (events[2] as AuthSessionEvent.Cleared).reason)
+        assertTrue(events.map { it.generation }.zipWithNext().all { (x, y) -> y > x }) // strictly increasing
     }
 
     private fun sampleSession(): StoredAuthSession =

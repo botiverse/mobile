@@ -99,6 +99,38 @@ interface SlockAuthSessionChangeSource {
     val sessionChanges: SharedFlow<String>
 }
 
+/** Reason a session was cleared. Distinguishes active user logout (an authenticated unbind is still
+ *  possible) from credential auth-loss/expiry (no valid token — server-side revocation cleans up). */
+enum class AuthSessionClearReason { Logout, AuthLoss }
+
+/**
+ * Canonical process-wide auth-session mutation event (#466 shared bus). Each mutation carries a
+ * monotonic [generation] assigned INSIDE the store lock, so consumers order events by generation
+ * regardless of delivery order (max-advance, then re-read latest). Events are WAKE signals, NOT a
+ * state source — a late subscriber misses pre-subscription mutations (SharedFlow replay=0) and MUST
+ * reconcile the persisted session on subscribe. Carries no token.
+ */
+sealed interface AuthSessionEvent {
+    val generation: Long
+
+    /** A session became authenticated: login / register / full replace. */
+    data class Authenticated(override val generation: Long) : AuthSessionEvent
+
+    /** Access/refresh tokens rotated; metadata unchanged. */
+    data class TokensRotated(override val generation: Long) : AuthSessionEvent
+
+    /** user/servers/selection changed; tokens unchanged. */
+    data class BindingMetadataChanged(override val generation: Long) : AuthSessionEvent
+
+    /** Session cleared; [reason] routes downstream (active logout vs auth-loss). */
+    data class Cleared(override val generation: Long, val reason: AuthSessionClearReason) : AuthSessionEvent
+}
+
+/** Process-wide auth-session event surface — shared across all store instances backing the same record. */
+interface SlockAuthSessionEventSource {
+    val authSessionEvents: SharedFlow<AuthSessionEvent>
+}
+
 @Serializable
 data class StoredAuthServerSelection(
     val serverId: String,
@@ -360,17 +392,20 @@ class InMemorySlockAuthSessionStore(
 class KeyValueAuthSessionStore(
     private val store: SlockKeyValueStore,
     private val diagnosticsLogger: (String) -> Unit = {}
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthServerSelectionMemory {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthSessionChangeSource, SlockAuthSessionEventSource, SlockAuthServerSelectionMemory {
     // #466: the serialization lock is SHARED across every KeyValueAuthSessionStore instance
     // (they all back the same MMKV namespace), so cross-instance / cross-subsystem session
     // read-modify-writes can never lose an update. Delegating the existing `mutex` to the
     // companion keeps all current call sites in the single serialization domain.
     private val mutex get() = storeMutex
-    private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    private val changes = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    // Also companion-shared (like the mutex) so existing observers of sessionChanges/invalidations
+    // get cross-instance events too — not just the new typed bus (#466).
+    private val invalidations get() = storeInvalidations
+    private val changes get() = storeChanges
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
     override val sessionChanges: SharedFlow<String> = changes.asSharedFlow()
+    override val authSessionEvents: SharedFlow<AuthSessionEvent> = storeEvents.asSharedFlow()
 
     // Backing read/write of the session record — NOT locked; callers MUST hold [mutex]/[storeMutex].
     private fun readSessionRecordLocked(): StoredAuthSession? =
@@ -382,12 +417,15 @@ class KeyValueAuthSessionStore(
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
         val fingerprint = session.authSessionClearFingerprint()
+        var generation = 0L
         val changed =
             mutex.withLock {
                 val previous = readSessionRecordLocked()?.authSessionClearFingerprint()
                 writeSessionRecordLocked(session)
+                generation = nextGenerationLocked()
                 previous != fingerprint
             }
+        storeEvents.emit(AuthSessionEvent.Authenticated(generation))
         if (changed) {
             changes.emit(fingerprint)
         }
@@ -401,6 +439,7 @@ class KeyValueAuthSessionStore(
         newRefreshToken: String,
     ): Boolean {
         var newFingerprint: String? = null
+        var generation = 0L
         val applied =
             mutex.withLock {
                 val current = readSessionRecordLocked() ?: return@withLock false
@@ -410,10 +449,12 @@ class KeyValueAuthSessionStore(
                 }
                 val updated = current.copy(accessToken = newAccessToken, refreshToken = newRefreshToken)
                 writeSessionRecordLocked(updated)
+                generation = nextGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
                 true
             }
+        if (applied) storeEvents.emit(AuthSessionEvent.TokensRotated(generation))
         newFingerprint?.let { changes.emit(it) }
         diagnosticsLogger("auth_token_rotate applied=$applied")
         return applied
@@ -424,6 +465,7 @@ class KeyValueAuthSessionStore(
         transform: (StoredAuthSession) -> StoredAuthSession,
     ) {
         var newFingerprint: String? = null
+        var generation: Long? = null
         mutex.withLock {
             val current = readSessionRecordLocked() ?: return@withLock
             // Account-generation guard (#466): never apply stale-account metadata onto a session
@@ -437,10 +479,12 @@ class KeyValueAuthSessionStore(
             ) { "updateMetadata transform must not change access/refresh tokens" }
             if (updated != current) {
                 writeSessionRecordLocked(updated)
+                generation = nextGenerationLocked()
                 newFingerprint =
                     updated.authSessionClearFingerprint().takeIf { it != current.authSessionClearFingerprint() }
             }
         }
+        generation?.let { storeEvents.emit(AuthSessionEvent.BindingMetadataChanged(it)) }
         newFingerprint?.let { changes.emit(it) }
     }
 
@@ -512,12 +556,15 @@ class KeyValueAuthSessionStore(
     override suspend fun clearSession(reason: String, source: String) {
         val safeReason = reason.toSafeAuthSessionDiagnosticsToken()
         val safeSource = source.toSafeAuthSessionDiagnosticsToken()
+        var generation = 0L
         val previousSession =
             mutex.withLock {
                 val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
                 store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                generation = nextGenerationLocked()
                 current
             }
+        storeEvents.emit(AuthSessionEvent.Cleared(generation, classifyAuthSessionClearReason(reason)))
         diagnosticsLogger("auth_session_clear reason=$safeReason source=$safeSource hadSession=${previousSession != null}")
         invalidations.emit(Unit)
     }
@@ -594,6 +641,21 @@ class KeyValueAuthSessionStore(
         // backs the same MMKV session record). This is the single serialization domain for all
         // session read-modify-writes — the fix for the #466 cross-subsystem lost-update.
         private val storeMutex = Mutex()
+
+        // Process-wide shared event bus + generation counter (#466 gate: cross-instance
+        // notification). generation is assigned INSIDE storeMutex; events emit AFTER the lock,
+        // ordered by generation so consumers max-advance regardless of delivery order.
+        private val storeEvents = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 64)
+        private var storeGeneration = 0L
+
+        // Legacy per-observer flows, also companion-shared so existing sessionChanges/invalidations
+        // observers see cross-instance events (not only the new typed bus). Larger buffer than the
+        // old per-instance capacity=1 since all instances now fan in here.
+        private val storeChanges = MutableSharedFlow<String>(extraBufferCapacity = 16)
+        private val storeInvalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
+
+        /** Allocate the next monotonic generation. MUST be called while holding [storeMutex]. */
+        private fun nextGenerationLocked(): Long = ++storeGeneration
     }
 }
 
@@ -607,6 +669,20 @@ private fun String.toSafeAuthSessionDiagnosticsToken(): String =
         .ifBlank { "unknown" }
         .replace(Regex("""[^A-Za-z0-9_.:/-]"""), "_")
         .take(96)
+
+private fun classifyAuthSessionClearReason(reason: String): AuthSessionClearReason =
+    // Explicit user logout / account switch → an authenticated unbind is still possible (the #560
+    // upper-layer coordinator does the DELETE). Everything else — 401 / expiry / missing-or-invalid
+    // token / auth_restore — is credential auth-loss where the client cannot authenticate a DELETE;
+    // server-side revocation cleans up. Conservative default = AuthLoss so a downstream never attempts
+    // an unauthenticated unbind. (Exact logout call-site tagging refined with #560.)
+    when {
+        reason.contains("logout", ignoreCase = true) ||
+            reason.contains("sign_out", ignoreCase = true) ||
+            reason.contains("signout", ignoreCase = true) ||
+            reason.contains("switch_account", ignoreCase = true) -> AuthSessionClearReason.Logout
+        else -> AuthSessionClearReason.AuthLoss
+    }
 
 private val authSessionStoreJson = Json {
     ignoreUnknownKeys = true
