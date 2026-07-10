@@ -3,10 +3,13 @@ package build.raft.app.data
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -155,6 +158,202 @@ class AuthSessionStoreTest {
             )
         )
         assertEquals("token-new", store.readSession()?.accessToken)
+    }
+
+    // --- #466 auth-restore lost-update regressions ---
+
+    @Test
+    fun updateMetadataDoesNotClobberConcurrentTokenRotation() = runBlocking {
+        // Reproduces #466: a metadata writer (currentUserWithSession) captured the OLD session,
+        // the socket coordinator rotated the token in between, and the metadata write then wrote
+        // the captured OLD token back — clobbering the successor. The fix: metadata writes go
+        // through updateMetadata, which reads latest under lock and never touches tokens.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
+
+        val captured = store.readSession()!! // metadata writer captures the OLD session
+        assertEquals("token-a", captured.accessToken)
+
+        // socket coordinator rotates to the successor; CAS returns the newly-persisted session
+        val rotated = store.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r")
+        assertEquals("token-successor", rotated?.accessToken)
+        assertEquals("token-successor", store.readSession()?.accessToken)
+
+        // metadata writer commits its (now stale-token) capture as a metadata-only update
+        store.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+            latest.copy(user = captured.user.copy(displayName = "Renamed"))
+        }
+
+        val final = store.readSession()!!
+        assertEquals("token-successor", final.accessToken) // successor preserved, NOT clobbered
+        assertEquals("token-successor-r", final.refreshToken)
+        assertEquals("Renamed", final.user.displayName) // metadata applied
+    }
+
+    @Test
+    fun refreshOnlyRotationIsPreservedAgainstStaleMetadata() = runBlocking {
+        // #496 (Artea Xiaomi, 2nd device): android_socket rotated only the REFRESH (access unchanged),
+        // then a stale metadata write must not revert it. Mirrors the Xiaomi trace exactly.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // access=token-a / refresh=token-r
+        val captured = store.readSession()!!
+
+        // refresh-only rotation: access stays token-a, refresh token-r -> token-r2
+        val rotated = store.rotateTokensIfMatch("token-a", "token-r", "token-a", "token-r2")
+        assertEquals("token-r2", rotated?.refreshToken)
+        assertEquals("token-a", store.readSession()?.accessToken)
+        assertEquals("token-r2", store.readSession()?.refreshToken)
+
+        store.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+            latest.copy(user = captured.user.copy(displayName = "Renamed"))
+        }
+
+        val final = store.readSession()!!
+        assertEquals("token-a", final.accessToken)
+        assertEquals("token-r2", final.refreshToken) // refresh successor preserved
+        assertEquals("Renamed", final.user.displayName)
+    }
+
+    @Test
+    fun updateMetadataSkipsWhenAccountSwitched() = runBlocking {
+        // #466 account-generation guard: after a metadata writer captures account A, a login replaces
+        // the session with account B; A's metadata write must NOT land on B.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession()) // account user-1
+        val capturedA = store.readSession()!!
+
+        // account switch: B is a different account
+        val accountB = sampleSession().copy(
+            user = StoredAuthUser(id = "user-2", email = "b@slock.ai", displayName = "B"),
+            accessToken = "b-access",
+            refreshToken = "b-refresh",
+        )
+        store.replaceAuthenticatedSession(accountB)
+
+        // A's stale metadata write (expected account = user-1) is a no-op on B (user-2)
+        store.updateMetadata(expectedAccountId = capturedA.user.id) { latest ->
+            latest.copy(user = capturedA.user.copy(displayName = "A-Renamed"))
+        }
+
+        val final = store.readSession()!!
+        assertEquals("user-2", final.user.id) // still account B
+        assertEquals("B", final.user.displayName) // A's metadata did NOT land
+        assertEquals("b-access", final.accessToken)
+    }
+
+    @Test
+    fun sessionWritesSerializeAcrossStoreInstancesUnderConcurrency() = runBlocking {
+        // The serialization lock is shared across KeyValueAuthSessionStore INSTANCES backing the
+        // same store, so concurrent rotate (instance b) + metadata write (instance a) can never
+        // lose the rotation regardless of interleaving/instance identity.
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        a.replaceAuthenticatedSession(sampleSession())
+        val captured = a.readSession()!!
+
+        val rotate = async { b.rotateTokensIfMatch("token-a", "token-r", "token-successor", "token-successor-r") }
+        val meta = async {
+            a.updateMetadata(expectedAccountId = captured.user.id) { latest ->
+                latest.copy(user = captured.user.copy(displayName = "Renamed"))
+            }
+        }
+        rotate.await()
+        meta.await()
+
+        // Either order is safe: metadata never changes tokens, so rotate's CAS still matches; and
+        // metadata-after-rotate reads the successor. Final token is always the successor, never old.
+        assertEquals("token-successor", b.readSession()?.accessToken)
+        assertEquals("Renamed", b.readSession()?.user?.displayName)
+    }
+
+    @Test
+    fun updateMetadataFailsClosedOnTokenChange() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        assertFailsWith<IllegalArgumentException> {
+            store.updateMetadata(expectedAccountId = null) { latest -> latest.copy(accessToken = "sneaky") }
+        }
+        assertEquals("token-a", store.readSession()?.accessToken) // unchanged
+    }
+
+    @Test
+    fun rotateTokensIfMatchNoOpsOnStaleExpected() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        store.replaceAuthenticatedSession(sampleSession())
+        assertNull(store.rotateTokensIfMatch("stale-a", "stale-r", "new-a", "new-r"))
+        assertEquals("token-a", store.readSession()?.accessToken) // not overwritten
+    }
+
+    @Test
+    fun authSessionEventsAreVisibleAcrossStoreInstances() = runBlocking {
+        // #466 gate: an event from store instance B (e.g. the socket coordinator) must reach an
+        // observer on instance A (e.g. AppShell) — the bus is process-wide shared, not per-instance.
+        // Without the companion-shared flow, A's observer silently misses B's mutations (the exact
+        // gap that would break #560's push seam).
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        a.replaceAuthenticatedSession(sampleSession()) // emitted before A subscribes (replay=0)
+
+        val eventOnA = async(start = CoroutineStart.UNDISPATCHED) { a.authSessionEvents.first() }
+        b.rotateTokensIfMatch("token-a", "token-r", "token-a2", "token-r2")
+
+        val event = withTimeoutOrNull(1000) { eventOnA.await() }
+        assertTrue(event is AuthSessionEvent.TokensRotated) // B's rotation seen by A's observer
+    }
+
+    @Test
+    fun authSessionEventGenerationsAreMonotonicAndTyped() = runBlocking {
+        // generation is assigned INSIDE the store lock so consumers can order events by generation
+        // regardless of delivery order (rapid rotate→clear never reorders semantically).
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val collected = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.take(3).toList() }
+        store.replaceAuthenticatedSession(sampleSession()) // Authenticated
+        store.rotateTokensIfMatch("token-a", "token-r", "token-a2", "token-r2") // TokensRotated
+        store.clearSession(reason = "user_logout") // Cleared(Logout)
+
+        val events = withTimeoutOrNull(1000) { collected.await() }!!
+        assertTrue(events[0] is AuthSessionEvent.Authenticated)
+        assertTrue(events[1] is AuthSessionEvent.TokensRotated)
+        assertTrue(events[2] is AuthSessionEvent.Cleared)
+        assertEquals(AuthSessionClearReason.Logout, (events[2] as AuthSessionEvent.Cleared).reason)
+        assertTrue(events.map { it.generation }.zipWithNext().all { (x, y) -> y > x }) // strictly increasing
+    }
+
+    @Test
+    fun clearNotifyEmitsTypedClearedOnMatchedRemoveAcrossInstances() = runBlocking {
+        // #466 (AD2 blocker): the remote-clear path (clearSessionFromSessionClearedNotify — used by
+        // Settings/AppShell/Provider) must publish to the typed process-wide bus too, else #560 misses
+        // this real session mutation. A matched remove on instance B is seen by A's typed observer.
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        val session = sampleSession()
+        a.replaceAuthenticatedSession(session)
+
+        val eventOnA = async(start = CoroutineStart.UNDISPATCHED) { a.authSessionEvents.first() }
+        val removed = b.clearSessionFromSessionClearedNotify(
+            reason = "remote_session_cleared",
+            previousSessionFingerprint = session.authSessionClearFingerprint()
+        )
+        assertTrue(removed)
+        val event = withTimeoutOrNull(1000) { eventOnA.await() }
+        assertTrue(event is AuthSessionEvent.Cleared) // remote clear seen on typed bus by A
+        assertEquals(AuthSessionClearReason.AuthLoss, (event as AuthSessionEvent.Cleared).reason)
+        assertNull(b.readSession()) // actually removed
+    }
+
+    @Test
+    fun clearNotifyOnEmptyStoreDoesNotFabricateTypedMutation() = runBlocking {
+        // A duplicate remote-clear notify (current=null, nothing removed) must NOT fabricate a typed
+        // Cleared event — the first typed event a subscriber sees is the subsequent REAL login.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val firstEvent = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.first() }
+        store.clearSessionFromSessionClearedNotify("remote_session_cleared", "nonexistent-fp")
+        store.replaceAuthenticatedSession(sampleSession()) // real Authenticated
+        val event = withTimeoutOrNull(1000) { firstEvent.await() }
+        assertTrue(event is AuthSessionEvent.Authenticated) // NOT a fabricated Cleared from the no-op notify
     }
 
     private fun sampleSession(): StoredAuthSession =

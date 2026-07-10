@@ -195,23 +195,27 @@ internal class SharedAuthRefreshCoordinator(
         safeReason: String
     ): RefreshExchange =
         withContext(NonCancellable) {
-            val latest = sessionStore.readSession()
-            if (latest == null) {
-                return@withContext RefreshExchange.Unavailable
-            }
-            if (!latest.sameTokensAs(original)) {
+            // #466: atomic compare-and-swap. Rotate only if the store's LATEST tokens are still the
+            // ones this refresh was issued against — closing the read-latest→save TOCTOU that let a
+            // metadata writer (or a concurrent rotation) clobber the committed token. The store
+            // returns the newly-persisted session (latest metadata + new tokens) on success.
+            val updated =
+                sessionStore.rotateTokensIfMatch(
+                    expectedAccessToken = original.accessToken,
+                    expectedRefreshToken = original.refreshToken,
+                    newAccessToken = response.accessToken,
+                    newRefreshToken = response.refreshToken
+                )
+            if (updated == null) {
+                // Not applied: either no session (logged out) or another writer already rotated.
+                val latest = sessionStore.readSession()
+                    ?: return@withContext RefreshExchange.Unavailable
                 logger(
                     "refresh_commit_skip reason=token_already_updated caller=$safeCaller " +
                         "requestReason=$safeReason"
                 )
                 return@withContext RefreshExchange.AlreadyUpdated(latest)
             }
-            val updated =
-                latest.copy(
-                    accessToken = response.accessToken,
-                    refreshToken = response.refreshToken
-                )
-            sessionStore.saveSession(updated)
             logger(
                 "refresh_success reason=$safeReason caller=$safeCaller " +
                     "accessRotated=${original.accessToken != updated.accessToken} " +

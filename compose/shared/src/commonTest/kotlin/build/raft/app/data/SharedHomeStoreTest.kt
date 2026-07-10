@@ -3293,6 +3293,47 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun reorderDoesNotReviveStaleSessionWhenAuthStoreSwitchedAccounts() = runBlocking {
+        // #466 (AD2 blocker 1): if the auth store switches account (or clears) between the home store
+        // capturing account A and applyHomeSessionLocally's in-lock write, updateMetadata no-ops
+        // (account-generation guard). The home projection must NOT re-project the captured account-A
+        // reorder — that would revive in the UI a session the persistence layer just rejected.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession()) // account user-1, servers [1,2]
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = sourceWithSnapshot(sampleHome(ServerId("server-1")), sessionStore = sessionStore),
+            scope = scope,
+            updateServerOrder = { request ->
+                DataResult.Content(SettingsServerOrderSnapshot(serverOrder = request.serverOrder))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        val before = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(listOf("server-1", "server-2"), before.session.servers.map { it.id })
+
+        // account switch to user-2 BEFORE the reorder's metadata write lands
+        sessionStore.replaceAuthenticatedSession(
+            sampleSession().copy(
+                user = StoredAuthUser(id = "user-2", email = "b@slock.ai", displayName = "B"),
+                accessToken = "b-access",
+                refreshToken = "b-refresh"
+            )
+        )
+
+        // reorder captured against account A → updateMetadata(expectedAccountId=user-1) no-ops on user-2
+        store.accept(SharedHomeIntent.ReorderServers(listOf("server-2", "server-1")))
+
+        // store still holds account B untouched (account-A metadata rejected)...
+        assertEquals("user-2", sessionStore.readSession()?.user?.id)
+        // ...and home did NOT project the rejected reorder: server order stays [1,2], not [2,1].
+        val after = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(listOf("server-1", "server-2"), after.session.servers.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
     fun openingServerSwitcherRefreshesServerOrderFromServer() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val session =

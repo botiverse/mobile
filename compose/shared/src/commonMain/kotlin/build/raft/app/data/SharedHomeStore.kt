@@ -1057,17 +1057,31 @@ internal class SharedHomeStore(
     }
 
     private suspend fun applyHomeSessionLocally(session: StoredAuthSession) {
-        authStore.saveSession(session)
+        // #466: these are server-ordering (metadata) changes only — persist onto the store's LATEST
+        // session (keeping latest tokens) instead of whole-saving this state-captured snapshot, which
+        // could clobber a token the coordinator rotated in between.
+        var persisted: StoredAuthSession? = null
+        authStore.updateMetadata(expectedAccountId = session.user.id) { latest ->
+            latest.copy(
+                servers = session.servers,
+                selectedServerId = session.selectedServerId,
+                selectedServerSlug = session.selectedServerSlug
+            ).also { persisted = it }
+        }
+        // If the store no-op'd (session was cleared / switched to another account under the lock),
+        // do NOT re-project the captured (now-stale) session into home state — that would revive a
+        // session the persistence layer just correctly rejected. Only project the APPLIED session.
+        val applied = persisted ?: return
         contentByServer.entries.forEach { entry ->
-            entry.setValue(entry.value.copy(session = session))
+            entry.setValue(entry.value.copy(session = applied))
         }
         val current = _state.value.content
         val nextContent =
             when (current) {
-                is SharedHomeContentState.Content -> current.copy(session = session)
-                is SharedHomeContentState.Empty -> current.copy(session = session)
-                is SharedHomeContentState.Error -> current.copy(session = session)
-                is SharedHomeContentState.Loading -> current.copy(session = session)
+                is SharedHomeContentState.Content -> current.copy(session = applied)
+                is SharedHomeContentState.Empty -> current.copy(session = applied)
+                is SharedHomeContentState.Error -> current.copy(session = applied)
+                is SharedHomeContentState.Loading -> current.copy(session = applied)
             }
         reduceState(_state.value.copy(content = nextContent))
     }
