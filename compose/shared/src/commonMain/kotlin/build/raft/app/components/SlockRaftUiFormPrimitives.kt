@@ -106,7 +106,10 @@ private fun SlockFormFieldLabel(
                         letterSpacing = if (uppercase) 1.1.sp else 0.sp
                     )
                     .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
+            // react FormField.tsx: compact labels are text-black/60 (= #666666 over
+            // white); default labels stay solid text-black. Color is per-size, not
+            // per-state.
+            color = if (compact) SlockColor.TextBlack.copy(alpha = 0.60f) else SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
