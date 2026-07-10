@@ -31,3 +31,17 @@ val copyResourceComposeLib = tasks.register<Copy>("copyResourceComposeLib") {
 tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
     finalizedBy(copyResourceComposeLib)
 }
+
+// KmmResource generated MR resources (task #19): the resource generator's
+// mergeOhosResources collects slock_* string/color/plural JSONs from the
+// shared klibs into mergeRes, but nothing shipped them into the HAP — the
+// entry target's resource.directories references ./mr-res, synced here.
+// Runs in the same pre-hvigor gradle phase as the other sync tasks.
+val copyMrResourcesForOhosEntry = tasks.register<Copy>("copyMrResourcesForOhosEntry") {
+    dependsOn(":shared:mergeOhosResources")
+    from(project(":shared").layout.buildDirectory.dir("generated/tmm-res/ohosArm64Main/mergeRes"))
+    into(layout.projectDirectory.dir("ohosApp/entry/mr-res"))
+}
+tasks.matching { it.name == "copyNetworkOhosRuntimeLibs" }.configureEach {
+    finalizedBy(copyMrResourcesForOhosEntry)
+}

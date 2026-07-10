@@ -30,3 +30,4 @@ temp_compose/
 
 .agents/.tmp/
 trace_processor
+compose/ohosApp/entry/mr-res/

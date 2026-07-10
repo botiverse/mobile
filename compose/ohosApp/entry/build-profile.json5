@@ -50,7 +50,18 @@
   ],
   "targets": [
     {
-      "name": "default"
+      "name": "default",
+      // KmmResource generated MR resources (task #19): mr-res is synced from
+      // shared/build/generated/tmm-res/ohosArm64Main/mergeRes by the gradle
+      // task copyMrResourcesForOhosEntry (compose/build.ohos.gradle.kts) —
+      // slock_* string/color/plural keys must reach resources.index or shared
+      // stringResource() fails at runtime.
+      "resource": {
+        "directories": [
+          "./src/main/resources",
+          "./mr-res"
+        ]
+      }
     },
     {
       "name": "ohosTest",
