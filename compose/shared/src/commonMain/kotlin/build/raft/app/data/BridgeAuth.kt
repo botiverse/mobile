@@ -422,91 +422,6 @@ internal class BridgeSettingsPlatformCapabilities(
             }
         }
 
-    private fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
-        val rowsJson = optJSONArray("rows")
-        val rows =
-            buildList {
-                if (rowsJson != null) {
-                    for (index in 0 until rowsJson.length()) {
-                        val row = rowsJson.optJSONObject(index) ?: continue
-                        add(
-                            SharedSettingsStorageRow(
-                                target = row.optString("target"),
-                                title = row.optString("title"),
-                                detail = row.optString("detail"),
-                                sizeLabel = row.optString("sizeLabel").ifBlank { row.optString("size") },
-                                clearEnabled = row.optBoolean("clearEnabled", false),
-                                clearInProgress = row.optBoolean("clearInProgress", false)
-                            )
-                        )
-                    }
-                }
-            }
-        return SharedSettingsStorageSnapshot(
-            totalSizeLabel = optString("totalSizeLabel").ifBlank { optString("totalSize") },
-            rows = rows,
-            feedback = optString("feedback").takeIf { it.isNotBlank() }
-        )
-    }
-
-    private fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
-        val optionsJson = optJSONArray("options")
-        val options =
-            buildList {
-                if (optionsJson != null) {
-                    for (index in 0 until optionsJson.length()) {
-                        val option = optionsJson.optJSONObject(index) ?: continue
-                        val key = option.optString("key")
-                        if (key.isBlank()) continue
-                        add(
-                            SharedSettingsApiEnvironmentOption(
-                                key = key,
-                                label = option.optString("label").ifBlank { key },
-                                apiBaseUrl = option.optString("apiBaseUrl"),
-                                socketBaseUrl = option.optString("socketBaseUrl"),
-                                webUrl = option.optString("webUrl")
-                            )
-                        )
-                    }
-                }
-            }
-        val updateCheckSupported = optBoolean("updateCheckSupported", false)
-        return SharedSettingsDeveloperSnapshot(
-            environmentKey = optString("environmentKey"),
-            environmentLabel = optString("environmentLabel"),
-            apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
-            socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
-            webUrl = optString("webUrl"),
-            updateCheck =
-                SharedSettingsUpdateCheckSnapshot(
-                    supported = updateCheckSupported,
-                    statusLabel =
-                        optString("updateCheckStatusLabel").ifBlank {
-                            if (updateCheckSupported) "Check" else "Disabled"
-                        },
-                    detail =
-                        optString("updateCheckDetail").ifBlank {
-                            if (updateCheckSupported) {
-                                "Checks for a newer Android build and opens the installer when available."
-                            } else {
-                                "This build does not expose in-app update checks."
-                            }
-                        },
-                    actionLabel = optString("updateCheckActionLabel"),
-                    updateAvailable = optBoolean("updateAvailable", false),
-                    currentVersionLabel = optString("currentVersionLabel"),
-                    currentVersionCode = optLong("currentVersionCode", 0L),
-                    latestVersionLabel = optString("latestVersionLabel"),
-                    latestVersionCode = optLong("latestVersionCode", 0L),
-                    downloadUrl = optString("updateDownloadUrl"),
-                    checkedAtLabel = optString("updateCheckedAtLabel"),
-                    errorCode = optString("updateCheckErrorCode")
-                ),
-            options = options.ifEmpty { sharedSettingsDefaultApiEnvironmentOptions() },
-            feedback = optString("feedback").takeIf { it.isNotBlank() }
-        )
-    }
-
     @OptIn(ExperimentalEncodingApi::class)
     private fun List<PlatformFile>.toFeedbackFilesJson(): JSONArray =
         JSONArray().also { array ->
@@ -569,6 +484,103 @@ internal class BridgeSettingsPlatformCapabilities(
             message = optString("message")
         )
     }
+}
+
+internal fun JSONObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
+    // Android sends "rowsJson" (string bridge, #476); OHOS/iOS still send
+    // structured "rows". Same dual-accept shape as entriesJson (#484).
+    val rowsJson =
+        optJSONArray("rows")
+            ?: optString("rowsJson")
+                .takeIf { it.isNotBlank() }
+                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+    val rows =
+        buildList {
+            if (rowsJson != null) {
+                for (index in 0 until rowsJson.length()) {
+                    val row = rowsJson.optJSONObject(index) ?: continue
+                    add(
+                        SharedSettingsStorageRow(
+                            target = row.optString("target"),
+                            title = row.optString("title"),
+                            detail = row.optString("detail"),
+                            sizeLabel = row.optString("sizeLabel").ifBlank { row.optString("size") },
+                            clearEnabled = row.optBoolean("clearEnabled", false),
+                            clearInProgress = row.optBoolean("clearInProgress", false)
+                        )
+                    )
+                }
+            }
+        }
+    return SharedSettingsStorageSnapshot(
+        totalSizeLabel = optString("totalSizeLabel").ifBlank { optString("totalSize") },
+        rows = rows,
+        feedback = optString("feedback").takeIf { it.isNotBlank() }
+    )
+}
+
+internal fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
+    // Android sends "optionsJson" (string bridge, #476); OHOS/iOS still
+    // send structured "options". Same dual-accept shape as entriesJson.
+    val optionsJson =
+        optJSONArray("options")
+            ?: optString("optionsJson")
+                .takeIf { it.isNotBlank() }
+                ?.let { raw -> runCatching { JSONArray(raw) }.getOrNull() }
+    val options =
+        buildList {
+            if (optionsJson != null) {
+                for (index in 0 until optionsJson.length()) {
+                    val option = optionsJson.optJSONObject(index) ?: continue
+                    val key = option.optString("key")
+                    if (key.isBlank()) continue
+                    add(
+                        SharedSettingsApiEnvironmentOption(
+                            key = key,
+                            label = option.optString("label").ifBlank { key },
+                            apiBaseUrl = option.optString("apiBaseUrl"),
+                            socketBaseUrl = option.optString("socketBaseUrl"),
+                            webUrl = option.optString("webUrl")
+                        )
+                    )
+                }
+            }
+        }
+    val updateCheckSupported = optBoolean("updateCheckSupported", false)
+    return SharedSettingsDeveloperSnapshot(
+        environmentKey = optString("environmentKey"),
+        environmentLabel = optString("environmentLabel"),
+        apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
+        socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
+        webUrl = optString("webUrl"),
+        updateCheck =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = updateCheckSupported,
+                statusLabel =
+                    optString("updateCheckStatusLabel").ifBlank {
+                        if (updateCheckSupported) "Check" else "Disabled"
+                    },
+                detail =
+                    optString("updateCheckDetail").ifBlank {
+                        if (updateCheckSupported) {
+                            "Checks for a newer Android build and opens the installer when available."
+                        } else {
+                            "This build does not expose in-app update checks."
+                        }
+                    },
+                actionLabel = optString("updateCheckActionLabel"),
+                updateAvailable = optBoolean("updateAvailable", false),
+                currentVersionLabel = optString("currentVersionLabel"),
+                currentVersionCode = optLong("currentVersionCode", 0L),
+                latestVersionLabel = optString("latestVersionLabel"),
+                latestVersionCode = optLong("latestVersionCode", 0L),
+                downloadUrl = optString("updateDownloadUrl"),
+                checkedAtLabel = optString("updateCheckedAtLabel"),
+                errorCode = optString("updateCheckErrorCode")
+            ),
+        options = options.ifEmpty { sharedSettingsDefaultApiEnvironmentOptions() },
+        feedback = optString("feedback").takeIf { it.isNotBlank() }
+    )
 }
 
 internal fun JSONObject.toDiagnosticsHostSnapshot(): SharedSettingsDiagnosticsHostSnapshot {
