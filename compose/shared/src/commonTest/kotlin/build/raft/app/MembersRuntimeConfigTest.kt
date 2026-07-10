@@ -13,6 +13,26 @@ import kotlin.test.assertTrue
 
 class MembersRuntimeConfigTest {
     @Test
+    fun runtimeModelKindPreservesPresetVsCustomIdentity() {
+        assertEquals(
+            RuntimeModelConfig.Preset("minimax/MiniMax-M2.7"),
+            membersRuntimeModelConfig("builtin", "minimax/MiniMax-M2.7", "preset")
+        )
+        assertEquals(
+            RuntimeModelConfig.Custom("vendor/private-model"),
+            membersRuntimeModelConfig("claude", "vendor/private-model", "custom")
+        )
+        assertEquals(
+            RuntimeModelConfig.Preset("gpt-5.6-sol"),
+            membersRuntimeModelConfig("codex", "gpt-5.6-sol", null)
+        )
+        assertEquals(
+            RuntimeModelConfig.Custom("legacy/private-model"),
+            membersRuntimeModelConfig("codex", "legacy/private-model", null)
+        )
+    }
+
+    @Test
     fun runtimeChangeUsesSessionResetEvenWhenAgentIsInactive() {
         val current = RuntimeConfig(
             runtime = "claude",

@@ -1,11 +1,13 @@
 package build.raft.app.data
 
 import build.raft.app.SharedCreateAgentMachineOption
+import build.raft.app.SharedCreateAgentRuntimeModelCatalog
 import build.raft.app.SharedCreateAgentRuntimeModelOption
 import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
+import build.raft.app.model.canonicalizeRuntimeModelPresentation
 
 /**
  * KMP-side coordinator for the create-agent flow shared between the Members
@@ -106,7 +108,7 @@ internal class SharedCreateAgentCoordinator(
         serverId: String,
         machineId: String,
         runtime: String
-    ): DataResult<List<SharedCreateAgentRuntimeModelOption>> {
+    ): DataResult<SharedCreateAgentRuntimeModelCatalog> {
         val normalizedServerId = serverId.trim()
         val normalizedMachineId = machineId.trim()
         val normalizedRuntime = runtime.trim()
@@ -123,12 +125,14 @@ internal class SharedCreateAgentCoordinator(
         ) {
             is DataResult.Content -> {
                 val fallbackById = RUNTIME_MODELS[normalizedRuntime].orEmpty().associateBy { it.id }
-                val sortedModels =
-                    result.data.defaultModel?.let { defaultModel ->
-                        result.data.models.sortedBy { model -> if (model.id == defaultModel) 0 else 1 }
-                    } ?: result.data.models
+                val presentation =
+                    canonicalizeRuntimeModelPresentation(
+                        runtimeId = normalizedRuntime,
+                        models = result.data.models,
+                        machineDefault = result.data.defaultModel
+                    )
                 val options =
-                    sortedModels.map { model ->
+                    presentation.models.map { model ->
                         val fallback = fallbackById[model.id]
                         SharedCreateAgentRuntimeModelOption(
                             id = model.id,
@@ -136,7 +140,12 @@ internal class SharedCreateAgentCoordinator(
                             verified = model.verified ?: fallback?.verified
                         )
                     }
-                DataResult.Content(options)
+                DataResult.Content(
+                    SharedCreateAgentRuntimeModelCatalog(
+                        models = options,
+                        defaultModel = presentation.defaultModel
+                    )
+                )
             }
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> {

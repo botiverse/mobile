@@ -11645,7 +11645,7 @@ private fun SharedMembersScreen(
             }
             val createAgentRuntimeModelScope = rememberCoroutineScope()
             var createAgentRuntimeModels by remember(serverId) {
-                mutableStateOf<Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>>>(emptyMap())
+                mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
             }
             var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
                 mutableStateOf<Set<Pair<String, String>>>(emptySet())
