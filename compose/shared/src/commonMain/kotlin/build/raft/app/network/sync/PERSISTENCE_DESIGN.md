@@ -121,11 +121,19 @@ next ingest may read the advanced state** (bare "don't return" is insufficient �
 concurrent `core.state()` would otherwise leak the uncommitted advance). "Cursor leads
 facts" is impossible by construction.
 
-### 4.4 FK-safe snapshot rebaseline (AD2 #4)
-Rebaseline clears only **server-backed rows (`seq IS NOT NULL`)** for the scope,
-**preserving** pending/optimistic (`deliveryState`) rows and outbox projection, then
-rebuilds from the snapshot. Deletes are scoped (not a whole-scope wipe) so FK-cascade
-never removes still-valid attachments/reactions/saved.
+### 4.4 FK-safe snapshot rebaseline (AD2 #4 + round-2)
+Deleting a `messageEntity` row FK-cascades (`ON DELETE CASCADE`) to
+`attachmentEntity`/`messageReactionEntity`/`savedMessageEntity` — so even a scoped
+server-backed (`seq IS NOT NULL`) delete is **not automatically safe**:
+- **`savedMessageEntity` is an independent receiver domain** the messages snapshot does
+  not rebuild → rebaseline MUST NOT let a message delete adjudicate it. Rule: facts
+  referenced by a saved marker are **excluded** from message-window prune/rebaseline
+  delete, or the saved relation is **preserved and restored in the same transaction**;
+  the messages snapshot never implicitly deletes the saved domain.
+- **attachments/reactions** are safe only if the snapshot/projector **rebuilds them in
+  the same transaction** as the message it replaces — a projector obligation, not left
+  to cascade.
+- pending/optimistic (`deliveryState`) + outbox rows are preserved (not server-backed).
 
 ## 5. Restore / warm start (T4–T5)
 
@@ -169,7 +177,10 @@ AD2 can verify (no long-lived second writer).
 3. `messageEntity_channelSeqId(serverId,channelId,seq,id)` index + canonical
    server-backed restore query (`seq IS NOT NULL ORDER BY seq,id`).
 4. all upserts `ON CONFLICT DO UPDATE` (no `INSERT OR REPLACE`).
-5. server-backed-only snapshot clear preserving pending/outbox.
+5. server-backed-only snapshot clear that **excludes saved-referenced facts** (or
+   preserves+restores the saved relation same-txn) and preserves pending/outbox; the
+   messages snapshot never deletes the independent saved domain; deleted messages'
+   attachments/reactions are rebuilt same-txn by the projector.
 6. wrapper single-writer wiring + retirement diff set.
 7. tests: round-trip + edit-continuation, crash-window (frame + difference batch),
    persist/restore equivalence, ordered-window recent-N after edit + out-of-order
@@ -182,7 +193,9 @@ AD2 can verify (no long-lived second writer).
 | persist/restore equivalence | commonTest | §9.9 6.3 / T8 |
 | ordered-window stable (edit + out-of-order repair) | commonTest | T6 / orderKey |
 | persist-fail → poison/barrier → snapshot recovery | commonTest | §4.3 |
-| migration forward-only (epoch + PK road) | commonTest | schema |
+| snapshot rebaseline preserves saved marker + pending row | commonTest | §4.4 |
+| prune skips saved-referenced facts; deleted-msg attachments/reactions rebuilt | commonTest | §4.4 |
+| migration forward-only (epoch / index / client-id namespace) | commonTest | schema |
 | SQLite transaction/index binding | **androidUnitTest + SQLDelight driver** | T9 / AD2 |
 
 Android compile & unit tests = the only hard CI gate (mobile policy); iOS/OHOS
