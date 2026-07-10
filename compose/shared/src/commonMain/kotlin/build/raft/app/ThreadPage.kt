@@ -269,6 +269,7 @@ private const val ThreadComposerMentionActionFadeDelayMs = 450L
 private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
+private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 internal const val ThreadInitialMarkdownPreparseMessageCount = 80
 private const val ThreadMarkdownPreparseDebugEntryLimit = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
@@ -3064,6 +3065,29 @@ internal fun SharedThreadRouteContent(
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
+    val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
+    val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
+    val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
+    val unableToLoadImageLabel = stringResource(MR.strings.thread_error_load_image)
+    val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
+    val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
+    val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
+    val attachmentUploadFailedDetailTemplate =
+        stringResource(MR.strings.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
+    val unableToOpenRepliesLabel = stringResource(MR.strings.thread_error_open_replies)
+    val unableToOpenParentMessageLabel = stringResource(MR.strings.thread_error_open_parent_message)
+    val unableToOpenTaskLabel = stringResource(MR.strings.thread_error_open_task)
+    val unableToOpenTargetTemplate =
+        stringResource(MR.strings.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
+    val unableToOpenTaskNumberTemplate =
+        stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+    fun localizedAttachmentUploadFailedDetail(detail: String): String =
+        attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
+    fun localizedUnableToOpenTarget(target: String): String =
+        unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
+        unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -3632,7 +3656,7 @@ internal fun SharedThreadRouteContent(
         if (!attachmentCommentsEnabled) return
         val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
         if (target == null) {
-            bridge.toast("Comments are unavailable")
+            bridge.toast(commentsUnavailableLabel)
             return
         }
         target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
@@ -3682,7 +3706,7 @@ internal fun SharedThreadRouteContent(
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.copy(sending = false, errorCode = code)
-                    bridge.toast("Unable to send comment")
+                    bridge.toast(unableToSendCommentLabel)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -3690,7 +3714,7 @@ internal fun SharedThreadRouteContent(
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.copy(sending = false, errorCode = result.blocker.code)
-                    bridge.toast("Unable to send comment")
+                    bridge.toast(unableToSendCommentLabel)
                 }
             }
         }
@@ -3725,7 +3749,7 @@ internal fun SharedThreadRouteContent(
                                     errorCode = code
                                 )
                             }
-                    bridge.toast("Unable to resolve comment")
+                    bridge.toast(unableToResolveCommentLabel)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -3738,7 +3762,7 @@ internal fun SharedThreadRouteContent(
                                     errorCode = result.blocker.code
                                 )
                             }
-                    bridge.toast("Unable to resolve comment")
+                    bridge.toast(unableToResolveCommentLabel)
                 }
             }
         }
@@ -3791,7 +3815,7 @@ internal fun SharedThreadRouteContent(
                             )
                         }
                     if (imagePreviewState?.current?.id == attachmentId && imagePreviewState?.current?.thumbnailUrl.isNullOrBlank()) {
-                        bridge.toast("Unable to load image")
+                        bridge.toast(unableToLoadImageLabel)
                     }
                 }
             }
@@ -3858,7 +3882,7 @@ internal fun SharedThreadRouteContent(
                             downloadId = downloadId
                         ))
                 if (result.status != "cancelled") {
-                    bridge.toast(result.message.ifBlank { "Unable to open attachment" })
+                    bridge.toast(result.message.ifBlank { unableToOpenAttachmentLabel })
                 }
             }
         }
@@ -3934,10 +3958,10 @@ internal fun SharedThreadRouteContent(
                         when (attachment.status) {
                             "failed" ->
                                 listOf(
-                                    "Attachment upload failed",
+                                    attachmentUploadFailedLabel,
                                     threadFailureReasonLabel(attachment.errorCode)
                                 ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
-                            else -> "Preparing attachment preview..."
+                            else -> preparingAttachmentPreviewLabel
                         },
                     messageDesc = null,
                     error =
@@ -4257,8 +4281,9 @@ internal fun SharedThreadRouteContent(
                 )
             }
             bridge.toast(
-                "Attachment upload failed: " +
-                    (threadUserFacingErrorCodeLabel(errorCode) ?: "Something went wrong. Please try again.")
+            localizedAttachmentUploadFailedDetail(
+                threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+            )
             )
         }
     }
@@ -4688,7 +4713,7 @@ internal fun SharedThreadRouteContent(
                     val parentMessage =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
-                        bridge.toast("Unable to open replies")
+                        bridge.toast(unableToOpenRepliesLabel)
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
@@ -4799,7 +4824,7 @@ internal fun SharedThreadRouteContent(
                                 ?: renderedThread.originParentMessageId?.takeIf { it.isNotBlank() }
                                 ?: renderedThread.parentMessageId?.takeIf { it.isNotBlank() }
                         if (parentMessageId.isNullOrBlank()) {
-                            bridge.toast("Unable to open parent message")
+                            bridge.toast(unableToOpenParentMessageLabel)
                             return@ThreadPageContent
                         }
                         val loadingPayload = renderedThread.parentMessageContextLoadingPayload(parentMessageId)
@@ -4941,7 +4966,7 @@ internal fun SharedThreadRouteContent(
                 action == "openTask" && !itemId.isNullOrBlank() -> {
                     val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
-                        bridge.toast("Unable to open task")
+                        bridge.toast(unableToOpenTaskLabel)
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
@@ -4975,7 +5000,7 @@ internal fun SharedThreadRouteContent(
                 action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
                     val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
-                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -5007,7 +5032,7 @@ internal fun SharedThreadRouteContent(
                                     )
                             }
                             MarkdownTaskNumberOpenResult.NotFound -> {
-                                bridge.toast("Unable to open #$taskNumber")
+                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                             MarkdownTaskNumberOpenResult.AuthRequired -> {
                                 routeAuthRequired(
@@ -5015,7 +5040,7 @@ internal fun SharedThreadRouteContent(
                                 )
                             }
                             MarkdownTaskNumberOpenResult.Failed -> {
-                                bridge.toast("Unable to open #$taskNumber")
+                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                         }
                     }
@@ -5064,7 +5089,7 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     if (serverMembersStore == null || threadMembersServerId == null) {
-                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -5110,7 +5135,7 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
                         if (loadingPayload == null) {
-                            bridge.toast("Unable to open #${itemId.removePrefix("#").take(31)}")
+                            bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
                         } else {
                             onOpenThreadPayload(loadingPayload)
                         }
@@ -5137,10 +5162,10 @@ internal fun SharedThreadRouteContent(
                                 onOpenThreadPayload(result.data)
                             }
                             is DataResult.Empty -> {
-                                bridge.toast("Unable to open ${itemId.take(32)}")
+                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                             }
                             is DataResult.Error -> {
-                                bridge.toast("Unable to open ${itemId.take(32)}")
+                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                             }
                             is DataResult.NoPermission -> {
                                 routeAuthRequired(result)
@@ -5726,9 +5751,9 @@ internal fun SharedThreadRouteContent(
                             when {
                                 errorCode != null ->
                                     bridge.toast(
-                                        "Attachment upload failed: " +
-                                            (threadUserFacingErrorCodeLabel(errorCode)
-                                                ?: "Something went wrong. Please try again.")
+                                        localizedAttachmentUploadFailedDetail(
+                                            threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+                                        )
                                     )
                                 response == null ->
                                     bridge.toast("Attachment picker unavailable")
@@ -5813,7 +5838,7 @@ internal fun SharedThreadRouteContent(
                 onSelect = { task ->
                     val loadingPayload = renderedThread.markdownTaskNumberLaunchPayload(task)
                     if (loadingPayload == null) {
-                        bridge.toast("Unable to open #${modalState.taskNumber}")
+                        bridge.toast(localizedUnableToOpenTaskNumber(modalState.taskNumber))
                     } else {
                         currentServerId?.let { serverId ->
                             tasksDataStore?.upsertTask(serverId, task)
