@@ -2084,7 +2084,7 @@ private fun LargeIconBox(iconName: SlockLucideIconName, color: Color) {
 
 @Composable
 private fun OnlineDot(online: Boolean) {
-    SlockStatusIndicator(color = if (online) SlockColor.AccentLime else SlockColor.EmptyStateGray)
+    SlockStatusIndicator(color = if (online) SlockColor.AccentLime else SlockColor.StatusNeutralGray)
 }
 
 internal fun KuiklySettingsAgentItem.settingsAgentFallbackStatusState(): SlockAgentStatusIndicatorState =
