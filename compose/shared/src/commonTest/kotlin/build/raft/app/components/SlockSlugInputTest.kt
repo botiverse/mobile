@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.SlockColor
+import com.tencent.kuikly.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -12,7 +13,8 @@ class SlockSlugInputTest {
 
     @Test
     fun disabledPrefixBackgroundMatchesReactControlOpacityRule() {
-        // react: tile bg-soft-signal/30 x control opacity-60 = BrandYellow @ 0.18
-        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.18f), SlockSlugInputDisabledPrefixBackground)
+        // react: tile bg-soft-signal/30 x control opacity-60, flattened over
+        // white = opaque #FFF7DD (group-opacity composite, not a live alpha)
+        assertEquals(Color(0xFFFFF7DD), SlockSlugInputDisabledPrefixBackground)
     }
 }

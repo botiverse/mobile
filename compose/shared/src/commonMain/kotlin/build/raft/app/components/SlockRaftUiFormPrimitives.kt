@@ -41,10 +41,12 @@ internal enum class SlockFormFieldSize {
 }
 
 internal val SlockSlugInputPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.30f)
-// react's disabled look is the WHOLE control at opacity-60, so the tile's
-// effective alpha is 0.30 x 0.60 = 0.18 (#FFF7DD over white). Color.copy(alpha=)
-// REPLACES alpha - the old 0.55 made the disabled tile MORE saturated than enabled.
-internal val SlockSlugInputDisabledPrefixBackground = SlockColor.BrandYellow.copy(alpha = 0.18f)
+// react disabled tile flattened over white: BrandYellow @ (0.30 tile x 0.60
+// control opacity) = opaque #FFF7DD. Opaque on purpose - see the disabled
+// color block in SlockSlugInput for why per-part alpha can't match CSS group
+// opacity. (The old value, BrandYellow @ 0.55, was a Color.copy(alpha=)
+// REPLACE bug: disabled rendered MORE saturated than enabled's 0.30.)
+internal val SlockSlugInputDisabledPrefixBackground = Color(0xFFFFF7DD)
 
 @Composable
 internal fun SlockFormField(
@@ -261,12 +263,15 @@ internal fun SlockSlugInput(
     fieldHeight: Dp = 42.dp
 ) {
     val shadowOffset = SlockShadow.BrutalSmall
-    // Same react uniform opacity-60 rule as the text below: every part of the
-    // disabled control dims by x0.60 (the old 0.40/0.45 were pre-rule guesses).
-    val shadowColor = if (enabled) SlockColor.ShadowBlack else SlockColor.ShadowBlack.copy(alpha = 0.60f)
-    val borderColor = if (enabled) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.60f)
-    // react text-black @ fixture opacity-60 over white = #666666, i.e. black @ 0.60 (visual-fix pilot, AI analysis 2026-07-09)
-    val contentColor = if (enabled) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.60f)
+    // react's disabled look is CSS group opacity-60: each part flattens against
+    // what's beneath it INSIDE the group first, then the whole result dims over
+    // the page. Per-part alpha only equals that over the page backdrop, so parts
+    // stacked on the tile (border, slash) drift warm. Precomputed opaque react
+    // composites instead (white backdrop, matching the disabled-button precedent):
+    // shadow #141111 x0.6 = #727070; border/text black x0.6 = #666666.
+    val shadowColor = if (enabled) SlockColor.ShadowBlack else Color(0xFF727070)
+    val borderColor = if (enabled) SlockColor.BorderBlack else Color(0xFF666666)
+    val contentColor = if (enabled) SlockColor.TextBlack else Color(0xFF666666)
     Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
         if (shadowOffset > 0.dp) {
             Box(
@@ -299,11 +304,11 @@ internal fun SlockSlugInput(
                 Text(
                     text = "/",
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
-                    // react slash = text-black/70; disabled multiplies by the control's
-                    // opacity-60 -> 0.70 x 0.60 = 0.42. copy(alpha=) on contentColor
-                    // would REPLACE the disabled 0.60 with 0.70 (same pitfall as the
-                    // tile constant above), so derive from TextBlack explicitly.
-                    color = SlockColor.TextBlack.copy(alpha = if (enabled) 0.70f else 0.42f),
+                    // react slash = text-black/70. Disabled must match react's GROUP
+                    // flatten (glyph over tile first, then x0.6 over white) = opaque
+                    // #94928A; a plain alpha over the dim tile lets ~2x the yellow
+                    // through (round-2 adversarial review, Delta(0,3,10)/px).
+                    color = if (enabled) SlockColor.TextBlack.copy(alpha = 0.70f) else Color(0xFF94928A),
                     maxLines = 1
                 )
             }
