@@ -1477,7 +1477,11 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
     }
 
     override fun e(tag: String, msg: String) {
-        Log.e(tag, msg)
+        // Error-level render logs must reach persistent diagnostics, not just
+        // Logcat: the Kuikly fork's bridge marshal reports dropped fields via
+        // KuiklyRenderLog.e (task #476), and that evidence has to survive into
+        // the exported diagnostics ring. SlockAppLog.e writes Logcat itself.
+        SlockAppLog.e(tag, msg)
     }
 }
 
@@ -2783,7 +2787,11 @@ internal class SlockKuiklyBridgeModule(
                     "status" to "ok",
                     "totalSizeLabel" to snapshot.totalBytes.formatStorageSizeLabel(),
                     "feedback" to feedback.orEmpty(),
-                    "rows" to
+                    // Serialized like entriesJson (#484): rows cross the render
+                    // bridge as a primitive string, independent of container
+                    // marshal support. OHOS/iOS hosts still send structured
+                    // "rows"; the shared parser accepts both.
+                    "rowsJson" to
                             JSONArray()
                                     .put(
                                             storageRowJson(
@@ -2821,6 +2829,7 @@ internal class SlockKuiklyBridgeModule(
                                                     clearEnabled = true
                                             )
                                     )
+                                    .toString()
             )
 
     private fun clearSettingsStorage(target: String): Map<String, Any> {
@@ -3111,7 +3120,11 @@ internal class SlockKuiklyBridgeModule(
                 "updateCheckSupported" to true,
                 "updateCheckStatusLabel" to "Ready",
                 "updateCheckDetail" to "Check Hands channel ${BuildConfig.QUIVER_CHANNEL} for a newer Android APK. If an update is available, Raft downloads it and opens the Android installer.",
-                "options" to options,
+                // Serialized like entriesJson (#484): options cross the render
+                // bridge as a primitive string, independent of container
+                // marshal support. OHOS/iOS hosts still send structured
+                // "options"; the shared parser accepts both.
+                "optionsJson" to options.toString(),
                 "feedback" to feedback.orEmpty()
         )
     }
