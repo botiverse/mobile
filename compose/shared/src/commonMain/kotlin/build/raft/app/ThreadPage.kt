@@ -8037,6 +8037,10 @@ private fun ThreadPageContent(
         remember(timelineSlice, selectedShareMessageIds) {
             timelineSlice.threadSelectedShareMessages(selectedShareMessageIds)
         }
+    val forwardMessageSelection =
+        remember(selectedShareMessages) {
+            selectedShareMessages.threadForwardMessageSelection()
+        }
     val selectedShareMarkdown =
         remember(selectedShareMessages) {
             selectedShareMessages.threadShareMarkdown()
@@ -8451,7 +8455,14 @@ private fun ThreadPageContent(
                             selectedShareMessageIds = selectableShareMessageIds
                         },
                         onForward = {
-                            if (selectedShareMessages.isNotEmpty()) {
+                            if (forwardMessageSelection.forwardableMessages.isEmpty()) {
+                                onThreadEvent(
+                                    "forwardMessagesFailed",
+                                    ThreadNestedForwardUnsupportedMessage,
+                                    null,
+                                    null
+                                )
+                            } else {
                                 activeForwardSelectionMode = ThreadForwardSelectionMode.Merged
                                 forwardTargetQuery = ""
                                 forwardSelectedTarget = null
@@ -8596,7 +8607,7 @@ private fun ThreadPageContent(
                 }
             "forwardTargets" ->
                 ThreadForwardTargetModal(
-                    selectedCount = selectedShareMessages.size,
+                    selectedCount = forwardMessageSelection.forwardableMessages.size,
                     query = forwardTargetQuery,
                     loading = forwardTargetStatus == SharedMembersLoadStatus.InFlight,
                     targets = forwardTargetItems,
@@ -8631,7 +8642,7 @@ private fun ThreadPageContent(
                                                     ForwardMessageExecuteRequest(
                                                         sourceChannelId = sourceChannelId,
                                                         targetChannelId = resolved.data,
-                                                        messageIds = selectedShareMessages.map { it.id },
+                                                        messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
                                                         mode = activeForwardSelectionMode.toForwardMessageSendMode(),
                                                         note = forwardNote
                                                     )
@@ -8651,9 +8662,19 @@ private fun ThreadPageContent(
                                                     is DataResult.Empty ->
                                                         onThreadEvent("forwardMessagesFailed", "No selected messages", null, null)
                                                     is DataResult.Error ->
-                                                        onThreadEvent("forwardMessagesFailed", forwarded.error.code, null, null)
+                                                        onThreadEvent(
+                                                            "forwardMessagesFailed",
+                                                            forwarded.error.code.threadForwardErrorMessage(),
+                                                            null,
+                                                            null
+                                                        )
                                                     is DataResult.NoPermission ->
-                                                        onThreadEvent("forwardMessagesFailed", forwarded.blocker.code, null, null)
+                                                        onThreadEvent(
+                                                            "forwardMessagesFailed",
+                                                            forwarded.blocker.code.threadForwardErrorMessage(),
+                                                            null,
+                                                            null
+                                                        )
                                                 }
                                             }
                                             is DataResult.Empty ->
@@ -11252,6 +11273,29 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
         .filter { message -> message.id in selectedIds && !message.isSystemMessage() }
         .distinctBy { message -> message.id }
 }
+
+internal const val ThreadNestedForwardUnsupportedMessage =
+    "Forwarded messages can't be forwarded. Select the original message instead."
+
+internal data class ThreadForwardMessageSelection(
+    val forwardableMessages: List<KuiklyThreadMessageItem>,
+    val skippedForwardedBundleCount: Int
+)
+
+internal fun List<KuiklyThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
+    val forwardableMessages = filter { message -> message.forwardBundle == null }
+    return ThreadForwardMessageSelection(
+        forwardableMessages = forwardableMessages,
+        skippedForwardedBundleCount = size - forwardableMessages.size
+    )
+}
+
+internal fun String.threadForwardErrorMessage(): String =
+    if (trim().lowercase() in setOf("unsupport", "unsupported")) {
+        ThreadNestedForwardUnsupportedMessage
+    } else {
+        this
+    }
 
 private fun ThreadTimelineSlice.threadSelectableShareMessageIds(): Set<String> =
     (listOfNotNull(originMessage) + messages)
