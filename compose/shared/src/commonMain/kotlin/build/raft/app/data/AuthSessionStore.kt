@@ -595,6 +595,7 @@ class KeyValueAuthSessionStore(
         reason: String,
         previousSessionFingerprint: String
     ): Boolean {
+        var removedGeneration: Long? = null
         val shouldInvalidate =
             mutex.withLock {
                 val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
@@ -607,6 +608,7 @@ class KeyValueAuthSessionStore(
                     }
                     current.authSessionClearFingerprint() == previousSessionFingerprint -> {
                         store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                        removedGeneration = nextGenerationLocked()
                         diagnosticsLogger(
                             "auth_session_clear_notify reason=$reason current=matched result=removed"
                         )
@@ -620,6 +622,10 @@ class KeyValueAuthSessionStore(
                     }
                 }
             }
+        // #466: a MATCHED remove is a real session mutation → emit the typed process-wide event so
+        // #560 and other typed-bus observers see remote clears too, not only the legacy invalidation.
+        // A duplicate notify (current=null, nothing removed) must NOT fabricate a new mutation.
+        removedGeneration?.let { storeEvents.emit(AuthSessionEvent.Cleared(it, AuthSessionClearReason.AuthLoss)) }
         if (shouldInvalidate) {
             invalidations.emit(Unit)
         }

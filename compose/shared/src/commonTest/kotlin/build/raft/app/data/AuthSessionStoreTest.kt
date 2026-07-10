@@ -321,6 +321,41 @@ class AuthSessionStoreTest {
         assertTrue(events.map { it.generation }.zipWithNext().all { (x, y) -> y > x }) // strictly increasing
     }
 
+    @Test
+    fun clearNotifyEmitsTypedClearedOnMatchedRemoveAcrossInstances() = runBlocking {
+        // #466 (AD2 blocker): the remote-clear path (clearSessionFromSessionClearedNotify — used by
+        // Settings/AppShell/Provider) must publish to the typed process-wide bus too, else #560 misses
+        // this real session mutation. A matched remove on instance B is seen by A's typed observer.
+        val kv = InMemorySlockKeyValueStore()
+        val a = KeyValueAuthSessionStore(kv)
+        val b = KeyValueAuthSessionStore(kv)
+        val session = sampleSession()
+        a.replaceAuthenticatedSession(session)
+
+        val eventOnA = async(start = CoroutineStart.UNDISPATCHED) { a.authSessionEvents.first() }
+        val removed = b.clearSessionFromSessionClearedNotify(
+            reason = "remote_session_cleared",
+            previousSessionFingerprint = session.authSessionClearFingerprint()
+        )
+        assertTrue(removed)
+        val event = withTimeoutOrNull(1000) { eventOnA.await() }
+        assertTrue(event is AuthSessionEvent.Cleared) // remote clear seen on typed bus by A
+        assertEquals(AuthSessionClearReason.AuthLoss, (event as AuthSessionEvent.Cleared).reason)
+        assertNull(b.readSession()) // actually removed
+    }
+
+    @Test
+    fun clearNotifyOnEmptyStoreDoesNotFabricateTypedMutation() = runBlocking {
+        // A duplicate remote-clear notify (current=null, nothing removed) must NOT fabricate a typed
+        // Cleared event — the first typed event a subscriber sees is the subsequent REAL login.
+        val store = KeyValueAuthSessionStore(InMemorySlockKeyValueStore())
+        val firstEvent = async(start = CoroutineStart.UNDISPATCHED) { store.authSessionEvents.first() }
+        store.clearSessionFromSessionClearedNotify("remote_session_cleared", "nonexistent-fp")
+        store.replaceAuthenticatedSession(sampleSession()) // real Authenticated
+        val event = withTimeoutOrNull(1000) { firstEvent.await() }
+        assertTrue(event is AuthSessionEvent.Authenticated) // NOT a fabricated Cleared from the no-op notify
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user =
