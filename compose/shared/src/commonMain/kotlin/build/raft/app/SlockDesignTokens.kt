@@ -27,6 +27,9 @@ internal object SlockColor {
     val SurfaceCream = Color(0xFFFFFAEF)
     val AppBgLightBlue = Color(0xFFE6F8FF)
     val EmptyStateGray = Color(0xFFE7E7E7)
+    // react Tailwind gray-400 (oklch 70.7% 0.022 261.325 = #99A1AF): the neutral /
+    // offline status-dot fill. Not the same gray as EmptyStateGray (#E7E7E7).
+    val StatusNeutralGray = Color(0xFF99A1AF)
     val TextBlack = Color(0xFF000000)
     val TextMutedGray = Color(0xFF737373)
     val BorderBlack = Color(0xFF000000)

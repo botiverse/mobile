@@ -73,7 +73,9 @@ internal fun SlockAttentionDot(
 internal fun SlockStatusDot(
     modifier: Modifier = Modifier,
     size: Dp = 10.dp,
-    color: Color = SlockColor.EmptyStateGray,
+    // react StatusDot.tsx defaults to bg-gray-400 (#99A1AF); no production call
+    // site relies on this default today, only the states fixture exercises it.
+    color: Color = SlockColor.StatusNeutralGray,
     pulsing: Boolean = false
 ) {
     SlockStatusIndicator(color = color, modifier = modifier, size = size, borderWidth = SlockStroke.Thin, pulsing = pulsing)
