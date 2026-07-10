@@ -22,6 +22,8 @@
         <string>$(CURRENT_PROJECT_VERSION)</string>
         <key>QuiverBuildCommit</key>
         <string></string>
+        <key>SlockAPNSEnvironment</key>
+        <string>$(APS_ENVIRONMENT)</string>
         <key>LSRequiresIPhoneOS</key>
         <true />
         <key>UIAppFonts</key>

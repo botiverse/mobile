@@ -269,6 +269,7 @@ class InMemorySlockAuthSessionStore(
         if (changed) {
             changes.emit(session.authSessionClearFingerprint())
         }
+        SlockPushRegistrationLifecycle.onSessionSaved()
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {
@@ -537,6 +538,7 @@ class KeyValueAuthSessionStore(
             "auth_session_save result=success changed=$changed " +
                 "selectedServer=${!session.selectedServerId.isNullOrBlank()} servers=${session.servers.size}"
         )
+        SlockPushRegistrationLifecycle.onSessionSaved()
     }
 
     override suspend fun updateTokens(accessToken: String, refreshToken: String) {

@@ -760,6 +760,8 @@ internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
     internal var homeActivityStore: SharedActivityStore? = null
 
+    fun currentOrNull(): SlockSharedStoreProvider? = provider
+
     fun get(bridge: BridgeModule): SlockSharedStoreProvider {
         val eventBus = SlockEventBuses.appScope()
         return get(eventBus, "shared-store-provider", bridge)
