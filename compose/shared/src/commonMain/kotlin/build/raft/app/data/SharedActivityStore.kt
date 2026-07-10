@@ -81,6 +81,7 @@ class SharedActivityStore internal constructor(
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
+    private var tailDrainBarrier: Job? = null
 
     internal fun updateRuntimeIntegrations(
         authStore: SlockAuthSessionStore = this.authStore,
@@ -255,25 +256,36 @@ class SharedActivityStore internal constructor(
         tailPrewarmLoopJob = null
         // The tail is generation-owned: it holds at most ONE in-flight launched job at a time. That
         // job is launched in the store scope (a sibling of the loop), so cancelling the loop alone
-        // would orphan it. On replan we therefore also cancel the previous generation's single
-        // in-flight tail job. A version change keeps the same key in nextTail (so the key-based
-        // cancelReplyPrewarmJobsNotIn below will NOT reap it), which is exactly the case that would
-        // otherwise leave A(v1) running while A(v2) is skipped as "already active". Cancelling this
-        // Activity-level waiter only unwinds the local await(); the shared app-scope canonical
-        // Deferred keeps running in the pool for any other observers joined to it.
-        val previousInFlight = tailInFlightJob
-        previousInFlight?.cancel()
+        // would orphan it. On replan we therefore also cancel the still-alive tail job. A version
+        // change keeps the same key in nextTail (so the key-based cancelReplyPrewarmJobsNotIn below
+        // will NOT reap it), which is exactly the case that would otherwise leave A(v1) running
+        // while A(v2) is skipped as "already active". Cancelling this Activity-level waiter only
+        // unwinds the local await(); the shared app-scope canonical Deferred keeps running in the
+        // pool for any other observers joined to it.
+        //
+        // Persistent drain barrier: rapid consecutive replans (v1 -> v2 -> v3 ...) can arrive while
+        // an earlier cancelled job is still unwinding AND the superseded loop is still parked before
+        // it published a fresh tailInFlightJob. A plain snapshot of tailInFlightJob would be null in
+        // that window, letting the newest generation run alongside the still-draining job. Instead
+        // we track the one job that must drain in tailDrainBarrier: the current in-flight job if any,
+        // otherwise the barrier already in progress. Every generation cancels and re-joins that SAME
+        // job before launching, so all replans serialize behind it and tail concurrency stays <= 1.
+        val draining = tailInFlightJob ?: tailDrainBarrier
+        draining?.cancel()
+        tailDrainBarrier = draining
         tailInFlightJob = null
         cancelReplyPrewarmJobsNotIn(visibleReplyPrewarmMarkers.keys + nextTail.keys)
 
-        if (nextTail.isEmpty()) return
+        if (nextTail.isEmpty() && draining == null) return
         val ordered = nextTail.values.toList()
         tailPrewarmLoopJob =
             scope.launch {
-                // Wait for the superseded in-flight tail job to finish unwinding before evaluating
-                // the new order, so tail concurrency never exceeds one and a re-versioned item is
-                // re-launched (not skipped because its old-version job still looked "active").
-                previousInFlight?.join()
+                // Await the drain barrier (chained across generations) before evaluating this order,
+                // so tail concurrency never exceeds one and a re-versioned item is re-launched (not
+                // skipped because its old-version job still looked "active"). Clear the barrier by
+                // identity only after it has actually completed.
+                draining?.join()
+                if (tailDrainBarrier === draining) tailDrainBarrier = null
                 runReplyPrewarmTail(ordered)
             }
     }
@@ -318,6 +330,8 @@ class SharedActivityStore internal constructor(
         tailPrewarmLoopJob = null
         tailInFlightJob?.cancel()
         tailInFlightJob = null
+        tailDrainBarrier?.cancel()
+        tailDrainBarrier = null
         replyPrewarmJobs.values.toList().forEach(Job::cancel)
         replyPrewarmJobs.clear()
         visibleReplyPrewarmMarkers = emptyMap()

@@ -328,6 +328,71 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun activityTailRapidReplansSerializeBehindSlowDrainingJob() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val calls = mutableListOf<ActivityReplyThreadPrewarmMarker>()
+        val running = CompletableDeferred<Unit>()
+        val drainGate = CompletableDeferred<Unit>()
+        var active = 0
+        var maxActive = 0
+        val firstVersion = keyedMarker("A", activityVersion = "v1")
+        val store =
+            activityStore(
+                scope = scope,
+                prewarmReplyThread = { marker ->
+                    calls += marker
+                    active += 1
+                    if (active > maxActive) maxActive = active
+                    try {
+                        if (marker == firstVersion) {
+                            running.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } catch (cancellation: CancellationException) {
+                                // Simulate a SLOW drain: the cancelled job stays alive (and still
+                                // counts as active) until the drain gate releases.
+                                withContext(NonCancellable) { drainGate.await() }
+                                throw cancellation
+                            }
+                        }
+                    } finally {
+                        active -= 1
+                    }
+                    DataResult.Content(Unit)
+                }
+            )
+        val secondVersion = keyedMarker("A", activityVersion = "v2")
+        val secondBelow = keyedMarker("B")
+        val thirdVersion = keyedMarker("A", activityVersion = "v3")
+        val thirdBelow = keyedMarker("C")
+
+        // A(v1) is warmed at the top of the tail and is now in-flight.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(firstVersion)))
+        running.await()
+        assertEquals(listOf(firstVersion), calls)
+
+        // Two rapid consecutive replans arrive while A(v1) is still SLOWLY draining.
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(secondVersion, secondBelow)))
+        store.dispatch(SharedActivityIntent.PrewarmActivityTail(listOf(thirdVersion, thirdBelow)))
+
+        // The drain barrier holds every later generation: nothing new may start while A(v1) drains.
+        assertEquals(listOf(firstVersion), calls)
+        assertTrue(maxActive <= 1)
+
+        // Once the slow drain finishes, only the LATEST generation (v3) runs, one item at a time.
+        drainGate.complete(Unit)
+
+        assertTrue(thirdVersion in calls)
+        assertTrue(thirdBelow in calls)
+        // The superseded v2 generation never launched (its loop was cancelled before it ran).
+        assertTrue(secondVersion !in calls)
+        assertTrue(secondBelow !in calls)
+        // Concurrency never exceeded one across the two consecutive replans and the drain.
+        assertTrue(maxActive <= 1)
+        scope.cancel()
+    }
+
+    @Test
     fun clearSummaryDropsLoadedActivityCountsButKeepsFilter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
