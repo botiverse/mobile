@@ -157,6 +157,49 @@ to publish, run the finalizer. It verifies the supplied draft reports the
 expected versionCode, writes the bilingual notes, activates that draft, and
 requires the public update endpoint to return the exact new versionCode.
 
+### Authenticate Hands For Finalization
+
+The draft build runs in GitHub Actions with a repository secret, but the local
+finalizer needs its own Hands CLI authentication. Before finalizing, run
+`hands whoami` and require it to identify an account that has the `publisher`
+role for `raft-android`.
+
+For agents and CI, the recommended path is an app-scoped publisher deploy
+token. Create it under Hands App -> Settings -> Deploy Tokens, transfer it only
+through an authorized private channel, and keep it in the process environment:
+
+```bash
+export HANDS_BEARER_TOKEN=<raft-android-publisher-deploy-token>
+export HANDS_API=https://hands.build
+hands whoami
+```
+
+Hands CLI `0.5.2` or newer is required for `HANDS_BEARER_TOKEN`. The finalizer
+falls back to `@botiverse/hands-cli@0.5.2` from the official npm registry when
+`hands` is not installed. This avoids delayed package-mirror propagation;
+override `HANDS_NPM_REGISTRY` only for a trusted registry that already carries
+the required CLI version.
+
+A Raft agent may instead use its integration session cookie when the Hands
+service owner has enabled that path:
+
+```bash
+raft integration login --service hands-4cc7a2
+export HANDS_SESSION_COOKIE='quiver_session=<session-cookie-value>'
+hands whoami
+```
+
+The cookie value is the `cookies[0].pair` value in the agent-owned Hands
+integration session under
+`~/.slock/integration-sessions/<agent-id>/integrations/hands-4cc7a2.json`.
+Treat it as a credential: never print it in logs, commit it, or paste it into a
+public channel. Humans may use `hands login` and the browser session flow.
+
+Authentication and authorization are separate. A CLI `0.5.2+` authentication
+failure explains the supported agent token/session options. An authenticated
+request that lacks app permission returns `required_role` and `next_action`;
+ask a Hands app admin for the named role instead of retrying blindly.
+
 ```bash
 scripts/finalize_android_hands_release.sh \
   --release <hands-draft-release-id> \

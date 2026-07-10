@@ -3,7 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.1}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.2}"
+HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org/}"
 HANDS_API="${HANDS_API:-https://hands.build}"
 HANDS_APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 HANDS_ARCH="${SLOCK_ANDROID_ARCH:-arm64-v8a}"
@@ -46,7 +47,7 @@ run_hands() {
   if command -v "${HANDS_CLI}" >/dev/null 2>&1; then
     "${HANDS_CLI}" "$@"
   elif command -v npm >/dev/null 2>&1; then
-    npm exec --yes --package "${HANDS_CLI_PACKAGE}" -- hands "$@"
+    npm exec --yes --registry "${HANDS_NPM_REGISTRY}" --package "${HANDS_CLI_PACKAGE}" -- hands "$@"
   else
     die "Hands CLI or npm is required"
   fi
@@ -118,6 +119,7 @@ RELEASE_JSON="$(mktemp)"
 PUBLIC_JSON="$(mktemp)"
 trap 'rm -f "${RELEASE_JSON}" "${PUBLIC_JSON}"' EXIT
 
+run_hands whoami
 run_hands releases show "${HANDS_APP_SLUG}" "${RELEASE_ID}" --json >"${RELEASE_JSON}"
 python3 - "${RELEASE_JSON}" "${EXPECTED_CODE}" <<'PY'
 import json
