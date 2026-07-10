@@ -296,19 +296,19 @@ enum class SlockSidebarSortMode(val wireValue: String, val label: String) {
 
 @Serializable
 data class SlockHomeShellLabels(
-    val search: String = "",
-    val inbox: String = "",
-    val followedThreads: String = "",
-    val saved: String = "",
-    val channels: String = "",
-    val jointChannels: String = "",
-    val directMessages: String = "",
-    val pinned: String = "",
-    val pin: String = "",
-    val unpin: String = "",
-    val markAsRead: String = "",
-    val markAsUnread: String = "",
-    val mute: String = "",
+    val search: String = "Search",
+    val inbox: String = "Activity",
+    val followedThreads: String = "Followed threads",
+    val saved: String = "Saved",
+    val channels: String = "Channels",
+    val jointChannels: String = "Joint Channels",
+    val directMessages: String = "Direct Messages",
+    val pinned: String = "Pinned",
+    val pin: String = "Pin",
+    val unpin: String = "Unpin",
+    val markAsRead: String = "Mark as Read",
+    val markAsUnread: String = "Mark as Unread",
+    val mute: String = "Mute",
     val unmute: String = "Unmute",
     val closeChat: String = "Close Chat",
     val archive: String = "Archive",
@@ -322,7 +322,7 @@ data class SlockHomeShellLabels(
 ) {
     companion object {
         @Composable
-        fun defaults(): SlockHomeShellLabels = SlockHomeShellLabels(
+        fun unused(): SlockHomeShellLabels = SlockHomeShellLabels(
             search = stringResource(MR.strings.home_nav_search),
             inbox = stringResource(MR.strings.home_nav_activity),
             followedThreads = stringResource(MR.strings.home_nav_followed_threads),
@@ -796,7 +796,7 @@ internal fun SlockStructuralHomeShell(
     externalFocusLossDismissEpoch: Int = 0,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
     outerPadding: Dp = SlockSpacing.Md,
-    labels: SlockHomeShellLabels = SlockHomeShellLabels.defaults(),
+    labels: SlockHomeShellLabels = SlockHomeShellLabels(),
     onServerBadgeClick: () -> Unit = {},
     onServerSwitcherDismiss: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
