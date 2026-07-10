@@ -121,6 +121,13 @@ kotlin {
             linkerOpts("-L${sqliteLibDir.absolutePath}")
             linkerOpts("-L${mmkvWrapperLibDir.absolutePath}")
             linkerOpts("-lmmkv_c_wrapper")
+            // KmmResource native bridge: resource-core's KLIB calls
+            // ohos_init_resource_manager/ohos_get_*_by_name — link the
+            // committed libresource_compose.so so libshared.so carries an
+            // explicit DT_NEEDED instead of crashing on lazy resolution
+            // (task #19; same pattern as the KmmResource sample's
+            // linkerOpts("-lresource_compose")).
+            linkerOpts("-lresource_compose")
         }
     }
 
