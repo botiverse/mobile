@@ -36,6 +36,12 @@
             android:exported="false"
             android:theme="@style/Theme.Slock"
             android:windowSoftInputMode="adjustNothing" />
+        <activity
+            android:name=".shared.SlockAppShellActivity"
+            android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:exported="false"
+            android:theme="@style/Theme.Slock.Starting"
+            android:windowSoftInputMode="adjustNothing" />
         <activity-alias
             android:name=".core.diagnostics.DiagnosticsDeepLinkActivity"
             android:enabled="@bool/diagnostics_deeplink_enabled"

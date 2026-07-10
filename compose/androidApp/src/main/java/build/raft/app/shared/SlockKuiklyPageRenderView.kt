@@ -100,6 +100,12 @@ internal class SlockKuiklyPageRenderView(
                 errorReason: ErrorReason?,
                 executeMode: KuiklyRenderCoreExecuteModeBase
             ) {
+                (parentDelegate as? SlockKuiklyChildPageLoadListener)
+                    ?.onSlockKuiklyChildPageLoadComplete(
+                        pageName = pageName,
+                        pageDataText = pageDataText,
+                        isSucceed = isSucceed
+                    )
                 if (isSucceed) {
                     loadSuccessCallback?.invoke(emptyMap<String, Any>())
                 } else {
@@ -399,6 +405,14 @@ internal class SlockKuiklyPageRenderView(
         private const val EVENT_LOAD_FAILURE = "loadFailure"
         private const val SLOCK_KUIKLY_APP_ID = 1
     }
+}
+
+internal interface SlockKuiklyChildPageLoadListener {
+    fun onSlockKuiklyChildPageLoadComplete(
+        pageName: String,
+        pageDataText: String,
+        isSucceed: Boolean
+    )
 }
 
 private class SlockKuiklyChildRenderView(
