@@ -312,7 +312,13 @@ internal fun UiSkeletonVisualContent() {
                 .width(342.dp)
                 .height(150.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(16.dp)
+                // No bottom padding on purpose: react's fixed 150px canvas lets the
+                // 134px content stack overflow into the bottom padding (CSS keeps
+                // padding out of the child's constraint). A symmetric 16.dp here
+                // caps children at 118dp and Compose COMPRESSES the last row - the
+                // 32dp circle rendered as a 16dp ring (the PR-549 constraint bug
+                // class). start/top/end only -> content max 134dp = exact fit.
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp)
     ) {
         // Values mirror the react fixture (VisualTestingCases.tsx ui-skeleton case):
         // avatars size-5/size-8 = 20/32px, outer gap-3 = 12px, block h-12 = 48px.
