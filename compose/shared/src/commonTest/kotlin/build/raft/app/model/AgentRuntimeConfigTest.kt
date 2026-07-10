@@ -66,7 +66,55 @@ class AgentRuntimeConfigTest {
     fun getDefaultModelFallsBackToSonnetForUnknownRuntime() {
         assertEquals("sonnet", getDefaultModel("unknown-runtime"))
         assertEquals("opus", getDefaultModel("claude"))
+        assertEquals("gpt-5.6-sol", getDefaultModel("codex"))
         assertEquals("default", getDefaultModel("kimi"))
+    }
+
+    @Test
+    fun codexPresentationPrefersAndOrdersGpt56WhenMachineSurfacedIt() {
+        val presentation =
+            canonicalizeRuntimeModelPresentation(
+                runtimeId = "codex",
+                models =
+                    listOf(
+                        RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
+                        RuntimeModelInfo("gpt-5.6-sol", "GPT-5.6 Sol"),
+                        RuntimeModelInfo("gpt-5.6-terra", "GPT-5.6 Terra"),
+                        RuntimeModelInfo("gpt-5.6-luna", "GPT-5.6 Luna"),
+                        RuntimeModelInfo("gpt-5.4", "GPT-5.4"),
+                        RuntimeModelInfo("host-only", "Host only")
+                    ),
+                machineDefault = "gpt-5.5"
+            )
+
+        assertEquals("gpt-5.6-sol", presentation.defaultModel)
+        assertEquals(
+            listOf(
+                "gpt-5.6-sol",
+                "gpt-5.6-terra",
+                "gpt-5.6-luna",
+                "gpt-5.5",
+                "gpt-5.4",
+                "host-only"
+            ),
+            presentation.models.map { it.id }
+        )
+    }
+
+    @Test
+    fun codexPresentationFallsBackToMachineDefaultWhenSolIsMissing() {
+        val presentation =
+            canonicalizeRuntimeModelPresentation(
+                runtimeId = "codex",
+                models =
+                    listOf(
+                        RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
+                        RuntimeModelInfo("gpt-5.4", "GPT-5.4")
+                    ),
+                machineDefault = "gpt-5.5"
+            )
+
+        assertEquals("gpt-5.5", presentation.defaultModel)
     }
 
     @Test

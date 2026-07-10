@@ -188,6 +188,54 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun gpt56PresetDoesNotRehydrateAsCustomDraft() {
+        val (customMode, modelValue) =
+            createAgentModelSelectionForValue(runtime = "codex", model = "gpt-5.6-sol")
+
+        assertFalse(customMode)
+        assertEquals("gpt-5.6-sol", modelValue)
+    }
+
+    @Test
+    fun machineOnlyBuiltinPresetRehydratesFromRuntimeCatalog() {
+        val machineModels =
+            listOf(
+                SharedCreateAgentRuntimeModelOption(
+                    id = "minimax/MiniMax-M2.7",
+                    label = "MiniMax M2.7"
+                )
+            )
+
+        val (customMode, modelValue) =
+            createAgentModelSelectionForValue(
+                runtime = "builtin",
+                model = "minimax/MiniMax-M2.7",
+                runtimeModelsOverride = machineModels
+            )
+
+        assertFalse(customMode)
+        assertEquals("minimax/MiniMax-M2.7", modelValue)
+    }
+
+    @Test
+    fun runtimeCatalogDefaultWinsWhenCurrentSelectionBecomesUnavailable() {
+        val models =
+            listOf(
+                SharedCreateAgentRuntimeModelOption("machine-default", "Machine Default"),
+                SharedCreateAgentRuntimeModelOption("other", "Other")
+            )
+
+        assertEquals(
+            "machine-default",
+            createAgentPreferredModelId(
+                runtime = "codex",
+                runtimeModelsOverride = models,
+                runtimeModelsDefault = "machine-default"
+            )
+        )
+    }
+
+    @Test
     fun blankModelValueFallsBackToRuntimeDefaultPreset() {
         val (customMode, modelValue) =
             createAgentModelSelectionForValue(runtime = "claude", model = "   ")

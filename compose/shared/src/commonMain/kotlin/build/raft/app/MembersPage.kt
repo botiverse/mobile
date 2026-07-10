@@ -1128,7 +1128,7 @@ internal fun MembersPageContent() {
         }
     }
     var createAgentRuntimeModels by remember(serverId) {
-        mutableStateOf<Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>>>(emptyMap())
+        mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
     }
     var createAgentRuntimeModelLoadsInFlight by remember(serverId) {
         mutableStateOf<Set<Pair<String, String>>>(emptySet())
@@ -1329,6 +1329,7 @@ private class MemberDetailRouteProvider(
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
     val computersStore: SharedComputersStore,
+    val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator,
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
@@ -1662,6 +1663,13 @@ private fun rememberMemberDetailRouteProvider(
             diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
         )
     }
+    val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
+        build.raft.app.data.SharedCreateAgentCoordinator(
+            agentsApiClient = agentsApiClient,
+            computersApiClient = computersApiClient,
+            logger = { message -> bridge.log("member_detail_runtime_models $message") }
+        )
+    }
     return remember(
         bridge,
         authStore,
@@ -1673,6 +1681,7 @@ private fun rememberMemberDetailRouteProvider(
         agentPanelTabOrderStore,
         serverMembersStore,
         computersStore,
+        createAgentCoordinator,
         agentsApiClient
     ) {
         MemberDetailRouteProvider(
@@ -1686,6 +1695,7 @@ private fun rememberMemberDetailRouteProvider(
             agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
             computersStore = computersStore,
+            createAgentCoordinator = createAgentCoordinator,
             agentsApiClient = agentsApiClient
         )
     }
@@ -1740,6 +1750,12 @@ private fun MemberDetailPageContent() {
     val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
         SharedComputersPickerSlice()
     )
+    var agentRuntimeModelCatalogs by remember(payload.memberId, statusLookupServerId) {
+        mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
+    }
+    var agentRuntimeModelLoadsInFlight by remember(payload.memberId, statusLookupServerId) {
+        mutableStateOf<Set<Pair<String, String>>>(emptySet())
+    }
     LaunchedEffect(provider.computersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         provider.computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
@@ -1858,6 +1874,59 @@ private fun MemberDetailPageContent() {
                     SlockCenteredLoading()
                 }
             } else {
+                val agentMachineId =
+                    selectedAgentDetail.summary?.machineId
+                        ?: member.membersComputerId
+                val agentRuntimeModelsByRuntime =
+                    agentMachineId
+                        ?.let { machineId ->
+                            agentRuntimeModelCatalogs
+                                .filterKeys { (catalogMachineId, _) -> catalogMachineId == machineId }
+                                .mapKeys { (key, _) -> key.second }
+                        }
+                        .orEmpty()
+                val agentRuntimeModelLoadsByRuntime =
+                    agentMachineId
+                        ?.let { machineId ->
+                            agentRuntimeModelLoadsInFlight
+                                .filter { (catalogMachineId, _) -> catalogMachineId == machineId }
+                                .mapTo(linkedSetOf()) { (_, runtime) -> runtime }
+                        }
+                        .orEmpty()
+                val loadAgentRuntimeModels: (String, Boolean) -> Unit = { runtime, force ->
+                    val key = agentMachineId?.trim().orEmpty() to runtime.trim()
+                    val serverId = statusLookupServerId?.trim().orEmpty()
+                    if (serverId.isNotBlank() && key.first.isNotBlank() && key.second.isNotBlank() &&
+                        (force || (key !in agentRuntimeModelCatalogs && key !in agentRuntimeModelLoadsInFlight))
+                    ) {
+                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight + key
+                        routeScope.launch {
+                            when (
+                                val result =
+                                    provider.createAgentCoordinator.loadRuntimeModels(
+                                        serverId = serverId,
+                                        machineId = key.first,
+                                        runtime = key.second
+                                    )
+                            ) {
+                                is DataResult.Content ->
+                                    agentRuntimeModelCatalogs = agentRuntimeModelCatalogs + (key to result.data)
+                                is DataResult.Empty -> Unit
+                                is DataResult.Error ->
+                                    bridge.log(
+                                        "member_detail_runtime_models_failed runtime=${key.second} " +
+                                            "code=${result.error.code}"
+                                    )
+                                is DataResult.NoPermission ->
+                                    bridge.log(
+                                        "member_detail_runtime_models_blocked runtime=${key.second} " +
+                                            "code=${result.blocker.code}"
+                                    )
+                            }
+                            agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight - key
+                        }
+                    }
+                }
                 val agentDetailActions =
                     remember(provider, current.server.id) {
                         object : SharedAgentDetailActions {
@@ -1903,6 +1972,9 @@ private fun MemberDetailPageContent() {
                             machines = computerPickerSlice.machines,
                             machineId = selectedAgentDetail.summary?.machineId ?: member.membersComputerId
                         ),
+                    agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                    agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsByRuntime,
+                    onAgentRuntimeModelsRequest = loadAgentRuntimeModels,
                     canViewPrivateAgentSurfaces = { _, detail ->
                         current.server.permissions.canManageSettings ||
                             detail?.summary?.creatorId == current.currentUserId
@@ -2510,7 +2582,7 @@ internal fun MembersRouteContent(
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     /**
@@ -2582,7 +2654,7 @@ internal fun MembersListContent(
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
     createAgentLoadMachines: () -> Unit = {},
-    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    createAgentRuntimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     createAgentRuntimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     createAgentLoadRuntimeModels: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
@@ -2890,6 +2962,9 @@ private fun MembersDetailContent(
     member: MemberProfile,
     agentDetailState: MembersAgentDetailLoadState,
     agentMachineRuntimes: List<String> = emptyList(),
+    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean,
     onBack: () -> Unit,
@@ -3330,6 +3405,9 @@ private fun MembersDetailContent(
                                         member = member,
                                         detail = detail,
                                         agentMachineRuntimes = agentMachineRuntimes,
+                                        agentRuntimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                                        agentRuntimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                                        onAgentRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                                         canManage = canManage,
                                         agentStatusIndicatorState = agentStatusIndicatorState,
                                         agentStatusResolver = agentStatusResolver,
@@ -5100,6 +5178,9 @@ private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     agentMachineRuntimes: List<String> = emptyList(),
+    agentRuntimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    agentRuntimeModelLoadsInFlight: Set<String> = emptySet(),
+    onAgentRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     canManage: Boolean,
     agentStatusIndicatorState: SlockAgentStatusIndicatorState?,
     agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver,
@@ -5913,6 +5994,9 @@ private fun MembersAgentProfileTab(
                 member = member,
                 summary = summary,
                 machineRuntimeIds = agentMachineRuntimes,
+                runtimeModelsByRuntime = agentRuntimeModelsByRuntime,
+                runtimeModelLoadsInFlight = agentRuntimeModelLoadsInFlight,
+                onRuntimeModelsRequest = onAgentRuntimeModelsRequest,
                 saving = savingRuntimeConfig,
                 error = runtimeConfigError,
                 onDismiss = {
@@ -6211,6 +6295,9 @@ private fun MembersAgentRuntimeConfigDialog(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     machineRuntimeIds: List<String> = emptyList(),
+    runtimeModelsByRuntime: Map<String, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
+    runtimeModelLoadsInFlight: Set<String> = emptySet(),
+    onRuntimeModelsRequest: (runtime: String, force: Boolean) -> Unit = { _, _ -> },
     saving: Boolean,
     error: String?,
     onDismiss: () -> Unit,
@@ -6256,6 +6343,37 @@ private fun MembersAgentRuntimeConfigDialog(
         runtime == "claude" &&
             providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
             providerApiKey.isBlank()
+    val runtimeModelsCatalog = runtimeModelsByRuntime[runtime]
+    val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
+    val runtimeModelsLoading = runtime in runtimeModelLoadsInFlight
+
+    LaunchedEffect(runtime) {
+        if (runtime.isNotBlank()) {
+            onRuntimeModelsRequest(runtime, false)
+        }
+    }
+
+    LaunchedEffect(runtime, runtimeModelsCatalog) {
+        val presetIds = createAgentModelPresetIds(runtime, runtimeModelsOverride)
+        when {
+            runtimeModelsCatalog != null && model in presetIds -> {
+                // Agent detail can open before the machine catalog arrives. A
+                // machine-only preset (for example builtin MiniMax) is initially
+                // indistinguishable from a custom model; restore preset mode as
+                // soon as the authoritative catalog confirms the model id.
+                customModelMode = false
+                customModelName = ""
+            }
+            !customModelMode && presetIds.isNotEmpty() && model !in presetIds -> {
+                model =
+                    createAgentPreferredModelId(
+                        runtime = runtime,
+                        runtimeModelsOverride = runtimeModelsOverride,
+                        runtimeModelsDefault = runtimeModelsCatalog?.defaultModel
+                    )
+            }
+        }
+    }
 
     SlockUnifiedDialog(
         title = "EDIT RUNTIME CONFIG",
@@ -6304,7 +6422,11 @@ private fun MembersAgentRuntimeConfigDialog(
                             customModelName = it
                             model = it
                         },
-                        runtimeModelsOverride = emptyList(),
+                        runtimeModelsOverride = runtimeModelsOverride,
+                        runtimeModelsLoading = runtimeModelsLoading,
+                        onRuntimeModelsRefresh = {
+                            onRuntimeModelsRequest(runtime, true)
+                        },
                         machineRuntimeIds = machineRuntimeIds,
                         enabled = !saving,
                         providerMode = providerMode,

@@ -132,7 +132,11 @@ internal fun CreateAgentDialogVisualContent() {
                 ),
             runtimeModelsByMachineAndRuntime =
                 mapOf(
-                    ("computer-mbp" to runtime) to runtimeModels
+                    ("computer-mbp" to runtime) to
+                        SharedCreateAgentRuntimeModelCatalog(
+                            models = runtimeModels,
+                            defaultModel = getDefaultModel(runtime)
+                        )
                 ),
             currentAgentCount = 4,
             maxAgents = 12,
@@ -233,6 +237,11 @@ internal data class SharedCreateAgentRuntimeModelOption(
     val id: String,
     val label: String,
     val verified: String? = null
+)
+
+internal data class SharedCreateAgentRuntimeModelCatalog(
+    val models: List<SharedCreateAgentRuntimeModelOption>,
+    val defaultModel: String? = null
 )
 
 internal const val CREATE_AGENT_CUSTOM_MODEL_ID = "__custom_model__"
@@ -370,6 +379,17 @@ internal fun createAgentModelSelectionForValue(
     }
 }
 
+internal fun createAgentPreferredModelId(
+    runtime: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
+    runtimeModelsDefault: String? = null
+): String {
+    val presetIds = createAgentModelPresetIds(runtime, runtimeModelsOverride)
+    return runtimeModelsDefault?.takeIf { it in presetIds }
+        ?: presetIds.firstOrNull()
+        ?: getDefaultModel(runtime)
+}
+
 internal fun createAgentProviderDropdownItems(): List<CreateAgentDropdownItem> =
     listOf(
         CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_DEFAULT, label = "Default"),
@@ -406,7 +426,7 @@ internal fun SharedCreateAgentDialog(
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
     machinesErrorMessage: String? = null,
-    runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
+    runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog> = emptyMap(),
     runtimeModelLoadsInFlight: Set<Pair<String, String>> = emptySet(),
     onRuntimeModelsRequest: (machineId: String, runtime: String, force: Boolean) -> Unit = { _, _, _ -> },
     currentAgentCount: Int = 0,
@@ -444,7 +464,8 @@ internal fun SharedCreateAgentDialog(
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
     val runtimeModelKey = selectedMachineId?.let { it to runtime }
-    val runtimeModelsOverride = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }.orEmpty()
+    val runtimeModelsCatalog = runtimeModelKey?.let { runtimeModelsByMachineAndRuntime[it] }
+    val runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
     val runtimeModelsLoading = runtimeModelKey?.let { it in runtimeModelLoadsInFlight } ?: false
 
     fun resetRuntimeForMachine(machineId: String) {
@@ -493,7 +514,12 @@ internal fun SharedCreateAgentDialog(
         if (!customModelMode) {
             val currentModels = createAgentModelPresetIds(runtime, runtimeModelsOverride)
             if (currentModels.isNotEmpty() && model !in currentModels) {
-                model = currentModels.first()
+                model =
+                    createAgentPreferredModelId(
+                        runtime = runtime,
+                        runtimeModelsOverride = runtimeModelsOverride,
+                        runtimeModelsDefault = runtimeModelsCatalog?.defaultModel
+                    )
             }
         }
     }

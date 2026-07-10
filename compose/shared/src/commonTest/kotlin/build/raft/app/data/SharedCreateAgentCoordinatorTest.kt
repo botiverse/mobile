@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SharedCreateAgentRuntimeModelOption
+import build.raft.app.SharedCreateAgentRuntimeModelCatalog
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
@@ -24,11 +24,35 @@ class SharedCreateAgentCoordinatorTest {
 
         val result = coordinator.loadRuntimeModels("server-1", "machine-1", "claude")
 
-        val models = assertIs<DataResult.Content<List<SharedCreateAgentRuntimeModelOption>>>(result).data
+        val catalog = assertIs<DataResult.Content<SharedCreateAgentRuntimeModelCatalog>>(result).data
         assertEquals(listOf("runtimeModels:server-1:machine-1:claude"), computersApi.calls)
-        assertEquals(listOf("vendor/custom", "claude-sonnet-4-6"), models.map { it.id })
-        assertEquals(listOf("Vendor Custom", "Machine Sonnet"), models.map { it.label })
-        assertEquals(listOf("suggestion_only", "launchable"), models.map { it.verified })
+        assertEquals("vendor/custom", catalog.defaultModel)
+        assertEquals(listOf("claude-sonnet-4-6", "vendor/custom"), catalog.models.map { it.id })
+        assertEquals(listOf("Machine Sonnet", "Vendor Custom"), catalog.models.map { it.label })
+        assertEquals(listOf("launchable", "suggestion_only"), catalog.models.map { it.verified })
+    }
+
+    @Test
+    fun loadRuntimeModelsCanonicalizesCodexGpt56OrderAndDefault() = runBlocking {
+        val computersApi =
+            FakeCreateAgentComputersApi(
+                runtimeModelsBody =
+                    """{"models":[{"id":"gpt-5.5","label":"GPT-5.5"},{"id":"gpt-5.6-sol","label":"GPT-5.6 Sol"},{"id":"gpt-5.6-terra","label":"GPT-5.6 Terra"},{"id":"gpt-5.6-luna","label":"GPT-5.6 Luna"},{"id":"gpt-5.4","label":"GPT-5.4"}],"default":"gpt-5.5"}"""
+            )
+        val coordinator =
+            SharedCreateAgentCoordinator(
+                agentsApiClient = SlockAgentsApiClient(FakeCreateAgentAgentsApi()),
+                computersApiClient = SlockComputersApiClient(computersApi)
+            )
+
+        val result = coordinator.loadRuntimeModels("server-1", "machine-1", "codex")
+
+        val catalog = assertIs<DataResult.Content<SharedCreateAgentRuntimeModelCatalog>>(result).data
+        assertEquals("gpt-5.6-sol", catalog.defaultModel)
+        assertEquals(
+            listOf("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"),
+            catalog.models.map { it.id }
+        )
     }
 }
 

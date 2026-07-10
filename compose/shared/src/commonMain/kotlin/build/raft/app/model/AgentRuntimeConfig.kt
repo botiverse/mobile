@@ -123,6 +123,11 @@ data class RuntimeModelInfo(
     val verified: String? = null // "launchable" | "suggestion_only" | null
 )
 
+data class RuntimeModelPresentation(
+    val models: List<RuntimeModelInfo>,
+    val defaultModel: String?
+)
+
 val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
     "claude" to listOf(
         RuntimeModelInfo("opus", "Claude Opus"),
@@ -136,6 +141,9 @@ val RUNTIME_MODELS: Map<String, List<RuntimeModelInfo>> = mapOf(
         RuntimeModelInfo("claude-haiku-4-5", "Claude Haiku 4.5")
     ),
     "codex" to listOf(
+        RuntimeModelInfo("gpt-5.6-sol", "GPT-5.6 Sol", verified = "launchable"),
+        RuntimeModelInfo("gpt-5.6-terra", "GPT-5.6 Terra", verified = "launchable"),
+        RuntimeModelInfo("gpt-5.6-luna", "GPT-5.6 Luna", verified = "launchable"),
         RuntimeModelInfo("gpt-5.5", "GPT-5.5"),
         RuntimeModelInfo("gpt-5.4", "GPT-5.4"),
         RuntimeModelInfo("gpt-5.3-codex", "GPT-5.3 Codex"),
@@ -187,6 +195,37 @@ fun getDefaultModel(runtimeId: String): String =
 
 fun getModelLabel(runtimeId: String, modelId: String): String =
     RUNTIME_MODELS[runtimeId]?.firstOrNull { it.id == modelId }?.label ?: modelId
+
+/**
+ * Mirrors React `canonicalizeCodexPresentation`.
+ *
+ * Codex hosts can report the older machine default (`gpt-5.5`) first even when
+ * the Raft GPT-5.6 presets are available. Keep live-only models, but present
+ * known Codex presets in the shared catalog order and prefer GPT-5.6 Sol only
+ * when the selected machine actually surfaced it. Other runtimes keep the
+ * machine-provided order/default unchanged.
+ */
+fun canonicalizeRuntimeModelPresentation(
+    runtimeId: String,
+    models: List<RuntimeModelInfo>,
+    machineDefault: String?
+): RuntimeModelPresentation {
+    if (runtimeId != "codex") {
+        return RuntimeModelPresentation(models = models, defaultModel = machineDefault)
+    }
+    val canonicalOrder = RUNTIME_MODELS["codex"].orEmpty().map { it.id }
+    val rankById = canonicalOrder.withIndex().associate { (index, id) -> id to index }
+    val ordered = models.sortedBy { model -> rankById[model.id] ?: Int.MAX_VALUE }
+    val availableIds = ordered.mapTo(linkedSetOf()) { it.id }
+    val preferred = getDefaultModel("codex")
+    val defaultModel =
+        when {
+            preferred in availableIds -> preferred
+            machineDefault != null && machineDefault in availableIds -> machineDefault
+            else -> ordered.firstOrNull()?.id
+        }
+    return RuntimeModelPresentation(models = ordered, defaultModel = defaultModel)
+}
 
 // ── Provider mode ──
 
