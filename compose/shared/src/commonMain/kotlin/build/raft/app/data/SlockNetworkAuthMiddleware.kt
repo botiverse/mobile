@@ -8,8 +8,8 @@ internal class SlockNetworkAuthMiddleware(
     logger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {}
 ) {
-    private val tokenProvider =
-        SharedAuthTokenProvider(
+    private val refreshCoordinator =
+        SharedAuthRefreshCoordinator(
             sessionStore = sessionStore,
             authApi = authApi,
             clockMillis = { defaultNowMillis() },
@@ -33,12 +33,19 @@ internal class SlockNetworkAuthMiddleware(
         if (!first.requiresTokenRefresh()) return first
 
         val refreshed =
-            tokenProvider.refreshSession(
-                failedAccessToken = session.accessToken,
-                clearOnUnauthorized = false,
-                reason = "http_401",
-                caller = caller
-            )
+            when (
+                val result =
+                    refreshAfterUnauthorized(
+                        failedSession = session,
+                        clearOnUnauthorized = false,
+                        reason = "http_401",
+                        caller = caller
+                    )
+            ) {
+                is SharedAuthRefreshResult.Success -> result.session
+                is SharedAuthRefreshResult.Failure,
+                SharedAuthRefreshResult.Unavailable -> null
+            }
         if (refreshed == null) {
             return first.asSessionExpired()
         }
@@ -53,6 +60,21 @@ internal class SlockNetworkAuthMiddleware(
         }
         return retry
     }
+
+    internal suspend fun refreshAfterUnauthorized(
+        failedSession: StoredAuthSession,
+        clearOnUnauthorized: Boolean,
+        reason: String,
+        caller: String
+    ): SharedAuthRefreshResult =
+        refreshCoordinator.refreshSession(
+            failedAccessToken = failedSession.accessToken,
+            failedRefreshToken = failedSession.refreshToken,
+            clearOnUnauthorized = clearOnUnauthorized,
+            clearSource = "network_auth_middleware:${caller.toSafeAuthRefreshDiagnosticsToken()}",
+            reason = reason,
+            caller = caller
+        )
 
     private fun StoredAuthSession.toRequestContext(serverId: String): SlockAuthenticatedRequestContext =
         SlockAuthenticatedRequestContext(

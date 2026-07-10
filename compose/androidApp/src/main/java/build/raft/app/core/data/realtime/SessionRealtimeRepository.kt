@@ -24,15 +24,22 @@ class SessionRealtimeRepository(
                 runBlocking {
                     val refreshed =
                         if (reason == "connect_error") {
+                            val failedSession = store.readSession()
                             tokenProvider.refreshSession(
-                                failedAccessToken = store.readSession()?.accessToken,
-                                clearOnUnauthorized = false
+                                failedAccessToken = failedSession?.accessToken,
+                                failedRefreshToken = failedSession?.refreshToken,
+                                clearOnUnauthorized = false,
+                                reason = reason,
+                                caller = "android_socket"
                             )
                         } else {
-                            tokenProvider.currentSession(
-                                refreshIfExpiringSoon = true,
-                                clearOnUnauthorized = false
-                            )
+                            // A Socket.IO reconnect attempt is not proof that auth expired.
+                            // Refresh tokens rotate, so proactively refreshing from the
+                            // synchronous EventThread callback can consume a successor that a
+                            // later lifecycle reconnect cancels before it is persisted. Reuse
+                            // the latest committed session here; an explicit auth connect_error
+                            // remains the single native realtime refresh trigger.
+                            tokenProvider.currentSession()
                         }
                     refreshed?.toRealtimeAuthForSelectedServer()
                 }
@@ -44,10 +51,9 @@ class SessionRealtimeRepository(
         val session = if (tokenProvider != null) {
             store.readSession()
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
-            tokenProvider.currentSession(
-                refreshIfExpiringSoon = true,
-                clearOnUnauthorized = false
-            )
+            // Connecting consumes the latest committed session. Only an explicit
+            // Socket.IO auth connect_error may trigger the shared refresh coordinator.
+            tokenProvider.currentSession()
                 ?: return DataResult.NoPermission(PermissionBlocker(code = "auth_refresh_failed", requiredCapability = "auth_session"))
         } else {
             store.readSession()

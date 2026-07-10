@@ -204,10 +204,10 @@ internal object AndroidAppScopeRealtimeOwner {
             scope.launch {
                 try {
                     var session =
-                        tokenProvider.currentSession(
-                            refreshIfExpiringSoon = true,
-                            clearOnUnauthorized = false
-                        )
+                        // Foreground/lifecycle connect jobs are replaceable. Connect with the
+                        // latest committed session; Socket.IO auth connect_error may trigger
+                        // only the process-owned shared refresh coordinator.
+                        tokenProvider.currentSession()
                     var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockAppLog.w(
@@ -217,10 +217,7 @@ internal object AndroidAppScopeRealtimeOwner {
                         if (missingSelectedServerRetryCount < 1) {
                             delay(1500L)
                             session =
-                                tokenProvider.currentSession(
-                                    refreshIfExpiringSoon = true,
-                                    clearOnUnauthorized = false
-                                )
+                                tokenProvider.currentSession()
                             serverId = session?.currentServerId?.let(::ServerId)
                             if (serverId == null) {
                                 SlockAppLog.w(
