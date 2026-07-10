@@ -1,12 +1,15 @@
 package build.raft.app.components
 
-import build.raft.app.Modal
 import build.raft.app.SlockColor
+import build.raft.app.SlockFloatingDefaultViewportGap
+import build.raft.app.SlockFloatingVerticalPlacement
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
+import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,8 +23,6 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
-import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -33,12 +34,13 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
-import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -47,6 +49,26 @@ internal data class SlockBrutalSelectOption(
     val label: String,
     val enabled: Boolean = true
 )
+
+internal fun slockSelectMenuWidth(
+    triggerWidthPx: Float,
+    density: Float,
+    fallbackWidth: Dp = 220.dp
+): Dp =
+    if (triggerWidthPx > 0f && density > 0f) {
+        (triggerWidthPx / density).dp
+    } else {
+        fallbackWidth
+    }
+
+internal fun slockBrutalSelectListHeight(
+    optionCount: Int,
+    rowHeight: Dp,
+    maxMenuHeight: Dp
+): Dp =
+    ((optionCount.coerceAtLeast(0) * rowHeight.value) + SlockStroke.Default.value)
+        .dp
+        .coerceAtMost(maxMenuHeight)
 
 @Composable
 internal fun SlockBrutalSelectField(
@@ -65,11 +87,12 @@ internal fun SlockBrutalSelectField(
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
-    // Track the trigger's root position so we can render the menu as a
-    // full-screen overlay (`Modal { ... }`) anchored to it instead of
-    // pushing content. Captured per member-id to handle list reuse.
     var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }
-    var triggerRootWidth by remember { mutableStateOf(0f) }
+    var triggerRootWidthPx by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
+    val menuWidth = slockSelectMenuWidth(triggerRootWidthPx, density.density)
+    val menuShadowOffset = SlockShadow.Brutal
+    val listHeight = slockBrutalSelectListHeight(options.size, rowHeight, maxMenuHeight)
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             modifier =
@@ -78,7 +101,7 @@ internal fun SlockBrutalSelectField(
                     .height(triggerHeight + shadowOffset)
                     .onGloballyPositioned { coords ->
                         triggerRootOffset = coords.positionInRoot()
-                        triggerRootWidth = coords.size.width.toFloat()
+                        triggerRootWidthPx = coords.size.width.toFloat()
                     }
         ) {
             if (enabled) {
@@ -119,48 +142,34 @@ internal fun SlockBrutalSelectField(
             }
         }
         if (expanded && enabled) {
-            Modal(onWillDismiss = { expanded = false }) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .clickable { expanded = false },
-                    contentAlignment = Alignment.TopStart
-                ) {
-                    // Anchor the menu under the trigger (3dp visual gap mirrors
-                    // the trigger's shadow offset so the menu visually
-                    // continues the trigger's brutal shadow line).
-                    val menuModifier = if (triggerRootWidth > 0f) {
-                        Modifier
-                            .offset {
-                                IntOffset(
-                                    x = triggerRootOffset.x.toInt(),
-                                    y = (triggerRootOffset.y + triggerHeight.value + shadowOffset.value).toInt()
-                                )
-                            }
-                            .width(triggerRootWidth.toInt().dp)
-                    } else {
-                        Modifier
-                            .offset {
-                                IntOffset(
-                                    x = triggerRootOffset.x.toInt(),
-                                    y = (triggerRootOffset.y + triggerHeight.value + shadowOffset.value).toInt()
-                                )
-                            }
-                    }
-                    SlockBrutalSelectMenu(
-                        options = options,
-                        selectedId = selectedId,
-                        enabled = enabled,
-                        rowHeight = rowHeight,
-                        maxMenuHeight = maxMenuHeight,
-                        modifier = menuModifier,
-                        onSelect = { option ->
-                            expanded = false
-                            onSelect(option)
-                        }
+            val contentSize =
+                with(density) {
+                    Size(
+                        width = (menuWidth + menuShadowOffset).toPx(),
+                        height = (listHeight + menuShadowOffset).toPx()
                     )
                 }
+            SlockModalAnchoredPopover(
+                anchor = triggerRootOffset,
+                contentSize = contentSize,
+                onDismiss = { expanded = false },
+                viewportGap = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() },
+                verticalOffset = with(density) { (triggerHeight + shadowOffset).toPx() },
+                verticalOffsetAbove = with(density) { shadowOffset.toPx() },
+                verticalPlacement = SlockFloatingVerticalPlacement.Auto
+            ) { popoverModifier, _ ->
+                SlockBrutalSelectMenu(
+                    options = options,
+                    selectedId = selectedId,
+                    enabled = enabled,
+                    rowHeight = rowHeight,
+                    listHeight = listHeight,
+                    modifier = popoverModifier.width(menuWidth),
+                    onSelect = { option ->
+                        expanded = false
+                        onSelect(option)
+                    }
+                )
             }
         }
     }
@@ -172,16 +181,16 @@ private fun SlockBrutalSelectMenu(
     selectedId: String,
     enabled: Boolean,
     rowHeight: Dp,
-    maxMenuHeight: Dp,
+    listHeight: Dp,
     onSelect: (SlockBrutalSelectOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shadowOffset = SlockShadow.Brutal
-    val listHeight = ((options.size * rowHeight.value) + SlockStroke.Default.value).dp.coerceAtMost(maxMenuHeight)
     Box(
         modifier =
             modifier
                 .height(listHeight + shadowOffset)
+                .slockFloatingContentClickTarget()
     ) {
         Box(
             modifier =
