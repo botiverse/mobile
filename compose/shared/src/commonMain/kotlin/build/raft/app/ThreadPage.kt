@@ -470,6 +470,7 @@ private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
+private val ThreadHeaderActionGroupSpacing = 4.dp
 private val ThreadHeaderActionIconSize = 15.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderChannelTileSize = 34.dp
@@ -9020,23 +9021,36 @@ private fun ThreadPageHeader(
                     )
                 }
             }
-            if (payload.threadHeaderSearchAction() != null) {
-                ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
-            }
-            if (activityMuteState != null && onToggleActivityMute != null) {
-                ThreadHeaderIconButton(
-                    icon = if (activityMuteState.muted) SlockLucideIconName.BellOff else SlockLucideIconName.Bell,
-                    onClick = onToggleActivityMute
-                )
-            }
-            if (payload.showSettingsAction) {
-                ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
-            }
-            if (payload.showMembersAction) {
-                ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
-            }
-            if (payload.showOpenInChannelAction) {
-                ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
+            if (
+                payload.threadHeaderSearchAction() != null ||
+                (activityMuteState != null && onToggleActivityMute != null) ||
+                payload.showSettingsAction ||
+                payload.showMembersAction ||
+                payload.showOpenInChannelAction
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ThreadHeaderActionGroupSpacing)
+                ) {
+                    if (payload.threadHeaderSearchAction() != null) {
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.Search, onClick = onOpenSearch)
+                    }
+                    if (activityMuteState != null && onToggleActivityMute != null) {
+                        ThreadHeaderIconButton(
+                            icon = if (activityMuteState.muted) SlockLucideIconName.BellOff else SlockLucideIconName.Bell,
+                            onClick = onToggleActivityMute
+                        )
+                    }
+                    if (payload.showSettingsAction) {
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
+                    }
+                    if (payload.showMembersAction) {
+                        ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
+                    }
+                    if (payload.showOpenInChannelAction) {
+                        ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
+                    }
+                }
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
@@ -9397,6 +9411,9 @@ private fun ThreadHeaderCompactAction(
         }
     }
 }
+
+internal fun threadHeaderVisibleActionGapDp(): Float =
+    (ThreadHeaderActionGroupSpacing + ThreadHeaderActionShadowOffset).value
 
 @Composable
 private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
