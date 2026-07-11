@@ -252,6 +252,7 @@ private fun SlockUnifiedDialogSurface(
             Modifier
                 .fillMaxSize()
                 .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
+                .slockNativeDispatchCapture()
                 .clickable(enabled = dismissEnabled, onClick = onDismiss),
         contentAlignment = Alignment.Center
     ) {
@@ -262,6 +263,7 @@ private fun SlockUnifiedDialogSurface(
                     .padding(bottom = hostBottomInset)
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
+                    .slockNativeDispatchCapture()
                     .clickable(onClick = {})
         ) {
             Box(
