@@ -9462,53 +9462,56 @@ private fun SettingsSharedPlaceholder(
 private fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
     selectedDestination: String
-): KuiklySettingsHomePayload =
-    KuiklySettingsHomePayload(
-        title = "Settings",
+): KuiklySettingsHomePayload {
+    val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
+    val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
+    val aboutSection = stringResource(MR.strings.settings_navigation_section_about)
+    return KuiklySettingsHomePayload(
+        title = stringResource(MR.strings.settings_title),
         subtitle = "",
         showSelection = true,
         items =
             listOf(
                 SlockTabItemPayload(
                     key = SettingsDestinationAccount,
-                    title = "Account",
-                    subtitle = "Profile, email, password, connected accounts",
+                    title = stringResource(MR.strings.settings_account_title),
+                    subtitle = stringResource(MR.strings.settings_account_subtitle),
                     iconName = SlockLucideIconName.User,
                     value = session?.user?.bestDisplayName,
                     selected = selectedDestination == SettingsDestinationAccount,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationLanguageRegion,
-                    title = "Language & Region",
-                    subtitle = "Language, timezone, translation",
+                    title = stringResource(MR.strings.settings_language_region_title),
+                    subtitle = stringResource(MR.strings.settings_language_region_subtitle),
                     iconName = SlockLucideIconName.Languages,
                     selected = selectedDestination == SettingsDestinationLanguageRegion,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAppearance,
-                    title = "Appearance",
-                    subtitle = "Message font size and reading density",
+                    title = stringResource(MR.strings.settings_appearance_title),
+                    subtitle = stringResource(MR.strings.settings_appearance_subtitle),
                     iconName = SlockLucideIconName.Type,
                     selected = selectedDestination == SettingsDestinationAppearance,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationNotifications,
-                    title = "Notifications",
-                    subtitle = "Push status and workspace mute",
+                    title = stringResource(MR.strings.settings_notifications_title),
+                    subtitle = stringResource(MR.strings.settings_notifications_subtitle),
                     iconName = SlockLucideIconName.Bell,
                     selected = selectedDestination == SettingsDestinationNotifications,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationMobile,
-                    title = "Mobile",
-                    subtitle = "My message alignment",
+                    title = stringResource(MR.strings.settings_mobile_title),
+                    subtitle = stringResource(MR.strings.settings_mobile_subtitle),
                     iconName = SlockLucideIconName.Smartphone,
                     selected = selectedDestination == SettingsDestinationMobile,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationStorage,
@@ -9516,7 +9519,7 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_storage_subtitle),
                     iconName = SlockLucideIconName.Archive,
                     selected = selectedDestination == SettingsDestinationStorage,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationServer,
@@ -9525,16 +9528,16 @@ private fun appShellSettingsHomePayload(
                     iconName = SlockLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationServer,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationBilling,
-                    title = "Billing",
-                    subtitle = "Plan and usage",
+                    title = stringResource(MR.strings.settings_billing_title),
+                    subtitle = stringResource(MR.strings.settings_billing_subtitle),
                     iconName = SlockLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationBilling,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAdministration,
@@ -9542,7 +9545,7 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
                     iconName = SlockLucideIconName.Shield,
                     selected = selectedDestination == SettingsDestinationAdministration,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationConnectedApps,
@@ -9550,15 +9553,15 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
                     iconName = SlockLucideIconName.Link2,
                     selected = selectedDestination == SettingsDestinationConnectedApps,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationComputers,
-                    title = "Computers",
-                    subtitle = "Connected machines and workspaces",
+                    title = stringResource(MR.strings.settings_computers_title),
+                    subtitle = stringResource(MR.strings.settings_computers_subtitle),
                     iconName = SlockLucideIconName.Monitor,
                     selected = selectedDestination == SettingsDestinationComputers,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
@@ -9566,26 +9569,27 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_about_subtitle),
                     iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
-                    section = "About"
+                    section = aboutSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationQuiverFeedback,
-                    title = "Send feedback",
-                    subtitle = "Report a problem or suggestion",
+                    title = stringResource(MR.strings.settings_feedback_title),
+                    subtitle = stringResource(MR.strings.settings_feedback_subtitle),
                     iconName = SlockLucideIconName.MessageSquarePlus,
                     selected = selectedDestination == SettingsDestinationQuiverFeedback,
-                    section = "About"
+                    section = aboutSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationReleaseNotes,
-                    title = "Release Notes",
-                    subtitle = "Version history and changelog",
+                    title = stringResource(MR.strings.settings_release_notes_title),
+                    subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
                     iconName = SlockLucideIconName.FileText,
                     selected = selectedDestination == SettingsDestinationReleaseNotes,
-                    section = "About"
+                    section = aboutSection
                 )
             )
     )
+}
 
 internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     session: StoredAuthSession?,
@@ -11386,49 +11390,50 @@ private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: Setti
 @Composable
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> "Account"
-        SettingsDestinationComputers -> "Computers"
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_title)
+        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_title)
         SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_title)
         SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
         SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
-        SettingsDestinationBilling -> "Billing"
-        SettingsDestinationLanguageRegion -> "Language & Region"
-        SettingsDestinationAppearance -> "Appearance"
-        SettingsDestinationNotifications -> "Notifications"
-        SettingsDestinationMobile -> "Mobile"
+        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_title)
+        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_title)
+        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_title)
+        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_title)
+        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_title)
         SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
         SettingsDestinationAbout -> stringResource(MR.strings.settings_about_title)
         SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
-        SettingsDestinationReleaseNotes -> "Release Notes"
+        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_title)
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_title)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
-        SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
-        SettingsDestinationQuiverFeedback -> "Send feedback"
-        else -> "Settings"
+        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_title)
+        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_title)
+        else -> stringResource(MR.strings.settings_title)
     }
 
 @Composable
 private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> "Profile and sign out"
-        SettingsDestinationComputers -> "Connected machines"
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_subtitle)
+        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_subtitle)
         SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_subtitle)
         SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_subtitle)
         SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_subtitle)
-        SettingsDestinationBilling -> "Plan and usage"
-        SettingsDestinationLanguageRegion -> "Language, timezone, translation"
-        SettingsDestinationAppearance -> "Message font size and preview"
-        SettingsDestinationNotifications -> "Push status and workspace mute"
-        SettingsDestinationMobile -> "My message alignment"
+        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_subtitle)
+        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_subtitle)
+        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_subtitle)
+        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_subtitle)
+        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_subtitle)
         SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_subtitle)
         SettingsDestinationAbout -> stringResource(MR.strings.settings_about_detail)
         SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_about_licenses_detail)
+        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_subtitle)
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_subtitle)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment_subtitle)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
-        SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
-        SettingsDestinationQuiverFeedback -> "Report a problem or suggestion"
+        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_subtitle)
+        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
         else -> ""
     }
 

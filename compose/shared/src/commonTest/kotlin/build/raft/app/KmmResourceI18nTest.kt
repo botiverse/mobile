@@ -329,6 +329,41 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun settingsRootNavigationStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_title,
+            MR.strings.settings_navigation_section_personal,
+            MR.strings.settings_navigation_section_workspace,
+            MR.strings.settings_navigation_section_about,
+            MR.strings.settings_account_title,
+            MR.strings.settings_account_subtitle,
+            MR.strings.settings_language_region_title,
+            MR.strings.settings_language_region_subtitle,
+            MR.strings.settings_appearance_title,
+            MR.strings.settings_appearance_subtitle,
+            MR.strings.settings_notifications_title,
+            MR.strings.settings_notifications_subtitle,
+            MR.strings.settings_mobile_title,
+            MR.strings.settings_mobile_subtitle,
+            MR.strings.settings_billing_title,
+            MR.strings.settings_billing_subtitle,
+            MR.strings.settings_computers_title,
+            MR.strings.settings_computers_subtitle,
+            MR.strings.settings_feedback_title,
+            MR.strings.settings_feedback_subtitle,
+            MR.strings.settings_release_notes_title,
+            MR.strings.settings_release_notes_subtitle,
+            MR.strings.settings_diagnostics_feedback_channel_title,
+            MR.strings.settings_diagnostics_feedback_channel_subtitle
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Settings root navigation copy must use KMM Resource strings"
+            )
+        }
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.
