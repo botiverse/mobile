@@ -145,7 +145,7 @@ dependencyResolutionManagement {
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.githubPackagesHands() {
         maven {
             name = "GitHubPackagesHands"
-            url = uri("https://maven.pkg.github.com/oranix-io/hands")
+            url = uri("https://maven.pkg.github.com/botiverse/hands")
             content {
                 includeModuleByRegex("build\\.hands", ".*")
             }
