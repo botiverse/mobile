@@ -13,6 +13,26 @@ internal data class AndroidShellLaunchTarget(
     val documentShell: Boolean,
 )
 
+/**
+ * Keeps the default app shell in its launcher task while preserving real server windows as
+ * URI-identified Android document tasks. A document target must never be cleared into the
+ * default task, even when the original ingress requested task replacement.
+ */
+internal data class AndroidShellTaskLaunch(
+    val clearTask: Boolean,
+    val documentShellId: String?,
+)
+
+internal fun AndroidShellLaunchTarget.taskLaunchPlan(
+    requestedTaskClear: Boolean,
+): AndroidShellTaskLaunch {
+    val clearTask = requestedTaskClear && !documentShell
+    return AndroidShellTaskLaunch(
+        clearTask = clearTask,
+        documentShellId = shellInstanceId.takeIf { documentShell && !clearTask },
+    )
+}
+
 /** Process-local lifecycle index. Android document identity remains deterministic across process death. */
 internal object AndroidShellWindowRegistry {
     private val targetsByShell = ConcurrentHashMap<String, AndroidShellLaunchTarget>()

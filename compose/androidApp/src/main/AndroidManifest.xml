@@ -39,7 +39,6 @@
         <activity
             android:name=".shared.SlockAppShellActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
-            android:documentLaunchMode="intoExisting"
             android:exported="false"
             android:theme="@style/Theme.Slock.Starting"
             android:windowSoftInputMode="adjustNothing" />
