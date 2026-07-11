@@ -1,5 +1,12 @@
 plugins {
     kotlin("multiplatform")
+    id("com.tencent.kuiklybase.knoi.plugin")
+}
+
+knoi {
+    ignoreTypeAssert = true
+    moduleName = "slockshared"
+    tsGenDir = layout.buildDirectory.dir("generated/knoi-ts").get().asFile.absolutePath
 }
 
 fun ohosSqliteProviderLibDir(): File {
@@ -15,6 +22,33 @@ fun ohosSqliteProviderLibDir(): File {
     return rootProject.file("../third_party/.workdirs/ohos-sqlite/ohos-arm64/lib")
 }
 
+fun ohosLlvmReadelf(): File {
+    val sdkRoots = listOfNotNull(
+        providers.environmentVariable("SLOCK_DEVECO_SDK_HOME").orNull,
+        providers.environmentVariable("DEVECO_SDK_HOME").orNull,
+        providers.environmentVariable("OHOS_SDK_HOME").orNull,
+    ).filter { it.isNotBlank() }
+    val candidates = sdkRoots.flatMap { sdkRoot ->
+        listOf(
+            file("$sdkRoot/default/openharmony/native/llvm/bin/llvm-readelf"),
+            file("$sdkRoot/native/llvm/bin/llvm-readelf"),
+        )
+    } + file("/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin/llvm-readelf")
+    return candidates.firstOrNull(File::isFile)
+        ?: error("Unable to locate the OpenHarmony llvm-readelf tool")
+}
+
+fun runAndCapture(vararg command: String): String {
+    val process = ProcessBuilder(*command)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().use { it.readText() }
+    check(process.waitFor() == 0) {
+        "Command failed: ${command.joinToString(" ")}\n$output"
+    }
+    return output
+}
+
 kotlin {
     ohosArm64 {
         binaries.sharedLib {
@@ -23,6 +57,7 @@ kotlin {
             freeCompilerArgs += "-Xadd-light-debug=enable"
             linkerOpts("--build-id=sha1")
             linkerOpts("-L${ohosSqliteProviderLibDir().absolutePath}")
+            linkerOpts("-lsqlite3")
             linkerOpts("-L${rootProject.file("shared/src/libs/arm64-v8a").absolutePath}")
             linkerOpts("-lmmkv_c_wrapper")
             // The shared implementation's resource KLIB references these symbols.
@@ -39,8 +74,50 @@ kotlin {
     }
 }
 
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>().configureEach {
-    if (name.endsWith("OhosArm64")) {
-        dependsOn(":shared:prepareOhosSqliteProvider")
+fun verifyOhosBridgeNativeContracts(outputDirectory: String) {
+    val library = layout.buildDirectory
+        .file("bin/ohosArm64/$outputDirectory/libshared.so")
+        .get()
+        .asFile
+    check(library.isFile) { "Missing linked OHOS bridge library: $library" }
+
+    val readelf = ohosLlvmReadelf().absolutePath
+    val symbols = runAndCapture(readelf, "-s", "--wide", library.absolutePath)
+    check(symbols.lineSequence().any {
+        "com_tencent_tmm_knoi_initBridge" in it && " UND " !in it
+    }) {
+        "OHOS bridge library does not export com_tencent_tmm_knoi_initBridge"
     }
+    check(symbols.lineSequence().none {
+        "sqlite3_db_config" in it && " UND " in it
+    }) {
+        "OHOS bridge library leaves sqlite3_db_config unresolved"
+    }
+
+    val dynamicSection = runAndCapture(readelf, "-d", library.absolutePath)
+    check("libmmkv_c_wrapper.so" in dynamicSection) {
+        "OHOS bridge library does not depend on libmmkv_c_wrapper.so"
+    }
+}
+
+val verifyDebugSharedOhosArm64NativeContracts by tasks.registering {
+    group = "verification"
+    description = "Verifies the debug OHOS bridge native dependencies and KNOI exports."
+    doLast { verifyOhosBridgeNativeContracts("debugShared") }
+}
+
+val verifyReleaseSharedOhosArm64NativeContracts by tasks.registering {
+    group = "verification"
+    description = "Verifies the release OHOS bridge native dependencies and KNOI exports."
+    doLast { verifyOhosBridgeNativeContracts("releaseShared") }
+}
+
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>("linkDebugSharedOhosArm64") {
+    dependsOn(":shared:prepareOhosSqliteProvider")
+    finalizedBy(verifyDebugSharedOhosArm64NativeContracts)
+}
+
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>("linkReleaseSharedOhosArm64") {
+    dependsOn(":shared:prepareOhosSqliteProvider")
+    finalizedBy(verifyReleaseSharedOhosArm64NativeContracts)
 }
