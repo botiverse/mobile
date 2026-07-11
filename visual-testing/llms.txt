@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-11 22:08:11 UTC
+Generated: 2026-07-11 22:13:37 UTC
 Latest run: 7bd2af9-20260711220607
 Latest commit: 7bd2af9-20260711220607
 Commit subject: feature-flags: send platform=mobile in evaluate request (slock #186) (#705)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
-AI analysis: ready 45 / total 90, pending 45
+AI analysis: ready 86 / total 90, pending 4
 Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-11T22:08:11.058Z",
+  "generatedAt": "2026-07-11T22:13:37.897Z",
   "runId": "7bd2af9-20260711220607",
   "commit": "7bd2af9-20260711220607",
   "commitSubject": "feature-flags: send platform=mobile in evaluate request (slock #186) (#705)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 45,
-        "pending": 45
+        "ready": 86,
+        "pending": 4
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 63,
-        "pending": 27
+        "ready": 79,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 57,
-        "pending": 33
+        "ready": 82,
+        "pending": 8
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 90,
-    "ready": 45,
-    "pending": 45
+    "ready": 86,
+    "pending": 4
   },
   "componentMatrixSummary": {
     "total": 110,
