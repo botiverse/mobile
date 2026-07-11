@@ -2635,7 +2635,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     val shellScope = rememberSlockAppShellScope()
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
-    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val realtimeEventMapper =
+        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
