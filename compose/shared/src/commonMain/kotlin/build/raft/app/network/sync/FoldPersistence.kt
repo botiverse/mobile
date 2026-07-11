@@ -31,11 +31,18 @@ data class PersistedCursor(
     val epoch: SyncEpoch? = null,
 )
 
-/** One applied fold frame: the exact rows that MUST commit atomically for [scope]. */
+/**
+ * One applied INGEST result: the exact rows that MUST commit atomically for [scope]. The unit of atomicity
+ * is one ingest CALL, not one wire frame (赵 note-review must-fix) — a single realtime frame is [facts] of
+ * size 1; a difference response is N [facts] + [cursor]; a snapshot rebaseline is [rebaseline]=true (clear
+ * the scope) + the rebuilt [facts] + [cursor]/epoch. All three commit in exactly one transaction.
+ */
 data class FoldPersistFrame(
     val scope: SyncScopeKey,
     val facts: List<CanonicalMessageRow>,
     val cursor: PersistedCursor,
+    /** Snapshot rebaseline: clear the scope's existing facts (then rebuild from [facts]) in the SAME txn. */
+    val rebaseline: Boolean = false,
     /** Retention gate — empty in the one-txn increment; pruning joins the SAME transaction when present. */
     val prunedFactIds: List<MessageId> = emptyList(),
 )
@@ -81,6 +88,8 @@ interface FoldPersistStore {
     suspend fun writeCursor(scope: SyncScopeKey, cursor: PersistedCursor)
     suspend fun maintainTimelineIndex(scope: SyncScopeKey, facts: List<CanonicalMessageRow>)
     suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>)
+    /** Snapshot rebaseline: drop all of [scope]'s facts + index rows, so the frame rebuilds from scratch. */
+    suspend fun clearScope(scope: SyncScopeKey)
     suspend fun readFacts(scope: SyncScopeKey): List<CanonicalMessageRow>
     suspend fun readCursor(scope: SyncScopeKey): PersistedCursor?
 }
@@ -106,6 +115,7 @@ class DefaultFoldPersistenceAdapter(
         // fact upserts, timeline-index maintenance, and the cursor+epoch all live inside this one boundary,
         // so §9.9's transaction-count invariant holds (exactly one commit) and no torn window can exist.
         runner.run {
+            if (frame.rebaseline) store.clearScope(frame.scope) // snapshot rebaseline: clear + rebuild, one txn
             if (frame.prunedFactIds.isNotEmpty()) store.prune(frame.scope, frame.prunedFactIds)
             store.upsertFacts(frame.scope, frame.facts)
             store.maintainTimelineIndex(frame.scope, frame.facts)

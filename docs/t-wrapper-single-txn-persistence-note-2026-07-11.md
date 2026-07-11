@@ -23,8 +23,17 @@ Four gates (LiBai's framing), delivered incrementally:
 
 ## 2. The one-txn contract (RFC 043 §9.9, transaction-count invariant)
 
-> **One frame apply = exactly one storage transaction.** When the commit count is 1, no torn window
+> **One ingest CALL = exactly one storage transaction.** When the commit count is 1, no torn window
 > exists by construction — stronger and cheaper than any kill enumeration.
+
+The unit of atomicity is one ingest call, NOT one wire frame (赵 note-review must-fix). Three shapes, each
+exactly one transaction:
+- **realtime frame** — 1 fact + cursor.
+- **difference response** — N facts + cursor (never N per-fact transactions — that reintroduces the tear
+  "cursor unmoved but first half of facts landed").
+- **snapshot rebaseline** — clear the scope + rebuild from the snapshot facts + cursor/epoch. A torn
+  rebaseline (scope emptied but not rebuilt) is the exact disease the single transaction prevents; there is
+  no mid-batch commit point for a fault to land on, by construction.
 
 **Corollary (pinned, §9.9 + §10 discriminator):** the message facts AND their scope cursor + epoch AND the
 timeline index maintenance MUST commit in **one transaction on one backend**. Splitting any of them across
@@ -91,14 +100,19 @@ for versioned-value snapshots the projector/retention gates may need.
 
 Named per §9.9; all kill injection through the deterministic `PersistFaultHook`, never timing:
 
-1. **`oneFrameApplyIsExactlyOneTransaction`** (primary count invariant): `CommitBoundaryRecorder` observes
-   `applyFrame(frameWithFactsCursorEpoch)` and asserts commit count == 1.
-2. **`killBeforeCommitRestoresCompletePreFrameState`**: fault at `BeforeCommit` ⇒ `restore` deepEquals the
+1. **`oneFrameApplyIsExactlyOneTransaction`** (primary count invariant): the counting runner observes
+   `applyFrame(factsCursorEpoch)` and asserts commit count == 1.
+2. **`differenceBatchAppliesNFactsAndCursorInOneTransaction`**: N facts + cursor = one transaction (赵's
+   batch leg — the frame invariant generalized to the difference ingest call).
+3. **`snapshotRebaselineClearsAndRebuildsInOneTransaction`** + **`...KillBeforeCommitKeepsCompletePreRebaselineState`**:
+   clear + rebuild + cursor/epoch in one transaction; a kill-before-commit leaves the complete
+   pre-rebaseline state (never an emptied scope).
+4. **`killBeforeCommitRestoresCompletePreFrameState`**: fault at `BeforeCommit` ⇒ `restore` deepEquals the
    complete pre-frame state (no partial facts, cursor/epoch unmoved) — never a torn mix.
-3. **`killAfterCommitRestoresCompletePostFrameState`**: fault at `AfterCommit` ⇒ `restore` deepEquals the
+5. **`killAfterCommitRestoresCompletePostFrameState`**: fault at `AfterCommit` ⇒ `restore` deepEquals the
    complete post-frame state (all facts + advanced cursor/epoch).
-4. **`stateRoundTripIdentity`** (§9.9): state → applyFrame → restore → state′ deepEqual.
-5. **`persistRestoreContinuationEquivalence`** (canonical fixture line #541): a persisted-then-restored
+6. **`stateRoundTripIdentity`** (§9.9): state → applyFrame → restore → state′ deepEqual.
+7. **`persistRestoreContinuationEquivalence`** (canonical fixture line #541): a persisted-then-restored
    baseline fed back through the fold converges outcome-deepEqual with the never-persisted run — round-trip
    identity extended to identical continuation behavior.
 

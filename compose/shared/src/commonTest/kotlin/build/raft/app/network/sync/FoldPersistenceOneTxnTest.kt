@@ -63,6 +63,7 @@ class FoldPersistenceOneTxnTest {
         override suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>) {
             this.facts[key(scope)]?.removeAll { it.id in factIds }
         }
+        override suspend fun clearScope(scope: SyncScopeKey) { this.facts.remove(key(scope)) }
         override suspend fun readFacts(scope: SyncScopeKey) = facts[key(scope)]?.sortedBy { it.seq }.orEmpty()
         override suspend fun readCursor(scope: SyncScopeKey) = cursors[key(scope)]
     }
@@ -95,6 +96,50 @@ class FoldPersistenceOneTxnTest {
         val restored = adapter.restore(scope)
         assertEquals(listOf("m1", "m2"), restored.facts.map { it.id.value }, "post-commit facts must be complete")
         assertEquals(2L, restored.cursor?.latestSeq, "post-commit cursor must be advanced")
+    }
+
+    @Test
+    fun differenceBatchAppliesNFactsAndCursorInOneTransaction() = runBlocking {
+        // 赵 note-review must-fix: a difference response applies N facts + advances the cursor as ONE ingest
+        // call, so it must be one transaction (not N per-fact transactions — that reintroduces the tear).
+        val (adapter, runner) = adapter()
+        adapter.applyFrame(frame(row("m1", 1), row("m2", 2), row("m3", 3)))
+        assertEquals(1, runner.runCount, "an N-fact difference batch + cursor must be exactly one transaction")
+        assertEquals(listOf("m1", "m2", "m3"), adapter.restore(scope).facts.map { it.id.value })
+    }
+
+    @Test
+    fun snapshotRebaselineClearsAndRebuildsInOneTransaction() = runBlocking {
+        // Snapshot rebaseline = clear the scope + rebuild + advance cursor, all in one transaction.
+        val (adapter, runner) = adapter()
+        adapter.applyFrame(frame(row("old1", 1), row("old2", 2))) // pre-existing facts
+        val rebaseline = FoldPersistFrame(
+            scope = scope,
+            facts = listOf(row("new1", 10), row("new2", 11)),
+            cursor = PersistedCursor(latestSeq = 11, oldestLoadedSeq = 10, newestLoadedSeq = 11, epoch = "e2"),
+            rebaseline = true,
+        )
+        adapter.applyFrame(rebaseline)
+        assertEquals(2, runner.runCount, "two ingest calls = two transactions (each internally atomic)")
+        val restored = adapter.restore(scope)
+        assertEquals(listOf("new1", "new2"), restored.facts.map { it.id.value }, "rebaseline drops old facts")
+        assertEquals("e2", restored.cursor?.epoch, "rebaseline advances epoch in the same txn")
+    }
+
+    @Test
+    fun snapshotRebaselineKillBeforeCommitKeepsCompletePreRebaselineState() = runBlocking {
+        // A torn rebaseline (scope cleared but not rebuilt) is the exact disease one-txn prevents: a
+        // kill-before-commit must leave the COMPLETE pre-rebaseline state, never an emptied scope.
+        val runner = CountingTransactionRunner(PersistFaultHook.Never)
+        val store = RecordingFoldPersistStore()
+        val adapter = DefaultFoldPersistenceAdapter(runner, store)
+        adapter.applyFrame(frame(row("old1", 1), row("old2", 2)))
+        // Second adapter over the SAME store, faulting before commit on the rebaseline.
+        val faulting = DefaultFoldPersistenceAdapter(CountingTransactionRunner { it == PersistFaultPoint.BeforeCommit }, store)
+        assertFailsWith<PersistKilled> {
+            faulting.applyFrame(FoldPersistFrame(scope, listOf(row("new1", 10)), PersistedCursor(10, 10, 10, epoch = "e2"), rebaseline = true))
+        }
+        assertEquals(listOf("old1", "old2"), adapter.restore(scope).facts.map { it.id.value }, "torn rebaseline must not empty the scope")
     }
 
     @Test
