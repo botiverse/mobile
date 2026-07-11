@@ -18,6 +18,8 @@ These are separate surfaces backed by one parser and one typed identity:
 - at most one eligible permalink per source message becomes a preview card;
 - neither the chip nor the card passes target message content through route or Kuikly `pageData` payloads.
 
+The msg chip is also the first new consumer of a generic Kuikly RichText inline box-span primitive. The renderer must understand box geometry/style, not Slock concepts such as message, channel, or task.
+
 ## 2. React contract to preserve
 
 Current React behavior is defined by:
@@ -106,7 +108,7 @@ Code spans and fenced code remain literal and never become chips.
 
 The chip uses the existing Slock reference-chip height, black 1dp frame, font weight, collision/padding, and native rich-text chrome path. It must not introduce a separately measured Compose child that changes line wrapping.
 
-This does **not** mean implementing three independent feature UIs. The parser, token plan, label resolution, actions, preview store, preview projection, quoted-card Compose UI, and navigation intent all live once in commonMain. Platform-specific work is limited to the existing Kuikly RichText adapter seam: each native text renderer consumes the same `MessagePermalink` chrome token and reports whether that token is actually drawn/hit-tested. The quoted preview card itself remains one shared Compose component.
+This does **not** mean implementing three independent feature UIs. The parser, token plan, label resolution, actions, preview store, preview projection, quoted-card Compose UI, and navigation intent all live once in commonMain. The quoted preview card itself remains one shared Compose component.
 
 Label resolution order:
 
@@ -122,7 +124,39 @@ Visible label:
 
 The chip's accessibility label must include `Raft message link`, the resolved label, and `thread reply` when `threadParentMessageId != null`.
 
-Add a new rich-text inline kind/chrome token such as `MessagePermalink`. Extend the existing platform token adapters rather than creating platform-specific message-link components. At the reference baseline Android and iOS report `slockRefChrome=true`, while OHOS still truthfully reports `slockRefChrome=false`; implementation must update each adapter/capability only when its real renderer consumes the new token. Do not claim cross-platform parity from commonMain alone.
+#### Generic inline box-span primitive
+
+Before adding msg-specific chrome, extend Kuikly RichText with a semantic-agnostic inline box style, tentatively:
+
+```kotlin
+data class InlineBoxSpanStyle(
+    val backgroundColor: Color? = null,
+    val borderColor: Color? = null,
+    val borderWidth: Dp = 0.dp,
+    val paddingStart: Dp = 0.dp,
+    val paddingEnd: Dp = 0.dp,
+    val paddingTop: Dp = 0.dp,
+    val paddingBottom: Dp = 0.dp,
+    val marginStart: Dp = 0.dp,
+    val marginEnd: Dp = 0.dp,
+    val cornerRadius: Dp = 0.dp,
+)
+```
+
+Exact public names/types belong to the Kuikly fork API review, but the behavior contract is fixed:
+
+- layout reserves padding, border, and margins before line breaking; paint-only expansion is forbidden;
+- wrapped spans create one box fragment per visual line;
+- side borders/padding appear only at true semantic span edges, not at internal wrap boundaries;
+- fill/border use final laid-out fragment geometry, avoiding glyph collision and black-block brush-state bugs;
+- semantic text/copy excludes collision sentinels and layout-only break helpers;
+- hit testing inside background/border/padding resolves to the original span action;
+- spans without a box style retain current text behavior and cost;
+- renderer input is style geometry plus action identity, never Slock semantic kinds such as `MessagePermalink`, `Channel`, or `Task`.
+
+Current `slockRefChrome` is a specialized predecessor of this primitive: its shared style token exposes `chipFill` and `horizontalChromeSp`, while some border/padding behavior remains renderer-hardcoded. Add a compatibility mapper from current Slock chrome tokens to `InlineBoxSpanStyle`; do not break existing channel/thread/task/mention/inline-code visuals. The msg chip uses the generic primitive directly as the first new consumer. Existing chips may migrate incrementally after parity tests, rather than forcing a risky all-chip rewrite in this feature.
+
+The generic primitive lands in KuiklyUI `staging2` first, followed by the mobile gitlink/artifact update. Platform render backends may require internal adapter code because their text APIs differ, but they all consume one Kuikly API/serialized style contract; there are no platform-specific Slock msg-chip components. Add a truthful capability such as `inlineBoxSpanChrome`, and promote it per platform only after that renderer passes layout, draw, copy, and hit-test gates. The reference baseline's existing specialized capability is Android/iOS `slockRefChrome=true`, OHOS `slockRefChrome=false`; it must not be reused to overclaim the new generic primitive.
 
 ### 5.3 Click behavior
 
@@ -258,11 +292,20 @@ Do not pass preview title, author, body, attachment labels, archived state, `Con
 
 ## 11. Delivery phases
 
-### Phase A — parser and inline chip
+### Phase A0 — Kuikly generic inline box span
+
+- add `InlineBoxSpanStyle` (final API name subject to fork review) to the shared Kuikly RichText contract;
+- serialize background, border, four-direction padding, edge margin, and optional radius through the existing text-span bridge;
+- implement final-layout fragment measurement/draw/hit-test/copy behavior in each renderer backend behind the same API;
+- map existing `slockRefChrome` style tokens through the primitive without visual changes;
+- land on KuiklyUI `staging2`, publish the fork artifacts, then update the mobile gitlink/HAR.
+
+### Phase A — parser and inline msg chip
 
 - canonical typed parser with environment host input;
 - Markdown link annotation/action for message permalinks;
-- shared/native ref chrome and click routing;
+- msg chip style expressed only as `InlineBoxSpanStyle` + text/action tokens;
+- click routing;
 - parser/chip/host/cross-server tests.
 
 ### Phase B — store-backed preview
@@ -276,14 +319,27 @@ Do not pass preview title, author, body, attachment labels, archived state, `Con
 ### Phase C — visual and device acceptance
 
 - deterministic visual fixtures for channel, DM, thread reply, archived, loading, unavailable, attachment counts, long/CJK-adjacent URLs, and narrow wrapping;
-- one shared Compose quoted-card implementation; platform diffs are restricted to the existing RichText `MessagePermalink` token adapter/capability layer;
+- one shared Compose quoted-card implementation; msg chip platform diffs are restricted to the generic Kuikly inline-box renderer backend/capability layer;
 - Android connected-device tap/open gate;
 - OHOS and iOS screenshot/tap gates using the real rich-text renderer;
 - no parity promotion until renderer capability markers and device evidence agree.
 
-Phase A and B may be separate PRs. Phase B must reuse Phase A's parser; no second regex/parser is allowed.
+Phase A0, A, and B may be separate PRs. Phase A depends on the published A0 primitive. Phase B must reuse Phase A's parser; no second regex/parser is allowed.
 
 ## 12. Required tests
+
+### Generic inline box span
+
+- zero-style span preserves existing measurement and draw output;
+- padding/border/margin affect wrapping before layout, including narrow-line cases;
+- single-line box geometry and wrapped multi-fragment geometry;
+- no internal side border/padding at wrap boundaries;
+- background and border do not cover glyphs;
+- hit tests in text, padding, and border map to the same action;
+- copied text contains only semantic text;
+- nested/adjacent spans do not merge styles or steal actions;
+- existing channel/thread/task/mention/inline-code fixtures remain pixel-stable through the compatibility mapper;
+- capability remains false/unknown on a platform until its actual renderer passes these gates.
 
 ### Parser/extraction
 
@@ -333,6 +389,8 @@ Phase A and B may be separate PRs. Phase B must reuse Phase A's parser; no secon
 
 ## 14. Acceptance checklist
 
+- Kuikly exposes one generic inline box-span contract; renderer code contains no msg/channel/task semantic branches for the new primitive.
+- Existing Slock reference and inline-code visuals remain unchanged after compatibility mapping.
 - Pasting a same-server Raft channel/DM/thread message URL shows an inline Raft chip and one preview card.
 - The card content matches the authorized `/messages/context` target and opens the exact message/thread.
 - Code and named-link exclusions match the stated contract.
