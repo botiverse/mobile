@@ -5,10 +5,42 @@ import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.slockSharedPreferenceStore
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * Process-local projection of the persisted app language.
+ *
+ * Settings effects may run off the UI thread on Kotlin/Native. Publishing the
+ * selected locale here makes every page root re-apply [StringDesc.localeType]
+ * from its Compose thread instead of relying on a cross-thread global write.
+ * Persistence remains the source of truth; this flow only invalidates the
+ * active composition immediately after a successful selection.
+ */
+internal object KmmResourceLocaleRuntime {
+    private val mutableLocale = MutableStateFlow<AppLocale?>(null)
+
+    val locale: StateFlow<AppLocale?> = mutableLocale
+
+    fun publish(locale: AppLocale) {
+        mutableLocale.value = locale
+    }
+
+    fun seedIfEmpty(locale: AppLocale): AppLocale {
+        mutableLocale.compareAndSet(expect = null, update = locale)
+        return requireNotNull(mutableLocale.value)
+    }
+
+    internal fun replaceForTest(locale: AppLocale?) {
+        mutableLocale.value = locale
+    }
+}
 
 /**
  * #85 follow-up: seed the KmmResource `StringDesc.localeType` global
@@ -27,20 +59,22 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
  */
 @Composable
 internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
-    remember(pager, refreshTick) {
-        val store = KeyValueLocalePreferenceStore(slockSharedPreferenceStore())
-        val persisted: AppLocale =
-            try {
-                store.readLocaleSync()
-            } catch (cancellation: kotlinx.coroutines.CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                // Missing or unreadable state falls back to the app default.
-                AppLocale.Default
-            }
-        StringDesc.localeType = persisted.stringDescLocaleType
-        Unit
-    }
+    val persisted =
+        remember(pager, refreshTick) {
+            val store = KeyValueLocalePreferenceStore(slockSharedPreferenceStore())
+            val locale: AppLocale =
+                try {
+                    store.readLocaleSync()
+                } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    // Missing or unreadable state falls back to the app default.
+                    AppLocale.Default
+                }
+            KmmResourceLocaleRuntime.seedIfEmpty(locale)
+        }
+    val runtimeLocale by KmmResourceLocaleRuntime.locale.collectAsState()
+    StringDesc.localeType = (runtimeLocale ?: persisted).stringDescLocaleType
 }
 
 /**

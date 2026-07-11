@@ -30,6 +30,7 @@ final class SlockIosMMKVKeyValueStore: NSObject, SlockKeyValueStore {
         } else {
             store.removeValue(forKey: namespacedKey)
         }
+        store.sync()
     }
 
     private func namespaced(_ key: String) -> String {

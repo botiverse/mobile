@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -674,12 +675,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun setLocaleKeepsKmmResourceStringDescLocaleTypeInSync() = runBlocking {
-        // #85 follow-up: `SharedSettingsDataSource.setLocale` must keep
-        // the KmmResource `StringDesc.localeType` global in lock-step
-        // with the user's `AppLocale` selection so that any
-        // shared `StringDesc` lookup renders the correct locale without
-        // each call site having to thread a locale through.
+    fun setLocalePublishesRuntimeLocaleWithoutWritingResourceGlobalOffThread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localeRepository = FakeLocaleRepository(current = AppLocale.English)
         val dataSource =
@@ -688,10 +684,8 @@ class SharedSettingsStoreTest {
                 settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                 localeRepository = localeRepository
             )
-        // Save the original `StringDesc.localeType` and restore it
-        // after the test so we don't leak the global to other tests
-        // in the same JVM.
         val originalLocaleType = com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
+        val originalRuntimeLocale = KmmResourceLocaleRuntime.locale.value
         try {
             val store =
                 SharedSettingsStore(
@@ -699,33 +693,43 @@ class SharedSettingsStoreTest {
                     scope = scope
                 )
 
-            // Step 1: follow the system locale.
             val result0 = dataSource.setLocale("system")
             assertIs<DataResult.Content<*>>(result0)
-            assertEquals(
-                com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.System,
-                com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
-            )
+            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(AppLocale.System, KmmResourceLocaleRuntime.locale.value)
 
-            // Step 2: switch to Simplified Chinese. KmmResource should now
-            // hold a `Custom` locale type for the selected language.
             val result1 = dataSource.setLocale("zh-Hans")
             assertIs<DataResult.Content<*>>(result1)
-            assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
-                com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
-            )
+            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(AppLocale.SimplifiedChinese, KmmResourceLocaleRuntime.locale.value)
 
-            // Step 3: switch back to English. KmmResource should remain
-            // explicitly pinned to the selected app locale instead of OS locale.
             val result2 = dataSource.setLocale("en")
             assertIs<DataResult.Content<*>>(result2)
-            assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
-                com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
-            )
+            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(AppLocale.English, KmmResourceLocaleRuntime.locale.value)
         } finally {
             com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType = originalLocaleType
+            KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
         }
         scope.cancel()
+    }
+
+    @Test
+    fun runtimeLocaleSeedCannotOverwriteLiveSelection() {
+        val originalRuntimeLocale = KmmResourceLocaleRuntime.locale.value
+        try {
+            KmmResourceLocaleRuntime.replaceForTest(null)
+            assertEquals(AppLocale.English, KmmResourceLocaleRuntime.seedIfEmpty(AppLocale.English))
+
+            KmmResourceLocaleRuntime.publish(AppLocale.SimplifiedChinese)
+            assertEquals(
+                AppLocale.SimplifiedChinese,
+                KmmResourceLocaleRuntime.seedIfEmpty(AppLocale.English)
+            )
+            assertEquals(AppLocale.SimplifiedChinese, KmmResourceLocaleRuntime.locale.value)
+        } finally {
+            KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
+        }
     }
 
     @Test
