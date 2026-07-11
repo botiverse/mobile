@@ -5,6 +5,7 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalBadge
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.components.SlockBrutalTextField
 import build.raft.app.components.SlockAnchorPlacement
 import build.raft.app.components.SlockBrutalInputField
 import build.raft.app.components.SlockBrutalTone
@@ -21,6 +22,8 @@ import build.raft.app.components.SlockRaftUiSelectionOption
 import build.raft.app.components.slockAnchoredTriggerGeometryAnchor
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
+import build.raft.app.data.AgentIssueReportRepository
+import build.raft.app.data.AgentIssueReportSubmission
 import build.raft.app.data.AgentAppLoginItem
 import build.raft.app.data.AgentAppLoginLoadState
 import build.raft.app.data.AgentAppLoginSnapshot
@@ -57,6 +60,7 @@ import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedAgentDetailLoadStatus
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
+import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockShellStoreScope
@@ -172,6 +176,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.module.CodecModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
@@ -887,13 +892,15 @@ private val membersAgentDetailVisualWorkspaceNotesChildren = AgentWorkspaceChild
 private enum class MembersAgentDetailVisualMode {
     Profile,
     LifecycleActions,
-    AvatarManagement
+    AvatarManagement,
+    ReportIssue
 }
 
 private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMode =
     when (trim().lowercase()) {
         "lifecycle_actions" -> MembersAgentDetailVisualMode.LifecycleActions
         "avatar_management" -> MembersAgentDetailVisualMode.AvatarManagement
+        "report_issue" -> MembersAgentDetailVisualMode.ReportIssue
         else -> MembersAgentDetailVisualMode.Profile
     }
 
@@ -1344,7 +1351,7 @@ private class MemberDetailRouteProvider(
     val memberRepository: MemberRepository,
     val channelRepository: ChannelRepository,
     val settingsRepository: build.raft.app.data.SettingsServerManagementRepository,
-    val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val agentIssueReportRepository: AgentIssueReportRepository,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
     val serverMembersStore: build.raft.app.data.SharedServerMembersStore,
@@ -1617,9 +1624,28 @@ private class MemberDetailRouteProvider(
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
         }
 
-    suspend fun reportIssue(diagnostics: String): Boolean {
-        bridge.log("agent_diagnostics_report ${diagnostics.toMemberDetailDiagnosticsLine()}")
-        val ok = settingsCapabilities.sendFeedback()
+    suspend fun reportIssue(
+        server: ServerSummary,
+        member: MemberProfile,
+        detail: AgentDetailSnapshot?,
+        request: SharedAgentIssueReportRequest
+    ): Boolean {
+        bridge.log("agent_diagnostics_report ${request.diagnostics.toMemberDetailDiagnosticsLine()}")
+        val result = agentIssueReportRepository.submit(
+            AgentIssueReportSubmission(
+                server = server,
+                member = member,
+                detail = detail,
+                description = request.description,
+                diagnostics = request.diagnostics,
+                includeRecentMessages = request.includeRecentMessages,
+                includeLiveActivity = request.includeLiveActivity,
+                includeActivityHistory = request.includeActivityHistory,
+                includeRuntimeTranscript = request.includeRuntimeTranscript,
+                liveActivity = request.liveActivity
+            )
+        )
+        val ok = result is DataResult.Content
         bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
         return ok
     }
@@ -1664,10 +1690,15 @@ private fun rememberMemberDetailRouteProvider(
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()
-    val settingsCapabilities =
-        remember(bridge, scope) {
-            BridgeSettingsPlatformCapabilities(bridge, scope.kuiklyBridgeCallContext())
-        }
+    val codecModule = remember(pager.pagerId) { pager.acquireModule<CodecModule>(CodecModule.MODULE_NAME) }
+    val agentIssueReportRepository = remember(networkClient, authStore, codecModule) {
+        AgentIssueReportRepository(
+            sessionStore = authStore,
+            networkClient = networkClient,
+            sha256Hex = codecModule::sha256,
+            logger = { message -> bridge.log("member_detail_agent_issue $message") }
+        )
+    }
     val computersApiClient = remember(networkClient) {
         SlockComputersApiClient(
             SlockComputersNetworkApi(networkClient)
@@ -1699,7 +1730,7 @@ private fun rememberMemberDetailRouteProvider(
         memberRepository,
         channelRepository,
         settingsRepository,
-        settingsCapabilities,
+        agentIssueReportRepository,
         agentDetailStore,
         agentPanelTabOrderStore,
         serverMembersStore,
@@ -1713,7 +1744,7 @@ private fun rememberMemberDetailRouteProvider(
             memberRepository = memberRepository,
             channelRepository = channelRepository,
             settingsRepository = settingsRepository,
-            settingsCapabilities = settingsCapabilities,
+            agentIssueReportRepository = agentIssueReportRepository,
             agentDetailStore = agentDetailStore,
             agentPanelTabOrderStore = agentPanelTabOrderStore,
             serverMembersStore = serverMembersStore,
@@ -1972,8 +2003,13 @@ private fun MemberDetailPageContent() {
                                 provider.copyDiagnostics(diagnostics)
                             }
 
-                            override suspend fun reportIssue(diagnostics: String): Boolean {
-                                return provider.reportIssue(diagnostics)
+                            override suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean {
+                                return provider.reportIssue(
+                                    server = current.server,
+                                    member = member,
+                                    detail = selectedAgentDetail,
+                                    request = request
+                                )
                             }
 
                             override suspend fun updateAgentProfile(
@@ -3003,7 +3039,7 @@ private fun MembersDetailContent(
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
     onCopyAgentDiagnostics: (String) -> Unit,
-    onReportAgentIssue: (suspend (String) -> Boolean)?,
+    onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> Boolean)?,
     onUnavailableAction: (String) -> Unit,
     timeContext: SlockTimeContext,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
@@ -3048,6 +3084,7 @@ private fun MembersDetailContent(
     var restartResetDialogOpen by remember(member.id.value, initialVisualMode) {
         mutableStateOf(false)
     }
+    var reportIssueDialogOpen by remember(member.id.value) { mutableStateOf(false) }
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
@@ -3105,6 +3142,9 @@ private fun MembersDetailContent(
             }
             MembersAgentDetailVisualMode.AvatarManagement -> {
                 showAvatarPicker = true
+            }
+            MembersAgentDetailVisualMode.ReportIssue -> {
+                reportIssueDialogOpen = true
             }
             MembersAgentDetailVisualMode.Profile -> Unit
         }
@@ -3255,7 +3295,13 @@ private fun MembersDetailContent(
                 )
         }
     }
-    fun reportIssue() {
+    fun submitIssueReport(
+        description: String,
+        includeRecentMessages: Boolean,
+        includeLiveActivity: Boolean,
+        includeActivityHistory: Boolean,
+        includeRuntimeTranscript: Boolean
+    ) {
         val callback = onReportAgentIssue
         if (diagnosticInFlight != null) return
         if (agentDetailActions == null && callback == null) {
@@ -3265,13 +3311,22 @@ private fun MembersDetailContent(
         scope.launch {
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
-            val diagnostics = buildMembersAgentDiagnostics(member, detail)
+            val request =
+                SharedAgentIssueReportRequest(
+                    description = description.trim(),
+                    diagnostics = buildMembersAgentDiagnostics(member, detail),
+                    includeRecentMessages = includeRecentMessages,
+                    includeLiveActivity = includeLiveActivity,
+                    includeActivityHistory = includeActivityHistory,
+                    includeRuntimeTranscript = includeRuntimeTranscript,
+                    liveActivity = storeState.agentRealtimeActivityLogs[member.id].orEmpty()
+                )
             val reported =
                 if (sharedAgentDetailStore != null && agentDetailActions != null) {
-                    sharedAgentDetailStore.reportIssue(diagnostics, agentDetailActions)
+                    sharedAgentDetailStore.reportIssue(request, agentDetailActions)
                 } else {
                     try {
-                        requireNotNull(callback).invoke(diagnostics)
+                        requireNotNull(callback).invoke(request)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -3285,6 +3340,9 @@ private fun MembersDetailContent(
                     errorCode = if (reported) null else "agent_issue_report_failed",
                     successLabel = "Issue reported".takeIf { reported }
                 )
+            if (reported) {
+                reportIssueDialogOpen = false
+            }
         }
     }
     fun openRestartResetDialog() {
@@ -3469,7 +3527,7 @@ private fun MembersDetailContent(
                                         onRunLifecycleAction = { runLifecycleAction(it) },
                                         onOpenRestartReset = { openRestartResetDialog() },
                                         onCopyDiagnostics = { copyDiagnostics() },
-                                        onReportIssue = { reportIssue() },
+                                        onReportIssue = { reportIssueDialogOpen = true },
                                         timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
@@ -3590,6 +3648,29 @@ private fun MembersDetailContent(
                         restartResetDialogOpen = false
                         restartResetSelection = MembersAgentLifecycleAction.Restart
                         actionState = null
+                    }
+                }
+            )
+        }
+        if (reportIssueDialogOpen && member.kind == MemberKind.Agent) {
+            val reportState = effectiveDiagnosticActionState?.takeIf { it.actionKey == "report" }
+            MembersAgentIssueReportDialog(
+                agentName = member.displayName,
+                runtimeTranscriptAvailable = detail?.summary?.machineId?.isNotBlank() == true,
+                busy = reportState?.inProgress == true,
+                errorCode = reportState?.errorCode,
+                onSubmit = { description, includeRecentMessages, includeLiveActivity, includeActivityHistory, includeRuntimeTranscript ->
+                    submitIssueReport(
+                        description,
+                        includeRecentMessages,
+                        includeLiveActivity,
+                        includeActivityHistory,
+                        includeRuntimeTranscript
+                    )
+                },
+                onDismiss = {
+                    if (reportState?.inProgress != true) {
+                        reportIssueDialogOpen = false
                     }
                 }
             )
@@ -4033,6 +4114,212 @@ private fun MembersLifecycleConfirmation(
                 onClick = onConfirm
             )
         }
+    }
+}
+
+@Composable
+private fun MembersAgentIssueReportDialog(
+    agentName: String,
+    runtimeTranscriptAvailable: Boolean,
+    busy: Boolean,
+    errorCode: String?,
+    onSubmit: (String, Boolean, Boolean, Boolean, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var description by remember(agentName) { mutableStateOf("") }
+    var consented by remember(agentName) { mutableStateOf(false) }
+    var includeRecentMessages by remember(agentName) { mutableStateOf(true) }
+    var includeLiveActivity by remember(agentName) { mutableStateOf(true) }
+    var includeActivityHistory by remember(agentName) { mutableStateOf(true) }
+    var includeRuntimeTranscript by remember(agentName, runtimeTranscriptAvailable) {
+        mutableStateOf(runtimeTranscriptAvailable)
+    }
+    SlockUnifiedDialog(
+        title = stringResource(MR.strings.member_report_issue_title).uppercase(),
+        dismissEnabled = !busy,
+        maxWidth = 420.dp,
+        contentPadding = 24.dp,
+        titleFontSize = 18,
+        titleLineHeight = 22,
+        onDismiss = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(SlockColor.SurfaceWhite)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
+                Text(
+                    text = agentName,
+                    style = SlockType.ButtonBold,
+                    color = SlockColor.TextBlack
+                )
+            }
+            SlockBrutalTextField(
+                label = stringResource(MR.strings.member_report_issue_description_label),
+                value = description,
+                placeholder = stringResource(MR.strings.member_report_issue_description_placeholder),
+                onValueChange = { description = it },
+                optional = true,
+                enabled = !busy,
+                maxLines = 4,
+                fieldMinHeight = 88.dp,
+                containerTapRequestsFocus = true
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SlockSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
+                MembersAgentIssueReportOption(
+                    label = stringResource(MR.strings.member_report_issue_recent_messages),
+                    checked = includeRecentMessages,
+                    enabled = !busy,
+                    onCheckedChange = { includeRecentMessages = it }
+                )
+                MembersAgentIssueReportOption(
+                    label = stringResource(MR.strings.member_report_issue_live_activity),
+                    checked = includeLiveActivity,
+                    enabled = !busy,
+                    onCheckedChange = { includeLiveActivity = it }
+                )
+                MembersAgentIssueReportOption(
+                    label = stringResource(MR.strings.member_report_issue_activity_history),
+                    checked = includeActivityHistory,
+                    enabled = !busy,
+                    onCheckedChange = { includeActivityHistory = it }
+                )
+                MembersAgentIssueReportOption(
+                    label = stringResource(MR.strings.member_report_issue_runtime_transcript),
+                    checked = includeRuntimeTranscript,
+                    enabled = runtimeTranscriptAvailable && !busy,
+                    onCheckedChange = { includeRuntimeTranscript = it }
+                )
+                if (!runtimeTranscriptAvailable) {
+                    Text(
+                        text = stringResource(MR.strings.member_report_issue_runtime_transcript_unavailable),
+                        modifier = Modifier.padding(start = 26.dp),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.TriangleAlert,
+                        modifier = Modifier.size(18.dp),
+                        color = SlockColor.TextBlackArgb
+                    )
+                    Text(
+                        text = stringResource(MR.strings.member_report_issue_disclosure),
+                        modifier = Modifier.weight(1f),
+                        style = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        color = SlockColor.TextBlack
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = !busy) { consented = !consented },
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockCheckbox(
+                        checked = consented,
+                        onCheckedChange = { consented = it },
+                        enabled = !busy,
+                        size = 16.dp
+                    )
+                    Text(
+                        text = stringResource(MR.strings.member_report_issue_consent),
+                        modifier = Modifier.weight(1f),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack
+                    )
+                }
+            }
+            errorCode?.takeIf { it.isNotBlank() }?.let { code ->
+                Text(
+                    text = stringResource(MR.strings.member_report_issue_failed, code),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.AccentRed
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockBrutalActionButton(
+                    label = stringResource(MR.strings.common_cancel),
+                    enabled = !busy,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    onClick = onDismiss
+                )
+                SlockBrutalActionButton(
+                    label =
+                        if (busy) {
+                            stringResource(MR.strings.member_report_issue_submitting)
+                        } else {
+                            stringResource(MR.strings.member_report_issue_submit)
+                        },
+                    leadingIcon = if (busy) SlockLucideIconName.Loader else SlockLucideIconName.Bug,
+                    enabled = consented && !busy,
+                    backgroundColor = SlockColor.AccentOrange,
+                    onClick = {
+                        onSubmit(
+                            description,
+                            includeRecentMessages,
+                            includeLiveActivity,
+                            includeActivityHistory,
+                            includeRuntimeTranscript
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentIssueReportOption(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onCheckedChange(!checked) },
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockCheckbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            size = 16.dp
+        )
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+        )
     }
 }
 

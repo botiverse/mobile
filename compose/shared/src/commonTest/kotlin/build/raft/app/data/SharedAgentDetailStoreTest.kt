@@ -10,6 +10,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.RealtimeAgentActivityDetail
 import build.raft.app.model.RealtimeAgentActivityEntry
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -390,6 +391,39 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
+    fun reportIssueForwardsTypedRequestAndRecordsSuccess() = runBlocking {
+        val s = store()
+        val request = SharedAgentIssueReportRequest(
+            description = "Agent stopped responding",
+            diagnostics = "agentId=agent-1\nstatus=Offline"
+        )
+        var forwarded: SharedAgentIssueReportRequest? = null
+        val actions = object : SharedAgentDetailActions {
+            override suspend fun runLifecycleAction(
+                agentId: MemberId,
+                action: MembersAgentLifecycleAction
+            ): DataResult<AgentLifecycleActionResult> = DataResult.Empty(EmptyReason.NoMembers)
+
+            override fun copyDiagnostics(diagnostics: String) = Unit
+
+            override suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean {
+                forwarded = request
+                assertEquals("report", s.state.value.diagnosticActionInFlight)
+                return true
+            }
+
+            override suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+                DataResult.Empty(EmptyReason.NoMembers)
+        }
+
+        assertTrue(s.reportIssue(request, actions))
+        assertEquals(request, forwarded)
+        assertNull(s.state.value.diagnosticActionInFlight)
+        assertEquals("Issue reported", s.state.value.lastActionResult?.successLabel)
+        assertNull(s.state.value.lastActionResult?.errorCode)
+    }
+
+    @Test
     fun displayNameEditLifecycle() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.BeginEditDisplayName("Cindy"))
@@ -483,6 +517,10 @@ class SharedAgentDetailStoreTest {
         assertEquals(1L, state.agentActivityVersions[testMemberId])
         assertEquals(1, state.detail?.activity?.size)
         assertEquals("realtime:agent-1:seq:10", state.detail?.activity?.single()?.id)
+        assertEquals(
+            listOf("realtime:agent-1:seq:10"),
+            state.agentRealtimeActivityLogs[testMemberId]?.map { it.id }
+        )
         assertEquals("Working", state.detail?.activity?.single()?.title)
         assertEquals("Building", state.detail?.activity?.single()?.body)
     }
