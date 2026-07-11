@@ -10,6 +10,7 @@ import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +59,7 @@ import com.tencent.kuikly.compose.ui.zIndex
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -1257,7 +1259,7 @@ internal fun ThreadComposerContent(
         ) {
             state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
-                    text = status,
+                    text = localizedThreadComposerStatusLabel(status),
                     style = SlockType.Caption.copy(
                         color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
                     ),
@@ -1281,7 +1283,7 @@ internal fun ThreadComposerContent(
                 PendingMentionActionBanner(
                     actions = state.pendingMentionActions,
                     memberSuggestions = state.memberSuggestions,
-                    channelLabel = surface.mentionScopeChannelLabel(),
+                    channelLabel = surface.localizedMentionScopeChannelLabel(),
                     actionStates = state.mentionActionStates,
                     removingIds = state.removingMentionActionIds.toSet(),
                     executingIds = state.executingMentionActionIds.toSet(),
@@ -1321,7 +1323,7 @@ internal fun ThreadComposerContent(
                 ) {
                     TextField(
                         value = fieldValue,
-                        placeholder = state.placeholder,
+                        placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
@@ -1421,7 +1423,7 @@ internal fun ThreadComposerContent(
                                     )
                                     val labelColor = if (composerEnabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
                                     Text(
-                                        text = "As Task",
+                                        text = stringResource(MR.strings.thread_composer_as_task),
                                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
                                         color = labelColor
                                     )
@@ -1587,21 +1589,22 @@ private fun ComposerSuggestionPanelContent(
         ThreadComposerSuggestionPanelState.MemberLoading -> {
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
-                message = "Loading..."
+                message = stringResource(MR.strings.thread_state_loading)
             )
         }
 
         ThreadComposerSuggestionPanelState.MemberEmpty -> {
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
-                message = "No matching members"
+                message = stringResource(MR.strings.composer_state_no_matching_members)
             )
         }
 
         ThreadComposerSuggestionPanelState.MemberError -> {
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
-                message = memberErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load members"
+                message = memberErrorCode?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.thread_composer_load_members_failed)
             )
         }
 
@@ -1632,21 +1635,22 @@ private fun ComposerSuggestionPanelContent(
         ThreadComposerSuggestionPanelState.ChannelLoading -> {
             ComposerSuggestionStatusPanel(
                 title = null,
-                message = "Loading..."
+                message = stringResource(MR.strings.thread_state_loading)
             )
         }
 
         ThreadComposerSuggestionPanelState.ChannelEmpty -> {
             ComposerSuggestionStatusPanel(
                 title = null,
-                message = "No matching channels"
+                message = stringResource(MR.strings.composer_state_no_matching_channels)
             )
         }
 
         ThreadComposerSuggestionPanelState.ChannelError -> {
             ComposerSuggestionStatusPanel(
                 title = null,
-                message = channelErrorCode?.takeIf { it.isNotBlank() } ?: "Could not load channels"
+                message = channelErrorCode?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.thread_composer_load_channels_failed)
             )
         }
 
@@ -1654,14 +1658,48 @@ private fun ComposerSuggestionPanelContent(
     }
 }
 
+@Composable
 private fun ThreadComposerSurface.memberSuggestionTitle(): String? =
     if (!memberSuggestionHeadersVisible) {
         null
     } else {
         when (kind) {
-            KuiklyThreadSurfaceKind.ReplyThread -> "IN PARENT CHANNEL"
-            else -> "IN THIS CHANNEL"
+            KuiklyThreadSurfaceKind.ReplyThread -> stringResource(MR.strings.thread_composer_members_parent_channel)
+            else -> stringResource(MR.strings.thread_composer_members_this_channel)
         }
+    }
+
+@Composable
+private fun ThreadComposerSurface.localizedMentionScopeChannelLabel(): String =
+    mentionChannelLabel.toComposerChannelMentionLabel()
+        ?: stringResource(MR.strings.thread_composer_scope_this_channel)
+
+@Composable
+private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
+    val normalized = rawPlaceholder.trim()
+    return when {
+        normalized == "Message" -> stringResource(MR.strings.thread_composer_placeholder_message)
+        normalized == "Reply in thread" -> stringResource(MR.strings.thread_composer_placeholder_reply)
+        normalized.startsWith("Message @") ->
+            stringResource(
+                MR.strings.thread_composer_placeholder_dm,
+                normalized.removePrefix("Message @")
+            )
+        normalized.startsWith("Message #") ->
+            stringResource(
+                MR.strings.thread_composer_placeholder_channel,
+                normalized.removePrefix("Message #")
+            )
+        else -> rawPlaceholder
+    }
+}
+
+@Composable
+private fun localizedThreadComposerStatusLabel(status: String): String =
+    if (status == "Composer payload parse failed") {
+        stringResource(MR.strings.thread_composer_payload_failed)
+    } else {
+        status
     }
 
 internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
@@ -1809,6 +1847,32 @@ internal fun KuiklyPendingMentionActionItem.pendingMentionActionDescription(
 }
 
 @Composable
+private fun KuiklyPendingMentionActionItem.localizedPendingMentionActionDescription(
+    channelLabel: String,
+    localState: String?
+): String {
+    val target = targetLabel()
+    if (localState == "added") {
+        return stringResource(MR.strings.thread_composer_mention_added, target, channelLabel)
+    }
+    if (localState == "notified") {
+        return stringResource(MR.strings.thread_composer_mention_notified, target, channelLabel)
+    }
+    val actionHint =
+        when {
+            supportsMentionAction("invite") && supportsMentionAction("notify") ->
+                stringResource(MR.strings.thread_composer_mention_add_or_notify, channelLabel)
+            supportsMentionAction("invite") ->
+                stringResource(MR.strings.thread_composer_mention_add_hint, channelLabel)
+            supportsMentionAction("notify") ->
+                stringResource(MR.strings.thread_composer_mention_notify_hint)
+            else ->
+                stringResource(MR.strings.thread_composer_mention_dismiss_hint)
+        }
+    return stringResource(MR.strings.thread_composer_mention_not_in_channel, target, channelLabel, actionHint)
+}
+
+@Composable
 private fun ComposerMemberSuggestionPanel(
     title: String?,
     showMembershipSections: Boolean,
@@ -1842,7 +1906,24 @@ private fun ComposerMemberSuggestionPanel(
         }
         return
     }
-    val panelEntries = composerMemberSuggestionPanelEntries(title, members)
+    val localizedParentChannelTitle = stringResource(MR.strings.thread_composer_members_parent_channel)
+    val localizedNotInParentChannelTitle = stringResource(MR.strings.thread_composer_members_not_parent_channel)
+    val localizedNotInThisChannelTitle = stringResource(MR.strings.thread_composer_members_not_this_channel)
+    val panelEntries =
+        composerMemberSuggestionPanelEntries(
+            title = title,
+            members = members,
+            inThreadTitle = stringResource(MR.strings.thread_composer_members_this_thread),
+            inThisChannelTitle = stringResource(MR.strings.thread_composer_members_this_channel),
+            notInParentChannelTitle = localizedNotInParentChannelTitle,
+            notInThisChannelTitle = localizedNotInThisChannelTitle,
+            notInScopeTitle =
+                if (title == localizedParentChannelTitle) {
+                    localizedNotInParentChannelTitle
+                } else {
+                    localizedNotInThisChannelTitle
+                }
+        )
     val clampedSelectedIndex = threadComposerSuggestionSelectedIndex(selectedIndex, panelEntries.selectableCount)
     ComposerSuggestionPanel(
         title = panelEntries.title,
@@ -1894,7 +1975,12 @@ private data class ComposerMemberSuggestionPanelEntry(
 
 private fun composerMemberSuggestionPanelEntries(
     title: String?,
-    members: List<KuiklyComposerMemberItem>
+    members: List<KuiklyComposerMemberItem>,
+    inThreadTitle: String = "IN THIS THREAD",
+    inThisChannelTitle: String = "IN THIS CHANNEL",
+    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
+    notInThisChannelTitle: String = "NOT IN THIS CHANNEL",
+    notInScopeTitle: String? = null
 ): ComposerMemberSuggestionPanelModel {
     val groups = members.composerMemberSuggestionGroups()
     val entries = mutableListOf<ComposerMemberSuggestionPanelEntry>()
@@ -1917,7 +2003,7 @@ private fun composerMemberSuggestionPanelEntries(
         entries +=
             ComposerMemberSuggestionPanelEntry(
                 key = "mention-channel-header",
-                headerText = title ?: "IN THIS CHANNEL",
+                headerText = title ?: inThisChannelTitle,
                 topDivider = true
             )
     }
@@ -1926,23 +2012,31 @@ private fun composerMemberSuggestionPanelEntries(
         entries +=
             ComposerMemberSuggestionPanelEntry(
                 key = "not-in-mention-channel-header",
-                headerText = title.notInMentionScopeHeader(),
+                headerText =
+                    notInScopeTitle
+                        ?: title.notInMentionScopeHeader(
+                            notInParentChannelTitle = notInParentChannelTitle,
+                            notInThisChannelTitle = notInThisChannelTitle
+                        ),
                 topDivider = entries.isNotEmpty()
             )
     }
     addRows(prefix = "not-in-mention-channel", rows = groups.notInMentionChannel, inChannel = false)
     return ComposerMemberSuggestionPanelModel(
-        title = if (hasThreadSection) "IN THIS THREAD" else title,
+        title = if (hasThreadSection) inThreadTitle else title,
         entries = entries,
         selectableCount = selectableIndex
     )
 }
 
-private fun String?.notInMentionScopeHeader(): String =
+private fun String?.notInMentionScopeHeader(
+    notInParentChannelTitle: String = "NOT IN PARENT CHANNEL",
+    notInThisChannelTitle: String = "NOT IN THIS CHANNEL"
+): String =
     when (this) {
-        "IN PARENT CHANNEL" -> "NOT IN PARENT CHANNEL"
-        "IN THIS CHANNEL" -> "NOT IN THIS CHANNEL"
-        else -> "NOT IN THIS CHANNEL"
+        "IN PARENT CHANNEL" -> notInParentChannelTitle
+        "IN THIS CHANNEL" -> notInThisChannelTitle
+        else -> notInThisChannelTitle
     }
 
 @Composable
@@ -2248,7 +2342,7 @@ private fun PendingMentionActionRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = action.pendingMentionActionDescription(channelLabel, localState),
+                    text = action.localizedPendingMentionActionDescription(channelLabel, localState),
                     style = SlockType.Caption.copy(color = mutedColor),
                     color = mutedColor,
                     maxLines = 3,
@@ -2263,14 +2357,18 @@ private fun PendingMentionActionRow(
         ) {
             if (localState == "added") {
                 ComposerTextChip(
-                    "✓ Added",
+                    stringResource(MR.strings.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     onClick = {}
                 )
             } else if (canInvite) {
                 ComposerTextChip(
-                    if (executingState == "added") "Adding" else "Add",
+                    if (executingState == "added") {
+                        stringResource(MR.strings.thread_composer_mention_adding_chip)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_add_chip)
+                    },
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
                     onClick = onInvite
@@ -2278,21 +2376,25 @@ private fun PendingMentionActionRow(
             }
             if (localState == "notified") {
                 ComposerTextChip(
-                    "✓ Notified",
+                    stringResource(MR.strings.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     onClick = {}
                 )
             } else if (canNotify) {
                 ComposerTextChip(
-                    if (executingState == "notified") "Notifying" else "Notify",
+                    if (executingState == "notified") {
+                        stringResource(MR.strings.thread_composer_mention_notifying_chip)
+                    } else {
+                        stringResource(MR.strings.thread_composer_mention_notify_chip)
+                    },
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
                     onClick = onNotify
                 )
             }
             ComposerTextChip(
-                "Dismiss",
+                stringResource(MR.strings.common_dismiss),
                 variant = ComposerTextChipVariant.MutedText,
                 enabled = !executing,
                 onClick = onDismiss
@@ -2425,7 +2527,8 @@ private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentIte
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = attachment.mimeType?.takeIf { it.isNotBlank() } ?: "file",
+                text = attachment.mimeType?.takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.thread_composer_attachment_file),
                 style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -2453,7 +2556,7 @@ private fun ComposerAttachmentUploadingOverlay(attachment: KuiklyPendingAttachme
         ) {
             SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = "#FF000000", spinning = true)
             Text(
-                text = if (progress > 0) "$progress%" else "Uploading",
+                text = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1
@@ -2497,14 +2600,14 @@ private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Upload failed",
+            text = stringResource(MR.strings.thread_composer_attachment_upload_failed),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = "Tap to retry",
+            text = stringResource(MR.strings.thread_composer_attachment_tap_retry),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
             color = SlockColor.TextBlack,
             maxLines = 1,

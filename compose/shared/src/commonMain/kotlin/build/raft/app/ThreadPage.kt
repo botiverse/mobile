@@ -269,6 +269,7 @@ private const val ThreadComposerMentionActionFadeDelayMs = 450L
 private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
+private const val ThreadLocalizedFeedbackPlaceholder = "__RAFT_VALUE__"
 internal const val ThreadInitialMarkdownPreparseMessageCount = 80
 private const val ThreadMarkdownPreparseDebugEntryLimit = 80
 private const val ThreadAttachmentUploadConcurrencyLimit = 12
@@ -1674,10 +1675,16 @@ private val KuiklyThreadTab.icon: SlockLucideIconName
             KuiklyThreadTab.Files -> SlockLucideIconName.Paperclip
         }
 
+@Composable
 private fun KuiklyThreadTab.toSlockTabSpec(): SlockTabSpec<KuiklyThreadTab> =
     SlockTabSpec(
         key = this,
-        label = label,
+        label =
+            when (this) {
+                KuiklyThreadTab.Chat -> stringResource(MR.strings.thread_tab_chat)
+                KuiklyThreadTab.Tasks -> stringResource(MR.strings.thread_tab_tasks)
+                KuiklyThreadTab.Files -> stringResource(MR.strings.thread_tab_files)
+            },
         iconName = icon
     )
 
@@ -1830,10 +1837,12 @@ private fun ThreadPageScreen() {
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
+    val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
+    val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
     fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
         val launchPayload = nextPayload.toWireThreadLaunchPayloadOrNull()
         if (launchPayload == null) {
-            bridge.toast("Unable to open thread")
+            bridge.toast(unableToOpenThreadLabel)
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
         }
@@ -1931,7 +1940,7 @@ private fun ThreadPageScreen() {
                 sourceServerId = selectedSourceServerId
             )
             if (pageData == null) {
-                bridge.toast("Unable to open profile")
+                bridge.toast(unableToOpenProfileLabel)
                 bridge.logWarn(
                     "thread_member_profile_skip reason=missing_member memberId=$memberId " +
                     "instanceId=${currentPayload.instanceId}"
@@ -3038,8 +3047,127 @@ internal fun SharedThreadRouteContent(
         chatLayoutPreferenceStore.readImageAnnotationEnabledSync()
     fun foregroundMessageBannersEnabled(): Boolean =
         chatLayoutPreferenceStore.readForegroundMessageBannersEnabledSync()
+    val actionCardSuccessLabels =
+        mapOf(
+            "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
+            "agent:create" to stringResource(MR.strings.thread_action_card_success_agent),
+            "channel:add_member" to stringResource(MR.strings.thread_action_card_success_members),
+            "integration:approve_agent_login" to stringResource(MR.strings.thread_action_card_login_approved)
+        )
+    val actionCardFailureLabels =
+        mapOf(
+            "channel:create" to stringResource(MR.strings.thread_action_card_failure_channel),
+            "agent:create" to stringResource(MR.strings.thread_action_card_failure_agent),
+            "channel:add_member" to stringResource(MR.strings.thread_action_card_failure_members),
+            "integration:approve_agent_login" to stringResource(MR.strings.thread_action_card_failure_login)
+        )
+    val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
+    val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
+    val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
+    val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
+    val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
+    val unableToLoadImageLabel = stringResource(MR.strings.thread_error_load_image)
+    val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
+    val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
+    val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
+    val attachmentUploadFailedDetailTemplate =
+        stringResource(MR.strings.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
+    val unableToOpenRepliesLabel = stringResource(MR.strings.thread_error_open_replies)
+    val unableToOpenParentMessageLabel = stringResource(MR.strings.thread_error_open_parent_message)
+    val unableToOpenTaskLabel = stringResource(MR.strings.thread_error_open_task)
+    val unableToOpenTargetTemplate =
+        stringResource(MR.strings.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
+    val unableToOpenTaskNumberTemplate =
+        stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+    val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
+    val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
+    val copiedLabel = stringResource(MR.strings.thread_feedback_copied)
+    val linksCopiedLabel = stringResource(MR.strings.thread_feedback_links_copied)
+    val forwardNeedsApiTemplate =
+        stringResource(
+            MR.strings.thread_forward_needs_api,
+            ThreadLocalizedFeedbackPlaceholder,
+            "__RAFT_TARGET__"
+        )
+    val forwardCompletedTemplate =
+        stringResource(
+            MR.strings.thread_forward_completed,
+            ThreadLocalizedFeedbackPlaceholder,
+            "__RAFT_TARGET__"
+        )
+    val forwardJoinFirstTemplate =
+        stringResource(MR.strings.thread_forward_join_first, ThreadLocalizedFeedbackPlaceholder)
+    val forwardGroupUnavailableLabel = stringResource(MR.strings.thread_forward_group_unavailable)
+    val forwardMultiSelectUnavailableLabel = stringResource(MR.strings.thread_forward_multi_select_unavailable)
+    val unableToCopyLinkLabel = stringResource(MR.strings.thread_error_copy_link)
+    val noTextToSelectLabel = stringResource(MR.strings.thread_error_no_text_select)
+    val followedThreadLabel = stringResource(MR.strings.thread_feedback_followed)
+    val unableToFollowThreadLabel = stringResource(MR.strings.thread_error_follow)
+    val unfollowedThreadLabel = stringResource(MR.strings.thread_feedback_unfollowed)
+    val unableToUnfollowThreadLabel = stringResource(MR.strings.thread_error_unfollow)
+    val searchUnavailableLabel = stringResource(MR.strings.thread_error_search_unavailable)
+    val actionUnavailableLabel = stringResource(MR.strings.thread_error_action_unavailable)
+    val actionUnsupportedLabel = stringResource(MR.strings.thread_error_action_unsupported)
+    val unableToUpdateReactionLabel = stringResource(MR.strings.thread_error_update_reaction)
+    val commentSourceUnavailableLabel = stringResource(MR.strings.thread_error_comment_source)
+    val memberNotFoundTemplate =
+        stringResource(MR.strings.thread_error_member_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val memberAddedLabel = stringResource(MR.strings.thread_feedback_member_added)
+    val unableToAddMemberLabel = stringResource(MR.strings.thread_error_add_member)
+    val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
+    val unableToRemoveMemberLabel = stringResource(MR.strings.thread_error_remove_member)
+    val visibilityNotWiredLabel = stringResource(MR.strings.thread_error_visibility_not_wired)
+    val channelArchivedLabel = stringResource(MR.strings.thread_feedback_channel_archived)
+    val unableToArchiveChannelLabel = stringResource(MR.strings.thread_error_archive_channel)
+    val channelDeletedLabel = stringResource(MR.strings.thread_feedback_channel_deleted)
+    val unableToDeleteChannelLabel = stringResource(MR.strings.thread_error_delete_channel)
+    val unableToConvertMessageLabel = stringResource(MR.strings.thread_error_convert_message)
+    val taskCreatedLabel = stringResource(MR.strings.thread_feedback_task_created)
+    val unsupportedTaskStatusLabel = stringResource(MR.strings.thread_error_task_status_unsupported)
+    val taskUpdatedLabel = stringResource(MR.strings.thread_feedback_task_updated)
+    val unableToUpdateTaskLabel = stringResource(MR.strings.thread_error_update_task)
+    val unableToJoinChannelLabel = stringResource(MR.strings.thread_error_join_channel)
+    val joinedChannelLabel = stringResource(MR.strings.thread_feedback_joined_channel)
+    val attachmentRetryUnavailableLabel = stringResource(MR.strings.thread_error_attachment_retry)
+    val mergedForwardModeLabel = stringResource(MR.strings.thread_forward_mode_merged)
+    val individualForwardModeLabel = stringResource(MR.strings.thread_forward_mode_individual)
+    val imageSavedLabel = stringResource(MR.strings.thread_feedback_image_saved)
+    val unableToExportImageLabel = stringResource(MR.strings.thread_error_export_image)
+    val unableToForwardLabel = stringResource(MR.strings.thread_error_forward)
+    val unableToSaveMessageLabel = stringResource(MR.strings.thread_error_save_message)
+    val unableToRemoveSavedMessageLabel = stringResource(MR.strings.thread_error_remove_saved_message)
+    val attachmentSkippedOneLabel = stringResource(MR.strings.thread_attachment_skipped_one)
+    val attachmentSkippedManyTemplate =
+        stringResource(MR.strings.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
+    fun localizedAttachmentUploadFailedDetail(detail: String): String =
+        attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
+    fun localizedUnableToOpenTarget(target: String): String =
+        unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
+        unableToOpenTaskNumberTemplate.replace(ThreadLocalizedFeedbackPlaceholder, taskNumber.toString())
+    fun localizedForwardModeLabel(mode: String?): String =
+        if (mode?.trim()?.lowercase() == ThreadForwardSelectionMode.Individual.wireValue) {
+            individualForwardModeLabel
+        } else {
+            mergedForwardModeLabel
+        }
+    fun localizedForwardNeedsApi(mode: String, target: String): String =
+        forwardNeedsApiTemplate
+            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
+            .replace("__RAFT_TARGET__", target)
+    fun localizedForwardCompleted(mode: String, target: String): String =
+        forwardCompletedTemplate
+            .replace(ThreadLocalizedFeedbackPlaceholder, mode)
+            .replace("__RAFT_TARGET__", target)
+    fun localizedForwardJoinFirst(target: String): String =
+        forwardJoinFirstTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedMemberNotFound(target: String): String =
+        memberNotFoundTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
+    fun localizedAttachmentSkippedMany(count: Int): String =
+        attachmentSkippedManyTemplate.replace(ThreadLocalizedFeedbackPlaceholder, count.toString())
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -3608,7 +3736,7 @@ internal fun SharedThreadRouteContent(
         if (!attachmentCommentsEnabled) return
         val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
         if (target == null) {
-            bridge.toast("Comments are unavailable")
+            bridge.toast(commentsUnavailableLabel)
             return
         }
         target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
@@ -3658,7 +3786,7 @@ internal fun SharedThreadRouteContent(
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.copy(sending = false, errorCode = code)
-                    bridge.toast("Unable to send comment")
+                    bridge.toast(unableToSendCommentLabel)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -3666,7 +3794,7 @@ internal fun SharedThreadRouteContent(
                         attachmentCommentsDialogState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.copy(sending = false, errorCode = result.blocker.code)
-                    bridge.toast("Unable to send comment")
+                    bridge.toast(unableToSendCommentLabel)
                 }
             }
         }
@@ -3701,7 +3829,7 @@ internal fun SharedThreadRouteContent(
                                     errorCode = code
                                 )
                             }
-                    bridge.toast("Unable to resolve comment")
+                    bridge.toast(unableToResolveCommentLabel)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -3714,7 +3842,7 @@ internal fun SharedThreadRouteContent(
                                     errorCode = result.blocker.code
                                 )
                             }
-                    bridge.toast("Unable to resolve comment")
+                    bridge.toast(unableToResolveCommentLabel)
                 }
             }
         }
@@ -3767,7 +3895,7 @@ internal fun SharedThreadRouteContent(
                             )
                         }
                     if (imagePreviewState?.current?.id == attachmentId && imagePreviewState?.current?.thumbnailUrl.isNullOrBlank()) {
-                        bridge.toast("Unable to load image")
+                        bridge.toast(unableToLoadImageLabel)
                     }
                 }
             }
@@ -3834,7 +3962,7 @@ internal fun SharedThreadRouteContent(
                             downloadId = downloadId
                         ))
                 if (result.status != "cancelled") {
-                    bridge.toast(result.message.ifBlank { "Unable to open attachment" })
+                    bridge.toast(result.message.ifBlank { unableToOpenAttachmentLabel })
                 }
             }
         }
@@ -3910,10 +4038,10 @@ internal fun SharedThreadRouteContent(
                         when (attachment.status) {
                             "failed" ->
                                 listOf(
-                                    "Attachment upload failed",
+                                    attachmentUploadFailedLabel,
                                     threadFailureReasonLabel(attachment.errorCode)
                                 ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
-                            else -> "Preparing attachment preview..."
+                            else -> preparingAttachmentPreviewLabel
                         },
                     messageDesc = null,
                     error =
@@ -4233,15 +4361,16 @@ internal fun SharedThreadRouteContent(
                 )
             }
             bridge.toast(
-                "Attachment upload failed: " +
-                    (threadUserFacingErrorCodeLabel(errorCode) ?: "Something went wrong. Please try again.")
+            localizedAttachmentUploadFailedDetail(
+                threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+            )
             )
         }
     }
     fun uploadComposerAttachmentFiles(files: List<PlatformFile>, replaceAttachmentId: String? = null) {
         val channelId = composerSurface.sendChannelId
         if (channelId == null) {
-            bridge.toast("Attachment picker unavailable")
+            bridge.toast(attachmentPickerUnavailableLabel)
             return
         }
         val activeUploadFileRefs =
@@ -4578,7 +4707,7 @@ internal fun SharedThreadRouteContent(
                             filesViewModel.state.value.payload.items.firstOrNull { it.attachmentId == itemId }
                         val sourceMessageId = fileItem?.threadFileSourceFocusMessageId()
                         if (sourceMessageId == null) {
-                            bridge.toast("File source unavailable")
+                            bridge.toast(fileSourceUnavailableLabel)
                             return@ThreadPageContent
                         }
                         threadViewModel.dispatch(
@@ -4595,45 +4724,45 @@ internal fun SharedThreadRouteContent(
                     val body = renderedTimelineSlice.threadMessageById(itemId)?.body.orEmpty()
                     if (body.isNotBlank()) {
                         bridge.copyToPasteboard(body)
-                        bridge.toast("Copied")
+                        bridge.toast(copiedLabel)
                     }
                 }
                 action == "copyShareSelectionMarkdown" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast("Copied")
+                    bridge.toast(copiedLabel)
                 }
                 action == "copyShareSelectionLinks" && !itemId.isNullOrBlank() -> {
                     bridge.copyToPasteboard(itemId)
-                    bridge.toast("Links copied")
+                    bridge.toast(linksCopiedLabel)
                 }
                 action == "shareSelectionImageSaved" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Image saved")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: imageSavedLabel)
                 }
                 action == "shareSelectionExportFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to export image")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToExportImageLabel)
                 }
                 action == "forwardTargetSelected" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = tab.threadForwardSelectionModeLabel()
-                    bridge.toast("$modeLabel forwarding to $target needs API support")
+                    val modeLabel = localizedForwardModeLabel(tab)
+                    bridge.toast(localizedForwardNeedsApi(modeLabel, target))
                 }
                 action == "forwardMessagesSent" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "selected target"
-                    val modeLabel = tab.threadForwardSelectionModeLabel()
-                    bridge.toast("$modeLabel forwarded to $target")
+                    val modeLabel = localizedForwardModeLabel(tab)
+                    bridge.toast(localizedForwardCompleted(modeLabel, target))
                 }
                 action == "forwardMessagesFailed" -> {
-                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: "Unable to forward")
+                    bridge.toast(itemId?.takeIf { it.isNotBlank() } ?: unableToForwardLabel)
                 }
                 action == "forwardJoinConfirmationRequired" -> {
                     val target = itemId?.takeIf { it.isNotBlank() } ?: "that channel"
-                    bridge.toast("Join $target before forwarding")
+                    bridge.toast(localizedForwardJoinFirst(target))
                 }
                 action == "forwardCreateGroupRequested" -> {
-                    bridge.toast("Create group forwarding needs API support")
+                    bridge.toast(forwardGroupUnavailableLabel)
                 }
                 action == "forwardMultiSelectRequested" -> {
-                    bridge.toast("Multi-select forwarding needs API support")
+                    bridge.toast(forwardMultiSelectUnavailableLabel)
                 }
                 action == "copyMessageLink" && !itemId.isNullOrBlank() -> {
                     val message =
@@ -4647,15 +4776,15 @@ internal fun SharedThreadRouteContent(
                         }
                     if (permalink != null) {
                         bridge.copyToPasteboard(permalink)
-                        bridge.toast("Copied")
+                        bridge.toast(copiedLabel)
                     } else {
-                        bridge.toast("Unable to copy link")
+                        bridge.toast(unableToCopyLinkLabel)
                     }
                 }
                 action == "openSelectMessageText" && !itemId.isNullOrBlank() -> {
                     val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message?.body.isNullOrBlank()) {
-                        bridge.toast("No text to select")
+                        bridge.toast(noTextToSelectLabel)
                     } else {
                         textSelectionMessage = message
                     }
@@ -4664,7 +4793,7 @@ internal fun SharedThreadRouteContent(
                     val parentMessage =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
-                        bridge.toast("Unable to open replies")
+                        bridge.toast(unableToOpenRepliesLabel)
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
@@ -4719,15 +4848,15 @@ internal fun SharedThreadRouteContent(
                                             replyCount = result.data.replyCount
                                         )
                                     )
-                                    bridge.toast("Followed thread")
+                                    bridge.toast(followedThreadLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to follow thread")
+                                    bridge.toast(unableToFollowThreadLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to follow thread")
+                                    bridge.toast(unableToFollowThreadLabel)
                                 }
                             }
                         } finally {
@@ -4752,15 +4881,15 @@ internal fun SharedThreadRouteContent(
                                             followed = false
                                         )
                                     )
-                                    bridge.toast("Unfollowed thread")
+                                    bridge.toast(unfollowedThreadLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to unfollow thread")
+                                    bridge.toast(unableToUnfollowThreadLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to unfollow thread")
+                                    bridge.toast(unableToUnfollowThreadLabel)
                                 }
                             }
                         } finally {
@@ -4775,7 +4904,7 @@ internal fun SharedThreadRouteContent(
                                 ?: renderedThread.originParentMessageId?.takeIf { it.isNotBlank() }
                                 ?: renderedThread.parentMessageId?.takeIf { it.isNotBlank() }
                         if (parentMessageId.isNullOrBlank()) {
-                            bridge.toast("Unable to open parent message")
+                            bridge.toast(unableToOpenParentMessageLabel)
                             return@ThreadPageContent
                         }
                         val loadingPayload = renderedThread.parentMessageContextLoadingPayload(parentMessageId)
@@ -4790,7 +4919,7 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openChannelSearch" -> {
                     if (!pager.openThreadChannelSearch(renderedThread)) {
-                        bridge.toast("Search is unavailable for this thread")
+                        bridge.toast(searchUnavailableLabel)
                     }
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
@@ -4811,12 +4940,12 @@ internal fun SharedThreadRouteContent(
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
-                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
+                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
                             }
                             is DataResult.NoPermission -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
+                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
                             }
                         }
                     }
@@ -4828,11 +4957,11 @@ internal fun SharedThreadRouteContent(
                     val actionCard =
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.threadActionCard()
                     if (actionCard == null) {
-                        bridge.toast("Action is no longer available")
+                        bridge.toast(actionUnavailableLabel)
                         return@ThreadPageContent
                     }
                     if (!actionCard.isSupportedCommitAction()) {
-                        bridge.toast("Action is not supported yet")
+                        bridge.toast(actionUnsupportedLabel)
                         return@ThreadPageContent
                     }
                     if (actionCard.type.equals("agent:create", ignoreCase = true)) {
@@ -4854,15 +4983,15 @@ internal fun SharedThreadRouteContent(
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(itemId, result.data)
                                     )
-                                    bridge.toast(actionCard.actionCardSuccessToast())
+                                    bridge.toast(actionCardSuccessLabels[actionCard.type] ?: genericActionCardSuccessLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast(actionCard.actionCardFailureToast())
+                                    bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(actionCard.actionCardFailureToast())
+                                    bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
                                 }
                             }
                         } finally {
@@ -4899,14 +5028,14 @@ internal fun SharedThreadRouteContent(
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast("Unable to update reaction")
+                                    bridge.toast(unableToUpdateReactionLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast("Unable to update reaction")
+                                    bridge.toast(unableToUpdateReactionLabel)
                                 }
                             }
                         } finally {
@@ -4917,7 +5046,7 @@ internal fun SharedThreadRouteContent(
                 action == "openTask" && !itemId.isNullOrBlank() -> {
                     val parentMessage = renderedTimelineSlice.findTaskParentMessage(itemId, linkedTasksProjection)
                     if (parentMessage == null) {
-                        bridge.toast("Unable to open task")
+                        bridge.toast(unableToOpenTaskLabel)
                         return@ThreadPageContent
                     }
                     val parentReplyMetadata = replyMetadataByParentId.threadReplyMetadataFor(parentMessage)
@@ -4951,7 +5080,7 @@ internal fun SharedThreadRouteContent(
                 action == "openMarkdownTaskNumber" && !itemId.isNullOrBlank() -> {
                     val taskNumber = itemId.removePrefix("#").trim().toIntOrNull()
                     if (taskNumber == null || currentServerId.isNullOrBlank()) {
-                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -4983,7 +5112,7 @@ internal fun SharedThreadRouteContent(
                                     )
                             }
                             MarkdownTaskNumberOpenResult.NotFound -> {
-                                bridge.toast("Unable to open #$taskNumber")
+                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                             MarkdownTaskNumberOpenResult.AuthRequired -> {
                                 routeAuthRequired(
@@ -4991,7 +5120,7 @@ internal fun SharedThreadRouteContent(
                                 )
                             }
                             MarkdownTaskNumberOpenResult.Failed -> {
-                                bridge.toast("Unable to open #$taskNumber")
+                                bridge.toast(localizedUnableToOpenTaskNumber(taskNumber))
                             }
                         }
                     }
@@ -5002,7 +5131,7 @@ internal fun SharedThreadRouteContent(
                     val hostMessageId = commentRef?.hostMessageId?.takeIf { it.isNotBlank() }
                     val loadingPayload = commentRef?.let { renderedThread.commentHostLoadingPayload(it) }
                     if (hostMessageId == null || loadingPayload == null) {
-                        bridge.toast("Comment source unavailable")
+                        bridge.toast(commentSourceUnavailableLabel)
                         return@ThreadPageContent
                     }
                     bridge.log(
@@ -5040,7 +5169,7 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     if (serverMembersStore == null || threadMembersServerId == null) {
-                        bridge.toast("Unable to open ${itemId.take(32)}")
+                        bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -5076,7 +5205,7 @@ internal fun SharedThreadRouteContent(
                                 serverMembers = serverMembers
                             )
                         if (target == null) {
-                            bridge.toast("No member found for ${itemId.take(32)}")
+                            bridge.toast(localizedMemberNotFound(itemId.take(32)))
                         } else {
                             onOpenMemberProfile(renderedThread, renderedTimelineSlice, target.memberId, target.memberKind, target.sourceServerId)
                         }
@@ -5086,7 +5215,7 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         val loadingPayload = dataSource.markdownChannelLaunchPayload(renderedThread, itemId)
                         if (loadingPayload == null) {
-                            bridge.toast("Unable to open #${itemId.removePrefix("#").take(31)}")
+                            bridge.toast(localizedUnableToOpenTarget("#${itemId.removePrefix("#").take(31)}"))
                         } else {
                             onOpenThreadPayload(loadingPayload)
                         }
@@ -5113,10 +5242,10 @@ internal fun SharedThreadRouteContent(
                                 onOpenThreadPayload(result.data)
                             }
                             is DataResult.Empty -> {
-                                bridge.toast("Unable to open ${itemId.take(32)}")
+                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                             }
                             is DataResult.Error -> {
-                                bridge.toast("Unable to open ${itemId.take(32)}")
+                                bridge.toast(localizedUnableToOpenTarget(itemId.take(32)))
                             }
                             is DataResult.NoPermission -> {
                                 routeAuthRequired(result)
@@ -5140,7 +5269,7 @@ internal fun SharedThreadRouteContent(
                                         canAddMembers = result.data.canAddMembers
                                     )
                                 )
-                                bridge.toast("Member added")
+                                bridge.toast(memberAddedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -5148,7 +5277,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast("Unable to add member")
+                                bridge.toast(unableToAddMemberLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -5156,7 +5285,7 @@ internal fun SharedThreadRouteContent(
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast("Unable to add member")
+                                bridge.toast(unableToAddMemberLabel)
                             }
                         }
                     }
@@ -5182,7 +5311,7 @@ internal fun SharedThreadRouteContent(
                                         canAddMembers = result.data.canAddMembers
                                     )
                                 )
-                                bridge.toast("Member removed")
+                                bridge.toast(memberRemovedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -5194,7 +5323,7 @@ internal fun SharedThreadRouteContent(
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast("Unable to remove member")
+                                bridge.toast(unableToRemoveMemberLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -5206,27 +5335,27 @@ internal fun SharedThreadRouteContent(
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast("Unable to remove member")
+                                bridge.toast(unableToRemoveMemberLabel)
                             }
                         }
                     }
                 }
                 action == "settingsAction" && itemId == "visibility" -> {
-                    bridge.toast("Channel visibility updates are not wired yet")
+                    bridge.toast(visibilityNotWiredLabel)
                 }
                 action == "settingsAction" && itemId == "archive" -> {
                     val previousPayload = renderedThread
                     coroutineScope.launch {
                         when (val result = dataSource.archiveChannel(previousPayload)) {
                             is DataResult.Content -> {
-                                bridge.toast("Channel archived")
+                                bridge.toast(channelArchivedLabel)
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to archive channel")
+                            is DataResult.Error -> bridge.toast(unableToArchiveChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to archive channel")
+                                bridge.toast(unableToArchiveChannelLabel)
                             }
                         }
                     }
@@ -5236,14 +5365,14 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         when (val result = dataSource.deleteChannel(previousPayload)) {
                             is DataResult.Content -> {
-                                bridge.toast("Channel deleted")
+                                bridge.toast(channelDeletedLabel)
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to delete channel")
+                            is DataResult.Error -> bridge.toast(unableToDeleteChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to delete channel")
+                                bridge.toast(unableToDeleteChannelLabel)
                             }
                         }
                     }
@@ -5254,7 +5383,7 @@ internal fun SharedThreadRouteContent(
                     }
                     val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
                     if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
-                        bridge.toast("Unable to convert message")
+                        bridge.toast(unableToConvertMessageLabel)
                         return@ThreadPageContent
                     }
                     pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
@@ -5263,15 +5392,15 @@ internal fun SharedThreadRouteContent(
                             when (val result = dataSource.convertMessageToTask(itemId)) {
                                 is DataResult.Content -> {
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(result.data))
-                                    bridge.toast("Task created")
+                                    bridge.toast(taskCreatedLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast("Unable to convert message")
+                                    bridge.toast(unableToConvertMessageLabel)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast("Unable to convert message")
+                                    bridge.toast(unableToConvertMessageLabel)
                                 }
                             }
                         } finally {
@@ -5282,7 +5411,7 @@ internal fun SharedThreadRouteContent(
                 action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     val status = tab.toSharedThreadTaskStatus()
                     if (status == null) {
-                        bridge.toast("Unsupported task status")
+                        bridge.toast(unsupportedTaskStatusLabel)
                         return@ThreadPageContent
                     }
                     val previousPayload = renderedThread
@@ -5294,21 +5423,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5323,21 +5452,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5352,21 +5481,21 @@ internal fun SharedThreadRouteContent(
                                 result.data?.let { task ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskUpdate(task))
                                 }
-                                bridge.toast("Task updated")
+                                bridge.toast(taskUpdatedLabel)
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
                                 previousStatusLabel?.toSharedThreadTaskStatus()?.let { previousStatus ->
                                     tasksViewModel?.dispatch(SharedTasksRouteIntent.ApplyTaskStatus(itemId, previousStatus))
                                 }
-                                bridge.toast("Unable to update task")
+                                bridge.toast(unableToUpdateTaskLabel)
                             }
                         }
                     }
@@ -5374,7 +5503,7 @@ internal fun SharedThreadRouteContent(
                 action == "joinChannel" -> {
                     val channelId = renderedThread.joinChannelTargetId()
                     if (channelId == null) {
-                        bridge.toast("Unable to join channel")
+                        bridge.toast(unableToJoinChannelLabel)
                         return@ThreadPageContent
                     }
                     coroutineScope.launch {
@@ -5382,13 +5511,13 @@ internal fun SharedThreadRouteContent(
                             is DataResult.Content -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
                                 realtimeEvents.joinChannel(result.data.channelId.value)
-                                bridge.toast("Joined channel")
+                                bridge.toast(joinedChannelLabel)
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast("Unable to join channel")
+                            is DataResult.Error -> bridge.toast(unableToJoinChannelLabel)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to join channel")
+                                bridge.toast(unableToJoinChannelLabel)
                             }
                         }
                     }
@@ -5683,7 +5812,7 @@ internal fun SharedThreadRouteContent(
                     coroutineScope.launch {
                         val channelId = composerSurface.sendChannelId
                         if (channelId == null) {
-                            bridge.toast("Attachment picker unavailable")
+                            bridge.toast(attachmentPickerUnavailableLabel)
                             return@launch
                         }
                         val response =
@@ -5702,12 +5831,12 @@ internal fun SharedThreadRouteContent(
                             when {
                                 errorCode != null ->
                                     bridge.toast(
-                                        "Attachment upload failed: " +
-                                            (threadUserFacingErrorCodeLabel(errorCode)
-                                                ?: "Something went wrong. Please try again.")
+                                        localizedAttachmentUploadFailedDetail(
+                                            threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+                                        )
                                     )
                                 response == null ->
-                                    bridge.toast("Attachment picker unavailable")
+                                    bridge.toast(attachmentPickerUnavailableLabel)
                             }
                             return@launch
                         }
@@ -5715,9 +5844,9 @@ internal fun SharedThreadRouteContent(
                         if (skippedCount > 0) {
                             bridge.toast(
                                 if (skippedCount == 1) {
-                                    "One attachment could not be read and was skipped."
+                                    attachmentSkippedOneLabel
                                 } else {
-                                    "$skippedCount attachments could not be read and were skipped."
+                                    localizedAttachmentSkippedMany(skippedCount)
                                 }
                             )
                         }
@@ -5748,7 +5877,7 @@ internal fun SharedThreadRouteContent(
                             bridge.log(
                                 "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
                             )
-                            bridge.toast("Attachment retry unavailable. Remove and attach again.")
+                            bridge.toast(attachmentRetryUnavailableLabel)
                             return@ThreadPageContent
                         }
                         if (attachmentUploadJobs[id]?.isActive == true) {
@@ -5789,7 +5918,7 @@ internal fun SharedThreadRouteContent(
                 onSelect = { task ->
                     val loadingPayload = renderedThread.markdownTaskNumberLaunchPayload(task)
                     if (loadingPayload == null) {
-                        bridge.toast("Unable to open #${modalState.taskNumber}")
+                        bridge.toast(localizedUnableToOpenTaskNumber(modalState.taskNumber))
                     } else {
                         currentServerId?.let { serverId ->
                             tasksDataStore?.upsertTask(serverId, task)
@@ -5811,7 +5940,7 @@ internal fun SharedThreadRouteContent(
                 message = message,
                 onCopyAll = {
                     bridge.copyToPasteboard(message.body)
-                    bridge.toast("Copied")
+                    bridge.toast(copiedLabel)
                 },
                 onDismiss = { textSelectionMessage = null }
             )
@@ -5910,7 +6039,7 @@ internal fun SharedThreadRouteContent(
                                         SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
                                     )
                                     createAgentDialogState = null
-                                    bridge.toast(submitCard.actionCardSuccessToast())
+                                    bridge.toast(actionCardSuccessLabels[submitCard.type] ?: genericActionCardSuccessLabel)
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
@@ -5947,7 +6076,7 @@ private fun ThreadMarkdownTaskCandidateModal(
     onSelect: (TaskSummary) -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "OPEN TASK #${state.taskNumber}",
+        title = stringResource(MR.strings.thread_open_task_number, state.taskNumber),
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 392.dp,
@@ -5957,7 +6086,7 @@ private fun ThreadMarkdownTaskCandidateModal(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = state.threadMarkdownTaskCandidateHelperText(),
+                text = state.localizedThreadMarkdownTaskCandidateHelperText(),
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextBlack.copy(alpha = 0.58f)
             )
@@ -5972,7 +6101,7 @@ private fun ThreadMarkdownTaskCandidateModal(
                     item {
                         ThreadModalEmptyState(
                             title = stringResource(MR.strings.thread_state_no_tasks),
-                            detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
+                            detail = stringResource(MR.strings.thread_members_refresh_detail)
                         )
                     }
                 } else {
@@ -6031,7 +6160,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = task.threadMarkdownTaskCandidateChannelLabel(),
+                        text = task.localizedThreadMarkdownTaskCandidateChannelLabel(),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.52f),
                         maxLines = 1,
@@ -6040,14 +6169,14 @@ private fun ThreadMarkdownTaskCandidateRow(
                     )
                 }
                 Text(
-                    text = task.title.ifBlank { "Untitled task" },
+                    text = task.title.ifBlank { stringResource(MR.strings.thread_task_candidate_untitled) },
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = task.threadMarkdownTaskCandidateDetail(currentChannel),
+                    text = task.localizedThreadMarkdownTaskCandidateDetail(currentChannel),
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.48f),
                     maxLines = 1,
@@ -6069,7 +6198,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                 )
                 if (currentChannel) {
                     SlockAnchoredMetaChip(
-                        label = "Current",
+                        label = stringResource(MR.strings.thread_task_candidate_current),
                         iconName = SlockLucideIconName.Hash,
                         iconSize = 10.dp,
                         color = SlockColor.BrandYellow,
@@ -6089,14 +6218,35 @@ private fun ThreadMarkdownTaskCandidateModalState.threadMarkdownTaskCandidateHel
         else -> "Choose which #$taskNumber task to open."
     }
 
+@Composable
+private fun ThreadMarkdownTaskCandidateModalState.localizedThreadMarkdownTaskCandidateHelperText(): String =
+    when (candidates.size) {
+        0 -> stringResource(MR.strings.thread_task_candidate_none, taskNumber)
+        1 -> stringResource(MR.strings.thread_task_candidate_open_match)
+        else -> stringResource(MR.strings.thread_task_candidate_choose, taskNumber)
+    }
+
 private fun TaskSummary.threadMarkdownTaskCandidateChannelLabel(): String =
     channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" } ?: "Unknown channel"
+
+@Composable
+private fun TaskSummary.localizedThreadMarkdownTaskCandidateChannelLabel(): String =
+    channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" }
+        ?: stringResource(MR.strings.thread_task_candidate_unknown_channel)
 
 private fun TaskSummary.threadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
     if (currentChannel) {
         "Current conversation"
     } else {
         "Tap to open this task thread"
+    }
+
+@Composable
+private fun TaskSummary.localizedThreadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
+    if (currentChannel) {
+        stringResource(MR.strings.thread_task_candidate_current_conversation)
+    } else {
+        stringResource(MR.strings.thread_task_candidate_tap_open)
     }
 
 private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
@@ -6144,7 +6294,7 @@ private fun ThreadCreateAgentActionDialogHost(
         }
     SharedCreateAgentDialog(
         submitting = dialogState.submitting,
-        errorMessage = dialogState.errorCode?.let(::threadCreateAgentDialogErrorCopy),
+        errorMessage = dialogState.errorCode?.let { threadCreateAgentDialogErrorCopy(it) },
         initialName = dialogState.card.name.removePrefix("@"),
         initialDescription = dialogState.card.description.orEmpty(),
         draftHint = dialogState.card.draftHint,
@@ -6155,7 +6305,7 @@ private fun ThreadCreateAgentActionDialogHost(
             computersStore != null &&
                 (!computerServerResolved ||
                     computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
-        machinesErrorMessage = machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
+        machinesErrorMessage = machinesErrorCode?.let { threadCreateAgentMachinesErrorCopy(it) },
         onDismiss = onDismiss,
         onSubmit = onSubmit
     )
@@ -6559,7 +6709,7 @@ private fun ThreadImagePreviewOverlay(
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
-                title = "Image preview",
+                title = stringResource(MR.strings.thread_image_preview_title),
                 subtitle = null,
                 iconName = SlockLucideIconName.Image,
                 backgroundColor = SlockColor.SurfaceWhite,
@@ -6633,7 +6783,12 @@ private fun ThreadImagePreviewOverlay(
                             )
                         } else {
                             ThreadImagePreviewEmptyState(
-                                title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
+                                title =
+                                    if (failedWithoutImage) {
+                                        stringResource(MR.strings.thread_image_preview_unavailable)
+                                    } else {
+                                        stringResource(MR.strings.thread_image_preview_loading)
+                                    },
                                 detail = current.name
                             )
                         }
@@ -6686,7 +6841,7 @@ private fun ThreadImagePreviewOverlay(
                     listOf(
                         SlockRaftUiMenuItem(
                             id = ThreadAttachmentPreviewOpenWithActionId,
-                            label = "Open with...",
+                            label = stringResource(MR.strings.thread_image_preview_open_with),
                             icon = SlockLucideIconName.ExternalLink
                         )
                     ),
@@ -6741,7 +6896,7 @@ private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Loading full image...",
+            text = stringResource(MR.strings.thread_image_preview_loading_full),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
@@ -8287,7 +8442,7 @@ private fun ThreadPageContent(
                 .background(SlockColor.SurfaceWhite)
         ) {
             if (renderEarlyLoadingShell) {
-                ThreadStateMessage("Loading...", null)
+                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
             } else when (tab) {
                 KuiklyThreadTab.Chat ->
                     ThreadChatTab(
@@ -8446,7 +8601,7 @@ private fun ThreadPageContent(
             }
             if (!payload.joined) {
                 ThreadJoinFooter(
-                    label = payload.joinLabel,
+                    label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
             } else if (shareSelectionActive) {
@@ -8794,6 +8949,15 @@ private fun ThreadPageHeader(
     onTitleClick: (() -> Unit)? = null
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val localizedHeaderTitle =
+        if (
+            headerDisplay.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+            headerDisplay.title == ThreadReplyPageTitle
+        ) {
+            stringResource(MR.strings.thread_reply_title)
+        } else {
+            headerDisplay.title
+        }
     val resolvedDmPeerAvatarWireValue =
         rememberSlockMemberAvatarWireValue(
             memberAvatarResolver,
@@ -8838,7 +9002,7 @@ private fun ThreadPageHeader(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        text = headerDisplay.title,
+                        text = localizedHeaderTitle,
                         style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -9385,21 +9549,22 @@ private fun ThreadChatTab(
                     onThreadContentReady = onThreadContentReady
                 )
             } else {
-                ThreadStateMessage("Loading...", null)
+                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
             }
         "error" ->
             ThreadStateActionMessage(
-                title = "Failed to load thread",
+                title = stringResource(MR.strings.thread_error_load),
                 detail =
                     threadUserFacingErrorCodeLabel(renderConfig.errorCode)
-                        ?: "Something went wrong. Please try again.",
-                actionLabel = "Retry",
+                        ?: stringResource(MR.strings.common_error),
+                actionLabel = stringResource(MR.strings.common_retry),
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
             )
         "no_permission" ->
             ThreadStateMessage(
-                "No permission",
-                threadUserFacingErrorCodeLabel(renderConfig.errorCode) ?: "You do not have permission to view this thread."
+                stringResource(MR.strings.thread_state_no_permission),
+                threadUserFacingErrorCodeLabel(renderConfig.errorCode)
+                    ?: stringResource(MR.strings.thread_error_no_permission)
             )
         "empty" ->
             if (timelineSlice.originStatus != "none") {
@@ -9448,7 +9613,10 @@ private fun ThreadChatTab(
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
                 }
-                ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+                ThreadStateMessage(
+                    localizedThreadStateTitle(timelineSlice.emptyTitle),
+                    localizedThreadStateDetail(timelineSlice.emptyDetail)
+                )
             }
         else ->
             ThreadMessagesList(
@@ -9801,7 +9969,10 @@ private fun ThreadMessagesList(
         if (timelineSlice.status == "loading") {
             ThreadStateMessage("Loading...", null)
         } else {
-            ThreadStateMessage(timelineSlice.emptyTitle, timelineSlice.emptyDetail)
+            ThreadStateMessage(
+                localizedThreadStateTitle(timelineSlice.emptyTitle),
+                localizedThreadStateDetail(timelineSlice.emptyDetail)
+            )
         }
         return
     }
@@ -10833,7 +11004,10 @@ private fun ThreadMessagesList(
             }
             if (showReplyEmptyState) {
                 item(key = ThreadReplyEmptyListItemKey) {
-                    ThreadStateMessage(renderPayload.emptyTitle, renderPayload.emptyDetail)
+                    ThreadStateMessage(
+                        localizedThreadStateTitle(renderPayload.emptyTitle),
+                        localizedThreadStateDetail(renderPayload.emptyDetail)
+                    )
                 }
             }
             if (showReplyLoadingSkeleton) {
@@ -12217,7 +12391,7 @@ private fun ThreadBackToBottomButton(
     onClick: () -> Unit
 ) {
     SlockBrutalActionButton(
-        label = "Back to bottom",
+        label = stringResource(MR.strings.thread_action_back_to_bottom),
         onClick = onClick,
         modifier = modifier,
         backgroundColor = SlockColor.SurfaceWhite,
@@ -12475,6 +12649,14 @@ private fun ThreadMessageCard(
     onToggleLongMessage: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
+    val localizedAuthorName =
+        if (message.isOwn && message.authorName == "You") {
+            stringResource(MR.strings.thread_author_you)
+        } else {
+            message.authorName
+        }
+    val localizedTimestampLabel = localizedThreadTimestampLabel(timestampLabel)
+    val localizedCompactTimestampLabel = localizedThreadTimestampLabel(compactTimestampLabel)
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
@@ -12556,7 +12738,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatarSlot(
                         showAvatar = showAuthorChrome,
                         showTimestamp = showTimestampInAvatarSlot,
-                        timestampLabel = compactTimestampLabel,
+                        timestampLabel = localizedCompactTimestampLabel,
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = avatarWireValue,
                         status = agentStatus,
@@ -12621,7 +12803,7 @@ private fun ThreadMessageCard(
                                         }
                                 ) {
                                     Text(
-                                        text = message.authorName,
+                                        text = localizedAuthorName,
                                         style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack, lineHeight = 20.sp),
                                         color = SlockColor.TextBlack,
                                         maxLines = 1,
@@ -12645,7 +12827,7 @@ private fun ThreadMessageCard(
                                         )
                                     }
                                     if (showTimestampInHeader) {
-                                        ThreadMessageTimestampLabel(timestampLabel)
+                                        ThreadMessageTimestampLabel(localizedTimestampLabel)
                                     }
                                 }
                             }
@@ -12991,15 +13173,28 @@ private fun ThreadActionCardView(
     diagnosticsLogger: (String) -> Unit = {},
     onCommit: () -> Unit
 ) {
+    val localizedTitle = card.localizedActionCardTitle()
+    val localizedDetails = card.localizedActionCardDetails()
+    val localizedPendingLabel = card.localizedActionCardPendingLabel()
+    val localizedVerb = card.localizedActionCardVerb()
+    val localizedCommittedLabel = card.localizedActionCardCommittedLabel()
     val renderCopy =
-        remember(card, performanceKey) {
+        remember(
+            card,
+            performanceKey,
+            localizedTitle,
+            localizedDetails,
+            localizedPendingLabel,
+            localizedVerb,
+            localizedCommittedLabel
+        ) {
             val startedAt = TimeSource.Monotonic.markNow()
             ThreadActionCardRenderCopy(
-                title = card.actionCardTitle(),
-                details = card.actionCardDetails(),
-                pendingLabel = card.actionCardPendingLabel(),
-                verb = card.actionCardVerb(),
-                committedLabel = card.actionCardCommittedLabel()
+                title = localizedTitle,
+                details = localizedDetails,
+                pendingLabel = localizedPendingLabel,
+                verb = localizedVerb,
+                committedLabel = localizedCommittedLabel
             ).also { copy ->
                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
                 if (performanceKey != null && shouldLogThreadPerformance(durationMs)) {
@@ -13076,16 +13271,19 @@ private fun ThreadActionCardView(
 
 @Composable
 private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
-    val service = card.clientName?.takeIf { it.isNotBlank() } ?: "app"
-    val agent = card.agentName?.takeIf { it.isNotBlank() } ?: card.name.takeIf { it.isNotBlank() } ?: "agent"
+    val service = card.clientName?.takeIf { it.isNotBlank() }
+        ?: stringResource(MR.strings.thread_action_card_app)
+    val agent = card.agentName?.takeIf { it.isNotBlank() }
+        ?: card.name.takeIf { it.isNotBlank() }
+        ?: stringResource(MR.strings.thread_action_card_agent)
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        ThreadActionCardMetaLine(label = "Service", value = service)
-        ThreadActionCardMetaLine(label = "Agent", value = "@${agent.removePrefix("@")}")
+        ThreadActionCardMetaLine(label = stringResource(MR.strings.thread_action_card_label_service), value = service)
+        ThreadActionCardMetaLine(label = stringResource(MR.strings.thread_action_card_label_agent), value = "@${agent.removePrefix("@")}")
         Text(
-            text = "Scopes:",
+            text = stringResource(MR.strings.thread_action_card_label_scopes),
             style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
@@ -13094,9 +13292,11 @@ private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
             ThreadIntegrationScopeCard(scope)
         }
         ThreadActionCardHintBox(
-            text =
-                "${agent.removePrefix("@")} is requesting human approval to use $service. " +
-                    "Server-installed apps do not need this approval; Marketplace apps do.",
+            text = stringResource(
+                MR.strings.thread_action_card_approval_hint,
+                agent.removePrefix("@"),
+                service
+            ),
             italic = true
         )
     }
@@ -13154,7 +13354,7 @@ private fun ThreadActionCardMetaLine(label: String, value: String) {
 @Composable
 private fun ThreadIntegrationScopeCard(scope: String) {
     val normalized = scope.trim()
-    val description = integrationScopeDescription(normalized)
+    val description = localizedIntegrationScopeDescription(normalized)
     Column(
         modifier =
             Modifier
@@ -13196,7 +13396,7 @@ private fun ThreadActionCardDoneBadge() {
     ) {
         SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
-            text = "Done",
+            text = stringResource(MR.strings.common_done),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
@@ -13212,6 +13412,109 @@ private fun ThreadActionCard.actionCardVerb(): String =
         "integration:approve_agent_login" -> "Approve Login"
         else -> "Action"
     }
+
+@Composable
+private fun ThreadActionCard.localizedActionCardVerb(): String =
+    when (type) {
+        "channel:create" -> stringResource(MR.strings.thread_action_card_create_channel)
+        "agent:create" -> stringResource(MR.strings.thread_action_card_create_agent)
+        "channel:add_member" -> stringResource(MR.strings.thread_action_card_add_members)
+        "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approve_login)
+        else -> stringResource(MR.strings.thread_action_card_action)
+    }
+
+@Composable
+private fun ThreadActionCard.localizedActionCardPendingLabel(): String =
+    when (type) {
+        "channel:add_member" -> stringResource(MR.strings.thread_action_card_adding)
+        "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approving)
+        else -> stringResource(MR.strings.thread_action_card_creating)
+    }
+
+@Composable
+private fun ThreadActionCard.localizedActionCardTitle(): String =
+    when (type) {
+        "channel:create" -> {
+            val localizedVisibility =
+                when (visibility?.lowercase()) {
+                    "private" -> stringResource(MR.strings.thread_action_card_private)
+                    else -> stringResource(MR.strings.thread_action_card_public)
+                }
+            stringResource(
+                MR.strings.thread_action_card_title_create_channel,
+                localizedVisibility,
+                name.removePrefix("#")
+            )
+        }
+        "agent:create" ->
+            stringResource(MR.strings.thread_action_card_title_create_agent, name.removePrefix("@"))
+        "channel:add_member" -> {
+            val count = humans.size + agents.size
+            val target = channel?.let { "#${it.removePrefix("#")}" }
+                ?: stringResource(MR.strings.thread_action_card_channel)
+            if (count == 1) {
+                stringResource(MR.strings.thread_action_card_title_add_member, target)
+            } else {
+                stringResource(MR.strings.thread_action_card_title_add_members, count, target)
+            }
+        }
+        "integration:approve_agent_login" -> {
+            val service = clientName?.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_app)
+            val agent = agentName?.takeIf { it.isNotBlank() }
+                ?: name.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_agent)
+            stringResource(
+                MR.strings.thread_action_card_title_approve_login,
+                service,
+                agent.removePrefix("@")
+            )
+        }
+        else -> localizedActionCardVerb()
+    }
+
+@Composable
+private fun ThreadActionCard.localizedActionCardDetails(): String =
+    buildList {
+        description?.takeIf { it.isNotBlank() }?.let {
+            add(stringResource(MR.strings.thread_action_card_detail_description, it))
+        }
+        if (type.equals("agent:create", ignoreCase = true)) {
+            requiredComputer?.takeIf { it.isNotBlank() }?.let {
+                add(stringResource(MR.strings.thread_action_card_detail_required_computer, it))
+            }
+            if (requiredComputer.isNullOrBlank()) {
+                suggestedComputer?.takeIf { it.isNotBlank() }?.let {
+                    add(stringResource(MR.strings.thread_action_card_detail_suggested_computer, it))
+                }
+            }
+            if (description.isNullOrBlank()) {
+                add(stringResource(MR.strings.thread_action_card_detail_no_description))
+            }
+        }
+        if (initialHumans.isNotEmpty()) {
+            add(stringResource(MR.strings.thread_action_card_detail_humans, initialHumans.joinToString(", ")))
+        }
+        if (initialAgents.isNotEmpty()) {
+            add(stringResource(MR.strings.thread_action_card_detail_agents, initialAgents.joinToString(", ")))
+        }
+        if (humans.isNotEmpty()) {
+            add(stringResource(MR.strings.thread_action_card_detail_humans, humans.joinToString(", ")))
+        }
+        if (agents.isNotEmpty()) {
+            add(stringResource(MR.strings.thread_action_card_detail_agents, agents.joinToString(", ")))
+        }
+        if (type.equals("integration:approve_agent_login", ignoreCase = true)) {
+            clientName?.takeIf { it.isNotBlank() }?.let {
+                add(stringResource(MR.strings.thread_action_card_detail_service, it))
+            }
+            agentName?.takeIf { it.isNotBlank() }?.let {
+                add(stringResource(MR.strings.thread_action_card_detail_agent, it.removePrefix("@")))
+            }
+            val scopeLine = scopes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
+            add(stringResource(MR.strings.thread_action_card_detail_scopes, scopeLine))
+        }
+    }.joinToString("\n")
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {
@@ -13296,6 +13599,15 @@ private fun integrationScopeDescription(scope: String): String =
             "Allows the app to request this named permission from Raft."
     }
 
+@Composable
+private fun localizedIntegrationScopeDescription(scope: String): String =
+    when (scope.trim().lowercase()) {
+        "identity" -> stringResource(MR.strings.thread_action_card_scope_identity)
+        "openid" -> stringResource(MR.strings.thread_action_card_scope_openid)
+        "profile" -> stringResource(MR.strings.thread_action_card_scope_profile)
+        else -> stringResource(MR.strings.thread_action_card_scope_other)
+    }
+
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
     buildString {
         executedByUserName?.takeIf { it.isNotBlank() }?.let { append("Committed by $it") }
@@ -13323,26 +13635,68 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
         }
     }
 
+@Composable
+private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
+    val committedBy = executedByUserName?.takeIf { it.isNotBlank() }?.let {
+        stringResource(MR.strings.thread_action_card_committed_by, it)
+    }
+    val result =
+        when (resultKind) {
+            "agent" -> resultName?.let { "@${it.removePrefix("@")}" }
+            "channel" -> resultName?.let { "#${it.removePrefix("#")}" }
+            "channel-members" -> {
+                val total = resultAddedHumanIds.size + resultAddedAgentIds.size
+                resultChannelName?.let {
+                    stringResource(MR.strings.thread_action_card_members_added, total, it.removePrefix("#"))
+                }
+            }
+            "agent-integration-login" -> {
+                val service = resultName?.takeIf { it.isNotBlank() } ?: clientName
+                val agent = agentName?.takeIf { it.isNotBlank() }
+                when {
+                    !service.isNullOrBlank() && !agent.isNullOrBlank() ->
+                        stringResource(
+                            MR.strings.thread_action_card_service_approved_for,
+                            service,
+                            agent.removePrefix("@")
+                        )
+                    !service.isNullOrBlank() ->
+                        stringResource(MR.strings.thread_action_card_service_approved, service)
+                    else -> stringResource(MR.strings.thread_action_card_login_approved)
+                }
+            }
+            else -> null
+        }
+    return when {
+        committedBy != null && result != null -> "$committedBy -> $result"
+        committedBy != null -> committedBy
+        result != null -> stringResource(MR.strings.thread_action_card_result, result)
+        else -> ""
+    }
+}
+
+@Composable
 private fun threadCreateAgentDialogErrorCopy(code: String): String =
     when (code) {
         "agent_name_required",
-        "action_card_agent_name_missing" -> "Agent name is required."
-        "action_card_agents_api_missing" -> "Create Agent is not available on this build."
-        "action_card_actions_api_missing" -> "Action card completion is not available on this build."
+        "action_card_agent_name_missing" -> stringResource(MR.strings.thread_action_card_error_agent_name_required)
+        "action_card_agents_api_missing" -> stringResource(MR.strings.thread_action_card_error_agent_unavailable)
+        "action_card_actions_api_missing" -> stringResource(MR.strings.thread_action_card_error_completion_unavailable)
         "action_card_mark_executed_empty",
-        "action_mark_executed_contract_mismatch" -> "Agent was created, but the action card could not be marked done. Try refreshing this thread."
-        "agent_create_empty" -> "Agent was not created."
-        else -> "Unable to create agent: $code"
+        "action_mark_executed_contract_mismatch" -> stringResource(MR.strings.thread_action_card_error_mark_done)
+        "agent_create_empty" -> stringResource(MR.strings.thread_action_card_error_agent_not_created)
+        else -> stringResource(MR.strings.thread_action_card_error_agent_create, code)
     }
 
+@Composable
 private fun threadCreateAgentMachinesErrorCopy(code: String): String =
     when (code) {
-        "server_id_missing" -> "Select a server before loading computers."
+        "server_id_missing" -> stringResource(MR.strings.thread_action_card_error_select_server)
         "auth_required",
         "auth_session_missing",
-        "auth_session_expired" -> "Sign in again to load computers."
-        "server_forbidden" -> "You do not have permission to view computers."
-        else -> "Failed to load computers: $code"
+        "auth_session_expired" -> stringResource(MR.strings.thread_action_card_error_sign_in_computers)
+        "server_forbidden" -> stringResource(MR.strings.thread_action_card_error_computers_permission)
+        else -> stringResource(MR.strings.thread_action_card_error_load_computers, code)
     }
 
 @Composable
@@ -13980,7 +14334,7 @@ private fun ThreadMessageFooterMeta(
         }
         if (showSavedBadge) {
             SlockAnchoredMetaChip(
-                label = "Saved",
+                label = stringResource(MR.strings.thread_label_saved),
                 iconName = SlockLucideIconName.Bookmark,
                 iconSize = 11.dp,
                 color = SlockColor.BrandYellow,
@@ -14873,7 +15227,7 @@ private fun ThreadOriginCard(
         when (timelineSlice.originStatus) {
             "loading" -> {
                 Text(
-                    text = "Refreshing original message...",
+                    text = stringResource(MR.strings.thread_state_refreshing_original),
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm)
@@ -14885,14 +15239,18 @@ private fun ThreadOriginCard(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
                     Text(
-                        text = renderConfig.originPreview?.ifBlank { "Original message is unavailable." }
-                            ?: "Original message is unavailable.",
+                        text = renderConfig.originPreview?.ifBlank {
+                            stringResource(MR.strings.thread_state_original_unavailable)
+                        } ?: stringResource(MR.strings.thread_state_original_unavailable),
                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack
                     )
                     renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                         Text(
-                            text = "Refresh failed: ${threadUserFacingErrorCodeLabel(it) ?: "Something went wrong. Please try again."}",
+                            text = stringResource(
+                                MR.strings.thread_error_refresh_original,
+                                threadUserFacingErrorCodeLabel(it) ?: stringResource(MR.strings.common_error)
+                            ),
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray
                         )
@@ -15009,6 +15367,14 @@ private fun ThreadMessageTimestampLabel(timestampLabel: String) {
         overflow = TextOverflow.Ellipsis
     )
 }
+
+@Composable
+private fun localizedThreadTimestampLabel(value: String): String =
+    if (value == "Now") {
+        stringResource(MR.strings.thread_timestamp_now)
+    } else {
+        value
+    }
 
 @Composable
 private fun ThreadMessageAvatarSlot(
@@ -15643,7 +16009,7 @@ internal fun ThreadAttachmentCommentsDialog(
     onQuote: (ThreadAttachmentCommentItem) -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "COMMENTS",
+        title = stringResource(MR.strings.thread_comments_title),
         onDismiss = onDismiss,
         minWidth = 312.dp,
         maxWidth = 360.dp,
@@ -15705,24 +16071,24 @@ internal fun ThreadAttachmentCommentsContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ThreadAttachmentCommentsFilterChip(
-                label = "All",
+                label = stringResource(MR.strings.thread_comments_filter_all),
                 selected = state.filter != "unresolved",
                 onClick = { onFilterChange("all") }
             )
             ThreadAttachmentCommentsFilterChip(
-                label = "Unresolved",
+                label = stringResource(MR.strings.thread_comments_filter_unresolved),
                 selected = state.filter == "unresolved",
                 onClick = { onFilterChange("unresolved") }
             )
         }
         when (state.status) {
             "loading" ->
-                ThreadStateMessage("Loading comments...", null)
+                ThreadStateMessage(stringResource(MR.strings.thread_comments_loading), null)
             "error" ->
                 ThreadStateActionMessage(
-                    title = "Failed to load comments",
-                    detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: "Something went wrong. Please try again.",
-                    actionLabel = "Retry",
+                    title = stringResource(MR.strings.thread_comments_load_failed),
+                    detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: stringResource(MR.strings.common_error),
+                    actionLabel = stringResource(MR.strings.common_retry),
                     onClick = onRetry
                 )
             else ->
@@ -15731,7 +16097,12 @@ internal fun ThreadAttachmentCommentsContent(
                         item {
                             ThreadModalEmptyState(
                                 title = stringResource(MR.strings.thread_state_no_comments),
-                                detail = if (state.filter == "unresolved") "ALL COMMENTS ARE RESOLVED." else "START A COMMENT BELOW."
+                                detail =
+                                    if (state.filter == "unresolved") {
+                                        stringResource(MR.strings.thread_comments_all_resolved)
+                                    } else {
+                                        stringResource(MR.strings.thread_comments_start_below)
+                                    }
                             )
                         }
                     } else {
@@ -15749,7 +16120,7 @@ internal fun ThreadAttachmentCommentsContent(
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
             Text(
-                text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN.",
+                text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: stringResource(MR.strings.common_error),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed,
                 maxLines = 1,
@@ -15836,7 +16207,7 @@ private fun ThreadAttachmentCommentRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = comment.senderName.ifBlank { "Unknown" },
+                text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
@@ -15854,7 +16225,7 @@ private fun ThreadAttachmentCommentRow(
             }
         }
         comment.anchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            ThreadInlineMetaTag("Anchor: $label")
+            ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_anchor, label))
         }
         Text(
             text = comment.content,
@@ -15875,7 +16246,12 @@ private fun ThreadAttachmentCommentRow(
                 onClick = onQuote
             )
             ThreadAttachmentCommentTinyButton(
-                label = if (resolved) "Resolved" else if (resolving) "Resolving" else "Resolve",
+                label =
+                    when {
+                        resolved -> stringResource(MR.strings.thread_comments_resolved)
+                        resolving -> stringResource(MR.strings.thread_comments_resolving)
+                        else -> stringResource(MR.strings.thread_comments_resolve)
+                    },
                 icon = if (resolved) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Check,
                 enabled = canComment && !resolved && !resolving,
                 onClick = onResolve
@@ -15922,10 +16298,10 @@ private fun ThreadAttachmentCommentComposer(
             verticalAlignment = Alignment.CenterVertically
         ) {
             state.pendingAnchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadInlineMetaTag("Anchor: $label")
+                ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_anchor, label))
             }
             state.pendingQuoteLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadInlineMetaTag("Quote: $label")
+                ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_quote, label))
             }
         }
         if (!canComment) {
@@ -15936,9 +16312,9 @@ private fun ThreadAttachmentCommentComposer(
             )
         }
         SlockBrutalTextField(
-            label = "COMMENT",
+            label = stringResource(MR.strings.thread_comments_label),
             value = state.draft,
-            placeholder = "ADD COMMENT",
+            placeholder = stringResource(MR.strings.thread_comments_placeholder),
             enabled = enabled,
             maxLines = if (compact) 3 else 4,
             fieldMinHeight = if (compact) 64.dp else 82.dp,
@@ -15946,7 +16322,12 @@ private fun ThreadAttachmentCommentComposer(
             onValueChange = onDraftChange
         )
         SlockModalFullWidthActionButton(
-            label = if (state.sending) "SENDING" else "SEND COMMENT",
+            label =
+                if (state.sending) {
+                    stringResource(MR.strings.thread_comments_sending)
+                } else {
+                    stringResource(MR.strings.thread_comments_send)
+                },
             icon = if (state.sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
             enabled = enabled && state.draft.isNotBlank(),
             color = SlockColor.AccentCyan,
@@ -15982,13 +16363,14 @@ private fun threadAttachmentCommentsListHeight(count: Int): Dp =
         else -> 230.dp
     }
 
+@Composable
 private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
     when (reason?.trim()?.lowercase()) {
-        "archived" -> "THIS CHANNEL IS ARCHIVED."
-        "not_member" -> "JOIN THIS CHANNEL BEFORE COMMENTING."
-        "read_only" -> "COMMENTS ARE READ-ONLY."
-        "unlinked" -> "THIS ATTACHMENT IS NOT LINKED TO A COMMENT THREAD."
-        else -> "COMMENTS ARE NOT AVAILABLE."
+        "archived" -> stringResource(MR.strings.thread_comments_blocked_archived)
+        "not_member" -> stringResource(MR.strings.thread_comments_blocked_not_member)
+        "read_only" -> stringResource(MR.strings.thread_comments_blocked_read_only)
+        "unlinked" -> stringResource(MR.strings.thread_comments_blocked_unlinked)
+        else -> stringResource(MR.strings.thread_comments_blocked_unavailable)
     }
 
 @Composable
@@ -16134,7 +16516,7 @@ private fun ThreadForwardBundleCard(
             ) {
                 Box(modifier = Modifier.width(3.dp).height(20.dp).background(SlockColor.BrandYellow))
                 Text(
-                    text = bundle.forwardTitle(),
+                    text = bundle.localizedForwardTitle(),
                     style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 19.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -16145,7 +16527,7 @@ private fun ThreadForwardBundleCard(
             }
             bundle.messages.take(4).forEach { item ->
                 Text(
-                    text = item.forwardPreviewLine(),
+                    text = item.localizedForwardPreviewLine(),
                     style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
@@ -16155,7 +16537,7 @@ private fun ThreadForwardBundleCard(
             val hiddenCount = (bundle.displayCount() - bundle.messages.take(4).size).coerceAtLeast(0)
             if (hiddenCount > 0) {
                 Text(
-                    text = "$hiddenCount more messages",
+                    text = stringResource(MR.strings.thread_more_messages, hiddenCount),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
@@ -16173,7 +16555,7 @@ private fun ThreadForwardBundleModal(
     onOpenMember: (ForwardMessageItem) -> Unit
 ) {
     SlockUnifiedDialog(
-        title = bundle.forwardTitle(),
+        title = bundle.localizedForwardTitle(),
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 420.dp,
@@ -16185,7 +16567,12 @@ private fun ThreadForwardBundleModal(
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "${bundle.displayCount()} messages",
+                text =
+                    if (bundle.displayCount() == 1) {
+                        stringResource(MR.strings.thread_message_count_one)
+                    } else {
+                        stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
+                    },
                 style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
@@ -16240,7 +16627,7 @@ private fun ThreadForwardBundleMessageRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = item.authorName.ifBlank { "Unknown" },
+                    text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
                     style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -16266,7 +16653,7 @@ private fun ThreadForwardBundleMessageRow(
             }
             if (item.attachmentCount > 0) {
                 Text(
-                    text = item.forwardAttachmentLabel(),
+                    text = item.localizedForwardAttachmentLabel(),
                     style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray
                 )
@@ -16280,6 +16667,14 @@ private fun ForwardMessageBundle.forwardTitle(): String =
         ?: sourceTitle.takeIf { it.isNotBlank() }?.let { "$it chat history" }
         ?: "Chat history"
 
+@Composable
+private fun ForwardMessageBundle.localizedForwardTitle(): String =
+    title.takeIf { it.isNotBlank() }
+        ?: sourceTitle.takeIf { it.isNotBlank() }?.let {
+            stringResource(MR.strings.thread_forward_chat_history_named, it)
+        }
+        ?: stringResource(MR.strings.thread_forward_chat_history)
+
 private fun ForwardMessageBundle.displayCount(): Int =
     totalCount?.takeIf { it > 0 } ?: messages.size
 
@@ -16288,11 +16683,26 @@ private fun ForwardMessageItem.forwardPreviewLine(): String {
     return "${authorName.ifBlank { "Unknown" }}: $text"
 }
 
+@Composable
+private fun ForwardMessageItem.localizedForwardPreviewLine(): String {
+    val text = body.trim().ifBlank { localizedForwardAttachmentLabel() }
+    val author = authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) }
+    return "$author: $text"
+}
+
 private fun ForwardMessageItem.forwardAttachmentLabel(): String =
     when (attachmentCount) {
         0 -> ""
         1 -> "[1 attachment]"
         else -> "[$attachmentCount attachments]"
+    }
+
+@Composable
+private fun ForwardMessageItem.localizedForwardAttachmentLabel(): String =
+    when (attachmentCount) {
+        0 -> ""
+        1 -> stringResource(MR.strings.thread_forward_attachment_one)
+        else -> stringResource(MR.strings.thread_forward_attachment_many, attachmentCount)
     }
 
 private fun ForwardMessageItem.forwardMemberKind(): MemberKind =
@@ -16371,6 +16781,19 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
                     ForwardMessageTargetKind.AgentDirectMessageCandidate -> "Agent"
                 }
             }
+    }
+
+@Composable
+private fun ThreadForwardTargetItem.localizedForwardTargetSubtitle(): String =
+    when (subtitle) {
+        "Join channel before forwarding" -> stringResource(MR.strings.thread_forward_join_channel_first)
+        "Start DM before forwarding" -> stringResource(MR.strings.thread_forward_start_dm_first)
+        "Recent channel" -> stringResource(MR.strings.thread_forward_recent_channel)
+        "Recent DM" -> stringResource(MR.strings.thread_forward_recent_dm)
+        "Public channel" -> stringResource(MR.strings.thread_forward_public_channel)
+        "Member" -> stringResource(MR.strings.thread_forward_member)
+        "Agent" -> stringResource(MR.strings.thread_forward_agent)
+        else -> subtitle
     }
 
 // Visual-testing fixture (task #560): renders the Forward target modal with a
@@ -16612,7 +17035,7 @@ private fun ThreadForwardTargetModal(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "$selectedCount selected",
+                    text = stringResource(MR.strings.thread_forward_selected, selectedCount),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
@@ -16649,7 +17072,12 @@ private fun ThreadForwardTargetModal(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = if (query.isBlank()) "Destinations" else "Search results",
+                text =
+                    if (query.isBlank()) {
+                        stringResource(MR.strings.thread_forward_destinations)
+                    } else {
+                        stringResource(MR.strings.thread_forward_search_results)
+                    },
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)
@@ -16659,19 +17087,19 @@ private fun ThreadForwardTargetModal(
                     ThreadModalEmptyState(
                         title =
                             when {
-                                loading -> "LOADING TARGETS"
-                                errorCode != null -> "TARGETS UNAVAILABLE"
-                                query.isBlank() -> "NO RECENT TARGETS"
-                                else -> "NO TARGETS"
+                                loading -> stringResource(MR.strings.thread_forward_loading_targets)
+                                errorCode != null -> stringResource(MR.strings.thread_forward_targets_unavailable)
+                                query.isBlank() -> stringResource(MR.strings.thread_forward_no_recent_targets)
+                                else -> stringResource(MR.strings.thread_forward_no_targets)
                             },
                         detail =
                             when {
-                                loading -> "FETCHING RECENT CONVERSATIONS AND DM TARGETS."
+                                loading -> stringResource(MR.strings.thread_forward_fetching_targets)
                                 errorCode != null ->
                                     threadUserFacingErrorCodeLabel(errorCode)?.uppercase()
-                                        ?: "SOMETHING WENT WRONG. PLEASE TRY AGAIN."
-                                query.isBlank() -> "RECENT DMS AND JOINED CHANNELS WILL APPEAR HERE."
-                                else -> "TRY A DIFFERENT SEARCH."
+                                        ?: stringResource(MR.strings.common_error)
+                                query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
+                                else -> stringResource(MR.strings.thread_add_member_try_different_search)
                             }
                     )
                 } else {
@@ -16694,7 +17122,12 @@ private fun ThreadForwardTargetModal(
             SlockBrutalTextField(
                 label = stringResource(MR.strings.thread_state_note),
                 value = note,
-                placeholder = "FORWARDED $selectedCount ${if (selectedCount == 1) "MESSAGE" else "MESSAGES"}",
+                placeholder =
+                    if (selectedCount == 1) {
+                        stringResource(MR.strings.thread_forward_placeholder_one)
+                    } else {
+                        stringResource(MR.strings.thread_forward_placeholder_many, selectedCount)
+                    },
                 maxLines = 2,
                 fieldMinHeight = 62.dp,
                 onValueChange = onNoteChange,
@@ -16708,11 +17141,16 @@ private fun ThreadForwardTargetModal(
                 // Design-system brutal-shadow action buttons (task #560): the raw
                 // Button+border above had no drop shadow, unlike the rest of the app.
                 SlockModalActionButton(
-                    label = "Cancel",
+                    label = stringResource(MR.strings.common_cancel),
                     onClick = onDismiss
                 )
                 SlockModalActionButton(
-                    label = if (sendingTargetId == null) "Send" else "Sending",
+                    label =
+                        if (sendingTargetId == null) {
+                            stringResource(MR.strings.common_send)
+                        } else {
+                            stringResource(MR.strings.thread_forward_sending)
+                        },
                     icon = if (sendingTargetId == null) SlockLucideIconName.Send else SlockLucideIconName.RefreshCw,
                     onClick = onSend,
                     color = SlockColor.AccentPink,
@@ -16781,7 +17219,7 @@ private fun ThreadForwardTargetRow(
                 )
                 if (target.subtitle.isNotBlank()) {
                     Text(
-                        text = target.subtitle,
+                    text = target.localizedForwardTargetSubtitle(),
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = 1,
@@ -16791,7 +17229,7 @@ private fun ThreadForwardTargetRow(
             }
             if (sending) {
                 Text(
-                    text = "Sending",
+                    text = stringResource(MR.strings.thread_forward_sending),
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
@@ -16831,7 +17269,7 @@ private fun ThreadShareSelectionToolbar(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "$selectedCount selected",
+                text = stringResource(MR.strings.thread_forward_selected, selectedCount),
                 style = SlockType.Caption.copy(
                     fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
                     fontSize = 12.sp,
@@ -16854,7 +17292,7 @@ private fun ThreadShareSelectionToolbar(
                     iconSize = 14.dp
                 )
                 ThreadShareSelectionActionButton(
-                    label = "All",
+                    label = stringResource(MR.strings.thread_comments_filter_all),
                     icon = SlockLucideIconName.Check,
                     onClick = onSelectAll,
                     enabled = hasSelection && selectedCount < selectableCount
@@ -16931,7 +17369,7 @@ private fun ThreadSharePreviewModal(
     onDownloadImage: () -> Unit
 ) {
     SlockUnifiedDialog(
-        title = "Share preview",
+        title = stringResource(MR.strings.thread_share_preview_title),
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 360.dp,
@@ -16943,8 +17381,8 @@ private fun ThreadSharePreviewModal(
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (image?.uri.isNullOrBlank()) {
                 ThreadModalEmptyState(
-                    title = "IMAGE EXPORT FAILED",
-                    detail = "TRY AGAIN AFTER THE SELECTED MESSAGES ARE VISIBLE."
+                    title = stringResource(MR.strings.thread_share_export_failed),
+                    detail = stringResource(MR.strings.thread_share_export_failed_detail)
                 )
             } else {
                 Box(
@@ -16958,7 +17396,7 @@ private fun ThreadSharePreviewModal(
                 ) {
                     SlockCachedImage(
                         source = image.uri,
-                        contentDescription = "Selected messages image preview",
+                        contentDescription = stringResource(MR.strings.thread_share_image_description),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
@@ -16967,13 +17405,13 @@ private fun ThreadSharePreviewModal(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Spacer(modifier = Modifier.weight(1f))
                 SlockModalActionButton(
-                    label = "Copy MD",
+                    label = stringResource(MR.strings.thread_share_copy_markdown),
                     icon = SlockLucideIconName.Copy,
                     onClick = onCopyMarkdown,
                     enabled = messages.isNotEmpty()
                 )
                 SlockModalActionButton(
-                    label = "Download",
+                    label = stringResource(MR.strings.thread_share_download),
                     icon = SlockLucideIconName.Download,
                     onClick = onDownloadImage,
                     enabled = !image?.path.isNullOrBlank()
@@ -17015,17 +17453,20 @@ private fun ThreadMembersModal(
         val h = members.filter { !it.kind.equals("agent", ignoreCase = true) }
         a to h
     }
+    val removeFailedLabel = stringResource(MR.strings.thread_members_remove_failed)
+    val genericErrorLabel = stringResource(MR.strings.common_error)
     val removeErrorText =
         when (removeMemberStatus) {
             "failed" ->
-                "UNABLE TO REMOVE MEMBER: " +
+                "$removeFailedLabel: " +
                     (threadUserFacingErrorCodeLabel(removeMemberErrorCode ?: "member_remove_failed")
-                        ?: "Something went wrong. Please try again.").uppercase()
-            "no_permission" -> "UNABLE TO REMOVE MEMBER: NO PERMISSION"
+                        ?: genericErrorLabel).uppercase()
+            "no_permission" -> stringResource(MR.strings.thread_members_remove_no_permission)
             else -> null
         }
+    val resolvedMemberCount = membersCount.takeIf { it > 0 } ?: members.size
     SlockUnifiedDialog(
-        title = "Members (${membersCount.takeIf { it > 0 } ?: members.size})",
+        title = stringResource(MR.strings.thread_members_title, resolvedMemberCount),
         onDismiss = onDismiss,
         minWidth = 300.dp,
         maxWidth = 332.dp,
@@ -17046,12 +17487,12 @@ private fun ThreadMembersModal(
                     item {
                         ThreadModalEmptyState(
                             title = stringResource(MR.strings.thread_state_no_members),
-                            detail = "REFRESH THIS CONVERSATION AND TRY AGAIN."
+                            detail = stringResource(MR.strings.thread_members_refresh_detail)
                         )
                     }
                 } else {
                     if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Agents") }
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
                         items(agents.size, key = { agents[it].memberKey }) { index ->
                             val member = agents[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
@@ -17060,7 +17501,7 @@ private fun ThreadMembersModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.roleLabel,
+                                subtitle = member.localizedModalRoleLabel(),
                                 sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
@@ -17068,14 +17509,14 @@ private fun ThreadMembersModal(
                                 statusPulsing = status?.pulsing == true,
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
-                                trailingText = if (removing) "REMOVING" else "",
+                                trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
                                 onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
                                 onClick = { onOpenMember(member) }
                             )
                         }
                     }
                     if (humans.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Humans") }
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
                         items(humans.size, key = { humans[it].memberKey }) { index ->
                             val member = humans[index]
                             val removing = removeMemberStatus == "removing" && removingMemberId == member.id
@@ -17084,7 +17525,7 @@ private fun ThreadMembersModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.roleLabel,
+                                subtitle = member.localizedModalRoleLabel(),
                                 sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
@@ -17092,7 +17533,7 @@ private fun ThreadMembersModal(
                                 statusPulsing = status?.pulsing == true,
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
-                                trailingText = if (removing) "REMOVING" else "",
+                                trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
                                 onTrailingClick = if (member.canRemove && !removing) ({ onRemoveMember(member.id) }) else null,
                                 onClick = { onOpenMember(member) }
                             )
@@ -17144,14 +17585,16 @@ private fun ThreadAddMemberModal(
     val humanCandidates = filteredCandidates.filter { !it.kind.equals("agent", ignoreCase = true) }
     val blocked = !canAddMembers || addMemberStatus == "no_permission"
     val adding = addMemberStatus == "adding"
+    val addFailedLabel = stringResource(MR.strings.thread_add_member_failed)
+    val genericErrorLabel = stringResource(MR.strings.common_error)
     val errorText =
         when {
-            blocked -> "YOU DO NOT HAVE PERMISSION TO ADD MEMBERS."
-            localError -> "SELECT A MEMBER BEFORE ADDING."
+            blocked -> stringResource(MR.strings.thread_add_member_no_permission)
+            localError -> stringResource(MR.strings.thread_add_member_select_before_adding)
             addMemberStatus == "failed" ->
-                "UNABLE TO ADD MEMBER: " +
+                "$addFailedLabel: " +
                     (threadUserFacingErrorCodeLabel(addMemberErrorCode ?: "member_add_failed")
-                        ?: "Something went wrong. Please try again.").uppercase()
+                        ?: genericErrorLabel).uppercase()
             else -> null
         }
     SlockUnifiedDialog(
@@ -17172,13 +17615,13 @@ private fun ThreadAddMemberModal(
                 )
             }
             Text(
-                text = "Search",
+                text = stringResource(MR.strings.thread_add_member_search),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                 color = SlockColor.TextBlack
             )
             SlockBrutalSearchField(
                 value = query,
-                placeholder = "Name",
+                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
                 leadingIcon = SlockLucideIconName.Search,
                 enabled = !blocked,
                 onValueChange = {
@@ -17193,13 +17636,23 @@ private fun ThreadAddMemberModal(
                 if (filteredCandidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = if (candidates.isEmpty()) "NO PEOPLE LOADED" else "NO MATCHING PEOPLE",
-                            detail = if (candidates.isEmpty()) "REFRESH THIS CONVERSATION AND TRY AGAIN." else "TRY A DIFFERENT SEARCH."
+                            title =
+                                if (candidates.isEmpty()) {
+                                    stringResource(MR.strings.thread_add_member_no_people_loaded)
+                                } else {
+                                    stringResource(MR.strings.thread_add_member_no_matching_people)
+                                },
+                            detail =
+                                if (candidates.isEmpty()) {
+                                    stringResource(MR.strings.thread_members_refresh_detail)
+                                } else {
+                                    stringResource(MR.strings.thread_add_member_try_different_search)
+                                }
                         )
                     }
                 } else {
                     if (agentCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Agents") }
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -17208,7 +17661,7 @@ private fun ThreadAddMemberModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.roleLabel,
+                                subtitle = member.localizedModalRoleLabel(),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
@@ -17217,7 +17670,7 @@ private fun ThreadAddMemberModal(
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (showSelectedCheckmark && member.id == selectedId) SlockLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) "JOINED" else "",
+                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     selectedId = member.id
                                     localError = false
@@ -17227,7 +17680,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (humanCandidates.isNotEmpty()) {
-                        item { SlockModalSectionHeader("Humans") }
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -17236,7 +17689,7 @@ private fun ThreadAddMemberModal(
                                 ?: member.modalAvatarWireValue()
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
-                                subtitle = member.roleLabel,
+                                subtitle = member.localizedModalRoleLabel(),
                                 avatarWireValue = avatarWireValue,
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = status?.color,
@@ -17245,7 +17698,7 @@ private fun ThreadAddMemberModal(
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (showSelectedCheckmark && member.id == selectedId) SlockLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) "JOINED" else "",
+                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
                                 onClick = {
                                     selectedId = member.id
                                     localError = false
@@ -17369,6 +17822,15 @@ private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
 @Composable
+private fun KuiklyThreadMemberItem.localizedModalRoleLabel(): String =
+    when {
+        roleLabel.equals("Agent", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_agent)
+        roleLabel.equals("Member", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_member)
+        roleLabel.equals("System", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_system)
+        else -> roleLabel
+    }
+
+@Composable
 private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(
     agentStatusResolver: SlockAgentStatusResolver
 ): SlockAgentStatusIndicatorState? {
@@ -17439,6 +17901,43 @@ internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelAct
         .map { (id, _) -> defaultById.getValue(id) }
 }
 
+@Composable
+private fun ThreadSettingsActionUi.localizedThreadSettingsAction(): ThreadSettingsActionUi =
+    when (id) {
+        "visibility" ->
+            copy(
+                title = stringResource(MR.strings.thread_settings_make_private),
+                subtitle = stringResource(MR.strings.thread_settings_make_private_detail)
+            )
+        "archive" ->
+            copy(
+                title = stringResource(MR.strings.thread_settings_archive),
+                subtitle = stringResource(MR.strings.thread_settings_archive_detail)
+            )
+        "delete" ->
+            copy(
+                title = stringResource(MR.strings.thread_settings_delete),
+                subtitle = stringResource(MR.strings.thread_settings_delete_detail)
+            )
+        else -> this
+    }
+
+@Composable
+private fun ThreadSettingsDangerAction.localizedTitle(): String =
+    when (this) {
+        ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private_title)
+        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_title)
+        ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete_title)
+    }
+
+@Composable
+private fun ThreadSettingsDangerAction.localizedButtonLabel(): String =
+    when (this) {
+        ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private)
+        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive)
+        ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete)
+    }
+
 private fun KuiklyThreadSettingsAction.canonicalThreadSettingsActionId(): String? =
     when (id) {
         "visibility",
@@ -17461,7 +17960,7 @@ private fun ThreadSettingsModal(
     var description by remember(subtitle) { mutableStateOf(subtitle.orEmpty()) }
     var dangerAction by remember { mutableStateOf<ThreadSettingsDangerAction?>(null) }
     var confirmationName by remember(dangerAction) { mutableStateOf("") }
-    val effectiveActions = actions.normalizedThreadSettingsChannelActions()
+    val effectiveActions = actions.normalizedThreadSettingsChannelActions().map { it.localizedThreadSettingsAction() }
     val dangerActions = effectiveActions.mapNotNull { action ->
         when (action.id) {
             "visibility",
@@ -17475,23 +17974,23 @@ private fun ThreadSettingsModal(
     val activeDanger = dangerAction
     val archiveConfirmationMatches = confirmationName.trim() == channelName.trim()
     SlockUnifiedDialog(
-        title = activeDanger?.title ?: "EDIT CHANNEL",
+        title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
         onDismiss = onDismiss
     ) {
         if (activeDanger == null) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 SlockBrutalTextField(
-                    label = "Name",
+                    label = stringResource(MR.strings.thread_settings_name),
                     value = name,
-                    placeholder = "e.g. ai-research",
+                    placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
                     onValueChange = { name = it },
                     required = true,
                     textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
                 )
                 SlockBrutalTextField(
-                    label = "Description",
+                    label = stringResource(MR.strings.thread_settings_description),
                     value = description,
-                    placeholder = "What is this channel about?",
+                    placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
                     onValueChange = { description = it },
                     optional = true,
                     fieldMinHeight = 66.dp,
@@ -17501,7 +18000,7 @@ private fun ThreadSettingsModal(
                     Spacer(modifier = Modifier.weight(1f))
                     // React's Edit Channel form buttons carry no leading icons
                     // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                    SlockModalActionButton(label = "Cancel", onClick = onDismiss)
+                    SlockModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
                     SlockModalActionButton(
                         label = stringResource(MR.strings.thread_action_save_changes),
                         color = SlockColor.AccentPink,
@@ -17527,12 +18026,12 @@ private fun ThreadSettingsModal(
                 when (activeDanger) {
                     ThreadSettingsDangerAction.Visibility -> {
                         Text(
-                            text = "Update #$channelName visibility?",
+                            text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
                             style = SlockType.Body,
                             color = SlockColor.TextBlack
                         )
                         Text(
-                            text = "This changes who can find and join the channel.",
+                            text = stringResource(MR.strings.thread_settings_visibility_detail),
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextMutedGray
                         )
@@ -17543,17 +18042,17 @@ private fun ThreadSettingsModal(
                             ThreadDeleteChannelWarning(channelName)
                         } else {
                             Text(
-                                text = "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars.",
+                                text = stringResource(MR.strings.thread_settings_archive_question, channelName),
                                 style = SlockType.Body,
                                 color = SlockColor.TextBlack
                             )
                             Text(
-                                text = "Type $channelName to confirm.",
+                                text = stringResource(MR.strings.thread_settings_type_to_confirm, channelName),
                                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                                 color = SlockColor.TextMutedGray
                             )
                             SlockBrutalTextField(
-                                label = "Channel name",
+                                label = stringResource(MR.strings.thread_settings_channel_name),
                                 value = confirmationName,
                                 placeholder = channelName,
                                 onValueChange = { confirmationName = it },
@@ -17562,7 +18061,7 @@ private fun ThreadSettingsModal(
                             )
                             if (confirmationName.isNotBlank() && !archiveConfirmationMatches) {
                                 Text(
-                                    text = "Channel name does not match.",
+                                    text = stringResource(MR.strings.thread_settings_channel_name_mismatch),
                                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                                     color = SlockColor.AccentRed
                                 )
@@ -17573,7 +18072,12 @@ private fun ThreadSettingsModal(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val isDelete = activeDanger == ThreadSettingsDangerAction.Delete
                     SlockModalActionButton(
-                        label = if (isDelete) "Cancel" else "Back",
+                        label =
+                            if (isDelete) {
+                                stringResource(MR.strings.common_cancel)
+                            } else {
+                                stringResource(MR.strings.common_back)
+                            },
                         icon = if (isDelete) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
                     )
@@ -17583,7 +18087,7 @@ private fun ThreadSettingsModal(
                             activeDanger == ThreadSettingsDangerAction.Delete ||
                             archiveConfirmationMatches
                     SlockModalActionButton(
-                        label = activeDanger.buttonLabel,
+                        label = activeDanger.localizedButtonLabel(),
                         icon = activeDanger.icon,
                         color = if (enabled) activeDanger.color else SlockColor.SurfaceCream,
                         enabled = enabled,
@@ -17617,7 +18121,7 @@ private fun ThreadDeleteChannelWarning(channelName: String) {
             color = "#FF000000"
         )
         Text(
-            text = "Are you sure you want to delete \"$channelName\"?\nAll messages will be lost.",
+            text = stringResource(MR.strings.thread_settings_delete_warning, channelName),
             style = SlockType.Body,
             color = SlockColor.TextBlack,
             modifier = Modifier.weight(1f)
@@ -17644,6 +18148,30 @@ private fun ThreadModalEmptyState(title: String, detail: String) {
         )
     }
 }
+
+@Composable
+private fun localizedThreadStateTitle(value: String): String =
+    when (value) {
+        ThreadReplyEmptyTitle -> stringResource(MR.strings.thread_state_no_replies)
+        "No messages yet" -> stringResource(MR.strings.thread_state_no_messages)
+        "Loading..." -> stringResource(MR.strings.thread_state_loading)
+        else -> value
+    }
+
+@Composable
+private fun localizedThreadStateDetail(value: String?): String? =
+    when (value) {
+        "This conversation has no messages yet." -> stringResource(MR.strings.thread_state_no_messages_detail)
+        else -> value
+    }
+
+@Composable
+private fun localizedThreadJoinLabel(value: String): String =
+    if (value == "Join channel") {
+        stringResource(MR.strings.thread_action_join_channel)
+    } else {
+        value
+    }
 
 @Composable
 private fun ThreadStateMessage(title: String, detail: String?) {
