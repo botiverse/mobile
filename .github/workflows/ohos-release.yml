@@ -630,12 +630,20 @@ jobs:
             echo "No separate OHOS symbol/source-map files were generated"
           fi
 
+      - name: Upload signed OHOS release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raft-ohos-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}
+          path: ${{ runner.temp }}/ohos-release
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Publish OHOS draft to Hands
         id: hands
         shell: bash
         run: |
           set -euo pipefail
-          npm install --global @botiverse/hands-cli@0.5.5
+          npm install --global @botiverse/hands-cli@0.5.6
 
           app="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name '*.app' -print -quit)"
           hap="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name '*.hap' -print -quit)"
@@ -643,6 +651,7 @@ jobs:
           test -n "$app" && test -n "$hap" && test -s "$metadata"
 
           args=(
+            --json
             builds publish-ohos raft-ohos
             --app "$app"
             --hap "$hap"
@@ -657,7 +666,6 @@ jobs:
             --ci-run-id "$GITHUB_RUN_ID"
             --ci-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             --draft
-            --json
           )
           symbols="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name 'ohos-symbols-*.tar.gz' -print -quit)"
           if [[ -n "$symbols" ]]; then
@@ -670,14 +678,6 @@ jobs:
           const result = JSON.parse(fs.readFileSync(input, "utf8"));
           fs.appendFileSync(output, `build_id=${result.build_id}\nrelease_id=${result.release_id}\n`);
           NODE
-
-      - name: Upload signed OHOS release artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: raft-ohos-${{ needs.resolve.outputs.version_name }}-${{ needs.resolve.outputs.version_code }}
-          path: ${{ runner.temp }}/ohos-release
-          if-no-files-found: error
-          retention-days: 30
 
       - name: Release summary
         shell: bash
