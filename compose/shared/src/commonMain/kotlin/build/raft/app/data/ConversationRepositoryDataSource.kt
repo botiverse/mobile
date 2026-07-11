@@ -224,7 +224,8 @@ class RealConversationRepository(
         priority: DataRequestPriority
     ): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
-        return executeConversation(
+        var canonicalTargetKind: String? = null
+        val result = executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = { networkClient.messageContext(priority, messageId, channelId) },
             emptyWhen = { it.messages.isEmpty() && it.parentMessage == null },
@@ -232,6 +233,7 @@ class RealConversationRepository(
             mapper = { bodyText ->
                 val fallbackThreadId = ThreadId(messageId.value)
                 val payload = parseSharedMessageContext(bodyText, fallbackThreadId)
+                canonicalTargetKind = payload.canonicalTarget?.kind
                 val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) } ?: fallbackThreadId
                 buildSharedThreadSnapshot(
                     payload = payload,
@@ -242,6 +244,42 @@ class RealConversationRepository(
                 )
             }
         )
+        val snapshot = (result as? DataResult.Content)?.data ?: return result
+        val detailChannelId = snapshot.conversation.channelId ?: channelId ?: return result
+        val detail = loadConversationDetail(detailChannelId, priority)
+        return DataResult.Content(
+            snapshot.withConversationDetail(
+                detail = detail,
+                canonicalReplyThread = canonicalTargetKind == KuiklyThreadSurfaceKind.ReplyThread
+            )
+        )
+    }
+
+    private suspend fun loadConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority
+    ): ConversationSummary? {
+        val response =
+            try {
+                networkClient.request(priority, "channels/${channelId.value}")
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                warningLogger(
+                    "conversation_detail_unavailable channelId=${channelId.value} " +
+                        "exception=${exception::class.simpleName}"
+                )
+                return null
+            }
+        if (!response.isSuccessful) {
+            warningLogger("conversation_detail_unavailable channelId=${channelId.value} status=${response.code}")
+            return null
+        }
+        val detail = parseSlockChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
+        if (detail == null) {
+            warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
+        }
+        return detail
     }
 
     override suspend fun loadOlderMessages(
@@ -887,6 +925,33 @@ private fun buildSharedThreadSnapshot(
         canLoadMoreAfter = canLoadMoreAfter,
         historyLimited = payload.historyLimited,
         highlightedMessageId = highlightedMessageId
+    )
+}
+
+private fun ThreadSnapshot.withConversationDetail(
+    detail: ConversationSummary?,
+    canonicalReplyThread: Boolean
+): ThreadSnapshot {
+    if (detail == null) return this
+    val snapshotChannelId = conversation.channelId?.value ?: return this
+    val detailChannelId = detail.channelId?.value ?: return this
+    if (snapshotChannelId != detailChannelId) return this
+    if (canonicalReplyThread) {
+        return copy(
+            conversation =
+                conversation.copy(
+                    name = detail.name,
+                    subtitle = conversation.subtitle ?: detail.subtitle
+                )
+        )
+    }
+    return copy(
+        conversation =
+            detail.copy(
+                lastMessageId = conversation.lastMessageId ?: detail.lastMessageId,
+                lastMessageSeq = conversation.lastMessageSeq ?: detail.lastMessageSeq,
+                firstUnreadMessageId = conversation.firstUnreadMessageId ?: detail.firstUnreadMessageId
+            )
     )
 }
 

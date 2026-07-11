@@ -73,6 +73,81 @@ data class HomeDirectMessageWireDto(
     val activityMuteSupported: Boolean = false
 )
 
+@Serializable
+private data class HomeChannelDetailWireDto(
+    val id: String,
+    val name: String,
+    val type: String,
+    val description: String? = null,
+    val archivedAt: String? = null,
+    val joined: Boolean = true,
+    val lastMessageAt: String? = null,
+    val peerType: String? = null,
+    val peerId: String? = null,
+    val peerName: String? = null,
+    val peerDisplayName: String? = null,
+    val peerDescription: String? = null,
+    val peerAvatarUrl: String? = null,
+    val jointChannelId: String? = null,
+    val jointRole: String? = null,
+    val jointPeerServerId: String? = null,
+    val jointPeerServerName: String? = null,
+    val jointPeerServerSlug: String? = null,
+    val jointPeerStatus: String? = null,
+    val activityMuted: Boolean = false,
+    val muteFromSeq: Long? = null,
+    val activityMuteSupported: Boolean = false,
+)
+
+internal fun parseSlockChannelDetail(
+    bodyText: String,
+    warningLogger: (String) -> Unit = {}
+): HomeConversationRow? {
+    val wire = runCatching {
+        homeJson.decodeFromString(HomeChannelDetailWireDto.serializer(), bodyText)
+    }.getOrNull() ?: return null
+    if (wire.id.isBlank() || wire.type.isBlank()) return null
+    return if (wire.type.equals("dm", ignoreCase = true)) {
+        val peerId = wire.peerId?.takeIf { it.isNotBlank() } ?: return null
+        val peerName = wire.peerName?.takeIf { it.isNotBlank() } ?: return null
+        HomeDirectMessageWireDto(
+            id = wire.id,
+            name = wire.name,
+            type = wire.type,
+            description = wire.description,
+            lastMessageAt = wire.lastMessageAt,
+            peerType = wire.peerType?.takeIf { it.isNotBlank() } ?: return null,
+            peerId = peerId,
+            peerName = peerName,
+            peerDisplayName = wire.peerDisplayName,
+            peerDescription = wire.peerDescription,
+            peerAvatarUrl = wire.peerAvatarUrl,
+            activityMuted = wire.activityMuted,
+            muteFromSeq = wire.muteFromSeq,
+            activityMuteSupported = wire.activityMuteSupported
+        ).toDirectMessageRow(warningLogger)
+    } else {
+        HomeChannelWireDto(
+            id = wire.id,
+            name = wire.name,
+            type = wire.type,
+            description = wire.description,
+            archivedAt = wire.archivedAt,
+            joined = wire.joined,
+            lastMessageAt = wire.lastMessageAt,
+            jointChannelId = wire.jointChannelId,
+            jointRole = wire.jointRole,
+            jointPeerServerId = wire.jointPeerServerId,
+            jointPeerServerName = wire.jointPeerServerName,
+            jointPeerServerSlug = wire.jointPeerServerSlug,
+            jointPeerStatus = wire.jointPeerStatus,
+            activityMuted = wire.activityMuted,
+            muteFromSeq = wire.muteFromSeq,
+            activityMuteSupported = wire.activityMuteSupported
+        ).toChannelRow()
+    }
+}
+
 fun parseSlockHome(
     payload: HomeNetworkPayload,
     session: StoredAuthSession,
