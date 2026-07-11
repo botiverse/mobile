@@ -1331,108 +1331,115 @@ internal fun SlockStructuralHomeShell(
                                     }
                                 }
                             }
-                        item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                        item {
-                            SlockCollapsibleSectionHeader(
-                                label = labels.channels,
-                                count = displayedChannels.size,
-                                expanded = channelsExpanded,
-                                onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
-                                showCollapsedUnreadDot = channelSectionHasUnread,
-                                sortContentDescription = "Sort ${labels.channels}",
-                                onSortClick = { anchor ->
-                                    if (sidebarInteractionsEnabled) {
-                                        activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
-                                        sortMenuAnchor = anchor
+                        homeChannelSectionOrder(displayedJointChannels.isNotEmpty()).forEach { section ->
+                            when (section) {
+                                SlockHomeChannelSection.JointChannels -> {
+                                    item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                                    item {
+                                        SlockCollapsibleSectionHeader(
+                                            label = labels.jointChannels,
+                                            count = displayedJointChannels.size,
+                                            expanded = jointChannelsExpanded,
+                                            onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
+                                            showCollapsedUnreadDot = jointChannelSectionHasUnread,
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        )
                                     }
-                                },
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                            ) {
-                                SlockSectionHeaderIconAction(SlockLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
-                            }
-                        }
-                        if (channelsExpanded) {
-                            items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
-                                val channel = displayedChannels[index]
-                                val badgeProjection = channel.homeConversationBadgeProjection()
-                                // #211 review (Cindy): selected wins over pressed.
-                                val channelInteractionState = when {
-                                    sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
-                                    pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
-                                    else -> ChannelRowInteractionState.Default
+                                    if (jointChannelsExpanded) {
+                                        items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
+                                            val channel = displayedJointChannels[index]
+                                            val badgeProjection = channel.homeConversationBadgeProjection()
+                                            val jointInteractionState = when {
+                                                sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                                pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
+                                                else -> ChannelRowInteractionState.Default
+                                            }
+                                            ChannelRow(
+                                                name = channel.name,
+                                                symbol = channel.homeChannelSymbol(),
+                                                joined = channel.joined,
+                                                hasDraft = channel.hasDraft,
+                                                muted = channel.activityMuted,
+                                                badge = badgeProjection.label,
+                                                badgeTone = badgeProjection.tone,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                interactionState = jointInteractionState,
+                                                captureLongPressAnchor = captureRowAnchors,
+                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                    onChannelLongPressWithDismiss(channel.id, anchor)
+                                                    activePinMenuConversationId = channel.id
+                                                    activeMenuSection = SlockHomeSortSection.JointChannels
+                                                    pinMenuAnchor = anchor
+                                                    pressedRowKey = null
+                                                }) else null,
+                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                            )
+                                        }
+                                    }
                                 }
-                                ChannelRow(
-                                    name = channel.name,
-                                    symbol = channel.homeChannelSymbol(),
-                                    joined = channel.joined,
-                                    hasDraft = channel.hasDraft,
-                                    muted = channel.activityMuted,
-                                    badge = badgeProjection.label,
-                                    badgeTone = badgeProjection.tone,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    interactionState = channelInteractionState,
-                                    captureLongPressAnchor = captureRowAnchors,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                    onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                        onChannelLongPressWithDismiss(channel.id, anchor)
-                                        activePinMenuConversationId = channel.id
-                                        activeMenuSection = SlockHomeSortSection.Channels
-                                        pinMenuAnchor = anchor
-                                        pressedRowKey = null
-                                    }) else null,
-                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                    onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
-                                )
-                            }
-                        }
-                        if (channelsExpanded && showLoadingSkeletons) {
-                            items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
-                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
-                            }
-                        }
-                        if (displayedJointChannels.isNotEmpty()) {
-                            item { Spacer(Modifier.height(SlockSpacing.Xs)) }
-                            item {
-                                SlockCollapsibleSectionHeader(
-                                    label = labels.jointChannels,
-                                    count = displayedJointChannels.size,
-                                    expanded = jointChannelsExpanded,
-                                    onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
-                                    showCollapsedUnreadDot = jointChannelSectionHasUnread,
-                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
-                                )
-                            }
-                            if (jointChannelsExpanded) {
-                                items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
-                                    val channel = displayedJointChannels[index]
-                                    val badgeProjection = channel.homeConversationBadgeProjection()
-                                    val jointInteractionState = when {
-                                        sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
-                                        pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
-                                        else -> ChannelRowInteractionState.Default
+
+                                SlockHomeChannelSection.Channels -> {
+                                    item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                                    item {
+                                        SlockCollapsibleSectionHeader(
+                                            label = labels.channels,
+                                            count = displayedChannels.size,
+                                            expanded = channelsExpanded,
+                                            onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                            showCollapsedUnreadDot = channelSectionHasUnread,
+                                            sortContentDescription = "Sort ${labels.channels}",
+                                            onSortClick = { anchor ->
+                                                if (sidebarInteractionsEnabled) {
+                                                    activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
+                                                    sortMenuAnchor = anchor
+                                                }
+                                            },
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                        ) {
+                                            SlockSectionHeaderIconAction(SlockLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
+                                        }
                                     }
-                                    ChannelRow(
-                                        name = channel.name,
-                                        symbol = channel.homeChannelSymbol(),
-                                        joined = channel.joined,
-                                        hasDraft = channel.hasDraft,
-                                        muted = channel.activityMuted,
-                                        badge = badgeProjection.label,
-                                        badgeTone = badgeProjection.tone,
-                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        interactionState = jointInteractionState,
-                                        captureLongPressAnchor = captureRowAnchors,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
-                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
-                                            onChannelLongPressWithDismiss(channel.id, anchor)
-                                            activePinMenuConversationId = channel.id
-                                            activeMenuSection = SlockHomeSortSection.JointChannels
-                                            pinMenuAnchor = anchor
-                                            pressedRowKey = null
-                                        }) else null,
-                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
-                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
-                                    )
+                                    if (channelsExpanded) {
+                                        items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
+                                            val channel = displayedChannels[index]
+                                            val badgeProjection = channel.homeConversationBadgeProjection()
+                                            // #211 review (Cindy): selected wins over pressed.
+                                            val channelInteractionState = when {
+                                                sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                                pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
+                                                else -> ChannelRowInteractionState.Default
+                                            }
+                                            ChannelRow(
+                                                name = channel.name,
+                                                symbol = channel.homeChannelSymbol(),
+                                                joined = channel.joined,
+                                                hasDraft = channel.hasDraft,
+                                                muted = channel.activityMuted,
+                                                badge = badgeProjection.label,
+                                                badgeTone = badgeProjection.tone,
+                                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                                interactionState = channelInteractionState,
+                                                captureLongPressAnchor = captureRowAnchors,
+                                                onClick = if (sidebarInteractionsEnabled) ({ onChannelClickWithDismiss(channel.id) }) else null,
+                                                onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                                    onChannelLongPressWithDismiss(channel.id, anchor)
+                                                    activePinMenuConversationId = channel.id
+                                                    activeMenuSection = SlockHomeSortSection.Channels
+                                                    pinMenuAnchor = anchor
+                                                    pressedRowKey = null
+                                                }) else null,
+                                                onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                                onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
+                                            )
+                                        }
+                                    }
+                                    if (channelsExpanded && showLoadingSkeletons) {
+                                        items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
+                                            HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1825,6 +1832,15 @@ internal fun homeLazyItemCount(
         (if (directMessagesExpanded) directMessagesCount else 0) +
         (if (pinnedExpanded) pinnedCount else 0)
 }
+
+internal enum class SlockHomeChannelSection { JointChannels, Channels }
+
+internal fun homeChannelSectionOrder(hasJointChannels: Boolean): List<SlockHomeChannelSection> =
+    if (hasJointChannels) {
+        listOf(SlockHomeChannelSection.JointChannels, SlockHomeChannelSection.Channels)
+    } else {
+        listOf(SlockHomeChannelSection.Channels)
+    }
 
 private enum class SlockHomeSortSection { Channels, JointChannels, DirectMessages, Pinned }
 
