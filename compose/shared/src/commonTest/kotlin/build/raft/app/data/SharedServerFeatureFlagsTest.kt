@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,7 +22,7 @@ class SharedServerFeatureFlagsTest {
     private fun ok(body: String) = HomeNetworkResponse(code = 200, bodyText = body)
 
     @Test
-    fun prefetchResolvesEnabledFlagAndDefaultsUnknownOff() = runTest {
+    fun prefetchResolvesEnabledFlagAndDefaultsUnknownOff() = runBlocking {
         val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":true}]}"""))
         val flags = SharedServerFeatureFlags(api)
         val snapshot = flags.prefetch(server)
@@ -33,7 +33,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun explicitDisabledFlagStaysOff() = runTest {
+    fun explicitDisabledFlagStaysOff() = runBlocking {
         val api = FakeApi(ok("""{"evaluations":[{"key":"sync_core_messages_v0","enabled":false}]}"""))
         val flags = SharedServerFeatureFlags(api)
         flags.prefetch(server)
@@ -41,7 +41,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun unresolvedSnapshotDefaultsAllOff() = runTest {
+    fun unresolvedSnapshotDefaultsAllOff() = runBlocking {
         val flags = SharedServerFeatureFlags(FakeApi(ok("{}")))
         // no prefetch yet
         assertFalse(flags.snapshotFor(server).resolved)
@@ -50,7 +50,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun failedFetchLeavesFlagsOffNeverThrows() = runTest {
+    fun failedFetchLeavesFlagsOffNeverThrows() = runBlocking {
         val flags = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
         val snapshot = flags.prefetch(server)
         assertFalse(snapshot.resolved) // failed -> stays Unresolved, flags default off (feature stays dark)
@@ -58,7 +58,7 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun malformedBodyDoesNotThrow() = runTest {
+    fun malformedBodyDoesNotThrow() = runBlocking {
         val flags = SharedServerFeatureFlags(FakeApi(ok("not-json")))
         assertFalse(flags.prefetch(server).resolved)
     }
