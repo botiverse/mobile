@@ -6,6 +6,6 @@ import kotlin.test.assertEquals
 class SlockSqlDatabaseContractTest {
     @Test
     fun databaseFilenameIsVersionedForTheSchemaReset() {
-        assertEquals("slock_cache_v2.db", SlockSqlDatabase.DatabaseName)
+        assertEquals("slock_cache_v3.db", SlockSqlDatabase.DatabaseName)
     }
 }
