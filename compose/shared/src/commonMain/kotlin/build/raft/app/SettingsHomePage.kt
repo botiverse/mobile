@@ -4404,6 +4404,7 @@ private fun SettingsAppShellContent(
             SettingsDestinationLanguageRegion ->
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,
+                    mobileState = settingsState.mobile,
                     actionState = settingsState.actionState,
                     languageDraft = languageRegionLanguageDraft,
                     displayDraft = languageRegionDisplayDraft,
@@ -4416,6 +4417,9 @@ private fun SettingsAppShellContent(
                     onTimeFormatDraftChange = { languageRegionTimeFormatDraft = it },
                     onServerTranslationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(enabled))
+                    },
+                    onLocaleChange = { localeTag ->
+                        onSettingsIntent(SharedSettingsIntent.SetLocale(localeTag))
                     },
                     onSaveLanguage = {
                         currentLanguageRegionSnapshot?.let { snapshot ->
@@ -4742,9 +4746,6 @@ private fun SettingsAppShellContent(
                     actionState = settingsState.actionState,
                     refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile),
                     bottomContentPadding = bottomContentPadding,
-                    onLocaleChange = { localeTag ->
-                        onSettingsIntent(SharedSettingsIntent.SetLocale(localeTag))
-                    },
                     onAlignmentChange = { itemId ->
                         onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
                         onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
@@ -5403,6 +5404,7 @@ private fun SettingsConnectedAppsBadge(
 @Composable
 private fun SettingsLanguageRegionContent(
     state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
+    mobileState: ScreenLoadState<SettingsMobileSnapshot>,
     actionState: SharedSettingsActionState?,
     languageDraft: String,
     displayDraft: String,
@@ -5414,6 +5416,7 @@ private fun SettingsLanguageRegionContent(
     onTimezoneDraftChange: (String) -> Unit,
     onTimeFormatDraftChange: (String) -> Unit,
     onServerTranslationChange: (Boolean) -> Unit,
+    onLocaleChange: (String) -> Unit,
     onSaveLanguage: () -> Unit,
     onSaveTime: () -> Unit,
     onRetry: () -> Unit
@@ -5465,6 +5468,15 @@ private fun SettingsLanguageRegionContent(
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
+                (mobileState as? ScreenLoadState.Content)?.data?.let { mobileSnapshot ->
+                    item {
+                        SettingsAppLanguageCard(
+                            snapshot = mobileSnapshot,
+                            actionState = actionState,
+                            onLocaleChange = onLocaleChange
+                        )
+                    }
+                }
                 item {
                     SettingsLanguagePreferenceCard(
                         snapshot = snapshot,
@@ -5838,7 +5850,6 @@ private fun SettingsMobileContent(
     actionState: SharedSettingsActionState?,
     refreshing: Boolean,
     bottomContentPadding: Dp,
-    onLocaleChange: (String) -> Unit,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
@@ -5857,13 +5868,6 @@ private fun SettingsMobileContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (snapshot != null) {
-            item {
-                SettingsAppLanguageCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onLocaleChange = onLocaleChange
-                )
-            }
             item {
                 SettingsMessageAlignmentCard(
                     snapshot = snapshot,
@@ -17251,6 +17255,7 @@ private fun SettingsVisualLanguageRegionContent() {
     val snapshot = settingsVisualLanguageRegionSnapshot()
     SettingsLanguageRegionContent(
         state = ScreenLoadState.Content(snapshot),
+        mobileState = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
         languageDraft = snapshot.browserLanguage.selectedKey,
         displayDraft = snapshot.translationDisplay.selectedKey,
@@ -17262,6 +17267,7 @@ private fun SettingsVisualLanguageRegionContent() {
         onTimezoneDraftChange = {},
         onTimeFormatDraftChange = {},
         onServerTranslationChange = {},
+        onLocaleChange = {},
         onSaveLanguage = {},
         onSaveTime = {},
         onRetry = {}
