@@ -1341,9 +1341,18 @@ private fun slockMessagePermalinkChipInlineContent(
     }
 }
 
-private fun slockMessagePermalinkChipWidthSp(targetLabel: String, kindLabel: String): TextUnit {
-    val targetWidth = slockMarkdownInlineChipWidthSp(targetLabel).value
-    val suffixWidth = kindLabel.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() * (10f / 14f)
+internal fun slockMessagePermalinkChipWidthSp(targetLabel: String, kindLabel: String): TextUnit {
+    // This chip supplies its own icon, gaps, and horizontal padding. Reusing
+    // slockMarkdownInlineChipWidthSp() here would also inherit the legacy tag
+    // chrome/min-width safety, then count the new chrome a second time. That is
+    // especially visible for short labels such as `#proj` as a large empty tail.
+    // The shared glyph table approximates regular 14sp text. Account for the
+    // bold target and small-font suffix without restoring the old fixed chrome
+    // tail; these proportional guards keep `msg`/`thread` from ellipsizing.
+    val targetWidth =
+        targetLabel.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() * 1.10f
+    val suffixWidth =
+        kindLabel.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() * (10f / 14f) * 1.15f
     return (targetWidth + suffixWidth + 34f).sp
 }
 

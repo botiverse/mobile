@@ -97,6 +97,13 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun shortPermalinkChipWidthDoesNotDoubleCountLegacyChrome() {
+        val width = slockMessagePermalinkChipWidthSp("#proj", "msg").value
+
+        assertTrue(width in 92f..98f, "unexpected short permalink width: $width")
+    }
+
+    @Test
     fun threadPermalinkUsesTypedThreadSuffix() {
         val url =
             "https://app.raft.build/s/mobile/channel/channel-1" +
