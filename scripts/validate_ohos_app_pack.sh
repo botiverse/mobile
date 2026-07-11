@@ -51,8 +51,13 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 mkdir -p "$OUTPUT_DIR"
 
-unzip -t "$APP_FILE" >/dev/null
-unzip -q "$APP_FILE" -d "$WORK_DIR/app"
+UNPACK_TOOL="$(dirname "$SIGN_TOOL")/app_unpacking_tool.jar"
+[[ -f "$UNPACK_TOOL" ]] || { echo "app_unpacking_tool.jar not found next to signing tool" >&2; exit 1; }
+java -jar "$UNPACK_TOOL" \
+  --mode app \
+  --app-path "$APP_FILE" \
+  --out-path "$WORK_DIR/app" \
+  --force true
 
 PACK_INFO="$(find "$WORK_DIR/app" -type f -name pack.info -print -quit)"
 [[ -n "$PACK_INFO" ]] || { echo "The .app package does not contain pack.info" >&2; exit 1; }

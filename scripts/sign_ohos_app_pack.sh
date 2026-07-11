@@ -49,42 +49,26 @@ done
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
-unpacked="$work_dir/unpacked"
-mkdir -p "$unpacked"
-unzip -q "$app" -d "$unpacked"
-
-mapfile -d '' -t haps < <(find "$unpacked" -type f -name '*.hap' -print0)
-if [[ ${#haps[@]} -eq 0 ]]; then
-  echo "No HAP files found in $app" >&2
-  exit 1
-fi
-
-for hap in "${haps[@]}"; do
-  signed_hap="$hap.signed.hap"
-  java -jar "$sign_tool" sign-app \
-    -mode localSign \
-    -keyAlias "$key_alias" \
-    -keyPwd "$key_password" \
-    -appCertFile "$cert" \
-    -profileFile "$profile" \
-    -profileSigned 1 \
-    -inFile "$hap" \
-    -signAlg SHA256withECDSA \
-    -keystoreFile "$keystore" \
-    -keystorePwd "$keystore_password" \
-    -outFile "$signed_hap" \
-    -compatibleVersion "$compatible_version" \
-    -signCode 1 \
-    -pwdInputMode 0
-  test -s "$signed_hap"
-  mv "$signed_hap" "$hap"
-done
-
 signed_app="$work_dir/$(basename "$app")"
-(
-  cd "$unpacked"
-  zip -q -r "$signed_app" .
-)
+
+# Sign the App Pack produced by Hvigor as one unit. Signing HAPs separately and
+# rebuilding the outer package with zip creates a readable archive that
+# AppGallery rejects as an illegal package (991).
+java -jar "$sign_tool" sign-app \
+  -mode localSign \
+  -keyAlias "$key_alias" \
+  -keyPwd "$key_password" \
+  -appCertFile "$cert" \
+  -profileFile "$profile" \
+  -profileSigned 1 \
+  -inFile "$app" \
+  -signAlg SHA256withECDSA \
+  -keystoreFile "$keystore" \
+  -keystorePwd "$keystore_password" \
+  -outFile "$signed_app" \
+  -compatibleVersion "$compatible_version" \
+  -signCode 1 \
+  -pwdInputMode 0
 test -s "$signed_app"
 mv "$signed_app" "$app"
-echo "Signed ${#haps[@]} HAP(s) in $app"
+echo "Signed App Pack: $app"
