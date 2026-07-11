@@ -153,7 +153,6 @@ class KmmResourceI18nTest {
             MR.strings.member_action_delete_agent,
             MR.strings.member_action_restart_session,
             MR.strings.member_state_profile_loading,
-            MR.strings.member_state_private_hidden,
             MR.strings.member_state_workspace_loading,
             MR.strings.member_state_no_connected_apps,
             MR.strings.member_section_activity_diagnostics,
