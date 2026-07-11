@@ -40,6 +40,28 @@ class ThreadLongMessageCollapseTest {
     }
 
     @Test
+    fun eightVisibleLinesWithTrailingWhitespaceAreNotCollapsible() {
+        val body =
+            """
+            这几个是同一类问题：visual matrix 已经把 diff 暴露出来了，但还没有稳定地转成对应修复任务/owner。
+
+            我建议这轮直接按 case 派修复项：
+            - markdown 渲染差异：归 Thread shared markdown owner。
+            - Home titlebar 字重：核 React server badge 字体。
+            - tabbar 字重：核 React mobile tabbar item 的 font weight。
+
+            我这边不抢当前任务；分到具体修复任务后再开工。
+            """.trimIndent() + "\n  \n"
+
+        val plan = threadLongMessageRenderPlan(body)
+
+        assertFalse(plan.collapsible)
+        assertEquals(body, plan.collapsedBody)
+        assertEquals(body, plan.collapsedDisplayText)
+        assertEquals(8, plan.lineCount)
+    }
+
+    @Test
     fun defaultCollapsedPreviewKeepsEightLinesAndAddsEllipsis() {
         val body = (1..12).joinToString("\n") { line -> "log line $line" }
 
