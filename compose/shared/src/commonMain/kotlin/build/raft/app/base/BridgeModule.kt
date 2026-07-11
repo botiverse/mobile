@@ -1,6 +1,10 @@
 package build.raft.app.base
 
 import build.raft.app.data.SLOCK_SOCKET_BASE_URL
+import build.raft.app.slockLogDebug
+import build.raft.app.slockLogError
+import build.raft.app.slockLogInfo
+import build.raft.app.slockLogWarn
 import com.tencent.kuikly.core.base.toInt
 import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.module.CallbackFn
@@ -49,10 +53,20 @@ internal class BridgeModule : Module() {
     }
 
     fun log(level: BridgeLogLevel, content: String) {
-        val methodArgs = JSONObject()
-        methodArgs.put("content", content)
-        methodArgs.put("level", level.wireValue)
-        callNativeMethod(LOG, methodArgs, null)
+        // task #25 root fix: logging must NEVER cross the Kuikly bridge.
+        // Diagnostics lambdas legitimately fire from worker coroutines, but any
+        // bridge call off the context thread trips the fork's release-live
+        // KR_ASSERT_CONTEXT_HTREAD and aborts the app (the TestFlight
+        // SIGABRTs). SlockPlatformLog is the bridge-free, any-thread-safe
+        // channel built for exactly this; hosts route it into their own
+        // diagnostics pipelines (Android: SlockAndroidLocalDiagnostics sink,
+        // iOS: slockSharedLog notification + console).
+        when (level) {
+            BridgeLogLevel.Debug -> slockLogDebug(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Info -> slockLogInfo(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Warn -> slockLogWarn(BRIDGE_LOG_TAG, content)
+            BridgeLogLevel.Error -> slockLogError(BRIDGE_LOG_TAG, content)
+        }
     }
 
     fun logDebug(content: String) {
@@ -805,9 +819,11 @@ internal class BridgeModule : Module() {
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
+        // Shared logs stay under the tag the host diagnostics rings always used
+        // for bridge logs, so logcat greps / ring policies keep matching.
+        const val BRIDGE_LOG_TAG = "SlockKuikly"
         const val OPEN_PAGE = "openPage"
         const val CLOSE_PAGE = "closePage"
-        const val LOG = "log"
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
