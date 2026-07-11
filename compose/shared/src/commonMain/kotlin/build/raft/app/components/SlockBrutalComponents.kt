@@ -1132,6 +1132,7 @@ internal fun SlockBrutalIconButton(
     onClick: () -> Unit,
     contentDescription: String? = null,
     modifier: Modifier = Modifier,
+    clickIdentity: Any? = null,
     enabled: Boolean = true,
     backgroundColor: Color = SlockColor.SurfaceWhite,
     disabledBackgroundColor: Color = SlockColor.SurfaceCream,
@@ -1168,6 +1169,7 @@ internal fun SlockBrutalIconButton(
             enabled = enabled,
             pressFeedback = enabled,
             pressOffset = shadowOffset,
+            clickIdentity = clickIdentity,
             modifier = Modifier
                 .size(size)
                 .then(

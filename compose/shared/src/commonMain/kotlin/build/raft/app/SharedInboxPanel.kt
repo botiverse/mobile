@@ -876,11 +876,17 @@ private fun SharedActivityRow(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
+                SharedActivitySmallIconButton(
+                    iconName = SlockLucideIconName.Check,
+                    clickIdentity = item.activityDoneClickIdentity(),
+                    onClick = onDone
+                )
             }
         }
     }
 }
+
+internal fun InboxItem.activityDoneClickIdentity(): String = "activity-done:$key"
 
 @Composable
 private fun Modifier.activityRowGestures(
@@ -1039,9 +1045,17 @@ private fun SharedActivityCountPill(
 private fun SharedActivitySmallIconButton(
     iconName: SlockLucideIconName,
     modifier: Modifier = Modifier,
+    clickIdentity: Any? = null,
     onClick: () -> Unit
 ) {
-    SlockBrutalIconButton(iconName = iconName, modifier = modifier, onClick = onClick, size = 28.dp, shadowOffset = 2.dp)
+    SlockBrutalIconButton(
+        iconName = iconName,
+        modifier = modifier,
+        clickIdentity = clickIdentity,
+        onClick = onClick,
+        size = 28.dp,
+        shadowOffset = 2.dp
+    )
 }
 
 @Composable
