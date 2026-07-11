@@ -593,18 +593,23 @@ private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
 private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
+private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
+private const val AppShellChildPagePrewarmInitialDelayMs = 600L
+private const val AppShellChildPagePrewarmIntervalMs = 500L
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
 private class AppShellChildTabEntry(
     val debugId: Int,
     initialSelectedTab: String = "home",
+    initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
     },
     initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
+    var retainedTabs by mutableStateOf(initialRetainedTabs)
     var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
     var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 }
@@ -1313,6 +1318,7 @@ private fun SlockAppShellChildTabPageContent() {
         return
     }
     val active = entry.selectedTab == tab
+    val retained = tab in entry.retainedTabs
     LaunchedEffect(shellId, tab, entry.debugId) {
         bridge.log(
             "app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab " +
@@ -1327,13 +1333,17 @@ private fun SlockAppShellChildTabPageContent() {
             )
         }
     }
-    val modalHostState = entry.modalHostState
-    if (modalHostState != null) {
-        SlockUnifiedDialogHostProvider(modalHostState) {
+    if (appShellChildPageRendersContent(active = active, retained = retained)) {
+        val modalHostState = entry.modalHostState
+        if (modalHostState != null) {
+            SlockUnifiedDialogHostProvider(modalHostState) {
+                entry.renderer(tab, active)
+            }
+        } else {
             entry.renderer(tab, active)
         }
     } else {
-        entry.renderer(tab, active)
+        Box(modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -1660,6 +1670,18 @@ internal fun appShellRetainedChildTabs(activeChildTab: String?, mountedTabs: Set
         (AppShellChildPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
     }
 
+internal fun appShellChildPagePrewarmOrder(
+    activeChildTab: String?,
+    retainedTabs: Set<String>,
+    prewarmedTabs: Set<String>
+): List<String> =
+    AppShellChildPagePrewarmOrder.filter { tab ->
+        tab != activeChildTab && tab !in retainedTabs && tab !in prewarmedTabs
+    }
+
+internal fun appShellChildPageRendersContent(active: Boolean, retained: Boolean): Boolean =
+    active || retained
+
 internal fun appShellNextChildTabSwitchEpoch(currentTab: String, nextTab: String, currentEpoch: Int): Int =
     if (retainedAppShellSelectedTab(currentTab) == retainedAppShellSelectedTab(nextTab)) {
         currentEpoch
@@ -1968,6 +1990,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
+    var prewarmedAppShellTabs by remember { mutableStateOf(emptySet<String>()) }
     var selectedSettingsDestination by remember {
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
@@ -2633,6 +2656,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
+        prewarmedAppShellTabs = emptySet()
         selectedSettingsDestination = SettingsDestinationHome
         homeListPosition = AppShellServerScopedLazyListPosition()
         tasksListPosition = AppShellLazyListPosition()
@@ -3587,6 +3611,34 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     }
 
+    val homeReadyForChildPagePrewarm =
+        readyServerId != null && homeState.content is SharedHomeContentState.Content
+    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId) {
+        if (!homeReadyForChildPagePrewarm || !slockPlatformPrewarmsAppShellChildPages()) {
+            return@LaunchedEffect
+        }
+        delay(AppShellChildPagePrewarmInitialDelayMs)
+        appShellChildPagePrewarmOrder(
+            activeChildTab = appShellActiveChildPagerTab(selectedTab),
+            retainedTabs = retainedAppShellTabs,
+            prewarmedTabs = prewarmedAppShellTabs
+        ).forEach { tab ->
+            if (
+                tab == appShellActiveChildPagerTab(selectedTab) ||
+                tab in retainedAppShellTabs ||
+                tab in prewarmedAppShellTabs
+            ) {
+                return@forEach
+            }
+            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
+            bridge.log(
+                "app_shell_child_tab_prewarm tab=$tab selectedTab=$selectedTab " +
+                    "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
+            )
+            delay(AppShellChildPagePrewarmIntervalMs)
+        }
+    }
+
     val mainRouteContent: @Composable () -> Unit = {
         SlockAppShellSurface(
             shellScope = shellScope,
@@ -3915,6 +3967,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 initialSelectedTab = currentChildTab,
+                                initialRetainedTabs = retainedAppShellTabs,
                                 initialRenderer = childTabRenderer,
                                 initialModalHostState = appShellModalHostState
                             )
@@ -3924,6 +3977,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     val childTabEntry = childTabRegistration.entry
                     SideEffect {
                         childTabEntry.selectedTab = currentChildTab
+                        childTabEntry.retainedTabs = retainedAppShellTabs
                         childTabEntry.renderer = childTabRenderer
                         childTabEntry.modalHostState = appShellModalHostState
                     }
@@ -3946,7 +4000,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     AppShellTabs(
                         selectedTab = selectedTab,
                         childHostShellId = childTabShellId,
-                        mountedTabs = retainedAppShellTabs,
+                        mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         log = { bridge.log(it) }
                     ) { tab, active ->

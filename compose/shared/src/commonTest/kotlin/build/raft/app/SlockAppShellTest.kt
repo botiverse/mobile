@@ -254,6 +254,33 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPagePrewarmSkipsActiveRetainedAndAlreadyPrewarmedTabs() {
+        assertEquals(
+            listOf("settings", "tasks", "members"),
+            appShellChildPagePrewarmOrder(
+                activeChildTab = "home",
+                retainedTabs = setOf("home"),
+                prewarmedTabs = emptySet()
+            )
+        )
+        assertEquals(
+            listOf("members"),
+            appShellChildPagePrewarmOrder(
+                activeChildTab = "tasks",
+                retainedTabs = setOf("home", "settings"),
+                prewarmedTabs = setOf("tasks")
+            )
+        )
+    }
+
+    @Test
+    fun appShellChildPagePrewarmUsesPlaceholderUntilTabIsActiveOrRetained() {
+        assertFalse(appShellChildPageRendersContent(active = false, retained = false))
+        assertTrue(appShellChildPageRendersContent(active = true, retained = false))
+        assertTrue(appShellChildPageRendersContent(active = false, retained = true))
+    }
+
+    @Test
     fun retainedHomeSecondaryDestinationKeepsOnlyActiveKnownDestination() {
         assertEquals(null, retainedHomeSecondaryDestination(null))
         assertEquals("search", retainedHomeSecondaryDestination("search"))

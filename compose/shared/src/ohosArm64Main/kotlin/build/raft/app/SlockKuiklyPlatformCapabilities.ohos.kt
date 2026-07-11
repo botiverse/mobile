@@ -4,6 +4,8 @@ internal actual fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean = tr
 
 internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = true
 
+internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = true
+
 // OHOS phase 2 (video controller line, after Android #556 / iOS #11): the
 // ArkUI `Video` host has its own mature native control bar (play/scrub/±/
 // fullscreen, `controls` on) and seek is wired (seekToTimeMs → VideoController).
