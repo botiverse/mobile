@@ -466,8 +466,6 @@
     <string name="thread_open_task_number">OPEN TASK #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>
     <string name="thread_placeholder_search">Search this thread…</string>
-    <string name="thread_show_more">Show more</string>
-    <string name="thread_show_less">Show less</string>
     <string name="composer_placeholder_message_design">Message design</string>
     <string name="composer_state_no_matching_members">No matching members</string>
     <string name="composer_state_no_matching_channels">No matching channels</string>

@@ -9758,13 +9758,12 @@ private fun List<ThreadMarkdownPreparseCandidate>.parserCandidateCount(): Int =
         .size
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
-    contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet()
+    contentExtrasVisible: Boolean
 ): ThreadMarkdownPreparsePlan {
     if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) {
         return emptyThreadMarkdownPreparsePlan()
     }
-    val orderedCandidates = threadMarkdownOrderedPreparseCandidates(expandedLongMessageIds)
+    val orderedCandidates = threadMarkdownOrderedPreparseCandidates()
     val parserCandidateCount = orderedCandidates.parserCandidateCount()
     if (parserCandidateCount == 0) {
         return emptyThreadMarkdownPreparsePlan()
@@ -9799,24 +9798,14 @@ private fun emptyThreadMarkdownPreparsePlan(): ThreadMarkdownPreparsePlan =
         deferredParserCandidateCount = 0
     )
 
-private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
-    expandedLongMessageIds: Set<String>
-): List<ThreadMarkdownPreparseCandidate> {
+private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(): List<ThreadMarkdownPreparseCandidate> {
     val messageCandidates =
         messages.map { message ->
-            ThreadMarkdownPreparseCandidate(
-                id = message.id,
-                body = message.threadMarkdownPreparseBody(expandedLongMessageIds),
-                messageId = message.id
-            )
+            ThreadMarkdownPreparseCandidate(id = message.id, body = message.body, messageId = message.id)
         }
     val originCandidate =
         originMessage?.let { origin ->
-            ThreadMarkdownPreparseCandidate(
-                id = "origin:${origin.id}",
-                body = origin.threadMarkdownPreparseBody(expandedLongMessageIds),
-                messageId = origin.id
-            )
+            ThreadMarkdownPreparseCandidate(id = "origin:${origin.id}", body = origin.body, messageId = origin.id)
         }
     val focusedId = focusedMessageId?.takeIf { it.isNotBlank() }
     val focusedIndex = focusedId?.let { id -> messages.indexOfFirst { message -> message.id == id } } ?: -1
@@ -9841,15 +9830,6 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
         }
     return ordered.distinctBy { candidate -> candidate.id }
 }
-
-private fun KuiklyThreadMessageItem.threadMarkdownPreparseBody(
-    expandedLongMessageIds: Set<String>
-): String =
-    if (id in expandedLongMessageIds) {
-        body
-    } else {
-        threadLongMessageRenderPlan(body).collapsedBody
-    }
 
 private fun List<ThreadMarkdownPreparseCandidate>.threadMarkdownPriorityPreparseCandidates(): List<ThreadMarkdownPreparseCandidate> {
     val originCandidate = firstOrNull { candidate -> candidate.id.startsWith("origin:") }
@@ -9905,8 +9885,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
     firstVisibleItemIndex: Int,
     lastVisibleItemIndex: Int,
     overscanItems: Int,
-    contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet()
+    contentExtrasVisible: Boolean
 ): ThreadMarkdownVisiblePreparsePlan {
     if (!contentExtrasVisible ||
         firstVisibleItemIndex < 0 ||
@@ -9927,7 +9906,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                 add(
                     ThreadMarkdownPreparseCandidate(
                         id = "origin:${originMessage.id}",
-                        body = originMessage.threadMarkdownPreparseBody(expandedLongMessageIds),
+                        body = originMessage.body,
                         messageId = originMessage.id
                     )
                 )
@@ -9941,7 +9920,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                     add(
                         ThreadMarkdownPreparseCandidate(
                             id = message.id,
-                            body = message.threadMarkdownPreparseBody(expandedLongMessageIds),
+                            body = message.body,
                             messageId = message.id
                         )
                     )
@@ -10118,37 +10097,6 @@ private fun ThreadMessagesList(
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(true)
     }
-    var expandedLongMessageIds by remember(threadInstanceKey) {
-        mutableStateOf<Set<String>>(emptySet())
-    }
-    val longMessageItemHeights = remember(threadInstanceKey) { mutableMapOf<String, Int>() }
-    val toggleLongMessage: (String, Int) -> Unit = { messageId, listItemIndex ->
-        val collapsing = messageId in expandedLongMessageIds
-        val firstVisibleItemIndex = listState.firstVisibleItemIndex
-        val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-        expandedLongMessageIds =
-            threadExpandedLongMessageIdsAfterToggle(expandedLongMessageIds, messageId)
-        if (
-            collapsing &&
-            firstVisibleItemIndex == listItemIndex &&
-            firstVisibleItemScrollOffset > 0
-        ) {
-            coroutineScope.launch {
-                listState.awaitThreadMessagesLayoutFrame()
-                listState.awaitThreadMessagesLayoutFrame()
-                val anchorOffset =
-                    threadLongMessageCollapseAnchorOffset(
-                        firstVisibleItemIndex = firstVisibleItemIndex,
-                        toggledItemIndex = listItemIndex,
-                        firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
-                        collapsedItemHeight = longMessageItemHeights[messageId] ?: 0
-                    ) ?: return@launch
-                if (!listState.isScrollInProgress && listState.canScrollToThreadItem(listItemIndex)) {
-                    listState.scrollToItem(listItemIndex, anchorOffset)
-                }
-            }
-        }
-    }
     var initialBottomAnchorReady by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
@@ -10253,13 +10201,9 @@ private fun ThreadMessagesList(
         remember(
             timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible),
             focusedMessageTargetSignature,
-            contentExtrasVisible,
-            expandedLongMessageIds
+            contentExtrasVisible
         ) {
-            renderPayload.threadInitialMarkdownPreparsePlan(
-                contentExtrasVisible = contentExtrasVisible,
-                expandedLongMessageIds = expandedLongMessageIds
-            )
+            renderPayload.threadInitialMarkdownPreparsePlan(contentExtrasVisible)
         }
     LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key, focusedMessageTargetSignature) {
         if (initialMarkdownPreparsePlan.key.isEmpty()) {
@@ -10366,8 +10310,7 @@ private fun ThreadMessagesList(
         threadInstanceKey,
         initialMarkdownPreparsePlan.key,
         contentExtrasVisible,
-        lazyItemCount,
-        expandedLongMessageIds
+        lazyItemCount
     ) {
         if (!contentExtrasVisible || initialMarkdownPreparsePlan.key.isEmpty()) {
             return@LaunchedEffect
@@ -10381,8 +10324,7 @@ private fun ThreadMessagesList(
                     firstVisibleItemIndex = visibleItems.minOf { item -> item.index },
                     lastVisibleItemIndex = visibleItems.maxOf { item -> item.index },
                     overscanItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
-                    contentExtrasVisible = contentExtrasVisible,
-                    expandedLongMessageIds = expandedLongMessageIds
+                    contentExtrasVisible = contentExtrasVisible
                 )
             }
         }
@@ -10968,14 +10910,6 @@ private fun ThreadMessagesList(
             if (renderPayload.hasThreadOriginItem()) {
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coordinates ->
-                                    renderPayload.originMessage?.id?.let { messageId ->
-                                        longMessageItemHeights[messageId] = coordinates.size.height
-                                    }
-                                },
                         renderConfig = renderConfig,
                         timelineSlice = renderPayload,
                         focusedMessageId = activeFocusedMessageId ?: activeInlineSearchMessageId,
@@ -11020,11 +10954,7 @@ private fun ThreadMessagesList(
                         onOpenMarkdownUrl = onOpenMarkdownUrl,
                         shareSelectionActive = shareSelectionActive,
                         selectedShareMessageIds = selectedShareMessageIds,
-                        onToggleShareSelection = onToggleShareSelection,
-                        longMessageExpanded = renderPayload.originMessage?.id in expandedLongMessageIds,
-                        onToggleLongMessage = { messageId ->
-                            toggleLongMessage(messageId, ThreadOriginListItemIndex)
-                        }
+                        onToggleShareSelection = onToggleShareSelection
                     )
                 }
             }
@@ -11159,14 +11089,7 @@ private fun ThreadMessagesList(
                             timeContext = renderConfig.timeContext
                         )
                     }
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coordinates ->
-                                longMessageItemHeights[message.id] = coordinates.size.height
-                            }
-                ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
                     dateDividerLabel?.let { label ->
                         ThreadDateDivider(label)
                     }
@@ -11299,15 +11222,7 @@ private fun ThreadMessagesList(
                                 onRetryTranslation = {
                                     translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
                                 },
-                                onOpenForwardBundle = onOpenForwardBundle,
-                                longMessageCollapseEnabled = !shareSelectionCaptureActive,
-                                longMessageExpanded = message.id in expandedLongMessageIds,
-                                onToggleLongMessage = {
-                                    toggleLongMessage(
-                                        message.id,
-                                        renderPayload.threadMessageListItemIndex(message.id)
-                                    )
-                                }
+                                onOpenForwardBundle = onOpenForwardBundle
                             )
                         }
                     }
@@ -12592,32 +12507,6 @@ private fun ThreadDateDivider(label: String) {
     }
 }
 
-@Composable
-private fun ThreadLongMessageToggle(
-    expanded: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Text(
-            text = stringResource(if (expanded) MR.strings.thread_show_less else MR.strings.thread_show_more),
-            style =
-                SlockType.Caption
-                    .copy(fontSize = 11.sp, lineHeight = 15.sp, color = SlockColor.TextBlack)
-                    .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack
-        )
-        SlockLucideIcon(
-            if (expanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.ChevronDown,
-            modifier = Modifier.size(12.dp),
-            color = "#FF000000"
-        )
-    }
-}
-
 internal fun threadDateDividerTextStyle(): TextStyle =
     SlockType.Caption.copy(
         fontFamily = slockMonoFamilyForWeight(FontWeight.Bold),
@@ -12685,9 +12574,6 @@ private fun ThreadMessageCard(
     onToggleTranslationOriginal: () -> Unit = {},
     onRetryTranslation: () -> Unit = {},
     onOpenForwardBundle: (ForwardMessageBundle) -> Unit = {},
-    longMessageCollapseEnabled: Boolean = false,
-    longMessageExpanded: Boolean = false,
-    onToggleLongMessage: () -> Unit = {},
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val localizedAuthorName =
@@ -12899,55 +12785,32 @@ private fun ThreadMessageCard(
                                     )
                                 }
                             }
-                            Column(
+                            Box(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .background(Color.Transparent),
-                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                                horizontalAlignment = contentAlignment
+                                        .background(Color.Transparent)
                             ) {
                                 val renderedBody = translation?.displayBody ?: message.body
-                                val longMessagePlan =
-                                    remember(renderedBody) {
-                                        threadLongMessageRenderPlan(renderedBody)
-                                    }
-                                val showLongMessageToggle =
-                                    longMessageCollapseEnabled && longMessagePlan.collapsible
-                                val bodyForRender =
-                                    if (showLongMessageToggle && !longMessageExpanded) {
-                                        longMessagePlan.collapsedBody
-                                    } else {
-                                        renderedBody
-                                    }
                                 if (translation?.pendingPlaceholder == true) {
                                     ThreadMessageTranslationPendingPlaceholder()
-                                } else if (showLongMessageToggle && !longMessageExpanded) {
-                                    Text(
-                                        text = longMessagePlan.collapsedDisplayText,
-                                        style = ThreadMessageBodyTextStyle,
-                                        color = SlockColor.TextBlack,
-                                        maxLines = ThreadLongMessagePreviewLineLimit,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 } else if (richContentEnabled) {
                                     val markdownRenderSignature =
-                                        remember(message.id, bodyForRender) {
-                                            if (bodyForRender == message.body) {
+                                        remember(message.id, renderedBody) {
+                                            if (renderedBody == message.body) {
                                                 message.threadMarkdownRenderSignature()
                                             } else {
-                                                message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                message.copy(body = renderedBody).threadMarkdownRenderSignature()
                                             }
                                         }
                                     diagnosticsLogger(
                                         "thread_markdown_row key=${messagePerformanceKey.orEmpty()} " +
-                                            "message=${message.id.take(8)} bodyLen=${bodyForRender.length} " +
-                                            "sourceBodyLen=${renderedBody.length} collapsed=${showLongMessageToggle && !longMessageExpanded} " +
-                                            "bodyHash=${bodyForRender.hashCode().toString(16)} context=$markdownTagContextSignature"
+                                            "message=${message.id.take(8)} bodyLen=${renderedBody.length} " +
+                                            "bodyHash=${renderedBody.hashCode().toString(16)} context=$markdownTagContextSignature"
                                     )
                                     key(markdownRenderSignature, markdownTagContextSignature, activeMarkdownTagKey) {
                                         SlockMarkdownBody(
-                                            body = bodyForRender,
+                                            body = renderedBody,
                                             textStyle = ThreadMessageBodyTextStyle,
                                             highlightedMentions = highlightedMentions,
                                             isTagValid = isMarkdownTagValid,
@@ -12962,15 +12825,9 @@ private fun ThreadMessageCard(
                                     }
                                 } else {
                                     Text(
-                                        text = bodyForRender,
+                                        text = renderedBody,
                                         style = ThreadMessageBodyTextStyle,
                                         color = SlockColor.TextBlack
-                                    )
-                                }
-                                if (showLongMessageToggle && translation?.pendingPlaceholder != true) {
-                                    ThreadLongMessageToggle(
-                                        expanded = longMessageExpanded,
-                                        onClick = onToggleLongMessage
                                     )
                                 }
                             }
@@ -15240,7 +15097,6 @@ private fun ThreadMessageMenuDivider() {
 
 @Composable
 private fun ThreadOriginCard(
-    modifier: Modifier = Modifier,
     renderConfig: ThreadTimelineRenderConfig,
     timelineSlice: ThreadTimelineSlice,
     focusedMessageId: String? = null,
@@ -15268,12 +15124,10 @@ private fun ThreadOriginCard(
     onOpenMarkdownUrl: (String) -> Unit,
     shareSelectionActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),
-    onToggleShareSelection: (String) -> Unit = {},
-    longMessageExpanded: Boolean = false,
-    onToggleLongMessage: (String) -> Unit = {}
+    onToggleShareSelection: (String) -> Unit = {}
 ) {
     Column(
-        modifier = modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
     ) {
         when (timelineSlice.originStatus) {
@@ -15367,10 +15221,7 @@ private fun ThreadOriginCard(
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
                             onMentionAuthor = onMentionAuthor,
                             richContentEnabled = contentExtrasVisible,
-                            focused = focusedMessageId == origin.id,
-                            longMessageCollapseEnabled = true,
-                            longMessageExpanded = longMessageExpanded,
-                            onToggleLongMessage = { onToggleLongMessage(origin.id) }
+                            focused = focusedMessageId == origin.id
                         )
                     }
                 } ?: renderConfig.originPreview?.takeIf { it.isNotBlank() }?.let {

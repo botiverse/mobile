@@ -1039,8 +1039,6 @@
     <string name="translation_state_show_original">显示原文</string>
     <string name="translation_state_show_translation">显示翻译</string>
     <string name="translation_state_prefer_original">优先原文</string>
-    <string name="thread_show_more">展开</string>
-    <string name="thread_show_less">收起</string>
     <string name="pagination_prev_bilingual">上一页 / Prev</string>
     <string name="pagination_next_bilingual">下一页 / Next</string>
     <string name="announcement_action_got_it_bilingual">知道了 / Got it</string>
