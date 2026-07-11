@@ -665,9 +665,7 @@ open class SlockKuiklyActivity :
                 PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
         runCatching {
                     if (imageOnly) {
-                        threadImageAttachmentPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        threadImageAttachmentPickerLauncher.launch(threadMediaAttachmentPickerRequest())
                     } else {
                         threadFileAttachmentPickerLauncher.launch(arrayOf("*/*"))
                     }
@@ -1553,6 +1551,9 @@ internal fun safePickedThreadAttachmentFileName(
             }
     return "picked-$nowMillis-$nanoTime-$withExtension"
 }
+
+internal fun threadMediaAttachmentPickerRequest(): PickVisualMediaRequest =
+        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
