@@ -2857,10 +2857,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             return@LaunchedEffect
         }
         val content = homeState.content as? SharedHomeContentState.Content
-        if (content == null) {
+        if (!notificationLaunchHomeContentReady(content, session.currentServerId)) {
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
             bridge.log(
-                "app_shell_notification_thread_defer reason=home_not_loaded " +
+                "app_shell_notification_thread_defer reason=home_not_ready_for_server " +
+                    "targetServerId=${session.currentServerId.orEmpty()} " +
+                    "contentServerId=${content?.snapshot?.server?.id?.value.orEmpty()} " +
                     "threadId=${launchRequest.threadId} messageId=${launchRequest.messageId}"
             )
             return@LaunchedEffect
@@ -15789,6 +15791,15 @@ internal data class AppShellNotificationThreadLaunchRequest(
     val conversationKind: ConversationKind? = null,
     val category: String? = null
 )
+
+internal fun notificationLaunchHomeContentReady(
+    content: SharedHomeContentState.Content?,
+    targetServerId: String?
+): Boolean {
+    val target = targetServerId?.trim().takeIf { !it.isNullOrBlank() } ?: return false
+    val readyContent = content ?: return false
+    return readyContent.snapshot.server.id.value == target && readyContent.session.currentServerId == target
+}
 
 private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotificationThreadLaunchRequest? {
     val threadId = optString(AppShellNotificationThreadIdKey).trim().takeIf { it.isNotBlank() }

@@ -38,6 +38,44 @@ import kotlin.test.assertTrue
 
 class SlockAppShellTest {
     @Test
+    fun notificationLaunchWaitsForTargetServerHomeContentAfterServerSwitch() {
+        fun content(snapshotServerId: String, sessionServerId: String): SharedHomeContentState.Content =
+            SharedHomeContentState.Content(
+                snapshot =
+                    HomeSnapshot(
+                        server = ServerSummary(ServerId(snapshotServerId), "Raft"),
+                        currentMember =
+                            MemberProfile(
+                                id = MemberId("user-1"),
+                                displayName = "Artin",
+                                handle = "artin",
+                                kind = MemberKind.Human
+                            ),
+                        channels = emptyList(),
+                        directMessages = emptyList(),
+                        unreadTotal = 0
+                    ),
+                session =
+                    StoredAuthSession(
+                        user = StoredAuthUser(id = "user-1", email = "artin@raft.build", displayName = "Artin"),
+                        accessToken = "token",
+                        refreshToken = "refresh",
+                        selectedServerId = sessionServerId,
+                        servers =
+                            listOf(
+                                StoredAuthServer(id = "server-a", name = "A", slug = "a"),
+                                StoredAuthServer(id = "server-b", name = "B", slug = "b")
+                            )
+                    )
+            )
+
+        assertFalse(notificationLaunchHomeContentReady(null, "server-b"))
+        assertFalse(notificationLaunchHomeContentReady(content("server-a", "server-b"), "server-b"))
+        assertFalse(notificationLaunchHomeContentReady(content("server-b", "server-a"), "server-b"))
+        assertTrue(notificationLaunchHomeContentReady(content("server-b", "server-b"), "server-b"))
+    }
+
+    @Test
     fun shellScopeProvidesExplicitPanelInsets() {
         val scope =
             SlockAppShellScope(
