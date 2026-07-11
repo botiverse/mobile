@@ -168,10 +168,10 @@ internal fun ThreadFilesContent(
         verticalArrangement = Arrangement.Top
     ) {
         when (payload.status) {
-            "loading" -> ThreadFilesStateMessage("Loading files...", null)
+            "loading" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_loading), null)
             "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
-            "no_permission" -> ThreadFilesStateMessage("No permission", payload.errorCode ?: "missing capability")
-            "empty" -> ThreadFilesStateMessage(payload.emptyTitle, payload.emptyDetail)
+            "no_permission" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_no_permission), payload.errorCode ?: "missing capability")
+            "empty" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
             else -> ThreadFilesList(payload, attachmentOpenStates, onEvent)
         }
     }
@@ -184,7 +184,7 @@ private fun ThreadFilesList(
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     if (payload.items.isEmpty()) {
-        ThreadFilesStateMessage(payload.emptyTitle, payload.emptyDetail)
+        ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
         return
     }
     LazyColumn(
@@ -253,7 +253,7 @@ private fun ThreadFileRow(
                 overflow = TextOverflow.Ellipsis
             )
             ThreadFileMetaLine(item)
-            openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+            openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
                 Text(
                     text = statusLabel,
                     style = SlockType.Input.copy(
@@ -285,6 +285,16 @@ private fun ThreadFileRow(
         }
     }
 }
+
+@Composable
+private fun ThreadAttachmentOpenUiState?.localizedThreadAttachmentStatusLabel(): String? =
+    when (this?.status) {
+        "cancelled" -> stringResource(MR.strings.file_preview_download_stopped)
+        "no_app" -> stringResource(MR.strings.file_preview_error_no_app)
+        "storage_failed" -> stringResource(MR.strings.file_preview_error_storage_unavailable)
+        "failed" -> stringResource(MR.strings.file_preview_download_failed)
+        else -> threadAttachmentStatusLabel()
+    }
 
 @Composable
 private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
@@ -408,7 +418,7 @@ private fun ThreadFilesLoadMore(
         contentAlignment = Alignment.Center
     ) {
         SlockBrutalActionButton(
-            label = if (loading) "Loading..." else label,
+            label = if (loading) stringResource(MR.strings.common_loading) else label,
             onClick = onClick,
             enabled = !loading,
             minWidth = 112.dp,
@@ -425,7 +435,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Files failed to load",
+            text = stringResource(MR.strings.thread_files_error_load),
             style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )

@@ -15,6 +15,7 @@ import build.raft.app.TextField
 import build.raft.app.slockSquareCorners
 import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.withSlockFontWeight
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +34,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
@@ -80,7 +82,7 @@ internal fun SlockSelectionPopover(
     showClear: Boolean = false,
     search: String? = null,
     searchPlaceholder: String = "Search...",
-    emptyLabel: String = "No matches",
+    emptyLabel: String? = null,
     onClear: () -> Unit = {},
     onSelect: (SlockSelectionPopoverOption) -> Unit = {}
 ) {
@@ -148,7 +150,7 @@ internal fun SlockSelectionPopover(
             if (options.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) {
                     Text(
-                        text = emptyLabel,
+                        text = emptyLabel ?: stringResource(MR.strings.common_no_matches),
                         style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.40f)
                     )
@@ -175,7 +177,7 @@ internal fun SlockRaftUiSelectionPopover(
     showClear: Boolean = false,
     search: String? = null,
     searchPlaceholder: String = "Search...",
-    emptyLabel: String = "No matches",
+    emptyLabel: String? = null,
     onClear: () -> Unit = {},
     onSelect: (SlockRaftUiSelectionOption) -> Unit = {}
 ) {
@@ -330,7 +332,7 @@ internal fun SlockRaftUiControlledSelectionPopover(
     showClear: Boolean = false,
     search: String? = null,
     searchPlaceholder: String = "Search...",
-    emptyLabel: String = "No matches",
+    emptyLabel: String? = null,
     onClear: () -> Unit = {}
 ) {
     if (!expanded) return
@@ -399,7 +401,7 @@ internal fun SlockRaftUiControlledSelect(
     rowHeight: Dp = 36.dp,
     search: String? = null,
     searchPlaceholder: String = "Search...",
-    emptyLabel: String = "No matches",
+    emptyLabel: String? = null,
     showClear: Boolean = false,
     onClear: () -> Unit = {},
     onTriggerClick: () -> Unit = {}
@@ -449,7 +451,7 @@ internal fun SlockRaftUiSelectField(
     rowHeight: Dp = 36.dp,
     search: String? = null,
     searchPlaceholder: String = "Search...",
-    emptyLabel: String = "No matches"
+    emptyLabel: String? = null
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerRootOffset by remember { mutableStateOf(Offset.Zero) }

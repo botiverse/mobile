@@ -199,6 +199,7 @@ internal fun SharedHomeActivityScreen(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
+    val conversationNotReadyMessage = stringResource(MR.strings.inbox_error_conversation_not_ready)
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
@@ -224,7 +225,7 @@ internal fun SharedHomeActivityScreen(
                         "activity_open_request_pending reason=${resolution.reason} " +
                             "itemKey=${item.key} kind=${item.kind.name}"
                     )
-                    bridge.toast("Conversation isn't ready yet — try again")
+                    bridge.toast(conversationNotReadyMessage)
                 }
             }
         },
@@ -377,7 +378,7 @@ private fun SharedActivityBodyContent(
         when {
             snapshot == null && state.loading ->
                 SharedActivityStateBody(
-                    title = "Loading...",
+                    title = stringResource(MR.strings.common_loading),
                     detail = "",
                     loading = true,
                     bottomContentPadding = bottomContentPadding
@@ -386,7 +387,7 @@ private fun SharedActivityBodyContent(
                 SharedActivityRefreshableStateBody(
                     title = stringResource(MR.strings.inbox_error_load_activity),
                     detail = state.errorCode,
-                    actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
+                    actionLabel = if (state.refreshing || state.loading) "…" else stringResource(MR.strings.common_retry),
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
@@ -397,7 +398,7 @@ private fun SharedActivityBodyContent(
             snapshot == null ->
                 SharedActivityRefreshableStateBody(
                     title = stringResource(MR.strings.inbox_state_activity_empty),
-                    detail = state.selectedFilter.emptyCopy(),
+                    detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
@@ -408,11 +409,11 @@ private fun SharedActivityBodyContent(
                 SharedActivityRefreshableStateBody(
                     title =
                         when (state.selectedFilter) {
-                            InboxFilter.Mentions -> "No mentions yet"
-                            InboxFilter.Unread -> "No unread chats"
-                            InboxFilter.All -> "Activity is empty"
+                            InboxFilter.Mentions -> stringResource(MR.strings.inbox_state_no_mentions)
+                            InboxFilter.Unread -> stringResource(MR.strings.inbox_state_no_unread_chats)
+                            InboxFilter.All -> stringResource(MR.strings.inbox_state_activity_empty)
                         },
-                    detail = state.selectedFilter.emptyCopy(),
+                    detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
                     onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
@@ -1087,7 +1088,7 @@ private fun SharedActivityLoadingMoreRow() {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Loading more...",
+            text = stringResource(MR.strings.inbox_state_loading_more),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
@@ -1106,7 +1107,7 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Could not load more.",
+            text = stringResource(MR.strings.inbox_error_load_more),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(end = 8.dp)
@@ -1205,6 +1206,16 @@ private fun InboxFilter.emptyCopy(): String =
         InboxFilter.Unread -> "No unread conversations."
         InboxFilter.Mentions -> "No mentions yet."
     }
+
+@Composable
+private fun InboxFilter.localizedEmptyCopy(): String =
+    stringResource(
+        when (this) {
+            InboxFilter.All -> MR.strings.inbox_empty_all_detail
+            InboxFilter.Unread -> MR.strings.inbox_empty_unread_detail
+            InboxFilter.Mentions -> MR.strings.inbox_empty_mentions_detail
+        }
+    )
 
 private fun InboxItem.displayTitle(): String =
     when (kind) {

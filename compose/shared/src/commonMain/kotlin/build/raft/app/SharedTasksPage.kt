@@ -164,7 +164,7 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = "Loading...",
+                    title = stringResource(MR.strings.common_loading),
                     detail = "",
                     loading = true
                 )
@@ -191,7 +191,7 @@ internal fun SharedTasksPanel(
                 }
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
                 val emptyCopy =
-                    sharedTasksEmptyStateCopy(
+                    localizedSharedTasksEmptyStateCopy(
                         hasAnyFilter = state.selectedFilter != null,
                         isChannelMode = createTasksChannelId != null
                     )
@@ -241,7 +241,7 @@ internal fun SharedTasksPanel(
                 SharedTasksStateBody(
                     title = stringResource(MR.strings.tasks_error_load),
                     detail = loadState.error.code,
-                    actionLabel = "Retry",
+                    actionLabel = stringResource(MR.strings.common_retry),
                     onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
                 )
             }
@@ -305,6 +305,29 @@ internal fun sharedTasksEmptyStateCopy(
             SharedTasksEmptyStateCopy(
                 title = "No tasks yet",
                 description = "DM and agent task boards are intentionally excluded from this server-wide view."
+            )
+    }
+
+@Composable
+private fun localizedSharedTasksEmptyStateCopy(
+    hasAnyFilter: Boolean,
+    isChannelMode: Boolean
+): SharedTasksEmptyStateCopy =
+    when {
+        hasAnyFilter ->
+            SharedTasksEmptyStateCopy(
+                title = stringResource(MR.strings.tasks_empty_filtered),
+                description = stringResource(MR.strings.tasks_empty_filtered_detail)
+            )
+        isChannelMode ->
+            SharedTasksEmptyStateCopy(
+                title = stringResource(MR.strings.tasks_empty),
+                description = stringResource(MR.strings.tasks_create_hint)
+            )
+        else ->
+            SharedTasksEmptyStateCopy(
+                title = stringResource(MR.strings.tasks_empty),
+                description = stringResource(MR.strings.tasks_empty_server_detail)
             )
     }
 
@@ -493,10 +516,10 @@ private fun SharedTasksLoadedBodyContent(
         Box(modifier = Modifier.weight(1f).background(SlockColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 state.navigationErrorCode?.let { code ->
-                    SharedTasksNotice("Action unavailable", code, modifier = Modifier.padding(SlockSpacing.Md))
+                    SharedTasksNotice(stringResource(MR.strings.tasks_error_action_unavailable), code, modifier = Modifier.padding(SlockSpacing.Md))
                 }
                 state.statusUpdateErrorCode?.let { code ->
-                    SharedTasksNotice("Could not update status", code, modifier = Modifier.padding(SlockSpacing.Md))
+                    SharedTasksNotice(stringResource(MR.strings.tasks_error_update_status), code, modifier = Modifier.padding(SlockSpacing.Md))
                 }
                 SharedTasksToolbar(
                     channelOptions = visibleContent.channelOptions,
@@ -1021,7 +1044,7 @@ private fun SharedTasksBoardColumn(
         if (!collapsed) {
             if (tasks.isEmpty()) {
                 Text(
-                    text = "No ${status.label.lowercase()} tasks",
+                    text = localizedTasksEmptyStatus(status),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
@@ -1063,6 +1086,18 @@ private fun SharedTasksBoardColumn(
         }
     }
 }
+
+@Composable
+private fun localizedTasksEmptyStatus(status: TaskStatus): String =
+    stringResource(
+        when (status) {
+            TaskStatus.Todo -> MR.strings.tasks_empty_todo
+            TaskStatus.InProgress -> MR.strings.tasks_empty_in_progress
+            TaskStatus.InReview -> MR.strings.tasks_empty_in_review
+            TaskStatus.Done -> MR.strings.tasks_empty_done
+            TaskStatus.Closed -> MR.strings.tasks_empty_closed
+        }
+    )
 
 @Composable
 private fun BoardSectionHeader(

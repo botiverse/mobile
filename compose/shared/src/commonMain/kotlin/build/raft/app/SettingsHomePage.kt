@@ -454,6 +454,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
+import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1800,6 +1801,54 @@ internal fun sharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
             },
         code = code.ifBlank { "unknown_error" },
         actionLabel = "Retry"
+    )
+
+@Composable
+private fun localizedSharedHomeErrorDisplay(code: String): SlockHomeInlineError =
+    SlockHomeInlineError(
+        title =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_expired)
+                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable)
+                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout)
+                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
+                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.home_error_refresh)
+                else -> stringResource(MR.strings.home_error_load)
+            },
+        detail =
+            when {
+                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_detail)
+                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable_detail)
+                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout_detail)
+                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline_detail)
+                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.home_error_network_detail)
+                else -> stringResource(MR.strings.home_error_load_detail)
+            },
+        code = code,
+        actionLabel = stringResource(MR.strings.common_retry)
+    )
+
+@Composable
+private fun localizedSharedHomeSearchErrorDisplay(code: String): SlockHomeInlineError =
+    SlockHomeInlineError(
+        title =
+            when {
+                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_unavailable)
+                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout)
+                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
+                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.search_error_refresh)
+                else -> stringResource(MR.strings.search_error_load)
+            },
+        detail =
+            when {
+                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_permission_detail)
+                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout_detail)
+                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.search_error_offline_detail)
+                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.search_error_network_detail)
+                else -> settingsUserFacingErrorCodeMessage(code)
+            },
+        code = code.ifBlank { "unknown_error" },
+        actionLabel = stringResource(MR.strings.common_retry)
     )
 
 internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
@@ -5057,12 +5106,12 @@ private fun SettingsConnectedAppsContent(
             ScreenLoadState.Loading ->
                 item {
                     SettingsFormSectionCard(iconName = SlockLucideIconName.LoaderCircle, title = stringResource(MR.strings.common_loading)) {
-                        SettingsFormDetailText("Loading integrations, marketplace apps, and OAuth clients.")
+                        SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_loading))
                     }
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = "No Connected Apps") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = stringResource(MR.strings.settings_connected_apps_empty)) {
                         SettingsFormEmptyText("Connected Apps are unavailable for this workspace.")
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
@@ -5074,7 +5123,7 @@ private fun SettingsConnectedAppsContent(
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Connected Apps Error") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_connected_apps_error)) {
                         SettingsFormErrorText(state.error.settingsUserFacingMessage())
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
@@ -6325,7 +6374,7 @@ private fun SettingsNotificationsContent(
 private fun SettingsPwaInstallCard() {
     SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
         SettingsFormDetailText("Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.")
-        SettingsFormEmptyText("No install prompt is available inside this native Settings surface.")
+        SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
     }
 }
 
@@ -6711,7 +6760,7 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
                 size = 56.dp
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SettingsFormDetailText(app.description ?: "No description provided.")
+                SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
                 SettingsFormDetailText(if (app.installed) "Installed from marketplace." else "Available from marketplace.")
             }
         }
@@ -6771,7 +6820,7 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
                 size = 56.dp
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                SettingsFormDetailText(app.description ?: "No description provided.")
+                SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
                 SettingsFormDetailText("Built in by Raft.")
             }
         }
@@ -6868,7 +6917,7 @@ private fun SettingsConnectedAppsBuiltInBand(
             color = SlockColor.TextBlack
         )
         if (apps.isEmpty()) {
-            SettingsFormEmptyText("No built-in apps are available.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_built_in))
         } else {
             apps.forEach { app ->
                 SettingsConnectedAppActionRow(
@@ -6913,9 +6962,9 @@ private fun SettingsConnectedAppsMarketplaceCard(
             placeholder = "All categories"
         )
         if (marketplace.isEmpty()) {
-            SettingsFormEmptyText("No marketplace apps are available.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_marketplace))
         } else if (filteredMarketplace.isEmpty()) {
-            SettingsFormEmptyText("No marketplace apps match this search.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_marketplace_match))
         } else {
             filteredMarketplace.forEach { app ->
                 SettingsConnectedAppActionRow(
@@ -6950,7 +6999,7 @@ private fun SettingsConnectedAppsInstalledCard(
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = "Installed Apps") {
         if (installed.isEmpty()) {
-            SettingsFormEmptyText("No marketplace apps are installed for this workspace.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_installed_marketplace))
         } else {
             installed.forEach { app ->
                 val client = clients.firstOrNull { it.id == app.id }
@@ -7307,7 +7356,7 @@ private fun SettingsConnectedAppClientsCard(
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "My Apps") {
         if (clients.isEmpty()) {
-            SettingsFormEmptyText("No server-local OAuth clients yet.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_oauth_clients))
         } else {
             clients.forEach { app ->
                 val canRequestPublish = app.canRequestMarketplacePublish()
@@ -7982,7 +8031,7 @@ private fun SettingsServerAdminsCard(
             SettingsFormDivider()
         }
         if (admins.isEmpty()) {
-            SettingsFormEmptyText("No owners or admins yet.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_owners))
         } else {
             admins.forEach { admin ->
                 val targetRole = admin.normalizedRole()
@@ -8022,7 +8071,7 @@ private fun SettingsServerInvitesCard(
     SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = "Pending Invites") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (invites.isEmpty()) {
-            SettingsFormEmptyText("No pending invites.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_pending_invites))
         } else {
             invites.forEach { invite ->
                 SettingsServerActionRow(
@@ -8101,7 +8150,7 @@ private fun SettingsServerJoinLinksCard(
         )
         SettingsFormDivider()
         if (links.isEmpty()) {
-            SettingsFormEmptyText("No active join links.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_join_links))
         } else {
             links.forEach { link ->
                 SettingsServerActionRow(
@@ -8253,7 +8302,7 @@ private fun SettingsServerOnboardingCard(
             onClick = { onAgentSelected("") }
         )
         if (agents.isEmpty()) {
-            SettingsFormEmptyText("No active agents are available for onboarding.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_onboarding_agents))
         } else {
             agents.forEach { agent ->
                 SettingsServerSelectRow(
@@ -12579,7 +12628,7 @@ private fun SharedHomeScreen(
                     serverUnreadCounts = state.serverUnreadCounts,
                     prefersChineseCommunity = prefersChineseCommunity,
                     bottomContentPadding = bottomContentPadding,
-                    inlineError = sharedHomeErrorDisplay(current.code),
+                    inlineError = localizedSharedHomeErrorDisplay(current.code),
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -12594,7 +12643,7 @@ private fun SharedHomeScreen(
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
-                val error = sharedHomeErrorDisplay(current.code)
+                val error = localizedSharedHomeErrorDisplay(current.code)
                 PageErrorContent(
                     title = "Home",
                     subtitle = "Workspace",
@@ -12915,7 +12964,7 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Loading channels...",
+                        text = stringResource(MR.strings.settings_channels_loading),
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray
                     )
@@ -12932,12 +12981,12 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "No sendable channels found.",
+                        text = stringResource(MR.strings.settings_channels_empty),
                         style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
                         color = SlockColor.TextBlack
                     )
                     Text(
-                        text = "You need a joined channel with message and attachment permission.",
+                        text = stringResource(MR.strings.settings_channels_empty_detail),
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray
                     )
@@ -13257,13 +13306,13 @@ private fun SharedCreateChannelMemberPicker(
         when {
             loading ->
                 Text(
-                    text = "Loading members...",
+                    text = stringResource(MR.strings.settings_members_loading),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
             !hasMembers ->
                 Text(
-                    text = "No members available",
+                    text = stringResource(MR.strings.settings_members_empty),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
@@ -13289,7 +13338,7 @@ private fun SharedCreateChannelMemberPicker(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "No matches for \"${query.trim()}\"",
+                                text = MR.strings.settings_members_no_matches.format(listOf(query.trim())).localized(),
                                 style = SlockType.Caption,
                                 color = SlockColor.TextMutedGray
                             )
@@ -13538,20 +13587,30 @@ private fun SharedHomeSearchPanel(
                         SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
                     } else if (state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
                         HomeInlineErrorCard(
-                            error = sharedHomeSearchErrorDisplay(state.noPermissionCode ?: state.errorCode.orEmpty()),
+                            error = localizedSharedHomeSearchErrorDisplay(state.noPermissionCode ?: state.errorCode.orEmpty()),
                             modifier = Modifier.padding(horizontal = SearchMessagesHorizontalPadding),
                             onAction = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
                         )
                     } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
                         SharedHomeSearchEmptyState(
-                            title = "Search everything",
-                            detail = "Search channels, DMs, people, agents, and message history."
+                            title = stringResource(MR.strings.search_empty_title),
+                            detail = stringResource(MR.strings.search_empty_detail)
                         )
                     } else if (state.empty || (state.searched && projectedItems.isEmpty() && entityResults.isEmpty())) {
                         val trimmedQuery = state.query.trim()
                         SharedHomeSearchEmptyState(
-                            title = if (trimmedQuery.isNotBlank()) "No results for \"$trimmedQuery\"" else "No matching messages",
-                            detail = if (trimmedQuery.isNotBlank()) "Try different keywords or a shorter phrase." else "Try a different filter set."
+                            title =
+                                if (trimmedQuery.isNotBlank()) {
+                                    MR.strings.search_empty_results_query.format(listOf(trimmedQuery)).localized()
+                                } else {
+                                    stringResource(MR.strings.search_empty_results)
+                                },
+                            detail =
+                                if (trimmedQuery.isNotBlank()) {
+                                    stringResource(MR.strings.search_empty_query_detail)
+                                } else {
+                                    stringResource(MR.strings.search_empty_filters_detail)
+                                }
                         )
                     } else {
                         SharedHomeSearchResultsCount(
@@ -14069,8 +14128,8 @@ private fun InboxItem.sharedHomeSavedMarkdownContent(): String =
 @Composable
 private fun SharedHomeSavedEmptyState() {
     SlockEmptyState(
-        title = "No saved messages yet",
-        detail = "Save messages by clicking the bookmark icon on any message.",
+        title = stringResource(MR.strings.saved_empty_title),
+        detail = stringResource(MR.strings.saved_empty_detail),
         iconName = SlockLucideIconName.Bookmark,
         modifier =
             Modifier
@@ -14423,18 +14482,18 @@ private fun SharedHomePanelStatus(
     when {
         noPermissionCode != null ->
             SharedHomePanelMessage(
-                title = "No permission",
+                title = stringResource(MR.strings.panel_error_no_permission),
                 detail = noPermissionCode,
                 tone = SlockColor.AccentRed,
-                actionLabel = "Retry",
+                actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
             )
         errorCode != null ->
             SharedHomePanelMessage(
-                title = "Could not load",
+                title = stringResource(MR.strings.panel_error_load),
                 detail = errorCode,
                 tone = SlockColor.AccentRed,
-                actionLabel = "Retry",
+                actionLabel = stringResource(MR.strings.common_retry),
                 onAction = onRetry
             )
         empty ->
