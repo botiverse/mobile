@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.shared.resolveAndroidShellLaunchTarget
+import build.raft.app.shared.taskLaunchPlan
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -64,8 +67,14 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun launcherIntentKeepsTaskReset() {
-        assertTrue(shouldClearTaskForSharedShell("android.intent.action.MAIN", null, null))
+    fun launcherIntentKeepsDefaultShellTaskPolicyAndNeverCreatesDocument() {
+        val target = resolveAndroidShellLaunchTarget(JSONObject())
+        val taskLaunch = target.taskLaunchPlan(
+            shouldClearTaskForSharedShell("android.intent.action.MAIN", null, null)
+        )
+
+        assertTrue(taskLaunch.clearTask)
+        assertEquals(null, taskLaunch.documentShellId)
         assertEquals("launcher", slockLaunchSource("android.intent.action.MAIN", null, null))
     }
 

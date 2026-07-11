@@ -8,6 +8,7 @@ import build.raft.app.core.data.diagnostics.SlockAppLog
 import build.raft.app.shared.SlockKuiklyActivity
 import build.raft.app.shared.SlockKuiklyRouteKeys
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
+import build.raft.app.shared.taskLaunchPlan
 import build.raft.app.shared.withAndroidShellLaunchTarget
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.SharedAuthDataSource
@@ -61,11 +62,12 @@ class MainActivity : ComponentActivity() {
     private fun openSharedShell(launchIntent: Intent? = intent) {
         val pageData = SlockKuiklyActivity.appShellPageDataFromIntent(launchIntent)
         val target = resolveAndroidShellLaunchTarget(pageData)
+        val taskLaunch = target.taskLaunchPlan(launchIntent.shouldClearTaskForSharedShell())
         SlockKuiklyActivity.startAppShell(
             this,
             pageData = pageData.withAndroidShellLaunchTarget(target),
-            clearTask = launchIntent.shouldClearTaskForSharedShell(),
-            documentShellId = target.shellInstanceId.takeIf { target.documentShell },
+            clearTask = taskLaunch.clearTask,
+            documentShellId = taskLaunch.documentShellId,
         )
         finish()
     }
