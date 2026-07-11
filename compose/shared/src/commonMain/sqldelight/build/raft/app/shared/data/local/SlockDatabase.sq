@@ -119,6 +119,8 @@ CREATE TABLE messageEntity (
 
 CREATE INDEX messageEntity_channelSeq ON messageEntity(serverId, channelId, seq);
 CREATE INDEX messageEntity_channelIdId ON messageEntity(serverId, channelId, id);
+-- #491 P1: canonical (seq, id) tie-break order for server-backed restore/timeline reads.
+CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, seq, id);
 CREATE INDEX messageEntity_parentMessageId ON messageEntity(serverId, parentMessageId);
 
 CREATE TABLE attachmentEntity (
@@ -216,6 +218,7 @@ CREATE TABLE syncCursorEntity (
   hasLoadedOldest INTEGER NOT NULL DEFAULT 0,
   hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
   updatedAtMs INTEGER NOT NULL,
+  epoch TEXT,
   PRIMARY KEY (serverId, scopeId)
 );
 
@@ -726,14 +729,26 @@ INSERT OR REPLACE INTO syncCursorEntity(
   newestLoadedSeq,
   hasLoadedOldest,
   hasLoadedNewest,
-  updatedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+  updatedAtMs,
+  epoch
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectSyncCursor:
 SELECT *
 FROM syncCursorEntity
 WHERE serverId = ?
   AND scopeId = ?;
+
+-- #491 P1 warm-start restore: canonical server-backed timeline read. Only server-backed rows
+-- (seq IS NOT NULL) in (seq, id) tie-break order — NOT selectMessagesForChannel, which sorts by
+-- timestampLabel. Sparse seq orders only; it never synthesizes dense successors.
+selectServerBackedMessagesForChannel:
+SELECT *
+FROM messageEntity
+WHERE serverId = ?
+  AND channelId = ?
+  AND seq IS NOT NULL
+ORDER BY seq, id;
 
 insertOutboxMessage:
 INSERT INTO outboxMessageEntity(
