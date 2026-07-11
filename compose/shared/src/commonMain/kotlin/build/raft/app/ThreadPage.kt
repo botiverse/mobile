@@ -14928,56 +14928,66 @@ private fun ThreadMessageTextSelectionDialog(
         mutableStateOf(TextFieldValue(originalText, selection = TextRange(0, originalText.length)))
     }
     Modal(onWillDismiss = { onDismiss() }) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(topSafeArea + 56.dp)
-                    .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Keep the native dispatch boundary behind the selectable content.
+            // A capture node on the Column itself prevents its text field and
+            // toolbar actions from receiving the gesture on Android.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(SlockColor.SurfaceWhite)
+                        .slockNativeDispatchCapture()
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
             ) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Copy,
-                    onClick = onCopyAll,
-                    backgroundColor = SlockColor.BrandYellow,
-                    size = 36.dp,
-                    shadowOffset = 2.dp
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.X,
-                    onClick = onDismiss,
-                    size = 36.dp,
-                    shadowOffset = 2.dp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(topSafeArea + 56.dp)
+                        .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Copy,
+                        onClick = onCopyAll,
+                        backgroundColor = SlockColor.BrandYellow,
+                        size = 36.dp,
+                        shadowOffset = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.X,
+                        onClick = onDismiss,
+                        size = 36.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+                TextField(
+                    value = fieldValue,
+                    onValueChange = { fieldValue = it },
+                    autoFocus = true,
+                    maxLines = Int.MAX_VALUE,
+                    systemNewlineAction = true,
+                    contentAlignment = Alignment.TopStart,
+                    textStyle =
+                        SlockType.Body.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(12.dp)
                 )
             }
-            TextField(
-                value = fieldValue,
-                onValueChange = { fieldValue = it },
-                autoFocus = true,
-                maxLines = Int.MAX_VALUE,
-                systemNewlineAction = true,
-                contentAlignment = Alignment.TopStart,
-                textStyle =
-                    SlockType.Body.copy(
-                        fontFamily = SlockMonoFamily,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                        color = SlockColor.TextBlack
-                    ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(12.dp)
-            )
         }
     }
 }

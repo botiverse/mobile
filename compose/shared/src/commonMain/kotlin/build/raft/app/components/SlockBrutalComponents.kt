@@ -5,12 +5,14 @@ import build.raft.app.SlockColor
 import build.raft.app.SlockLucideIcon
 import build.raft.app.SlockMonoFamily
 import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockModalDismissBarrier
 import build.raft.app.SlockMutableOffsetRef
 import build.raft.app.SlockShadow
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
+import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
@@ -294,30 +296,37 @@ internal fun SlockBrutalModalLayer(
     Box(
         modifier =
             modifier
-                .fillMaxSize()
-                .background(SlockColor.TextBlack.copy(alpha = model.overlayAlpha))
-                .clickable(onClick = onDismiss)
-                .padding(16.dp),
+                .fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        SlockModalDismissBarrier(
+            overlayAlpha = model.overlayAlpha,
+            onDismiss = onDismiss
+        )
         Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = model.maxWidth)
-                    .padding(end = 4.dp, bottom = 4.dp)
-                    .background(SlockColor.ShadowBlack)
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
+            Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
+                        .widthIn(max = model.maxWidth)
                         .padding(end = 4.dp, bottom = 4.dp)
-                        .background(SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .background(SlockColor.ShadowBlack)
+                        .slockFloatingContentClickTarget()
             ) {
-                SlockBrutalModalHeader(model = model, onDismiss = onDismiss)
-                content()
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(end = 4.dp, bottom = 4.dp)
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                ) {
+                    SlockBrutalModalHeader(model = model, onDismiss = onDismiss)
+                    content()
+                }
             }
         }
     }

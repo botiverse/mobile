@@ -7764,20 +7764,21 @@ private fun SettingsServerDeleteConfirmationDialog(
     val resolvedSlug = expectedServerSlug.ifBlank { "server-slug" }
     Modal(onWillDismiss = { if (!deleteBusy) onDismiss() }) {
         Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.ShadowBlack.copy(alpha = 0.58f))
-                    .clickable(enabled = !deleteBusy, onClick = onDismiss),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
+            SlockModalDismissBarrier(
+                overlayAlpha = 0.58f,
+                onDismiss = onDismiss,
+                dismissEnabled = !deleteBusy
+            )
             Box(
                 modifier =
                     Modifier
                         .padding(horizontal = 18.dp)
                         .offset(x = (-10).dp, y = (-36).dp)
                         .widthIn(max = 360.dp)
-                        .clickable(enabled = false, onClick = {})
+                        .slockFloatingContentClickTarget()
             ) {
                 Box(
                     modifier =
