@@ -58,6 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ohos-release.yml")'
+          bash -n scripts/sign_ohos_app_pack.sh
           bash -n scripts/validate_ohos_app_pack.sh
           node --check scripts/set_ohos_app_version.mjs
 
@@ -386,9 +387,9 @@ jobs:
 
   build-ohos-release:
     name: Build, sign, and validate OHOS .app
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     needs: [resolve, kuikly-artifacts, fork-deps]
-    timeout-minutes: 120
+    timeout-minutes: 180
     container:
       image: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.1.1.280-android.1
     env:
@@ -415,6 +416,11 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
       - name: Raise Gradle and Kotlin/Native heap for release link
         shell: bash
         run: |
@@ -422,11 +428,11 @@ jobs:
           GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
           mkdir -p "$GUH"
           cat >> "$GUH/gradle.properties" <<'PROPERTIES'
-          org.gradle.jvmargs=-Xmx12g -Xss8m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx8g,-Xss8m"
-          kotlin.native.jvmArgs=-Xmx12g -Xss8m
+          org.gradle.jvmargs=-Xmx24g -Xss8m -XX:MaxMetaspaceSize=2g -Dfile.encoding=UTF-8 -Dkotlin.daemon.jvm.options\="-Xmx16g,-Xss8m"
+          kotlin.native.jvmArgs=-Xmx24g -Xss8m
           org.gradle.workers.max=1
           PROPERTIES
-          echo "Configured the release runner with a 12 GB Gradle/Kotlin Native heap"
+          echo "Configured the release runner with a 24 GB Gradle/Kotlin Native heap"
 
       - name: Write project build configuration
         shell: bash
@@ -437,7 +443,7 @@ jobs:
           } > compose/github-packages.properties
           cat > compose/ohosApp/local.properties <<'PROPERTIES'
           kuikly.projectPath=../
-          kuikly.moduleName=shared
+          kuikly.moduleName=ohosBridge
           kuikly.ohosGradleSettings=settings.ohos.gradle.kts
           PROPERTIES
 
@@ -471,6 +477,35 @@ jobs:
           fi
           test -d "$dst/com/tencent/kuikly-open"
           test -d "$dst/app/cash/sqldelight/app.cash.sqldelight.gradle.plugin"
+
+      - name: Build and stage OHOS shared release library
+        working-directory: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --console=plain \
+            -c settings.ohos.gradle.kts \
+            copyNetworkOhosRuntimeLibs \
+            :ohosBridge:linkReleaseSharedOhosArm64
+
+          shared_output="ohosBridge/build/bin/ohosArm64/releaseShared"
+          install -Dm755 \
+            "$shared_output/libshared.so" \
+            ohosApp/entry/libs/arm64-v8a/libshared.so
+          install -Dm644 \
+            "$shared_output/libshared_api.h" \
+            ohosApp/entry/src/main/cpp/libshared_api.h
+
+          test -s ohosApp/entry/libs/arm64-v8a/libshared.so
+          test -s ohosApp/entry/src/main/cpp/libshared_api.h
+
+          api_header_lines="$(wc -l < "$shared_output/libshared_api.h")"
+          grep -q 'raftInitKuikly' "$shared_output/libshared_api.h"
+          if (( api_header_lines > 500 )); then
+            echo "::error::OHOS bridge C API unexpectedly expanded to $api_header_lines lines"
+            exit 1
+          fi
+          echo "OHOS bridge C API: $api_header_lines lines"
 
       - name: Decode OHOS signing assets
         id: signing
@@ -520,19 +555,42 @@ jobs:
         shell: bash
         run: hvigorw --sync -p product=default --analyze=normal --no-daemon
 
-      - name: Assemble signed release .app
+      - name: Assemble unsigned release .app
         working-directory: compose/ohosApp
         shell: bash
-        env:
-          SIGNING_CERT: ${{ steps.signing.outputs.cert }}
-          SIGNING_PROFILE: ${{ steps.signing.outputs.profile }}
-          SIGNING_KEY: ${{ steps.signing.outputs.key }}
         run: |
           hvigorw --mode project \
             -p product=default \
             -p buildMode=release \
             -p requiredDeviceType=phone \
             assembleApp --analyze=normal --no-daemon
+
+      - name: Sign release HAPs
+        shell: bash
+        env:
+          SIGNING_CERT: ${{ steps.signing.outputs.cert }}
+          SIGNING_PROFILE: ${{ steps.signing.outputs.profile }}
+          SIGNING_KEY: ${{ steps.signing.outputs.key }}
+        run: |
+          set -euo pipefail
+          mapfile -t apps < <(find compose/ohosApp -type f -name '*.app' -path '*/build/*' -print)
+          if [[ ${#apps[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one generated .app before signing, found ${#apps[@]}"
+            printf '%s\n' "${apps[@]}"
+            exit 1
+          fi
+          SIGN_TOOL="$(find "$DEVECO_SDK_HOME" -path '*/openharmony/toolchains/lib/hap-sign-tool.jar' -print -quit)"
+          test -n "$SIGN_TOOL"
+          scripts/sign_ohos_app_pack.sh \
+            --app "${apps[0]}" \
+            --sign-tool "$SIGN_TOOL" \
+            --cert "$SIGNING_CERT" \
+            --profile "$SIGNING_PROFILE" \
+            --keystore "$SIGNING_KEY" \
+            --key-alias "$KEY_ALIAS" \
+            --key-password "$KEY_PASSWORD" \
+            --keystore-password "$KEYSTORE_PASSWORD" \
+            --compatible-version 23
 
       - name: Validate signed package and create metadata
         id: validate

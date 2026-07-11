@@ -657,7 +657,9 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 
 # 2. Shared OHOS compile (Kotlin/Native cross-check)
 cd /Users/artin/AndroidStudioProjects/Slock/compose
-./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
+./gradlew -c settings.ohos.gradle.kts \
+  :shared:compileKotlinOhosArm64 \
+  :ohosBridge:compileKotlinOhosArm64
 
 # 3. Android app compile + assemble
 cd /Users/artin/AndroidStudioProjects/Slock/compose
@@ -686,6 +688,10 @@ Key invariants:
   after push: the CI-side OHOS shared compile is a non-blocking lane (red
   does not stop a merge; failures are fixed forward), so this local step is
   the real gate until the pre-merge JVM-only-Map grep gate lands on main.
+- The `ohosBridge` module is the intentionally narrow C ABI for
+  `libshared.so`. Keep its public API primitive and minimal; realtime calls
+  cross the existing KNOI bridge. Building the binary directly from `:shared`
+  exports the full shared API and creates an impractically large C adapter.
 - Step 4 may emit warnings from `@kuikly-open/render` `.d.ets` strict-typing
   comments; treat them as warnings unless Hvigor reports a hard compile error.
 

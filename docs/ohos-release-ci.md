@@ -6,10 +6,19 @@ for `build.raft.mobile`. It is manual-only and uploads the validated package,
 private GitHub Actions artifact.
 
 The release link runs in the repository's HarmonyOS toolchain image on
-`blacksmith-8vcpu-ubuntu-2404`. The workflow gives the Gradle and
-Kotlin/Native processes a 12 GB heap and uses one Gradle worker. Do not move
-the release job to a runner with less than 16 GB of memory: the optimized
-`linkReleaseSharedOhosArm64` task exceeds the project's normal 4 GB heap.
+`blacksmith-16vcpu-ubuntu-2404`. The workflow gives the Gradle and
+Kotlin/Native processes a 24 GB heap and uses one Gradle worker. Do not move
+the release job to a runner with less than 32 GB of memory: the optimized
+`:ohosBridge:linkReleaseSharedOhosArm64` task exceeds the project's normal
+4 GB heap.
+
+`ohosBridge` is the native binary boundary. It depends on the full `shared`
+KLIB internally but exports only the primitive `raftInitKuikly` C entry point;
+realtime host calls use the existing KNOI bridge. Do not move the shared
+library binary back to `:shared` or export shared UI/model/repository types from
+`ohosBridge`: Kotlin/Native otherwise generates a multi-million-line C adapter
+that makes the release link impractical. Release CI rejects a generated bridge
+header larger than 500 lines as a guard against accidental export expansion.
 
 ## Required repository secrets
 
@@ -28,6 +37,13 @@ The workflow checks that the complete signing configuration exists before it
 starts dependency prebuilds. Binary secrets are decoded only under
 `$RUNNER_TEMP`, are permission-restricted, and are removed in an `always()`
 cleanup step.
+
+Hvigor project signing expects DevEco-encrypted password fields tied to a
+workstation-local `material/` directory, so CI does not inject raw repository
+passwords into `signingConfig`. Hvigor assembles the unsigned `.app`, then the
+workflow signs every contained HAP with the official `hap-sign-tool.jar` using
+the raw passwords only as masked process arguments. The validation step then
+independently verifies every signed HAP.
 
 The existing GitHub Packages secrets are also used:
 

@@ -149,13 +149,16 @@ commit-policy 检查读取的是 git trailer 块 = 提交信息**最后一个段
   ohosArm64 目标时 `StackOverflowError`。gradle.properties 全局加 `-Xss4m`
   修复；`-Dkotlin.daemon.jvm.options` 里多个参数要**逗号分隔**
   （`-Xmx4g,-Xss4m`），空格分隔会被当成一个非法 -Xmx 值导致 daemon 起不来。
-- **konanc 的堆/栈两难（这就是 assembleHap 放不进容器的原因）**：整程序
+- **konanc 的堆/栈两难（这就是 assembleHap 放不进小容器的原因）**：整程序
   release `-opt` 链接 libshared.so 极吃内存。konan **守护进程**有够大的线程栈
   （不 SOF）但堆是小默认值且**调不动**（`kotlin.native.jvmArgs` 无效）→ 堆 OOM；
   改用**进程内**（`kotlin.native.disableCompilerDaemon=true`）堆能用 `-Xmx` 调大，
   但深层 IR lowering 递归又爆 worker 线程栈（忽略 `-Xss`）→ SOF。debug 变体则
-  被 `-g` 调试信息撑出 2.4M 行 codegen，clang 把整个 7.8GiB runner OOM 杀掉
-  （`context canceled`）。
+  过去从 `:shared` 直接产出动态库时，还会为全部 public UI/model/repository API
+  生成超过 260 万行的 C adapter，单一 Clang translation unit 长时间占满链接阶段。
+  现在动态库由 `:ohosBridge` 产出：它内部依赖 shared KLIB，但 C ABI 只暴露
+  `raftInitKuikly`，实时接口继续走 KNOI；release workflow 同时限制生成 header
+  不得超过 500 行。不要把 binary target 移回 `:shared`。
 
 ### 15. 容器资源与门禁范围
 

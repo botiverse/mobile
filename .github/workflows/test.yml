@@ -643,6 +643,7 @@ jobs:
             -c settings.ohos.gradle.kts \
             :shared:compileKotlinOhosArm64 \
             :shared:compileTestKotlinOhosArm64 \
+            :ohosBridge:compileKotlinOhosArm64 \
             --no-daemon \
             --console=plain
 

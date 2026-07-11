@@ -106,28 +106,12 @@ kotlin {
     // }
 
     ohosArm64 {
-        val sqliteLibDir = ohosSqliteProviderLibDir()
         val mmkvWrapperLibDir = project.file("src/libs/arm64-v8a")
         val main by compilations.getting
         main.cinterops.create("slockMmkv") {
             definitionFile = file("src/nativeInterop/cinterop/slock_mmkv.def")
             includeDirs(file("src/nativeInterop/cinterop"))
             extraOpts("-libraryPath", mmkvWrapperLibDir.absolutePath)
-        }
-        binaries.sharedLib {
-            // Preserve lightweight K/N debug metadata so OHOS crash stacks can be symbolicated.
-            freeCompilerArgs += "-Xadd-light-debug=enable"
-            linkerOpts("--build-id=sha1")
-            linkerOpts("-L${sqliteLibDir.absolutePath}")
-            linkerOpts("-L${mmkvWrapperLibDir.absolutePath}")
-            linkerOpts("-lmmkv_c_wrapper")
-            // KmmResource native bridge: resource-core's KLIB calls
-            // ohos_init_resource_manager/ohos_get_*_by_name — link the
-            // committed libresource_compose.so so libshared.so carries an
-            // explicit DT_NEEDED instead of crashing on lazy resolution
-            // (task #19; same pattern as the KmmResource sample's
-            // linkerOpts("-lresource_compose")).
-            linkerOpts("-lresource_compose")
         }
     }
 
