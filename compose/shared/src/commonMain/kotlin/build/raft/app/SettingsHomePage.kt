@@ -13286,25 +13286,25 @@ private fun SharedCreateChannelDialog(
     val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
     val hasFilteredMembers = filteredMembers.isNotEmpty()
     SlockUnifiedDialog(
-        title = "CREATE CHANNEL",
+        title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
         onDismiss = onDismiss
     ) {
         SlockBrutalTextField(
-            label = "Name",
+            label = stringResource(MR.strings.channel_create_label_name),
             required = true,
             value = name,
             onValueChange = { name = it },
-            placeholder = "e.g. ai-research",
+            placeholder = stringResource(MR.strings.channel_create_placeholder_name),
             enabled = !submitting,
             autoFocus = true
         )
         SlockBrutalTextField(
-            label = "Description",
+            label = stringResource(MR.strings.channel_create_label_description),
             optional = true,
             value = description,
             onValueChange = { description = it },
-            placeholder = "What is this channel about?",
+            placeholder = stringResource(MR.strings.channel_create_placeholder_description),
             enabled = !submitting,
             maxLines = 2,
             autoFocus = false
@@ -13335,7 +13335,7 @@ private fun SharedCreateChannelDialog(
         )
         if (!errorMessage.isNullOrBlank()) {
             Text(
-                text = "Error: $errorMessage",
+                text = MR.strings.channel_create_error.format(listOf(errorMessage)).localized(),
                 style = SlockType.Caption,
                 color = SlockColor.AccentRed
             )
@@ -13353,7 +13353,12 @@ private fun SharedCreateChannelDialog(
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
-                label = if (submitting) "Creating..." else "Create Channel",
+                label =
+                    if (submitting) {
+                        stringResource(MR.strings.channel_create_action_creating)
+                    } else {
+                        stringResource(MR.strings.channel_create_action_create)
+                    },
                 enabled = canSubmit,
                 minWidth = 126.dp,
                 backgroundColor = SlockColor.AccentPink,
@@ -13394,14 +13399,18 @@ private fun SharedCreateChannelVisibilityControl(
     onSelected: (SharedCreateChannelVisibility) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = "Visibility")
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_visibility))
         SegmentedControl(
             selectedValue = selected.name,
             options =
                 SharedCreateChannelVisibility.values().map { option ->
                     SegmentedControlOption(
                         value = option.name,
-                        label = option.label,
+                        label =
+                            when (option) {
+                                SharedCreateChannelVisibility.Public -> stringResource(MR.strings.channel_create_visibility_public)
+                                SharedCreateChannelVisibility.Private -> stringResource(MR.strings.channel_create_visibility_private)
+                            },
                         iconName = option.iconName
                     )
                 },
@@ -13429,7 +13438,7 @@ private fun SharedCreateChannelMemberPicker(
     onToggle: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = "Members", optional = true)
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
         when {
             loading ->
                 Text(
@@ -13447,7 +13456,7 @@ private fun SharedCreateChannelMemberPicker(
                 SlockBrutalSearchField(
                     value = query,
                     enabled = enabled,
-                    placeholder = "Search members by name",
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
                     onValueChange = onQueryChange
                 )
                 SlockBrutalPanelShell(
@@ -13474,7 +13483,7 @@ private fun SharedCreateChannelMemberPicker(
                         LazyColumn(modifier = Modifier.fillMaxWidth()) {
                             if (filteredAgentMembers.isNotEmpty()) {
                                 item(key = "agents-header") {
-                                    SharedCreateChannelMemberSectionLabel("Agents")
+                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
                                 }
                                 filteredAgentMembers.forEach { member ->
                                     item(key = member.memberSelectionKey) {
@@ -13489,7 +13498,7 @@ private fun SharedCreateChannelMemberPicker(
                             }
                             if (filteredHumanMembers.isNotEmpty()) {
                                 item(key = "humans-header") {
-                                    SharedCreateChannelMemberSectionLabel("Humans")
+                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
                                 }
                                 filteredHumanMembers.forEach { member ->
                                     item(key = member.memberSelectionKey) {

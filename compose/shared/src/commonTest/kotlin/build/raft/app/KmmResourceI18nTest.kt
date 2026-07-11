@@ -118,6 +118,30 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun createAndInviteModalStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.channel_create_title,
+            MR.strings.channel_create_label_visibility,
+            MR.strings.channel_create_placeholder_member_search,
+            MR.strings.channel_create_action_create,
+            MR.strings.agent_invite_title,
+            MR.strings.agent_invite_hint_join_link,
+            MR.strings.agent_invite_action_send,
+            MR.strings.agent_create_title,
+            MR.strings.agent_create_placeholder_description,
+            MR.strings.agent_create_error_limit,
+            MR.strings.agent_create_hint_provider,
+            MR.strings.agent_create_error_name_characters,
+            MR.strings.agent_create_action_add_env_var
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "create/invite modal resources must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun memberDetailActionAndStateResourcesAreGenerated() {
         listOf(
             MR.strings.member_tab_activity,
