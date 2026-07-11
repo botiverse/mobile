@@ -40,6 +40,7 @@
     <string name="common_empty">Empty</string>
     <string name="common_no_matches">No matches</string>
     <string name="common_success">Success</string>
+    <string name="common_optional_suffix">(optional)</string>
     <string name="settings_title">Settings</string>
     <string name="settings_navigation_section_personal">Personal</string>
     <string name="settings_navigation_section_workspace">Workspace</string>

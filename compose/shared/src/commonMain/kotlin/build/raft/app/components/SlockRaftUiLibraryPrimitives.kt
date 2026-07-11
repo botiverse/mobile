@@ -12,6 +12,7 @@ import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -41,6 +42,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal enum class SlockRaftUiBannerStatus(val background: Color) {
     Info(SlockColor.BrandYellow.copy(alpha = 0.30f)),
@@ -146,7 +148,7 @@ internal fun SlockRaftUiLabel(
         }
         if (optional) {
             Text(
-                text = "(optional)",
+                text = stringResource(MR.strings.common_optional_suffix),
                 style =
                     SlockType.Caption.copy(fontSize = if (small) 11.sp else 12.sp, lineHeight = if (small) 13.sp else 14.sp)
                         .withSlockFontWeight(FontWeight.Bold),

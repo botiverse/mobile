@@ -121,6 +121,7 @@ class KmmResourceI18nTest {
     fun createAndInviteModalStringResourcesAreGenerated() {
         listOf(
             MR.strings.channel_create_title,
+            MR.strings.common_optional_suffix,
             MR.strings.channel_create_label_visibility,
             MR.strings.channel_create_placeholder_member_search,
             MR.strings.channel_create_action_create,
