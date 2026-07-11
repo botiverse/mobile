@@ -14,6 +14,7 @@ import build.raft.app.data.realtime.MessageSeqRepairBatch
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.refreshPixelAvatarsFromWeb
+import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import build.raft.app.model.AgentCreated
@@ -66,6 +67,11 @@ private fun sharedInfoLogger(tag: String, prefix: String = ""): (String) -> Unit
 private fun sharedWarnLogger(tag: String, prefix: String = ""): (String) -> Unit =
     { message ->
         slockLogWarn(tag, if (prefix.isBlank()) message else "$prefix $message")
+    }
+
+private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Unit =
+    { message ->
+        slockLogError(tag, if (prefix.isBlank()) message else "$prefix $message")
     }
 
 internal class SlockSharedStoreProvider private constructor(
@@ -565,13 +571,15 @@ internal class SlockSharedStoreProvider private constructor(
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist")
+                        diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
+                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist")
+                        diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist"),
+                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist")
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,
