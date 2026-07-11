@@ -1124,22 +1124,24 @@ internal fun ThreadComposerContent(
         onEvent("change", nextText, nextAsTask, null)
     }
 
-    fun insertMentionAtCursor(handle: String) {
-        applyKuiklyComposerDirectMentionInsert(
+    fun insertMentionAtCursor(handle: String): Boolean {
+        val edit = applyKuiklyComposerDirectMentionInsert(
             text = text,
             selectionStart = selectionStart,
             selectionEnd = selectionEnd,
             handle = handle
-        )?.let { edit ->
-            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
-            focused = true
-            emitChange(nextText = edit.text)
-        }
+        ) ?: return false
+        fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+        focused = true
+        emitChange(nextText = edit.text)
+        return true
     }
 
     LaunchedEffect(insertMentionRequest?.nonce) {
         val request = insertMentionRequest ?: return@LaunchedEffect
-        insertMentionAtCursor(request.handle)
+        if (insertMentionAtCursor(request.handle)) {
+            composerFocusRequester.requestFocus()
+        }
         onInsertMentionConsumed(request)
     }
 
