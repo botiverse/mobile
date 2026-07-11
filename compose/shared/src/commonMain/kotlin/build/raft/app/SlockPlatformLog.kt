@@ -1,5 +1,14 @@
 package build.raft.app
 
+import build.raft.app.data.defaultNowMillis
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+
 internal enum class SlockLogLevel(
     val wireValue: String
 ) {
@@ -16,10 +25,90 @@ internal enum class SlockLogLevel(
  * directly. Add a helper here, then implement the platform-specific behavior in
  * each target source set.
  */
-internal expect fun slockPlatformLog(level: SlockLogLevel, tag: String, message: String)
+internal expect fun slockPlatformLog(
+    level: SlockLogLevel,
+    tag: String,
+    message: String,
+    timestampMillis: Long
+)
 
 private object SlockPlatformLogSinkRegistry {
+    @kotlin.concurrent.Volatile
     var sink: ((level: String, tag: String, message: String) -> Unit)? = null
+}
+
+private sealed interface SlockPlatformLogQueueItem {
+    data class Entry(
+        val level: SlockLogLevel,
+        val tag: String,
+        val message: String,
+        val timestampMillis: Long
+    ) : SlockPlatformLogQueueItem
+
+    data class Flush(val completion: CompletableDeferred<Unit>) : SlockPlatformLogQueueItem
+}
+
+private object SlockPlatformLogQueue {
+    private const val Capacity = 512
+    private const val QueueTag = "SlockPlatformLog"
+
+    private val queue = Channel<SlockPlatformLogQueueItem>(capacity = Capacity)
+    private val droppedCount = atomic(0)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        scope.launch {
+            for (item in queue) {
+                when (item) {
+                    is SlockPlatformLogQueueItem.Entry -> {
+                        val dropped = droppedCount.getAndSet(0)
+                        if (dropped > 0) {
+                            dispatch(
+                                level = SlockLogLevel.Warn,
+                                tag = QueueTag,
+                                message = "slock_platform_log_queue_dropped count=$dropped capacity=$Capacity",
+                                timestampMillis = item.timestampMillis
+                            )
+                        }
+                        dispatch(item.level, item.tag, item.message, item.timestampMillis)
+                    }
+                    is SlockPlatformLogQueueItem.Flush -> item.completion.complete(Unit)
+                }
+            }
+        }
+    }
+
+    fun enqueue(level: SlockLogLevel, tag: String, message: String) {
+        val result =
+            queue.trySend(
+                SlockPlatformLogQueueItem.Entry(
+                    level = level,
+                    tag = tag.take(SlockLogTagMaxChars * 2),
+                    message = message.take(SlockLogMessageMaxChars * 2),
+                    timestampMillis = defaultNowMillis()
+                )
+            )
+        if (result.isFailure) {
+            droppedCount.incrementAndGet()
+        }
+    }
+
+    suspend fun flush() {
+        val completion = CompletableDeferred<Unit>()
+        queue.send(SlockPlatformLogQueueItem.Flush(completion))
+        completion.await()
+    }
+
+    private fun dispatch(level: SlockLogLevel, tag: String, message: String, timestampMillis: Long) {
+        val safeTag = tag.trim().ifBlank { "SlockShared" }.take(SlockLogTagMaxChars)
+        val safeMessage = message.sanitizeSlockLogMessage().take(SlockLogMessageMaxChars)
+        val sink = SlockPlatformLogSinkRegistry.sink
+        if (sink != null) {
+            runCatching { sink(level.wireValue, safeTag, safeMessage) }
+            return
+        }
+        runCatching { slockPlatformLog(level, safeTag, safeMessage, timestampMillis) }
+    }
 }
 
 /**
@@ -59,14 +148,11 @@ internal fun slockLogError(tag: String, message: String) {
 }
 
 private fun slockLog(level: SlockLogLevel, tag: String, message: String) {
-    val safeTag = tag.trim().ifBlank { "SlockShared" }.take(SlockLogTagMaxChars)
-    val safeMessage = message.sanitizeSlockLogMessage().take(SlockLogMessageMaxChars)
-    val sink = SlockPlatformLogSinkRegistry.sink
-    if (sink != null) {
-        runCatching { sink(level.wireValue, safeTag, safeMessage) }
-        return
-    }
-    runCatching { slockPlatformLog(level, safeTag, safeMessage) }
+    SlockPlatformLogQueue.enqueue(level, tag, message)
+}
+
+internal suspend fun flushSlockPlatformLogsForTest() {
+    SlockPlatformLogQueue.flush()
 }
 
 private fun String.sanitizeSlockLogMessage(): String =

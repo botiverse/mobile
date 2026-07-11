@@ -253,9 +253,6 @@ export struct SlockNativeFloatingTabBar {
     .alignItems(HorizontalAlign.Center)
     .borderRadius(16)
     .backgroundColor('#00FFFFFF')
-    .onClick(() => {
-      this.renderView.selectIndex(index);
-    })
   }
 }
 

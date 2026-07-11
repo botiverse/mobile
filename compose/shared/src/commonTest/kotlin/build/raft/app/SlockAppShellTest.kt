@@ -276,6 +276,13 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellTabSelectionIgnoresNativeDuplicateAndCurrentTabTaps() {
+        assertFalse(shouldHandleAppShellTabSelection(currentTab = "settings", nextTab = "settings"))
+        assertFalse(shouldHandleAppShellTabSelection(currentTab = "unknown", nextTab = "home"))
+        assertTrue(shouldHandleAppShellTabSelection(currentTab = "home", nextTab = "settings"))
+    }
+
+    @Test
     fun appShellTabSelectionDismissesHomeNotificationCenterOnlyWhenLeavingHome() {
         assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "tasks"))
         assertTrue(shouldDismissHomeNotificationCenterForAppShellTabSelection("home", "settings"))

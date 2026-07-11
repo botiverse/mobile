@@ -46,9 +46,37 @@ const SLOCK_FONT_LOG_TAG = 'SlockFont';
 const SLOCK_KNOI_LOG_TAG = 'SlockKnoi';
 const SLOCK_SHARED_LOG_SINK_SERVICE = 'slockOhosSharedLogSink';
 
+interface SlockOhosSharedLogEntry {
+  level: string;
+  tag: string;
+  message: string;
+  timestampMillis: number;
+}
+
 class SlockOhosSharedLogSink {
   record(level: string, tag: string, message: string): void {
     SlockOhosDiagnostics.record(tag, message, Date.now(), this.normalizeLevel(level));
+  }
+
+  recordBatch(payload: string): void {
+    try {
+      const entries = JSON.parse(payload) as Array<SlockOhosSharedLogEntry>;
+      entries.forEach((entry: SlockOhosSharedLogEntry) => {
+        SlockOhosDiagnostics.record(
+          entry.tag,
+          entry.message,
+          entry.timestampMillis,
+          this.normalizeLevel(entry.level)
+        );
+      });
+    } catch (_error) {
+      SlockOhosDiagnostics.record(
+        SLOCK_KNOI_LOG_TAG,
+        'slock_ohos_log_batch_decode_failed',
+        Date.now(),
+        'error'
+      );
+    }
   }
 
   private normalizeLevel(level: string): string {

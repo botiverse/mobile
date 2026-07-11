@@ -1597,6 +1597,9 @@ private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settin
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
+internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
+    retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
+
 internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentTab: String, targetTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) == "home" &&
         retainedAppShellSelectedTab(targetTab) != "home"
@@ -3587,8 +3590,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         SlockAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
-            onBottomTabSelected = {
+            onBottomTabSelected = onBottomTabSelected@{
                 val nextTab = retainedAppShellSelectedTab(it)
+                if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
                 val visitedBefore = nextTab in retainedAppShellTabs
                 bridge.performanceMarker(
                     phase = appShellBottomTabPerformancePhase(nextTab),

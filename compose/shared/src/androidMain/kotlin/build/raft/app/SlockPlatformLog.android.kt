@@ -1,6 +1,11 @@
 package build.raft.app
 
-internal actual fun slockPlatformLog(level: SlockLogLevel, tag: String, message: String) {
+internal actual fun slockPlatformLog(
+    level: SlockLogLevel,
+    tag: String,
+    message: String,
+    timestampMillis: Long
+) {
     try {
         when (level) {
             SlockLogLevel.Debug -> android.util.Log.d(tag, message)
