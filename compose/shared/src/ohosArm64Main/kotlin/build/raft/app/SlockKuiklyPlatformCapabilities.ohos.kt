@@ -24,3 +24,5 @@ internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = true
 // Hands OHOS SDK reads attachments into a single ArrayBuffer — 50MB hard cap
 // until it streams (see docs/sdk-parity/ohos.md in the hands repo).
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
+
+internal actual fun slockSlugSlashCenteringOffsetDp(): Float = 0f

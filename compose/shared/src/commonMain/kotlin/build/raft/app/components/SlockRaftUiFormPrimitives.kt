@@ -1,6 +1,7 @@
 package build.raft.app.components
 
 import build.raft.app.SlockColor
+import build.raft.app.slockSlugSlashCenteringOffsetDp
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
@@ -312,13 +313,13 @@ internal fun SlockSlugInput(
             ) {
                 Text(
                     text = "/",
-                    // No vertical nudge on purpose: the fork's glyphVisualCenter
-                    // ink-centering was reverted on staging2 (03ef5cf, in this
-                    // PR's pinned gitlink), so the span now does an even leading
-                    // split. Whether a sub-dp residual remains vs CSS line-box
-                    // centering depends on Skia's bbox-vs-hhea metrics choice -
-                    // measure from capture before compensating, and gate any
-                    // future offset per-platform (commonMain renders on iOS too).
+                    // Empirically measured on the pinned render build (run
+                    // 29142637461): react's slash ink is dead-centered in the
+                    // tile; android's sits 1.5dp low under the even-split span.
+                    // Platform-gated correction - see
+                    // slockSlugSlashCenteringOffsetDp() for the measurement
+                    // provenance and the do-not-copy-blind note for iOS/OHOS.
+                    modifier = Modifier.offset(y = slockSlugSlashCenteringOffsetDp().dp),
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
                     // react slash = text-black/70. Disabled must match react's GROUP
                     // flatten (glyph over tile first, then x0.6 over white) = opaque

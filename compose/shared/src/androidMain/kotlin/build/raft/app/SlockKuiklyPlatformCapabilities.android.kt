@@ -16,3 +16,5 @@ internal actual fun slockInlineCodeUsesEdgePaddingBridge(): Boolean = false
 
 // Hands Android SDK 0.10.x uploads >10MB attachments via presigned R2 PUT.
 internal actual fun slockFeedbackAttachmentMaxBytes(): Long = 200L * 1024L * 1024L
+
+internal actual fun slockSlugSlashCenteringOffsetDp(): Float = -1.5f

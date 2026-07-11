@@ -37,6 +37,17 @@ internal expect fun slockInlineCodeCharWrapBridgeThreshold(): Int?
  */
 internal expect fun slockInlineCodeUsesEdgePaddingBridge(): Boolean
 
+/**
+ * Vertical correction (dp) for the slug-input slash glyph so its ink center
+ * matches react's (react measures dead-centered in the tile). Measured
+ * empirically per platform on the pinned render build (PR #568 verification
+ * run 29142637461): android renders the slash 1.5dp LOW under the even-split
+ * HRLineHeightSpan (post-03ef5cf), so it needs -1.5dp (up). iOS/OHOS start at
+ * 0 until their captures are measured - do NOT copy the android value blind;
+ * their text stacks place glyphs differently.
+ */
+internal expect fun slockSlugSlashCenteringOffsetDp(): Float
+
 // task #92 close-out: feedback attachment size cap follows what each
 // platform's Hands SDK can actually deliver. Android/iOS stream >10MB
 // attachments through a presigned R2 PUT up to 200MB; the OHOS SDK still
