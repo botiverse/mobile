@@ -7181,16 +7181,18 @@ private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selecti
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_PREVIEW = "share_preview"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE = "long_inline_code"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP = "wide_markdown_wrap"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS = "permalink_chips"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW = "permalink_chips_narrow"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "task524_markdown_visible"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG = "action_card_catalog"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD = "approve_login_action_card"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED = "approve_login_action_card_executed"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
-    if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP) {
-        920.dp
-    } else {
-        390.dp
+    when (visualFixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW -> 260.dp
+        else -> 390.dp
     }
 
 internal fun threadVisualFixture(
@@ -7734,8 +7736,11 @@ internal fun threadVisualFixture(
                     KuiklyThreadComposerPayload(
                         instanceId = resolvedInstanceId,
                         enabled = false
-                    )
+                )
             )
+        THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS,
+        THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW ->
+            threadMessagePermalinkVisualPayload(resolvedInstanceId)
         THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG ->
             threadActionCardVisualFixture(resolvedInstanceId, threadActionCardCatalogMessages())
         THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD ->
@@ -7750,6 +7755,60 @@ internal fun threadVisualFixture(
             )
     }
 }
+
+private fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThreadScreenPayload =
+    KuiklyThreadScreenPayload(
+        instanceId = instanceId,
+        title = "#permalink",
+        subtitle = "Generic inline-box permalink fixture",
+        status = "content",
+        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+        streamChannelId = "channel-permalink",
+        sourceThreadId = "channel-permalink",
+        selectedTab = "chat",
+        showModeTabs = false,
+        showReplyActions = false,
+        alignOwnMessagesRight = false,
+        showMessageSaveAction = false,
+        showTaskOpenActions = false,
+        showTaskStatusActions = false,
+        messages =
+            listOf(
+                KuiklyThreadMessageItem(
+                    id = "msg_permalink_visual",
+                    authorId = "agent-kmp-expert",
+                    authorName = "KMP-专家",
+                    authorDescription = "Validates generic inline boxes across renderers.",
+                    authorKind = "agent",
+                    avatarLabel = "KM",
+                    timestampLabel = "07/11 23:55",
+                    messageType = "Chat",
+                    body =
+                        "Single line: https://app.raft.build/s/mobile/channel/channel-design?msg=msg-single\n\n" +
+                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-design?msg=msg-edge after.\n\n" +
+                            "Thread reply: https://app.raft.build/s/mobile/channel/channel-design?thread=channel-design:msg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-visual?msg=msg-dm.\n\n" +
+                            "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/channel-design?msg=msg-code`.",
+                    threadChannelId = "thread-msg-permalink-visual"
+                )
+            ),
+        members =
+            listOf(
+                KuiklyThreadMemberItem(
+                    id = "agent-kmp-expert",
+                    displayName = "KMP-专家",
+                    handle = "KMP-专家",
+                    kind = "agent",
+                    avatarLabel = "KM"
+                )
+            ),
+        showComposer = false,
+        joined = true,
+        composer =
+            KuiklyThreadComposerPayload(
+                instanceId = instanceId,
+                enabled = false
+            )
+    )
 
 private fun threadActionCardVisualFixture(
     resolvedInstanceId: String,
@@ -7972,7 +8031,9 @@ internal fun threadVisualFixtureHighlightedMentions(
 private fun String.requiresViewerSelfMentionContext(): Boolean =
     this == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ||
         this == THREAD_MESSAGE_VISUAL_FIXTURE_LONG_INLINE_CODE ||
-        this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS ||
+        this == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW
 
 internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
     KuiklyPendingMentionActionItem(

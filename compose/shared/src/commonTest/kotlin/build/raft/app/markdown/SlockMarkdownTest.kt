@@ -82,6 +82,39 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun raftPermalinkInsideInlineCodeRemainsLiteral() {
+        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val externalUrl = "https://example.com/visual"
+        val source =
+            buildAnnotatedString {
+                val start = length
+                withLink(LinkAnnotation.Url(url)) { append(url) }
+                addStringAnnotation(
+                    tag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                    annotation = "true",
+                    start = start,
+                    end = length
+                )
+                append(" ")
+                withLink(LinkAnnotation.Url(externalUrl)) { append("external") }
+            }
+
+        val resolved = source.withSlockMessagePermalinkChips()
+
+        assertEquals("$url external", resolved.text)
+        val remainingLink =
+            resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
+        assertEquals(externalUrl, remainingLink.url)
+        assertTrue(
+            resolved.getStringAnnotations(
+                SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                0,
+                resolved.length
+            ).isNotEmpty()
+        )
+    }
+
+    @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
         val fullRendererBody = "Open https://raft.build/task36-preparse"
 

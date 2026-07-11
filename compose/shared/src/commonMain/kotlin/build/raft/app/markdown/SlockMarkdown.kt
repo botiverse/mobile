@@ -1195,21 +1195,22 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
  * ordinary text/link data plus [InlineBoxSpanStyle].
  */
 internal fun AnnotatedString.withSlockMessagePermalinkChips(): AnnotatedString {
+    val source = withoutLinksInsideSlockInlineCode()
     val permalinkLinks =
-        getLinkAnnotations(0, length)
+        source.getLinkAnnotations(0, source.length)
             .mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
                 link.url.toSlockMessagePermalinkTarget() ?: return@mapNotNull null
                 range to link
             }
             .sortedBy { (range, _) -> range.start }
-    if (permalinkLinks.isEmpty()) return this
+    if (permalinkLinks.isEmpty()) return source
 
-    val builder = AnnotatedString.Builder(length)
+    val builder = AnnotatedString.Builder(source.length)
     var cursor = 0
     permalinkLinks.forEach { (range, link) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
-        builder.append(this, cursor, range.start)
+        builder.append(source, cursor, range.start)
         builder.withLink(
             LinkAnnotation.Url(
                 url = link.url,
@@ -1221,8 +1222,48 @@ internal fun AnnotatedString.withSlockMessagePermalinkChips(): AnnotatedString {
         }
         cursor = range.end
     }
-    builder.append(this, cursor, length)
+    builder.append(source, cursor, source.length)
     return builder.toAnnotatedString()
+}
+
+/** Markdown parsers may retain autolink annotations inside code spans. */
+private fun AnnotatedString.withoutLinksInsideSlockInlineCode(): AnnotatedString {
+    val links = getLinkAnnotations(0, length)
+    if (links.none { range ->
+            getStringAnnotations(
+                SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                range.start,
+                range.end
+            ).isNotEmpty()
+        }
+    ) {
+        return this
+    }
+
+    return AnnotatedString.Builder(length)
+        .apply {
+            append(text)
+            spanStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            paragraphStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            getStringAnnotations(0, length).forEach { range ->
+                addStringAnnotation(range.tag, range.item, range.start, range.end)
+            }
+            links.forEach { range ->
+                val isInlineCode =
+                    getStringAnnotations(
+                        SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                        range.start,
+                        range.end
+                    ).isNotEmpty()
+                if (!isInlineCode) {
+                    when (val link = range.item) {
+                        is LinkAnnotation.Url -> addLink(link, range.start, range.end)
+                        is LinkAnnotation.Clickable -> addLink(link, range.start, range.end)
+                    }
+                }
+            }
+        }
+        .toAnnotatedString()
 }
 
 private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
