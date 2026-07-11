@@ -120,6 +120,14 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
+    /**
+     * Server feature-flag evaluation (sync-core rollout gate). Prefetched per shell when its runtime's
+     * server is selected (see [shellRuntime]) — this is what makes `sync_core_messages_v0` traffic
+     * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
+     */
+    val serverFeatureFlags: SharedServerFeatureFlags =
+        SharedServerFeatureFlags(SlockFeatureFlagsNetworkApi(networkClient))
+
     init {
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
@@ -141,7 +149,19 @@ internal class SlockSharedStoreProvider private constructor(
         homeStores.get(scope)
 
     fun shellRuntime(scope: SlockShellStoreScope): SlockShellStoreRuntime =
-        shellRuntimes.getOrPut(scope) { SlockShellStoreRuntime(scope) }
+        shellRuntimes.getOrPut(scope) {
+            SlockShellStoreRuntime(scope).also { runtime ->
+                // Prefetch registered server feature flags whenever this shell selects a server.
+                // StateFlow conflates to distinct values, so this evaluates once per server change.
+                threadSendScope.launch {
+                    runtime.currentServerId.collect { serverId ->
+                        if (!serverId.isNullOrBlank()) {
+                            runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                        }
+                    }
+                }
+            }
+        }
 
     fun scopesForServer(serverId: String): List<SlockShellStoreScope> {
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()
