@@ -107,6 +107,7 @@ internal fun SlockForegroundBannerHost(
     topSafeArea: Dp,
     serverMembersStore: SharedServerMembersStore? = null,
     currentServerStore: ComposeLocalDataStore? = null,
+    currentServerIdOverride: ServerId? = null,
     onBannerClick: (SlockForegroundMessageBanner) -> Unit,
     onBannerDismiss: (SlockForegroundMessageBanner) -> Unit = {},
     content: @Composable () -> Unit
@@ -116,7 +117,7 @@ internal fun SlockForegroundBannerHost(
             currentServerStore?.observeSession() ?: flowOf(null)
         }
     val currentSession by currentSessionFlow.collectAsState(null)
-    val currentServerId = currentSession?.currentServerId
+    val currentServerId = currentServerIdOverride ?: currentSession?.currentServerId
     Box(modifier = Modifier.fillMaxSize()) {
         content()
         if (banner != null) {

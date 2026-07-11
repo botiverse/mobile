@@ -11,7 +11,9 @@ import build.raft.app.model.ServerId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class SettingsHomePageRealtimeTest {
     @Test
@@ -52,6 +54,14 @@ class SettingsHomePageRealtimeTest {
             "event-server",
             resolveSharedShellRealtimeServerId(JSONObject(), event, sampleSession())
         )
+    }
+
+    @Test
+    fun realtimeDeliveryRequiresExactShellServerMatch() {
+        assertTrue(shouldRouteRealtimeEventToShell("server-a", "server-a"))
+        assertFalse(shouldRouteRealtimeEventToShell("server-a", "server-b"))
+        assertFalse(shouldRouteRealtimeEventToShell("server-a", null))
+        assertFalse(shouldRouteRealtimeEventToShell(null, "server-a"))
     }
 
     private fun sampleSession(): StoredAuthSession =

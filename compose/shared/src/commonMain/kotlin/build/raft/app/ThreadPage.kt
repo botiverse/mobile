@@ -2795,7 +2795,8 @@ internal fun SharedThreadRouteContent(
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
-    val realtimeDomainEventOwner = remember(sharedStores) { sharedStores.realtimeDomainEventOwner }
+    val realtimeDomainEventOwner =
+        remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
     val foregroundReconciler = remember(sharedStores) { sharedStores.foregroundReconciler }
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
@@ -3004,14 +3005,16 @@ internal fun SharedThreadRouteContent(
     var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
     DisposableEffect(
         realtimeEvents,
+        currentSession?.currentServerId,
         payload.parentChannelId,
         payload.sourceThreadId,
         payload.streamChannelId
     ) {
         val activeRoomIds = payload.activeRealtimeRoomIds()
-        realtimeEvents.joinChannels(activeRoomIds)
+        val roomServerId = currentSession?.currentServerId
+        realtimeEvents.joinChannels(activeRoomIds, roomServerId)
         onDispose {
-            realtimeEvents.leaveChannels(activeRoomIds)
+            realtimeEvents.leaveChannels(activeRoomIds, roomServerId)
         }
     }
     LaunchedEffect(resolvedAuxiliaryThreadId, active) {
@@ -3553,7 +3556,10 @@ internal fun SharedThreadRouteContent(
                         // join:channel for the visible thread rooms (server-side
                         // join is idempotent), and schedule the coalesced
                         // per-server member/status refresh.
-                        realtimeEvents.rejoinChannels(latestForegroundRejoinRoomIds)
+                        realtimeEvents.rejoinChannels(
+                            latestForegroundRejoinRoomIds,
+                            latestCurrentSession?.currentServerId
+                        )
                         foregroundReconciler.onForeground("thread_$event")
                     } else {
                         threadLifecycleSeen = true
@@ -4587,6 +4593,7 @@ internal fun SharedThreadRouteContent(
         topSafeArea = slockTopSafeAreaPadding(),
         serverMembersStore = serverMembersStore,
         currentServerStore = foregroundBannerCurrentServerStore,
+        currentServerIdOverride = currentSession?.currentServerId?.let(::ServerId),
         onBannerClick = { target ->
             foregroundMessageBanner = null
             val request = target.openRequest
@@ -5517,7 +5524,10 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.joinChannel(channelId)) {
                             is DataResult.Content -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
-                                realtimeEvents.joinChannel(result.data.channelId.value)
+                                realtimeEvents.joinChannel(
+                                    result.data.channelId.value,
+                                    currentSession?.currentServerId
+                                )
                                 bridge.toast(joinedChannelLabel)
                             }
                             is DataResult.Empty,

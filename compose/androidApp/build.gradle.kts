@@ -75,6 +75,9 @@ fun slockBuildConfigRawString(name: String, vararg aliases: String): String? =
 fun slockBuildConfigInt(name: String, fallback: Int, vararg aliases: String): Int =
     slockBuildConfigRawString(name, *aliases)?.toIntOrNull() ?: fallback
 
+fun slockBuildConfigBoolean(name: String, fallback: Boolean): Boolean =
+    slockBuildConfigRawString(name)?.lowercase()?.toBooleanStrictOrNull() ?: fallback
+
 val slockAndroidVersionMajor = slockBuildConfigInt("versionX", 1, "SLOCK_ANDROID_VERSION_MAJOR")
 val slockAndroidVersionMinor = slockBuildConfigInt("versionY", 0, "SLOCK_ANDROID_VERSION_MINOR")
 val slockAndroidVersionPatch = slockBuildConfigInt("versionZ", 0, "SLOCK_ANDROID_VERSION_PATCH")
@@ -350,6 +353,11 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
+        buildConfigField(
+            "Boolean",
+            "ENABLE_MULTI_SERVER_REALTIME_SESSIONS",
+            slockBuildConfigBoolean("SLOCK_ENABLE_MULTI_SERVER_REALTIME_SESSIONS", false).toString()
+        )
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
         buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")

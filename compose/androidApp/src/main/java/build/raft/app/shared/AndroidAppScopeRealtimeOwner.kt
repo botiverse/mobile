@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import build.raft.app.BuildConfig
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.SlockAppLog
@@ -35,12 +36,15 @@ import org.json.JSONObject
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
     private const val ForegroundReconnectAfterBackgroundMillis = 5L * 60L * 1000L
+    private const val RealtimeOwnerReplaceGraceMillis = 1_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var realtimeClient: SocketIoRealtimeClient? = null
     private var realtimeRuntime: SlockRealtimeAppScopeRuntime? = null
     private var realtimeConnectJob: Job? = null
+    private var multiSessionRegistry: AndroidRealtimeSessionRegistry<MultiSessionRuntime>? = null
+    private val visibleShellOwners = AndroidVisibleShellOwners()
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var lastHiddenAtMillis: Long? = null
     private var backgroundKeepAliveEnabled = false
@@ -88,22 +92,37 @@ internal object AndroidAppScopeRealtimeOwner {
 
     fun onAppShown(
         context: Context,
+        shellInstanceId: String = "",
         source: String = "unknown"
     ) {
         val shownAtMillis = System.currentTimeMillis()
-        val hiddenAtMillis = lastHiddenAtMillis
-        lastHiddenAtMillis = null
-        appVisibility = AppVisibility.Foreground
-        realtimeRuntime?.onAppShown()
+        val multiSessionEnabled = multiServerRealtimeEnabled()
+        val becameForeground = !multiSessionEnabled || visibleShellOwners.shown(shellInstanceId)
+        val hiddenAtMillis = lastHiddenAtMillis.takeIf { becameForeground }
+        if (becameForeground) {
+            lastHiddenAtMillis = null
+            appVisibility = AppVisibility.Foreground
+        }
+        if (multiSessionEnabled && becameForeground) {
+            multiSessionRegistry?.runtimes()?.forEach { it.runtime.onAppShown() }
+        } else if (!multiSessionEnabled) {
+            realtimeRuntime?.onAppShown()
+        }
         SlockAppLog.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
+            "app_scope_lifecycle event=shown source=$source joined_rooms=${joinedChannelCount()}"
         )
         AndroidNetworkPrewarmController.prewarmForegroundConnection(
             context = context.applicationContext,
             source = source
         )
-        if (shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
+        if (becameForeground && shouldForceReconnectAfterLongBackground(hiddenAtMillis, shownAtMillis)) {
+            if (multiSessionEnabled) {
+                multiSessionRegistry?.runtimes().orEmpty().forEach { holder ->
+                    reconnectMultiSession(holder, "long_background")
+                }
+                return
+            }
             val runtime = realtimeRuntime
             val ownedSession = runtime?.ownedSession()
             if (runtime != null && ownedSession != null) {
@@ -128,13 +147,29 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    fun onAppHidden(source: String = "unknown") {
+    fun onAppHidden(
+        shellInstanceId: String = "",
+        source: String = "unknown"
+    ) {
+        val multiSessionEnabled = multiServerRealtimeEnabled()
+        if (multiSessionEnabled && !visibleShellOwners.hidden(shellInstanceId)) {
+            SlockAppLog.d(
+                LOG_TAG,
+                "app_scope_lifecycle event=hidden_deferred source=$source " +
+                    "visible_shells=${visibleShellOwners.snapshot().size}"
+            )
+            return
+        }
         appVisibility = AppVisibility.Background
         lastHiddenAtMillis = System.currentTimeMillis()
-        realtimeRuntime?.onAppHidden()
+        if (multiSessionEnabled) {
+            multiSessionRegistry?.runtimes()?.forEach { it.runtime.onAppHidden() }
+        } else {
+            realtimeRuntime?.onAppHidden()
+        }
         SlockAppLog.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
+            "app_scope_lifecycle event=hidden source=$source joined_rooms=${joinedChannelCount()}"
         )
         AndroidNetworkPrewarmController.cancel(reason = source)
     }
@@ -146,7 +181,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         SlockAppLog.d(
             LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${realtimeRuntime?.joinedChannelCount ?: 0}"
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedChannelCount()}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -254,6 +289,7 @@ internal object AndroidAppScopeRealtimeOwner {
         context: Context,
         serverId: ServerId,
         accessToken: String,
+        shellInstanceId: String,
         requestedLastSeq: Long,
         forceReconnect: Boolean
     ) {
@@ -267,8 +303,20 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         SlockAppLog.w(
             LOG_TAG,
-            "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
+            "connect_request source=shared serverId=${serverId.value} shellInstanceId=$shellInstanceId " +
+                "lastSeq=$requestedLastSeq forceReconnect=$forceReconnect multiSession=${multiServerRealtimeEnabled()}"
         )
+        if (multiServerRealtimeEnabled()) {
+            connectMultiSession(
+                context = context.applicationContext,
+                serverId = serverId,
+                accessToken = accessToken,
+                shellInstanceId = shellInstanceId,
+                requestedLastSeq = requestedLastSeq,
+                forceReconnect = forceReconnect
+            )
+            return
+        }
         val runtime = bootstrapRealtime(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
@@ -345,6 +393,15 @@ internal object AndroidAppScopeRealtimeOwner {
             )
             return
         }
+        if (multiServerRealtimeEnabled()) {
+            val runtimes = multiSessionRegistry?.runtimes().orEmpty()
+            if (runtimes.isEmpty()) {
+                SlockAppLog.d(LOG_TAG, "realtime_health_check_skip reason=no_multi_session trigger=$reason")
+                return
+            }
+            runtimes.forEach { holder -> healthCheckMultiSession(holder, reason) }
+            return
+        }
         val client = realtimeClient
         val runtime = realtimeRuntime
         val ownedSession = runtime?.ownedSession()
@@ -382,13 +439,44 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
-    fun disconnectForSessionEnd(reason: String) {
+    fun disconnectForSessionEnd(
+        reason: String,
+        serverId: ServerId? = null,
+        shellInstanceId: String = "",
+        explicitClose: Boolean = false
+    ) {
         val cleanReason = reason.takeIf { it.isNotBlank() } ?: "shared_disconnect"
         if (!SlockRealtimeAppScopePolicy.isSessionEndDisconnectReason(cleanReason)) {
             SlockAppLog.w(
                 LOG_TAG,
                 "disconnect_ignored reason=$cleanReason"
             )
+            return
+        }
+        if (multiServerRealtimeEnabled()) {
+            val registry = multiSessionRegistry ?: return
+            if (cleanReason in ProcessWideDisconnectReasons) {
+                registry.disconnectAll(cleanReason)
+                multiSessionRegistry = null
+                backgroundKeepAliveEnabled = false
+                return
+            }
+            val targetServerId = serverId ?: return
+            if (cleanReason in ServerTerminalDisconnectReasons) {
+                registry.disconnectServer(targetServerId, cleanReason)
+            } else {
+                registry.release(
+                    serverId = targetServerId,
+                    shellInstanceId = shellInstanceId,
+                    mode =
+                        if (explicitClose) {
+                            AndroidRealtimeOwnerReleaseMode.ExplicitClose
+                        } else {
+                            AndroidRealtimeOwnerReleaseMode.ReplaceGrace
+                        }
+                )
+            }
+            backgroundKeepAliveEnabled = false
             return
         }
         realtimeConnectJob?.cancel()
@@ -404,6 +492,151 @@ internal object AndroidAppScopeRealtimeOwner {
         }
         backgroundKeepAliveEnabled = false
     }
+
+    fun releaseRealtimeOwner(
+        serverId: ServerId,
+        shellInstanceId: String,
+        explicitClose: Boolean
+    ): Boolean {
+        if (!multiServerRealtimeEnabled()) return false
+        val registry = multiSessionRegistry ?: return false
+        return registry.release(
+            serverId = serverId,
+            shellInstanceId = shellInstanceId,
+            mode =
+                if (explicitClose) {
+                    AndroidRealtimeOwnerReleaseMode.ExplicitClose
+                } else {
+                    AndroidRealtimeOwnerReleaseMode.ReplaceGrace
+                }
+        )
+    }
+
+    private fun connectMultiSession(
+        context: Context,
+        serverId: ServerId,
+        accessToken: String,
+        shellInstanceId: String,
+        requestedLastSeq: Long,
+        forceReconnect: Boolean
+    ) {
+        val registry = multiSessionRegistry(context)
+        registry.releaseOwnerFromOtherServers(
+            shellInstanceId = shellInstanceId,
+            exceptServerId = serverId,
+            mode = AndroidRealtimeOwnerReleaseMode.ReplaceGrace
+        )
+        val holder = registry.acquire(serverId, shellInstanceId)
+        holder.connectJob?.cancel()
+        holder.connectJob =
+            scope.launch {
+                try {
+                    val result =
+                        holder.runtime.connect(
+                            serverId = serverId,
+                            accessToken = accessToken,
+                            requestedLastSeq = requestedLastSeq,
+                            forceReconnect = forceReconnect
+                        )
+                    SlockAppLog.d(
+                        LOG_TAG,
+                        "multi_session_connect_result serverId=${serverId.value} shellInstanceId=$shellInstanceId " +
+                            "result=${result::class.simpleName}"
+                    )
+                } finally {
+                    holder.connectJob = null
+                }
+            }
+    }
+
+    private fun multiSessionRegistry(context: Context): AndroidRealtimeSessionRegistry<MultiSessionRuntime> {
+        multiSessionRegistry?.let { return it }
+        val appContext = context.applicationContext
+        return AndroidRealtimeSessionRegistry(
+            createRuntime = { serverId ->
+                val hostContext =
+                    AndroidAppScopeRealtimeHostContext.create(
+                        context = appContext,
+                        scope = scope,
+                        pinnedServerId = serverId
+                    )
+                val runtime = bootstrapRealtime(hostContext)
+                syncRuntimeVisibility(runtime, appVisibility)
+                MultiSessionRuntime(serverId, hostContext.client, runtime)
+            },
+            disconnectRuntime = { serverId, holder, reason ->
+                holder.connectJob?.cancel()
+                holder.connectJob = null
+                holder.runtime.disconnectForSessionEnd(GeneratedRealtimeContract.DisconnectReason.ServerRemoved)
+                holder.runtime.dispose()
+                SlockAppLog.d(
+                    LOG_TAG,
+                    "multi_session_disconnect serverId=${serverId.value} reason=$reason"
+                )
+            },
+            releaseScheduler =
+                AndroidRealtimeReleaseScheduler { delayMillis, block ->
+                    val job = scope.launch {
+                        delay(delayMillis)
+                        block()
+                    }
+                    AndroidRealtimePendingRelease { job.cancel() }
+                },
+            replaceGraceMillis = RealtimeOwnerReplaceGraceMillis
+        ).also { multiSessionRegistry = it }
+    }
+
+    private fun healthCheckMultiSession(holder: MultiSessionRuntime, reason: String) {
+        val ownedSession = holder.runtime.ownedSession() ?: return
+        if (holder.client.checkHeartbeatSilence()) return
+        when (val state = holder.client.state) {
+            RealtimeConnectionState.Disconnected,
+            is RealtimeConnectionState.Failed -> {
+                reconnectMultiSession(holder, "health_check_$reason")
+            }
+            RealtimeConnectionState.Connected,
+            RealtimeConnectionState.RoomsJoined,
+            RealtimeConnectionState.Connecting ->
+                SlockAppLog.d(
+                    LOG_TAG,
+                    "multi_session_health_check_skip trigger=$reason state=${state::class.simpleName} " +
+                        "serverId=${holder.serverId.value}"
+                )
+        }
+    }
+
+    private fun reconnectMultiSession(holder: MultiSessionRuntime, reason: String) {
+        val ownedSession = holder.runtime.ownedSession() ?: return
+        holder.connectJob?.cancel()
+        holder.connectJob =
+            scope.launch {
+                try {
+                    val result =
+                        holder.runtime.connect(
+                            serverId = ownedSession.serverId,
+                            accessToken = ownedSession.accessToken,
+                            requestedLastSeq = holder.runtime.lastSeq,
+                            forceReconnect = true
+                        )
+                    SlockAppLog.d(
+                        LOG_TAG,
+                        "multi_session_reconnect_result reason=$reason serverId=${ownedSession.serverId.value} " +
+                            "result=${result::class.simpleName}"
+                    )
+                } finally {
+                    holder.connectJob = null
+                }
+            }
+    }
+
+    private fun joinedChannelCount(): Int =
+        if (multiServerRealtimeEnabled()) {
+            multiSessionRegistry?.runtimes()?.sumOf { it.runtime.joinedChannelCount } ?: 0
+        } else {
+            realtimeRuntime?.joinedChannelCount ?: 0
+        }
+
+    private fun multiServerRealtimeEnabled(): Boolean = BuildConfig.ENABLE_MULTI_SERVER_REALTIME_SESSIONS
 
     private fun bootstrapRealtime(context: Context): SlockRealtimeAppScopeRuntime {
         realtimeRuntime?.let { return it }
@@ -523,6 +756,28 @@ internal object AndroidAppScopeRealtimeOwner {
         Foreground,
         Background
     }
+
+    private data class MultiSessionRuntime(
+        val serverId: ServerId,
+        val client: SocketIoRealtimeClient,
+        val runtime: SlockRealtimeAppScopeRuntime,
+        var connectJob: Job? = null
+    )
+
+    private val ProcessWideDisconnectReasons =
+        setOf(
+            GeneratedRealtimeContract.DisconnectReason.AuthInvalid,
+            GeneratedRealtimeContract.DisconnectReason.Logout,
+            GeneratedRealtimeContract.DisconnectReason.ProcessTeardown,
+            GeneratedRealtimeContract.DisconnectReason.ApiEnvironmentChanged
+        )
+
+    private val ServerTerminalDisconnectReasons =
+        setOf(
+            GeneratedRealtimeContract.DisconnectReason.ServerDeleted,
+            GeneratedRealtimeContract.DisconnectReason.ServerMembershipRemoved,
+            GeneratedRealtimeContract.DisconnectReason.ServerRemoved
+        )
 
     private fun Context.sharedRealtimeAuthTokenProvider(
         sessionStore: KeyValueAuthSessionStore

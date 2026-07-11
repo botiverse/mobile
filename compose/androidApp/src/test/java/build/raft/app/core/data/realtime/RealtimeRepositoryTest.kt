@@ -178,6 +178,45 @@ class RealtimeRepositoryTest {
     }
 
     @Test
+    fun pinnedRealtimeSessionKeepsServerDuringProcessSelectionChange() {
+        val transport = FakeRealtimeSocketTransport()
+        val store =
+            InMemoryAuthSessionStore(
+                sampleSession.copy(
+                    selectedServerId = "server-2",
+                    servers = sampleSession.servers + StoredAuthServer("server-2", "Server Two")
+                )
+            )
+        val authApi = FakeAuthApi(responses = listOf(AuthRefreshResponse("rotated-access", "rotated-refresh")))
+        val client = SocketIoRealtimeClient(transport)
+        SessionRealtimeRepository(
+            store = store,
+            client = client,
+            pinnedServerId = ServerId("server-1"),
+            tokenProvider =
+                SharedAuthTokenProvider(
+                    sessionStore = store,
+                    authApi = authApi,
+                    clockMillis = { 0L },
+                    logger = {},
+                    warningLogger = {}
+                )
+        )
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth("opaque-access", ServerId("server-1")),
+                lastSeq = 0L
+            )
+        )
+
+        transport.receive(RealtimeSocketEvents.ConnectError, "invalid token")
+
+        assertEquals("rotated-access", transport.lastAuth["token"])
+        assertEquals("server-1", transport.lastAuth["serverId"])
+        assertEquals("server-2", store.session?.currentServerId)
+    }
+
+    @Test
     fun repositoryDoesNotFallbackToStaleTokenWhenRefreshIsCancelled() {
         val transport = FakeRealtimeSocketTransport()
         val store = InMemoryAuthSessionStore(sampleSession.copy(accessToken = "opaque-access"))

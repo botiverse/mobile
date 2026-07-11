@@ -245,6 +245,9 @@ open class SlockKuiklyActivity :
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
+    private val realtimeVisibilityOwnerId: String by lazy {
+        androidShellLaunchTarget?.shellInstanceId ?: "activity-${System.identityHashCode(this)}"
+    }
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val kuiklySystemBackCallback =
             object : OnBackPressedCallback(true) {
@@ -342,6 +345,13 @@ open class SlockKuiklyActivity :
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
                 AndroidShellWindowRegistry.unregister(target.shellInstanceId)
+                target.serverId?.takeIf(String::isNotBlank)?.let { serverId ->
+                    AndroidAppScopeRealtimeOwner.releaseRealtimeOwner(
+                        serverId = ServerId(serverId),
+                        shellInstanceId = target.shellInstanceId,
+                        explicitClose = true
+                    )
+                }
                 releaseSlockShellStoreScope(target.shellInstanceId, target.serverId)
             }
         }
@@ -362,7 +372,10 @@ open class SlockKuiklyActivity :
     }
 
     override fun onPause() {
-        AndroidAppScopeRealtimeOwner.onAppHidden(source = "activity_on_pause")
+        AndroidAppScopeRealtimeOwner.onAppHidden(
+            shellInstanceId = realtimeVisibilityOwnerId,
+            source = "activity_on_pause"
+        )
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
     }
@@ -375,6 +388,7 @@ open class SlockKuiklyActivity :
         sendAppShellLifecycleEvent("resume")
         AndroidAppScopeRealtimeOwner.onAppShown(
             context = applicationContext,
+            shellInstanceId = realtimeVisibilityOwnerId,
             source = "activity_on_resume"
         )
         AndroidRealtimeKeepAliveController.start(
@@ -1130,6 +1144,7 @@ open class SlockKuiklyActivity :
     internal fun requestRealtimeConnect(
         serverId: String,
         accessToken: String,
+        shellInstanceId: String = "",
         lastSeq: Long,
         forceReconnect: Boolean = false
     ) {
@@ -1138,14 +1153,25 @@ open class SlockKuiklyActivity :
             context = applicationContext,
             serverId = ServerId(serverId),
             accessToken = accessToken,
+            shellInstanceId = shellInstanceId,
             requestedLastSeq = lastSeq,
             forceReconnect = forceReconnect
         )
     }
 
-    internal fun requestRealtimeDisconnect(reason: String) {
+    internal fun requestRealtimeDisconnect(
+        reason: String,
+        serverId: String = "",
+        shellInstanceId: String = "",
+        explicitClose: Boolean = false
+    ) {
         AndroidRealtimeKeepAliveController.stop(applicationContext, reason)
-        AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(reason)
+        AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(
+            reason = reason,
+            serverId = serverId.takeIf { it.isNotBlank() }?.let(::ServerId),
+            shellInstanceId = shellInstanceId,
+            explicitClose = explicitClose
+        )
     }
 
     private fun sendAppShellLifecycleEvent(event: String) {
@@ -2273,12 +2299,16 @@ internal class SlockKuiklyBridgeModule(
                     (activity as? SlockKuiklyActivity)?.requestRealtimeConnect(
                             serverId = request.optString("serverId"),
                             accessToken = request.optString("accessToken"),
+                            shellInstanceId = request.optString("shellInstanceId"),
                             lastSeq = request.optLong("lastSeq", 0L),
                             forceReconnect = request.optBoolean("forceReconnect", false)
                     )
             "disconnect" ->
                     (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(
-                            request.optString("reason").ifBlank { "shared_disconnect" }
+                            reason = request.optString("reason").ifBlank { "shared_disconnect" },
+                            serverId = request.optString("serverId"),
+                            shellInstanceId = request.optString("shellInstanceId"),
+                            explicitClose = request.optBoolean("explicitClose", false)
                     )
         }
     }

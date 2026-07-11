@@ -15,62 +15,65 @@ internal class KuiklyRealtimeEvents(
         subscription.close()
     }
 
-    fun joinChannels(channelIds: List<String>) {
+    fun joinChannels(channelIds: List<String>, serverId: String? = null) {
         channelIds
             .asSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
-            .forEach(::joinChannel)
+            .forEach { joinChannel(it, serverId) }
     }
 
-    fun joinChannel(channelId: String) {
+    fun joinChannel(channelId: String, serverId: String? = null) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionJoinChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId),
+                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
             source = "realtime_rooms"
         )
     }
 
-    fun rejoinChannels(channelIds: List<String>) {
+    fun rejoinChannels(channelIds: List<String>, serverId: String? = null) {
         channelIds
             .asSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
-            .forEach(::rejoinChannel)
+            .forEach { rejoinChannel(it, serverId) }
     }
 
-    fun rejoinChannel(channelId: String) {
+    fun rejoinChannel(channelId: String, serverId: String? = null) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionRejoinChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId),
+                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
             source = "foreground_reconcile"
         )
     }
 
-    fun leaveChannels(channelIds: List<String>) {
+    fun leaveChannels(channelIds: List<String>, serverId: String? = null) {
         channelIds
             .asSequence()
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
-            .forEach(::leaveChannel)
+            .forEach { leaveChannel(it, serverId) }
     }
 
-    fun leaveChannel(channelId: String) {
+    fun leaveChannel(channelId: String, serverId: String? = null) {
         val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return
         eventBus.post(
             SlockRealtimeNotifyContract.RoomsEventName,
             JSONObject()
                 .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionLeaveChannel)
-                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId),
+                .put(SlockRealtimeNotifyContract.KeyChannelId, cleanChannelId)
+                .also { payload -> serverId?.takeIf { it.isNotBlank() }?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) } },
             source = "realtime_rooms"
         )
     }

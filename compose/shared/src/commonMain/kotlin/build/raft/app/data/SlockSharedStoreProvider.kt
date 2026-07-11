@@ -103,6 +103,8 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
+    private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
+    private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -178,6 +180,29 @@ internal class SlockSharedStoreProvider private constructor(
                             logger = sharedInfoLogger("SlockServerMembers", "shell_server_members_repository")
                         ),
                     logger = sharedInfoLogger("SlockServerMembers")
+                )
+            }
+        }
+
+    fun realtimeDomainEventOwner(scope: SlockShellStoreScope): SharedRealtimeDomainEventOwner =
+        if (scope == SlockShellStoreScope.Legacy) {
+            realtimeDomainEventOwner
+        } else {
+            shellRealtimeDomainEventOwners.getOrPut(scope) {
+                SharedRealtimeDomainEventOwner(
+                    tasksDataStore = tasksDataStore,
+                    cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
+                )
+            }
+        }
+
+    fun agentDetailStore(scope: SlockShellStoreScope): SharedAgentDetailStore =
+        if (scope == SlockShellStoreScope.Legacy) {
+            agentDetailStore
+        } else {
+            shellAgentDetailStores.getOrPut(scope) {
+                SharedAgentDetailStore(
+                    logger = sharedInfoLogger("SlockAgentDetail", "shell_agent_detail_store")
                 )
             }
         }
@@ -346,6 +371,8 @@ internal class SlockSharedStoreProvider private constructor(
         shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
         shellServerMembersStores.remove(scope)
+        shellRealtimeDomainEventOwners.remove(scope)
+        shellAgentDetailStores.remove(scope)
         shellRuntimes.remove(scope)
     }
 

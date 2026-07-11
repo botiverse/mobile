@@ -569,6 +569,7 @@ internal class BridgeModule : Module() {
     fun realtimeConnect(
         serverId: String,
         accessToken: String,
+        shellInstanceId: String = "",
         socketUrl: String = SLOCK_SOCKET_BASE_URL,
         lastSeq: Long = 0L,
         forceReconnect: Boolean = false
@@ -577,16 +578,25 @@ internal class BridgeModule : Module() {
         methodArgs.put("action", "connect")
         methodArgs.put("serverId", serverId)
         methodArgs.put("accessToken", accessToken)
+        methodArgs.put("shellInstanceId", shellInstanceId)
         methodArgs.put("socketUrl", socketUrl)
         methodArgs.put("lastSeq", lastSeq)
         methodArgs.put("forceReconnect", forceReconnect)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
-    fun realtimeDisconnect(reason: String = "shared_disconnect") {
+    fun realtimeDisconnect(
+        reason: String = "shared_disconnect",
+        serverId: String = "",
+        shellInstanceId: String = "",
+        explicitClose: Boolean = false
+    ) {
         val methodArgs = JSONObject()
         methodArgs.put("action", "disconnect")
         methodArgs.put("reason", reason)
+        methodArgs.put("serverId", serverId)
+        methodArgs.put("shellInstanceId", shellInstanceId)
+        methodArgs.put("explicitClose", explicitClose)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
