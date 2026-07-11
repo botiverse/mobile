@@ -6624,11 +6624,12 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMessageSavedBadgeIsHiddenByDefault() {
-        assertFalse(
+    fun threadMessageSavedBadgeTracksSavedStateIndependentlyOfRowActionPreferences() {
+        assertEquals(SlockColor.AccentOrange.copy(alpha = 0.15f), ThreadMessageSavedBadgeColor)
+        assertEquals(SlockColor.AccentOrangeArgb, ThreadMessageSavedBadgeIconColorArgb)
+        assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = false,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = true
@@ -6637,7 +6638,6 @@ class ThreadPayloadTest {
         assertFalse(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = false
@@ -6646,7 +6646,6 @@ class ThreadPayloadTest {
         assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = true
@@ -6655,7 +6654,6 @@ class ThreadPayloadTest {
         assertFalse(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = true,
                 isSaved = true

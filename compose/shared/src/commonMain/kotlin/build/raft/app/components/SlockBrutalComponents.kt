@@ -132,6 +132,8 @@ internal fun SlockAnchoredMetaChip(
     onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
     modifier: Modifier = Modifier,
     iconSize: Dp = 10.dp,
+    iconColorArgb: String = SlockColor.TextBlackArgb,
+    iconFillArgb: String? = null,
     trailingIconName: SlockLucideIconName? = null,
     trailingIconSize: Dp = iconSize,
     borderWidth: Dp = SlockStroke.Thin,
@@ -189,7 +191,12 @@ internal fun SlockAnchoredMetaChip(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             iconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
+                SlockLucideIcon(
+                    it,
+                    modifier = Modifier.size(iconSize),
+                    color = iconColorArgb,
+                    fill = iconFillArgb
+                )
             }
             Text(
                 text = label,
