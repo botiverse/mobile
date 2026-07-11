@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-11T05:30:48.773Z",
+  "generatedAt": "2026-07-11T05:34:37.673Z",
   "runId": "ea5a365-20260711052840",
   "commit": "ea5a365-20260711052840",
   "commitSubject": "fix(home): show joint channels before channels (#601)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 82,
-        "pending": 8
+        "ready": 86,
+        "pending": 4
       }
     },
     {
@@ -51,8 +51,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 77,
-        "pending": 13
+        "ready": 79,
+        "pending": 11
       }
     },
     {
@@ -75,8 +75,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 79,
-        "pending": 11
+        "ready": 82,
+        "pending": 8
       }
     }
   ],
@@ -90,8 +90,8 @@
   },
   "analysisSummary": {
     "total": 90,
-    "ready": 82,
-    "pending": 8
+    "ready": 86,
+    "pending": 4
   },
   "componentMatrixSummary": {
     "total": 110,

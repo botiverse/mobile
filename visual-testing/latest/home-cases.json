@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-11T05:30:48.773Z",
+  "generatedAt": "2026-07-11T05:34:37.673Z",
   "runId": "ea5a365-20260711052840",
   "cases": [
     {
@@ -3199,17 +3199,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.836Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:48.375Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row, dot shapes/colors, and 'Waiting pulse' text appear visually identical between React (342×92) and iOS (1170×2532) baselines.",
+              "Pink waiting-pulse dot and adjacent label are aligned consistently in both renders.",
+              "Pixel mismatch is only 0.23% (pixel-perfect 99.77%, RGB similarity 97.95%), within tolerance.",
+              "Difference in raw canvas size (342×92 vs 1170×2532) is expected: iOS renders the full device frame while the React crop is element-bounds only."
+            ],
+            "likelyCauses": [
+              "Any sub-1% mismatch is attributable to anti-aliasing of circle edges and font hinting differences between the web and iOS rasterizers, not to a real UI defect.",
+              "No structural or component-level divergence observed."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; the comparison passes within configured tolerance.",
+              "If higher fidelity is desired, add an explicit crop rect to the iOS baseline (e.g. y≈100, height≈170) so both sides compare the same component region pixel-for-pixel."
+            ],
+            "intentional": [
+              "Full-device iOS canvas (1170×2532) vs element-bounds React crop (342×92) is an intentional scoping choice, not a UI regression."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -3282,17 +3295,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.836Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:48.375Z",
+            "severity": "low",
+            "summary": [
+              "Status dot row, dot shapes/colors, and 'Waiting pulse' text appear visually identical between React (342×92) and iOS (1170×2532) baselines.",
+              "Pink waiting-pulse dot and adjacent label are aligned consistently in both renders.",
+              "Pixel mismatch is only 0.23% (pixel-perfect 99.77%, RGB similarity 97.95%), within tolerance.",
+              "Difference in raw canvas size (342×92 vs 1170×2532) is expected: iOS renders the full device frame while the React crop is element-bounds only."
+            ],
+            "likelyCauses": [
+              "Any sub-1% mismatch is attributable to anti-aliasing of circle edges and font hinting differences between the web and iOS rasterizers, not to a real UI defect.",
+              "No structural or component-level divergence observed."
+            ],
+            "suggestedOwner": "design-system",
+            "suggestedFixes": [
+              "No action required; the comparison passes within configured tolerance.",
+              "If higher fidelity is desired, add an explicit crop rect to the iOS baseline (e.g. y≈100, height≈170) so both sides compare the same component region pixel-for-pixel."
+            ],
+            "intentional": [
+              "Full-device iOS canvas (1170×2532) vs element-bounds React crop (342×92) is an intentional scoping choice, not a UI regression."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -9067,7 +9093,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-07-11T05:30:40.443Z",
+        "generatedAt": "2026-07-11T05:34:29.668Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -9128,7 +9154,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:40.443Z",
+            "generatedAt": "2026-07-11T05:34:29.668Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9150,7 +9176,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -9228,7 +9254,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10114,7 +10140,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-07-11T05:30:40.443Z",
+        "generatedAt": "2026-07-11T05:34:29.669Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -10175,7 +10201,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:40.443Z",
+            "generatedAt": "2026-07-11T05:34:29.669Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10197,7 +10223,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10275,7 +10301,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -10765,17 +10791,36 @@
         "currentHeight": 360
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-07-11T05:30:40.614Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-07-11T05:32:39.486Z",
+        "severity": "high",
+        "summary": [
+          "Android header has 2 trailing action icons (settings, members) while React has 4 (search, unread, settings, members) — search and unread icons are missing on Android.",
+          "Subtitle text length differs: React shows 'Home shell, …' (truncated), Android shows the full 'Home shell, server badge, and…' due to wider available space from fewer icons.",
+          "Members badge count differs: React shows '0', Android shows '4'.",
+          "Tab bar cells are wider on Android (3 tabs spanning the full width) versus React (4 tabs including an additional 4th tab area).",
+          "Right edge on Android has no 4th tab cell; React reserves a fourth tab slot that appears empty/styled differently."
+        ],
+        "likelyCauses": [
+          "Android thread header is rendering a different actions set (omitting search and unread/mailbox icons).",
+          "Badge value on members icon uses live server count (4) on Android vs static demo value (0) on React.",
+          "Tab strip configuration diverges — Android configured with 3 tabs, React with 4 tabs, changing cell widths."
+        ],
+        "suggestedOwner": "android-chat",
+        "suggestedFixes": [
+          "Add the search (magnifier) and unread/mailbox icon buttons to the Android ThreadHeader trailing actions group, in the same order as React.",
+          "Standardize the members badge: either both should pull live count or both should display a fixed placeholder; confirm whether '4' is the intended state.",
+          "Align the trailing actions block so the subtitle truncates identically (use the same max width / icon count contract on both platforms).",
+          "Reconcile tab count: either add the 4th tab to Android or remove it from React so cell widths match.",
+          "Re-run Slock visual diff after fixes to confirm pixel-mismatch ratio drops below the 2% tolerance."
+        ],
+        "intentional": [
+          "The yellow active-tab fill color and black border styling on Chat appear intentionally consistent across both platforms.",
+          "Title typography (Chinese characters '首页专修') weight and size match between React and Android."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -10862,17 +10907,36 @@
             "currentHeight": 360
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:40.614Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:39.486Z",
+            "severity": "high",
+            "summary": [
+              "Android header has 2 trailing action icons (settings, members) while React has 4 (search, unread, settings, members) — search and unread icons are missing on Android.",
+              "Subtitle text length differs: React shows 'Home shell, …' (truncated), Android shows the full 'Home shell, server badge, and…' due to wider available space from fewer icons.",
+              "Members badge count differs: React shows '0', Android shows '4'.",
+              "Tab bar cells are wider on Android (3 tabs spanning the full width) versus React (4 tabs including an additional 4th tab area).",
+              "Right edge on Android has no 4th tab cell; React reserves a fourth tab slot that appears empty/styled differently."
+            ],
+            "likelyCauses": [
+              "Android thread header is rendering a different actions set (omitting search and unread/mailbox icons).",
+              "Badge value on members icon uses live server count (4) on Android vs static demo value (0) on React.",
+              "Tab strip configuration diverges — Android configured with 3 tabs, React with 4 tabs, changing cell widths."
+            ],
+            "suggestedOwner": "android-chat",
+            "suggestedFixes": [
+              "Add the search (magnifier) and unread/mailbox icon buttons to the Android ThreadHeader trailing actions group, in the same order as React.",
+              "Standardize the members badge: either both should pull live count or both should display a fixed placeholder; confirm whether '4' is the intended state.",
+              "Align the trailing actions block so the subtitle truncates identically (use the same max width / icon count contract on both platforms).",
+              "Reconcile tab count: either add the 4th tab to Android or remove it from React so cell widths match.",
+              "Re-run Slock visual diff after fixes to confirm pixel-mismatch ratio drops below the 2% tolerance."
+            ],
+            "intentional": [
+              "The yellow active-tab fill color and black border styling on Chat appear intentionally consistent across both platforms.",
+              "Title typography (Chinese characters '首页专修') weight and size match between React and Android."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -14905,17 +14969,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.856Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:57.654Z",
+            "severity": "high",
+            "summary": [
+              "Search input field width is significantly narrower on iOS (right) compared to Android (left), leaving large empty space on the right side of the search bar",
+              "Filter chips row ('@Scope 2', 'From: Me', '#design') is right-aligned on iOS but spans full width with even distribution on Android",
+              "The 5 results / Channels & DMs / Android Developer result card uses a much wider card layout on iOS, with content stretched across the full width vs. a more compact card on Android",
+              "First message card body on Android includes an ellipsis (... ) before truncation, whereas iOS truncates without the ellipsis glyph in the same position",
+              "Horizontal alignment of body text inside message cards differs — Android shows tighter line wrapping while iOS stretches content with different line breaks"
+            ],
+            "likelyCauses": [
+              "iOS Kuikly renderer is not honoring the same flex/width constraints used on Android, allowing the search input to shrink while preserving chip widths",
+              "Result list card uses a fill-parent width on iOS vs. a fixed/max width on Android, suggesting inconsistent style tokens across platforms",
+              "Text truncation component on iOS drops the trailing ellipsis character (… vs ...) likely due to locale or font fallback differences",
+              "Different safe-area / padding tokens applied at the iOS screen root vs. Android",
+              "Spacing scale tokens (margins, section gaps) differ between platform style sheets"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly-renderer team",
+            "suggestedFixes": [
+              "Normalize the search input field's flex/width behavior so it expands to fill remaining row space consistently on both platforms",
+              "Align filter chip row distribution (justify-content) using a shared design token (e.g., space-between)",
+              "Apply a consistent result card width/max-width token across Android and iOS",
+              "Fix text truncation to always render the ellipsis glyph (e.g., use Unicode '…' or '...' consistently) and ensure single-line clamp behavior matches",
+              "Unify safe-area insets and screen-level padding tokens between Android and iOS builds"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -14993,17 +15075,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.856Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:57.654Z",
+            "severity": "high",
+            "summary": [
+              "Search input field width is significantly narrower on iOS (right) compared to Android (left), leaving large empty space on the right side of the search bar",
+              "Filter chips row ('@Scope 2', 'From: Me', '#design') is right-aligned on iOS but spans full width with even distribution on Android",
+              "The 5 results / Channels & DMs / Android Developer result card uses a much wider card layout on iOS, with content stretched across the full width vs. a more compact card on Android",
+              "First message card body on Android includes an ellipsis (... ) before truncation, whereas iOS truncates without the ellipsis glyph in the same position",
+              "Horizontal alignment of body text inside message cards differs — Android shows tighter line wrapping while iOS stretches content with different line breaks"
+            ],
+            "likelyCauses": [
+              "iOS Kuikly renderer is not honoring the same flex/width constraints used on Android, allowing the search input to shrink while preserving chip widths",
+              "Result list card uses a fill-parent width on iOS vs. a fixed/max width on Android, suggesting inconsistent style tokens across platforms",
+              "Text truncation component on iOS drops the trailing ellipsis character (… vs ...) likely due to locale or font fallback differences",
+              "Different safe-area / padding tokens applied at the iOS screen root vs. Android",
+              "Spacing scale tokens (margins, section gaps) differ between platform style sheets"
+            ],
+            "suggestedOwner": "mobile-platform / Kuikly-renderer team",
+            "suggestedFixes": [
+              "Normalize the search input field's flex/width behavior so it expands to fill remaining row space consistently on both platforms",
+              "Align filter chip row distribution (justify-content) using a shared design token (e.g., space-between)",
+              "Apply a consistent result card width/max-width token across Android and iOS",
+              "Fix text truncation to always render the ellipsis glyph (e.g., use Unicode '…' or '...' consistently) and ensure single-line clamp behavior matches",
+              "Unify safe-area insets and screen-level padding tokens between Android and iOS builds"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -18110,7 +18210,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-07-11T05:30:40.443Z",
+        "generatedAt": "2026-07-11T05:34:29.669Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -18171,7 +18271,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:40.443Z",
+            "generatedAt": "2026-07-11T05:34:29.669Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18193,7 +18293,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -18267,7 +18367,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -19913,17 +20013,38 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-07-11T05:30:41.043Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-07-11T05:32:39.952Z",
+        "severity": "medium",
+        "summary": [
+          "Android header includes a square settings icon next to the 'Settings' title that is absent on the React baseline.",
+          "Android list adds a 'Mobile' item under PERSONAL that does not exist in the React baseline.",
+          "Android list adds a 'Send feedback' item under ABOUT that does not exist in the React baseline.",
+          "Section headers ('PERSONAL','WORKSPACE','ABOUT') on Android are uppercase-tracked without letter-spacing, appearing denser than the React version which uses wider letter-spacing.",
+          "Android list item vertical spacing is tighter than React, reducing overall list density differences vs React's looser rhythm."
+        ],
+        "likelyCauses": [
+          "Android design intentionally injects platform-specific list rows (Mobile, Send feedback) that are not part of the shared component contract.",
+          "Iconography was added to the Android header implementation that the React spec does not include.",
+          "Typography token mismatch: Android section headers use different letter-spacing/casing rules than the shared React design tokens.",
+          "List item paddings/line-height differ between platforms due to divergent list item styles.",
+          "Label normalization removed '&' from Android copy ('Plan & Billing' → 'Billing'), indicating copy transformation in the native renderer."
+        ],
+        "suggestedOwner": "android-settings-owner",
+        "suggestedFixes": [
+          "Decide whether the settings gear icon and the 'Mobile' and 'Send feedback' rows are intended Android-only additions; if not, remove them or gate them behind a platform-specific flag so the visual contract matches React.",
+          "Align Android section header typography (case + letter-spacing) with the shared design tokens used by React to remove density differences.",
+          "Normalize list-item vertical padding/line-height across both platforms to a shared spacing token.",
+          "Audit label copy: keep 'Plan & Billing' verbatim on Android instead of shortening to 'Billing'.",
+          "Re-run Slock snapshot diff after fixes and update baseline only after product review confirms intentional deltas."
+        ],
+        "intentional": [
+          "Missing gear icon and extended list content on Android may be intentional platform differences",
+          "Section header styling differences may be intentional native typographic choice"
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -20010,17 +20131,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:41.043Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:39.952Z",
+            "severity": "medium",
+            "summary": [
+              "Android header includes a square settings icon next to the 'Settings' title that is absent on the React baseline.",
+              "Android list adds a 'Mobile' item under PERSONAL that does not exist in the React baseline.",
+              "Android list adds a 'Send feedback' item under ABOUT that does not exist in the React baseline.",
+              "Section headers ('PERSONAL','WORKSPACE','ABOUT') on Android are uppercase-tracked without letter-spacing, appearing denser than the React version which uses wider letter-spacing.",
+              "Android list item vertical spacing is tighter than React, reducing overall list density differences vs React's looser rhythm."
+            ],
+            "likelyCauses": [
+              "Android design intentionally injects platform-specific list rows (Mobile, Send feedback) that are not part of the shared component contract.",
+              "Iconography was added to the Android header implementation that the React spec does not include.",
+              "Typography token mismatch: Android section headers use different letter-spacing/casing rules than the shared React design tokens.",
+              "List item paddings/line-height differ between platforms due to divergent list item styles.",
+              "Label normalization removed '&' from Android copy ('Plan & Billing' → 'Billing'), indicating copy transformation in the native renderer."
+            ],
+            "suggestedOwner": "android-settings-owner",
+            "suggestedFixes": [
+              "Decide whether the settings gear icon and the 'Mobile' and 'Send feedback' rows are intended Android-only additions; if not, remove them or gate them behind a platform-specific flag so the visual contract matches React.",
+              "Align Android section header typography (case + letter-spacing) with the shared design tokens used by React to remove density differences.",
+              "Normalize list-item vertical padding/line-height across both platforms to a shared spacing token.",
+              "Audit label copy: keep 'Plan & Billing' verbatim on Android instead of shortening to 'Billing'.",
+              "Re-run Slock snapshot diff after fixes and update baseline only after product review confirms intentional deltas."
+            ],
+            "intentional": [
+              "Missing gear icon and extended list content on Android may be intentional platform differences",
+              "Section header styling differences may be intentional native typographic choice"
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -20043,17 +20185,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:44.662Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:49.159Z",
+            "severity": "medium",
+            "summary": [
+              "Header on iOS includes a square settings/gear icon next to the 'Settings' title; React baseline has only the text title.",
+              "iOS list shows additional rows not present in React: 'Mobile' (under Notifications) and 'Storage' (after Mobile).",
+              "iOS has an extra 'Send feedback' row in the ABOUT section, inserted between 'About' and 'Release Notes'.",
+              "Workspace label on iOS reads 'Billing' instead of React's 'Plan & Billing' (shorter string, icon identical).",
+              "Vertical rhythm differs: iOS rows are spaced more tightly with smaller line-height, causing the list to appear more compact than the React baseline."
+            ],
+            "likelyCauses": [
+              "iOS implementation renders a header leading icon (large title accessory) that React baseline omits.",
+              "Feature parity gap: iOS renders 'Mobile' and 'Storage' navigation items that are not yet wired up in the React web build.",
+              "iOS adds a platform-specific 'Send feedback' entry (common iOS affordance) absent from React.",
+              "Label inconsistency: 'Plan & Billing' was renamed/shortened to 'Billing' in iOS without matching change in React baseline.",
+              "List item row height and label font weight diverged between native (iOS) and web component tokens."
+            ],
+            "suggestedOwner": "Design Systems / Cross-platform parity (web React vs iOS native)",
+            "suggestedFixes": [
+              "Remove or hide the leading settings icon in the iOS large-title header to match React, or add it to the React baseline if intentional; confirm with design.",
+              "Add 'Mobile' and 'Storage' rows to the React Settings list, or remove them from iOS until parity is reached.",
+              "Add 'Send feedback' row to the React Settings ABOUT section, or remove from iOS to align platforms.",
+              "Revert iOS label to 'Plan & Billing' or update React copy to 'Billing' so both platforms match.",
+              "Align row height, vertical padding, and label font-weight tokens between React settings list and iOS SettingsRootPage."
+            ],
+            "intentional": [
+              "iOS rendering at higher native resolution (1170×2532) compared to web (390×844) — expected.",
+              "Section grouping order (PERSONAL, WORKSPACE, ABOUT) is consistent across both platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "android__ios": {
@@ -20076,17 +20239,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:48.138Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:57.920Z",
+            "severity": "low",
+            "summary": [
+              "Header: iOS 'Settings' title and iconography render at a slightly larger scale than Android, though pixel ratio accounts for most of this.",
+              "iOS version badge in top-right reads 'IOS' vs Android's 'ANDROID' — platform label difference is expected/intentional.",
+              "List item icons render slightly heavier/thicker on iOS (e.g., Notification bell, Mobile phone, Server Profile, Billing card).",
+              "Section header letter-spacing/tracking appears marginally tighter on Android (e.g., 'WORKSPACE', 'ABOUT') vs iOS.",
+              "Vertical spacing between list rows is very slightly larger on iOS (1–2px at rendered scale), producing a marginally taller list."
+            ],
+            "likelyCauses": [
+              "Native font metrics and default line-height differ between Android (Roboto) and iOS (San Francisco).",
+              "Icon stroke weight differences between Android (Material) and iOS (SF Symbols) iconography.",
+              "No unified dp-based spacing token being applied consistently across platforms in Kuikly render layer."
+            ],
+            "suggestedOwner": "Kuikly UI/platform team (cross-platform styling)",
+            "suggestedFixes": [
+              "Normalize icon stroke weight to a shared design token (e.g., 1.5px or 2px) so Material and SF Symbols converge visually.",
+              "Apply explicit letter-spacing tokens on section headers to ensure consistent tracking across platforms.",
+              "Verify list-row vertical padding uses a single shared dp value rather than platform-default ListView padding.",
+              "Confirm header title font-size uses dp/sp scaling consistently so the 1170×2532 iOS canvas and 390×844 Android canvas align at the same dp.",
+              "Audit iconography mapping table (Material → SF Symbols) for stroke-width parity on bell, phone, server, card, and monitor icons."
+            ],
+            "intentional": [
+              "Platform badge label text ('ANDROID' vs 'IOS') is environment metadata, not a UI divergence.",
+              "Canvas size differences (390×844 vs 1170×2532) are expected; comparisons are normalized by pixel ratio."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -20112,17 +20294,38 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:44.662Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:49.159Z",
+            "severity": "medium",
+            "summary": [
+              "Header on iOS includes a square settings/gear icon next to the 'Settings' title; React baseline has only the text title.",
+              "iOS list shows additional rows not present in React: 'Mobile' (under Notifications) and 'Storage' (after Mobile).",
+              "iOS has an extra 'Send feedback' row in the ABOUT section, inserted between 'About' and 'Release Notes'.",
+              "Workspace label on iOS reads 'Billing' instead of React's 'Plan & Billing' (shorter string, icon identical).",
+              "Vertical rhythm differs: iOS rows are spaced more tightly with smaller line-height, causing the list to appear more compact than the React baseline."
+            ],
+            "likelyCauses": [
+              "iOS implementation renders a header leading icon (large title accessory) that React baseline omits.",
+              "Feature parity gap: iOS renders 'Mobile' and 'Storage' navigation items that are not yet wired up in the React web build.",
+              "iOS adds a platform-specific 'Send feedback' entry (common iOS affordance) absent from React.",
+              "Label inconsistency: 'Plan & Billing' was renamed/shortened to 'Billing' in iOS without matching change in React baseline.",
+              "List item row height and label font weight diverged between native (iOS) and web component tokens."
+            ],
+            "suggestedOwner": "Design Systems / Cross-platform parity (web React vs iOS native)",
+            "suggestedFixes": [
+              "Remove or hide the leading settings icon in the iOS large-title header to match React, or add it to the React baseline if intentional; confirm with design.",
+              "Add 'Mobile' and 'Storage' rows to the React Settings list, or remove them from iOS until parity is reached.",
+              "Add 'Send feedback' row to the React Settings ABOUT section, or remove from iOS to align platforms.",
+              "Revert iOS label to 'Plan & Billing' or update React copy to 'Billing' so both platforms match.",
+              "Align row height, vertical padding, and label font-weight tokens between React settings list and iOS SettingsRootPage."
+            ],
+            "intentional": [
+              "iOS rendering at higher native resolution (1170×2532) compared to web (390×844) — expected.",
+              "Section grouping order (PERSONAL, WORKSPACE, ABOUT) is consistent across both platforms."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         {
@@ -20146,17 +20349,36 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:48.138Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:57.920Z",
+            "severity": "low",
+            "summary": [
+              "Header: iOS 'Settings' title and iconography render at a slightly larger scale than Android, though pixel ratio accounts for most of this.",
+              "iOS version badge in top-right reads 'IOS' vs Android's 'ANDROID' — platform label difference is expected/intentional.",
+              "List item icons render slightly heavier/thicker on iOS (e.g., Notification bell, Mobile phone, Server Profile, Billing card).",
+              "Section header letter-spacing/tracking appears marginally tighter on Android (e.g., 'WORKSPACE', 'ABOUT') vs iOS.",
+              "Vertical spacing between list rows is very slightly larger on iOS (1–2px at rendered scale), producing a marginally taller list."
+            ],
+            "likelyCauses": [
+              "Native font metrics and default line-height differ between Android (Roboto) and iOS (San Francisco).",
+              "Icon stroke weight differences between Android (Material) and iOS (SF Symbols) iconography.",
+              "No unified dp-based spacing token being applied consistently across platforms in Kuikly render layer."
+            ],
+            "suggestedOwner": "Kuikly UI/platform team (cross-platform styling)",
+            "suggestedFixes": [
+              "Normalize icon stroke weight to a shared design token (e.g., 1.5px or 2px) so Material and SF Symbols converge visually.",
+              "Apply explicit letter-spacing tokens on section headers to ensure consistent tracking across platforms.",
+              "Verify list-row vertical padding uses a single shared dp value rather than platform-default ListView padding.",
+              "Confirm header title font-size uses dp/sp scaling consistently so the 1170×2532 iOS canvas and 390×844 Android canvas align at the same dp.",
+              "Audit iconography mapping table (Material → SF Symbols) for stroke-width parity on bell, phone, server, card, and monitor icons."
+            ],
+            "intentional": [
+              "Platform badge label text ('ANDROID' vs 'IOS') is environment metadata, not a UI divergence.",
+              "Canvas size differences (390×844 vs 1170×2532) are expected; comparisons are normalized by pixel ratio."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -26258,17 +26480,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:48.469Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:58.219Z",
+            "severity": "low",
+            "summary": [
+              "The Android (left) viewport shows a yellow/cream background fill extending vertically through the entire viewport area, while iOS (right) has a white background — this is a container/page background color difference.",
+              "Both sides render the same components (back arrow, 'Appearance' title, 'Message font size and reading density' section, Small/Medium/Large toggles with Medium selected, Preview card with Onboarding Assistant avatar and message) at proportionally similar sizes, indicating correct layout logic.",
+              "No missing, clipped, or misaligned elements are visible on either side; text content, colors of buttons (Medium is amber/yellow), Preview card avatar (purple), and typography appear visually equivalent."
+            ],
+            "likelyCauses": [
+              "Kuikly Android renderer applies a default surface/page background tint (cream/yellow) that iOS does not, or the iOS viewport has been cropped/scaled without retaining the page-level background fill.",
+              "Platform-specific default theme background color not normalized between Android and iOS implementations."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Normalize the page/view container background color across Android and iOS Kuikly renderers (use a shared theme token, e.g., neutral white or explicitly set surface color).",
+              "Verify that viewport-bounds cropping on iOS does not strip the page-level background fill.",
+              "Re-run visual diff after aligning the surface background to confirm pixel mismatch is solely attributable to this color difference."
+            ],
+            "intentional": [
+              "The yellow/cream background fill on Android may be intentional debug/Slock-canvas coloring rather than the shipped UI; if so, exclude it from the diff or render the page against a white canvas on both sides."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       },
@@ -26349,17 +26584,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:48.469Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:58.219Z",
+            "severity": "low",
+            "summary": [
+              "The Android (left) viewport shows a yellow/cream background fill extending vertically through the entire viewport area, while iOS (right) has a white background — this is a container/page background color difference.",
+              "Both sides render the same components (back arrow, 'Appearance' title, 'Message font size and reading density' section, Small/Medium/Large toggles with Medium selected, Preview card with Onboarding Assistant avatar and message) at proportionally similar sizes, indicating correct layout logic.",
+              "No missing, clipped, or misaligned elements are visible on either side; text content, colors of buttons (Medium is amber/yellow), Preview card avatar (purple), and typography appear visually equivalent."
+            ],
+            "likelyCauses": [
+              "Kuikly Android renderer applies a default surface/page background tint (cream/yellow) that iOS does not, or the iOS viewport has been cropped/scaled without retaining the page-level background fill.",
+              "Platform-specific default theme background color not normalized between Android and iOS implementations."
+            ],
+            "suggestedOwner": "ui-platform",
+            "suggestedFixes": [
+              "Normalize the page/view container background color across Android and iOS Kuikly renderers (use a shared theme token, e.g., neutral white or explicitly set surface color).",
+              "Verify that viewport-bounds cropping on iOS does not strip the page-level background fill.",
+              "Re-run visual diff after aligning the surface background to confirm pixel mismatch is solely attributable to this color difference."
+            ],
+            "intentional": [
+              "The yellow/cream background fill on Android may be intentional debug/Slock-canvas coloring rather than the shipped UI; if so, exclude it from the diff or render the page against a white canvas on both sides."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         }
       ],
@@ -27560,17 +27808,30 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-07-11T05:30:41.474Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
+        "status": "ready",
+        "generatedAt": "2026-07-11T05:32:40.345Z",
+        "severity": "high",
+        "summary": [
+          "React baseline shows a 'Loading...' state with no rendered content, while Android renders the full agent detail profile screen",
+          "Android displays agent header (avatar, name, role tabs, status pill), info section, runtime config, and created agents list",
+          "Pixel-perfect similarity is only ~89% (10.94% mismatch) primarily because baseline is in loading state, not the populated view"
+        ],
+        "likelyCauses": [
+          "React app did not reach the populated state in time when baseline screenshot was captured (race condition on data load)",
+          "Initial skeleton/loading state is the only state captured for the React run, so there is no real visual diff against the populated Android view",
+          "Possible route or data-fetch timing difference between platforms causing React baseline to be snapshotted before data resolves"
+        ],
+        "suggestedOwner": "frontend (React web app)",
+        "suggestedFixes": [
+          "Re-capture the React baseline after the agent detail data has fully loaded so both sides render the populated screen",
+          "Add an explicit wait-for-data condition in visual regression scripts before snapshotting this route",
+          "If 'Loading...' is intended as a transient state, exclude it from baseline capture or add a dedicated loading-state snapshot",
+          "Verify the React profile route mounts with real data (not stuck on a suspense/loader) at the time of capture"
+        ],
         "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -27650,17 +27911,30 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:41.474Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:40.345Z",
+            "severity": "high",
+            "summary": [
+              "React baseline shows a 'Loading...' state with no rendered content, while Android renders the full agent detail profile screen",
+              "Android displays agent header (avatar, name, role tabs, status pill), info section, runtime config, and created agents list",
+              "Pixel-perfect similarity is only ~89% (10.94% mismatch) primarily because baseline is in loading state, not the populated view"
+            ],
+            "likelyCauses": [
+              "React app did not reach the populated state in time when baseline screenshot was captured (race condition on data load)",
+              "Initial skeleton/loading state is the only state captured for the React run, so there is no real visual diff against the populated Android view",
+              "Possible route or data-fetch timing difference between platforms causing React baseline to be snapshotted before data resolves"
+            ],
+            "suggestedOwner": "frontend (React web app)",
+            "suggestedFixes": [
+              "Re-capture the React baseline after the agent detail data has fully loaded so both sides render the populated screen",
+              "Add an explicit wait-for-data condition in visual regression scripts before snapshotting this route",
+              "If 'Loading...' is intended as a transient state, exclude it from baseline capture or add a dedicated loading-state snapshot",
+              "Verify the React profile route mounts with real data (not stuck on a suspense/loader) at the time of capture"
+            ],
             "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -27673,7 +27947,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27695,7 +27969,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27720,7 +27994,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27743,7 +28017,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27780,7 +28054,7 @@
       "sideBySideImage": null,
       "analysis": {
         "status": "pending",
-        "generatedAt": "2026-07-11T05:30:40.443Z",
+        "generatedAt": "2026-07-11T05:34:29.669Z",
         "severity": "unknown",
         "summary": [],
         "likelyCauses": [],
@@ -27816,7 +28090,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:40.443Z",
+            "generatedAt": "2026-07-11T05:34:29.669Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27838,7 +28112,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27860,7 +28134,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27885,7 +28159,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27908,7 +28182,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -27955,17 +28229,35 @@
         "currentHeight": 2532
       },
       "analysis": {
-        "status": "pending",
-        "generatedAt": "2026-07-11T05:30:41.514Z",
-        "severity": "unknown",
-        "summary": [],
-        "likelyCauses": [],
-        "suggestedOwner": "",
-        "suggestedFixes": [],
-        "intentional": [],
-        "analysisProvider": "",
-        "analysisModel": "",
-        "error": "analysis stale; rerun analyze"
+        "status": "ready",
+        "generatedAt": "2026-07-11T05:32:40.349Z",
+        "severity": "high",
+        "summary": [
+          "React baseline shows a 'Loading...' placeholder state, while Android renders the fully populated screen with header, tab bar, and reminder card.",
+          "Android shows the complete UI: back button, avatar, agent name 'Product UX Designer', subtitle, chat/menu icons, tab bar (Profile, Activi…, Chat, Reminders selected), and a reminder card ('Roll 1-6; if 3, tidy Product-UX memory/files' with 'in 6 hours Jun 20, 02:30').",
+          "React baseline is missing all rendered content — only the loading text is visible; no header, tabs, or reminder data appear.",
+          "Mismatch (~3.99%) is driven by React showing blank canvas vs Android showing all chrome and content, not by minor styling differences."
+        ],
+        "likelyCauses": [
+          "React captured an in-flight loading state before data resolved, while Android screenshot was taken after data loaded.",
+          "Possible race condition or different async data-fetch timing between web and native implementations.",
+          "Baseline screenshot may have been taken before reminders/API data hydrated on React.",
+          "Different rendering lifecycles: Android may use cached/preloaded data whereas React waits for fetch completion."
+        ],
+        "suggestedOwner": "frontend (React) — investigate loading-state timing and data hydration",
+        "suggestedFixes": [
+          "Add an explicit wait/condition in the visual test to ensure React has finished fetching before capture (e.g., wait for reminder list to render).",
+          "Synchronize test fixtures or mock API responses so both platforms reach the 'loaded' state before screenshot.",
+          "Investigate why React remains in 'Loading...' state — likely missing data fetch completion or skeleton/placeholder not dismissed.",
+          "Consider adding the same loading-to-loaded timing guarantees across React and Android (e.g., debounce or deterministic hydration gate).",
+          "If the difference is intentional (loading vs loaded), capture both states separately and update baseline contract accordingly."
+        ],
+        "intentional": [
+          "Difference appears unintentional — React baseline showing 'Loading...' suggests premature capture rather than a designed empty state, since Android already shows populated data for the same route."
+        ],
+        "analysisProvider": "minimax",
+        "analysisModel": "MiniMax-M3",
+        "error": null
       },
       "providers": {
         "react": {
@@ -28045,17 +28337,35 @@
             "currentHeight": 2532
           },
           "analysis": {
-            "status": "pending",
-            "generatedAt": "2026-07-11T05:30:41.514Z",
-            "severity": "unknown",
-            "summary": [],
-            "likelyCauses": [],
-            "suggestedOwner": "",
-            "suggestedFixes": [],
-            "intentional": [],
-            "analysisProvider": "",
-            "analysisModel": "",
-            "error": "analysis stale; rerun analyze"
+            "status": "ready",
+            "generatedAt": "2026-07-11T05:32:40.349Z",
+            "severity": "high",
+            "summary": [
+              "React baseline shows a 'Loading...' placeholder state, while Android renders the fully populated screen with header, tab bar, and reminder card.",
+              "Android shows the complete UI: back button, avatar, agent name 'Product UX Designer', subtitle, chat/menu icons, tab bar (Profile, Activi…, Chat, Reminders selected), and a reminder card ('Roll 1-6; if 3, tidy Product-UX memory/files' with 'in 6 hours Jun 20, 02:30').",
+              "React baseline is missing all rendered content — only the loading text is visible; no header, tabs, or reminder data appear.",
+              "Mismatch (~3.99%) is driven by React showing blank canvas vs Android showing all chrome and content, not by minor styling differences."
+            ],
+            "likelyCauses": [
+              "React captured an in-flight loading state before data resolved, while Android screenshot was taken after data loaded.",
+              "Possible race condition or different async data-fetch timing between web and native implementations.",
+              "Baseline screenshot may have been taken before reminders/API data hydrated on React.",
+              "Different rendering lifecycles: Android may use cached/preloaded data whereas React waits for fetch completion."
+            ],
+            "suggestedOwner": "frontend (React) — investigate loading-state timing and data hydration",
+            "suggestedFixes": [
+              "Add an explicit wait/condition in the visual test to ensure React has finished fetching before capture (e.g., wait for reminder list to render).",
+              "Synchronize test fixtures or mock API responses so both platforms reach the 'loaded' state before screenshot.",
+              "Investigate why React remains in 'Loading...' state — likely missing data fetch completion or skeleton/placeholder not dismissed.",
+              "Consider adding the same loading-to-loaded timing guarantees across React and Android (e.g., debounce or deterministic hydration gate).",
+              "If the difference is intentional (loading vs loaded), capture both states separately and update baseline contract accordingly."
+            ],
+            "intentional": [
+              "Difference appears unintentional — React baseline showing 'Loading...' suggests premature capture rather than a designed empty state, since Android already shows populated data for the same route."
+            ],
+            "analysisProvider": "minimax",
+            "analysisModel": "MiniMax-M3",
+            "error": null
           }
         },
         "react__ios": {
@@ -28068,7 +28378,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28090,7 +28400,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28115,7 +28425,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28138,7 +28448,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28326,7 +28636,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28348,7 +28658,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28373,7 +28683,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28396,7 +28706,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28582,7 +28892,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28604,7 +28914,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28629,7 +28939,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28652,7 +28962,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28846,7 +29156,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28868,7 +29178,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28893,7 +29203,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -28916,7 +29226,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32577,7 +32887,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32599,7 +32909,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32624,7 +32934,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32647,7 +32957,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32841,7 +33151,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32863,7 +33173,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32888,7 +33198,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:43.594Z",
+            "generatedAt": "2026-07-11T05:34:32.689Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],
@@ -32911,7 +33221,7 @@
           "sideBySideImage": null,
           "analysis": {
             "status": "pending",
-            "generatedAt": "2026-07-11T05:30:47.003Z",
+            "generatedAt": "2026-07-11T05:34:36.020Z",
             "severity": "unknown",
             "summary": [],
             "likelyCauses": [],

@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>ea5a365-20260711052840</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-11T05:30:48.773Z" data-timestamp="2026-07-11T05:30:48.773Z" title="2026-07-11T05:30:48.773Z">2026-07-11 05:30:48 UTC</time></p>
+    <p class="runMeta"><code>ea5a365-20260711052840</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-11T05:34:37.673Z" data-timestamp="2026-07-11T05:34:37.673Z" title="2026-07-11T05:34:37.673Z">2026-07-11 05:34:37 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 90</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 9</span>
       <span class="pill">Different 58</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 77/90 ready</span>
+      <span class="pill">AI 79/90 ready</span>
       <span class="pill">Matrix 91/110 active</span>
       <span class="pill">Components Parity 77/81 active</span><span class="pill">Screens Parity 14/29 active</span>
     </div>
@@ -644,7 +644,12 @@
       <p><code>RGB 98.0%</code><br/><code>Pixel 99.77%</code><br/><code>Mismatch 0.23%</code><br/><code>Raw 1026×276 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">pass: pixel perfect 99.77% &gt; 99% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×92 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-system</summary>
+    <ul><li>Status dot row, dot shapes/colors, and 'Waiting pulse' text appear visually identical between React (342×92) and iOS (1170×2532) baselines.</li><li>Pink waiting-pulse dot and adjacent label are aligned consistently in both renders.</li><li>Pixel mismatch is only 0.23% (pixel-perfect 99.77%, RGB similarity 97.95%), within tolerance.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>No action required; the comparison passes within configured tolerance.</li><li>If higher fidelity is desired, add an explicit crop rect to the iOS baseline (e.g. y≈100, height≈170) so both sides compare the same component region pixel-for-pixel.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.status-dot.states.png" data-current-src="ios/components.ui.status-dot.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3694,7 +3699,12 @@
       <p><code>RGB 97.4%</code><br/><code>Pixel 96.23%</code><br/><code>Mismatch 3.77%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 96.23% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · Design Systems / Cross-platform parity (web React vs iOS native)</summary>
+    <ul><li>Header on iOS includes a square settings/gear icon next to the 'Settings' title; React baseline has only the text title.</li><li>iOS list shows additional rows not present in React: 'Mobile' (under Notifications) and 'Storage' (after Mobile).</li><li>iOS has an extra 'Send feedback' row in the ABOUT section, inserted between 'About' and 'Release Notes'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Remove or hide the leading settings icon in the iOS large-title header to match React, or add it to the React baseline if intentional; confirm with design.</li><li>Add 'Mobile' and 'Storage' rows to the React Settings list, or remove them from iOS until parity is reached.</li><li>Add 'Send feedback' row to the React Settings ABOUT section, or remove from iOS to align platforms.</li><li>Revert iOS label to 'Plan &amp; Billing' or update React copy to 'Billing' so both platforms match.</li><li>Align row height, vertical padding, and label font-weight tokens between React settings list and iOS SettingsRootPage.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.root.page.png" data-current-src="ios/components.settings.root.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

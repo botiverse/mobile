@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-11T05:30:43.588Z",
+  "generatedAt": "2026-07-11T05:34:32.685Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 90,
-    "ready": 77,
-    "pending": 13
+    "ready": 79,
+    "pending": 11
   },
   "cases": [
     {
@@ -284,15 +284,31 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
-      "generatedAt": "2026-07-11T05:30:42.155Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:48.375Z",
+      "severity": "low",
+      "summary": [
+        "Status dot row, dot shapes/colors, and 'Waiting pulse' text appear visually identical between React (342×92) and iOS (1170×2532) baselines.",
+        "Pink waiting-pulse dot and adjacent label are aligned consistently in both renders.",
+        "Pixel mismatch is only 0.23% (pixel-perfect 99.77%, RGB similarity 97.95%), within tolerance.",
+        "Difference in raw canvas size (342×92 vs 1170×2532) is expected: iOS renders the full device frame while the React crop is element-bounds only."
+      ],
+      "likelyCauses": [
+        "Any sub-1% mismatch is attributable to anti-aliasing of circle edges and font hinting differences between the web and iOS rasterizers, not to a real UI defect.",
+        "No structural or component-level divergence observed."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No action required; the comparison passes within configured tolerance.",
+        "If higher fidelity is desired, add an explicit crop rect to the iOS baseline (e.g. y≈100, height≈170) so both sides compare the same component region pixel-for-pixel."
+      ],
+      "intentional": [
+        "Full-device iOS canvas (1170×2532) vs element-bounds React crop (342×92) is an intentional scoping choice, not a UI regression."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -805,7 +821,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:42.324Z",
+      "generatedAt": "2026-07-11T05:34:31.473Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -888,7 +904,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:42.398Z",
+      "generatedAt": "2026-07-11T05:34:31.532Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1583,7 +1599,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:42.810Z",
+      "generatedAt": "2026-07-11T05:34:31.918Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1733,15 +1749,39 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe0ffecffe0ffe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe7ffe87fe07fe83fe07fe83fe0ffec3fe03fe83fe43fe87fe03fefffe07fe8ffe3ffe8ffe0ffe83fe03fefffe03fefffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T05:30:42.993Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:49.159Z",
+      "severity": "medium",
+      "summary": [
+        "Header on iOS includes a square settings/gear icon next to the 'Settings' title; React baseline has only the text title.",
+        "iOS list shows additional rows not present in React: 'Mobile' (under Notifications) and 'Storage' (after Mobile).",
+        "iOS has an extra 'Send feedback' row in the ABOUT section, inserted between 'About' and 'Release Notes'.",
+        "Workspace label on iOS reads 'Billing' instead of React's 'Plan & Billing' (shorter string, icon identical).",
+        "Vertical rhythm differs: iOS rows are spaced more tightly with smaller line-height, causing the list to appear more compact than the React baseline."
+      ],
+      "likelyCauses": [
+        "iOS implementation renders a header leading icon (large title accessory) that React baseline omits.",
+        "Feature parity gap: iOS renders 'Mobile' and 'Storage' navigation items that are not yet wired up in the React web build.",
+        "iOS adds a platform-specific 'Send feedback' entry (common iOS affordance) absent from React.",
+        "Label inconsistency: 'Plan & Billing' was renamed/shortened to 'Billing' in iOS without matching change in React baseline.",
+        "List item row height and label font weight diverged between native (iOS) and web component tokens."
+      ],
+      "suggestedOwner": "Design Systems / Cross-platform parity (web React vs iOS native)",
+      "suggestedFixes": [
+        "Remove or hide the leading settings icon in the iOS large-title header to match React, or add it to the React baseline if intentional; confirm with design.",
+        "Add 'Mobile' and 'Storage' rows to the React Settings list, or remove them from iOS until parity is reached.",
+        "Add 'Send feedback' row to the React Settings ABOUT section, or remove from iOS to align platforms.",
+        "Revert iOS label to 'Plan & Billing' or update React copy to 'Billing' so both platforms match.",
+        "Align row height, vertical padding, and label font-weight tokens between React settings list and iOS SettingsRootPage."
+      ],
+      "intentional": [
+        "iOS rendering at higher native resolution (1170×2532) compared to web (390×844) — expected.",
+        "Section grouping order (PERSONAL, WORKSPACE, ABOUT) is consistent across both platforms."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.037656121305410406
     },
     {
@@ -2407,7 +2447,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2420,7 +2460,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2433,7 +2473,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2446,7 +2486,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2459,7 +2499,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2472,7 +2512,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.317Z",
+      "generatedAt": "2026-07-11T05:34:32.396Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2794,7 +2834,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.486Z",
+      "generatedAt": "2026-07-11T05:34:32.599Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2807,7 +2847,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:43.486Z",
+      "generatedAt": "2026-07-11T05:34:32.599Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

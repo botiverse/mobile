@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-11 05:30:48 UTC
+Generated: 2026-07-11 05:34:37 UTC
 Latest run: ea5a365-20260711052840
 Latest commit: ea5a365-20260711052840
 Commit subject: fix(home): show joint channels before channels (#601)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 90, same 0, pass 0, basic-pass 4, different 82, missing 4
-AI analysis: ready 82 / total 90, pending 8
+AI analysis: ready 86 / total 90, pending 4
 Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

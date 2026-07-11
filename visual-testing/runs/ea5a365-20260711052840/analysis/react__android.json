@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-11T05:30:40.436Z",
+  "generatedAt": "2026-07-11T05:34:29.662Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 90,
-    "ready": 82,
-    "pending": 8
+    "ready": 86,
+    "pending": 4
   },
   "cases": [
     {
@@ -812,7 +812,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:39.067Z",
+      "generatedAt": "2026-07-11T05:34:28.353Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -896,7 +896,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:39.077Z",
+      "generatedAt": "2026-07-11T05:34:28.367Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -939,15 +939,37 @@
     },
     {
       "id": "components.thread.header.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:ffffffffbffe7ffcbffe3ffc0ffe1ffeffff7fffffffffffffffffff818181e1818081f0808081e1878087e187868ff481010021cf81cffbffffffff000000000dbf07ff023f03bf003f088f0fff0fff00000000ffff0000ffffffffffffffffffffffffffffffff00000000fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-07-11T05:30:39.132Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:39.486Z",
+      "severity": "high",
+      "summary": [
+        "Android header has 2 trailing action icons (settings, members) while React has 4 (search, unread, settings, members) — search and unread icons are missing on Android.",
+        "Subtitle text length differs: React shows 'Home shell, …' (truncated), Android shows the full 'Home shell, server badge, and…' due to wider available space from fewer icons.",
+        "Members badge count differs: React shows '0', Android shows '4'.",
+        "Tab bar cells are wider on Android (3 tabs spanning the full width) versus React (4 tabs including an additional 4th tab area).",
+        "Right edge on Android has no 4th tab cell; React reserves a fourth tab slot that appears empty/styled differently."
+      ],
+      "likelyCauses": [
+        "Android thread header is rendering a different actions set (omitting search and unread/mailbox icons).",
+        "Badge value on members icon uses live server count (4) on Android vs static demo value (0) on React.",
+        "Tab strip configuration diverges — Android configured with 3 tabs, React with 4 tabs, changing cell widths."
+      ],
+      "suggestedOwner": "android-chat",
+      "suggestedFixes": [
+        "Add the search (magnifier) and unread/mailbox icon buttons to the Android ThreadHeader trailing actions group, in the same order as React.",
+        "Standardize the members badge: either both should pull live count or both should display a fixed placeholder; confirm whether '4' is the intended state.",
+        "Align the trailing actions block so the subtitle truncates identically (use the same max width / icon count contract on both platforms).",
+        "Reconcile tab count: either add the 4th tab to Android or remove it from React so cell widths match.",
+        "Re-run Slock visual diff after fixes to confirm pixel-mismatch ratio drops below the 2% tolerance."
+      ],
+      "intentional": [
+        "The yellow active-tab fill color and black border styling on Chat appear intentionally consistent across both platforms.",
+        "Title typography (Chinese characters '首页专修') weight and size match between React and Android."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1787226970560304
     },
     {
@@ -1579,7 +1601,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:39.388Z",
+      "generatedAt": "2026-07-11T05:34:28.651Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1727,15 +1749,39 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe4ffecffe0ffe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe7ffe87fe07fe83fe07fe83fe0ffec3fe03fe83fe43fe87fe03fefffe4ffe8ffe5ffe8ffe0ffe83fe03fefffe03fefffe57fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T05:30:39.573Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:39.952Z",
+      "severity": "medium",
+      "summary": [
+        "Android header includes a square settings icon next to the 'Settings' title that is absent on the React baseline.",
+        "Android list adds a 'Mobile' item under PERSONAL that does not exist in the React baseline.",
+        "Android list adds a 'Send feedback' item under ABOUT that does not exist in the React baseline.",
+        "Section headers ('PERSONAL','WORKSPACE','ABOUT') on Android are uppercase-tracked without letter-spacing, appearing denser than the React version which uses wider letter-spacing.",
+        "Android list item vertical spacing is tighter than React, reducing overall list density differences vs React's looser rhythm."
+      ],
+      "likelyCauses": [
+        "Android design intentionally injects platform-specific list rows (Mobile, Send feedback) that are not part of the shared component contract.",
+        "Iconography was added to the Android header implementation that the React spec does not include.",
+        "Typography token mismatch: Android section headers use different letter-spacing/casing rules than the shared React design tokens.",
+        "List item paddings/line-height differ between platforms due to divergent list item styles.",
+        "Label normalization removed '&' from Android copy ('Plan & Billing' → 'Billing'), indicating copy transformation in the native renderer."
+      ],
+      "suggestedOwner": "android-settings-owner",
+      "suggestedFixes": [
+        "Decide whether the settings gear icon and the 'Mobile' and 'Send feedback' rows are intended Android-only additions; if not, remove them or gate them behind a platform-specific flag so the visual contract matches React.",
+        "Align Android section header typography (case + letter-spacing) with the shared design tokens used by React to remove density differences.",
+        "Normalize list-item vertical padding/line-height across both platforms to a shared spacing token.",
+        "Audit label copy: keep 'Plan & Billing' verbatim on Android instead of shortening to 'Billing'.",
+        "Re-run Slock snapshot diff after fixes and update baseline only after product review confirms intentional deltas."
+      ],
+      "intentional": [
+        "Missing gear icon and extended list content on Android may be intentional platform differences",
+        "Section header styling differences may be intentional native typographic choice"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.038260690511875306
     },
     {
@@ -2387,22 +2433,38 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc07fcfe7e0030fffe0000fffe0000fffe0000fffe081effff001efffe0bfefffe0ffefffe03fefffe03fefffe07fefffe0000fffe41fefffe3ffefffe0ffefffe0ffefffe187efffe70fefffe70fefffe7ffefffe03fefffe0c3efffe0c3efffe0c7efffe0002fffe0000fffe47fefffe03fefffe83fc00000000fff81fff",
-      "generatedAt": "2026-07-11T05:30:39.991Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:40.345Z",
+      "severity": "high",
+      "summary": [
+        "React baseline shows a 'Loading...' state with no rendered content, while Android renders the full agent detail profile screen",
+        "Android displays agent header (avatar, name, role tabs, status pill), info section, runtime config, and created agents list",
+        "Pixel-perfect similarity is only ~89% (10.94% mismatch) primarily because baseline is in loading state, not the populated view"
+      ],
+      "likelyCauses": [
+        "React app did not reach the populated state in time when baseline screenshot was captured (race condition on data load)",
+        "Initial skeleton/loading state is the only state captured for the React run, so there is no real visual diff against the populated Android view",
+        "Possible route or data-fetch timing difference between platforms causing React baseline to be snapshotted before data resolves"
+      ],
+      "suggestedOwner": "frontend (React web app)",
+      "suggestedFixes": [
+        "Re-capture the React baseline after the agent detail data has fully loaded so both sides render the populated screen",
+        "Add an explicit wait-for-data condition in visual regression scripts before snapshotting this route",
+        "If 'Loading...' is intended as a transient state, exclude it from baseline capture or add a dedicated loading-state snapshot",
+        "Verify the React profile route mounts with real data (not stuck on a suspense/loader) at the time of capture"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.10942635125099576
     },
     {
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:39.899Z",
+      "generatedAt": "2026-07-11T05:34:29.130Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2413,15 +2475,36 @@
     },
     {
       "id": "screens.members.agent-detail.reminders",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc03cc7c3e00307ffe00007ffe00007ffe00007ffe7ffe7ffe00067ffe00067ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T05:30:40.038Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:40.349Z",
+      "severity": "high",
+      "summary": [
+        "React baseline shows a 'Loading...' placeholder state, while Android renders the fully populated screen with header, tab bar, and reminder card.",
+        "Android shows the complete UI: back button, avatar, agent name 'Product UX Designer', subtitle, chat/menu icons, tab bar (Profile, Activi…, Chat, Reminders selected), and a reminder card ('Roll 1-6; if 3, tidy Product-UX memory/files' with 'in 6 hours Jun 20, 02:30').",
+        "React baseline is missing all rendered content — only the loading text is visible; no header, tabs, or reminder data appear.",
+        "Mismatch (~3.99%) is driven by React showing blank canvas vs Android showing all chrome and content, not by minor styling differences."
+      ],
+      "likelyCauses": [
+        "React captured an in-flight loading state before data resolved, while Android screenshot was taken after data loaded.",
+        "Possible race condition or different async data-fetch timing between web and native implementations.",
+        "Baseline screenshot may have been taken before reminders/API data hydrated on React.",
+        "Different rendering lifecycles: Android may use cached/preloaded data whereas React waits for fetch completion."
+      ],
+      "suggestedOwner": "frontend (React) — investigate loading-state timing and data hydration",
+      "suggestedFixes": [
+        "Add an explicit wait/condition in the visual test to ensure React has finished fetching before capture (e.g., wait for reminder list to render).",
+        "Synchronize test fixtures or mock API responses so both platforms reach the 'loaded' state before screenshot.",
+        "Investigate why React remains in 'Loading...' state — likely missing data fetch completion or skeleton/placeholder not dismissed.",
+        "Consider adding the same loading-to-loaded timing guarantees across React and Android (e.g., debounce or deterministic hydration gate).",
+        "If the difference is intentional (loading vs loaded), capture both states separately and update baseline contract accordingly."
+      ],
+      "intentional": [
+        "Difference appears unintentional — React baseline showing 'Loading...' suggests premature capture rather than a designed empty state, since Android already shows populated data for the same route."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.039905955901216594
     },
     {

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-11T05:30:46.998Z",
+  "generatedAt": "2026-07-11T05:34:36.014Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 90,
-    "ready": 79,
-    "pending": 11
+    "ready": 82,
+    "pending": 8
   },
   "cases": [
     {
@@ -1272,15 +1272,36 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffe85f601f680030003800700078007000780160017dffedffffffeffff80fe80ff9ffe9fff80fec0ff80fe80ffdffe5fffdffe7fff80fe81f78006800f8386038f83fe87ffc8fe48ff9ffe9fff807e807fc1fe49ffc83ef83ffffefffffffefffffffefffffffefffffffefffffffefffffffeffff00027ffeffffffff",
-      "generatedAt": "2026-07-11T05:30:46.113Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:57.654Z",
+      "severity": "high",
+      "summary": [
+        "Search input field width is significantly narrower on iOS (right) compared to Android (left), leaving large empty space on the right side of the search bar",
+        "Filter chips row ('@Scope 2', 'From: Me', '#design') is right-aligned on iOS but spans full width with even distribution on Android",
+        "The 5 results / Channels & DMs / Android Developer result card uses a much wider card layout on iOS, with content stretched across the full width vs. a more compact card on Android",
+        "First message card body on Android includes an ellipsis (... ) before truncation, whereas iOS truncates without the ellipsis glyph in the same position",
+        "Horizontal alignment of body text inside message cards differs — Android shows tighter line wrapping while iOS stretches content with different line breaks"
+      ],
+      "likelyCauses": [
+        "iOS Kuikly renderer is not honoring the same flex/width constraints used on Android, allowing the search input to shrink while preserving chip widths",
+        "Result list card uses a fill-parent width on iOS vs. a fixed/max width on Android, suggesting inconsistent style tokens across platforms",
+        "Text truncation component on iOS drops the trailing ellipsis character (… vs ...) likely due to locale or font fallback differences",
+        "Different safe-area / padding tokens applied at the iOS screen root vs. Android",
+        "Spacing scale tokens (margins, section gaps) differ between platform style sheets"
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly-renderer team",
+      "suggestedFixes": [
+        "Normalize the search input field's flex/width behavior so it expands to fill remaining row space consistently on both platforms",
+        "Align filter chip row distribution (justify-content) using a shared design token (e.g., space-between)",
+        "Apply a consistent result card width/max-width token across Android and iOS",
+        "Fix text truncation to always render the ellipsis glyph (e.g., use Unicode '…' or '...' consistently) and ensure single-line clamp behavior matches",
+        "Unify safe-area insets and screen-level padding tokens between Android and iOS builds"
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.4281460552787567
     },
     {
@@ -1693,15 +1714,37 @@
     },
     {
       "id": "components.settings.root.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe0ffe0ffe0ffe81fe01fe87fe07fe87fe07fe87fe07fe8ffe0ffe0ffe0ffefffe7ffe07fe07fe07fe07fe8ffe0ffe83fe03fec3fe43fe83fe03fe8ffe07fe9ffe3ffe8ffe0ffe83fe03fe03fe03fec7fe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T05:30:46.409Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:57.920Z",
+      "severity": "low",
+      "summary": [
+        "Header: iOS 'Settings' title and iconography render at a slightly larger scale than Android, though pixel ratio accounts for most of this.",
+        "iOS version badge in top-right reads 'IOS' vs Android's 'ANDROID' — platform label difference is expected/intentional.",
+        "List item icons render slightly heavier/thicker on iOS (e.g., Notification bell, Mobile phone, Server Profile, Billing card).",
+        "Section header letter-spacing/tracking appears marginally tighter on Android (e.g., 'WORKSPACE', 'ABOUT') vs iOS.",
+        "Vertical spacing between list rows is very slightly larger on iOS (1–2px at rendered scale), producing a marginally taller list."
+      ],
+      "likelyCauses": [
+        "Native font metrics and default line-height differ between Android (Roboto) and iOS (San Francisco).",
+        "Icon stroke weight differences between Android (Material) and iOS (SF Symbols) iconography.",
+        "No unified dp-based spacing token being applied consistently across platforms in Kuikly render layer."
+      ],
+      "suggestedOwner": "Kuikly UI/platform team (cross-platform styling)",
+      "suggestedFixes": [
+        "Normalize icon stroke weight to a shared design token (e.g., 1.5px or 2px) so Material and SF Symbols converge visually.",
+        "Apply explicit letter-spacing tokens on section headers to ensure consistent tracking across platforms.",
+        "Verify list-row vertical padding uses a single shared dp value rather than platform-default ListView padding.",
+        "Confirm header title font-size uses dp/sp scaling consistently so the 1170×2532 iOS canvas and 390×844 Android canvas align at the same dp.",
+        "Audit iconography mapping table (Material → SF Symbols) for stroke-width parity on bell, phone, server, card, and monitor icons."
+      ],
+      "intentional": [
+        "Platform badge label text ('ANDROID' vs 'IOS') is environment metadata, not a UI divergence.",
+        "Canvas size differences (390×844 vs 1170×2532) are expected; comparisons are normalized by pixel ratio."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.026711427066877347
     },
     {
@@ -2207,15 +2250,31 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffe9ffe07fe81fe01fe0e061e068002000680120012905210f28012001280020002800200028032003280020012a00220028002000280064006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
-      "generatedAt": "2026-07-11T05:30:46.743Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-11T05:32:58.219Z",
+      "severity": "low",
+      "summary": [
+        "The Android (left) viewport shows a yellow/cream background fill extending vertically through the entire viewport area, while iOS (right) has a white background — this is a container/page background color difference.",
+        "Both sides render the same components (back arrow, 'Appearance' title, 'Message font size and reading density' section, Small/Medium/Large toggles with Medium selected, Preview card with Onboarding Assistant avatar and message) at proportionally similar sizes, indicating correct layout logic.",
+        "No missing, clipped, or misaligned elements are visible on either side; text content, colors of buttons (Medium is amber/yellow), Preview card avatar (purple), and typography appear visually equivalent."
+      ],
+      "likelyCauses": [
+        "Kuikly Android renderer applies a default surface/page background tint (cream/yellow) that iOS does not, or the iOS viewport has been cropped/scaled without retaining the page-level background fill.",
+        "Platform-specific default theme background color not normalized between Android and iOS implementations."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize the page/view container background color across Android and iOS Kuikly renderers (use a shared theme token, e.g., neutral white or explicitly set surface color).",
+        "Verify that viewport-bounds cropping on iOS does not strip the page-level background fill.",
+        "Re-run visual diff after aligning the surface background to confirm pixel mismatch is solely attributable to this color difference."
+      ],
+      "intentional": [
+        "The yellow/cream background fill on Android may be intentional debug/Slock-canvas coloring rather than the shipped UI; if so, exclude it from the diff or render the page against a white canvas on both sides."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16403538974629017
     },
     {
@@ -2323,7 +2382,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2336,7 +2395,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2349,7 +2408,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2362,7 +2421,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2375,7 +2434,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2388,7 +2447,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.700Z",
+      "generatedAt": "2026-07-11T05:34:35.705Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2693,7 +2752,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.910Z",
+      "generatedAt": "2026-07-11T05:34:35.920Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2706,7 +2765,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T05:30:46.910Z",
+      "generatedAt": "2026-07-11T05:34:35.920Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
