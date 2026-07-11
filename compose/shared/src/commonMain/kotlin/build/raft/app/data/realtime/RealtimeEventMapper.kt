@@ -88,7 +88,10 @@ import kotlin.time.TimeSource
  * iOS dictionaries, etc.) must stringify the payload before calling [map].
  */
 class RealtimeEventMapper(
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    // Flag-gated sync-core shadow-compare hook. Default no-op keeps the mapper decoupled and unchanged in
+    // behavior; the provider injects the real observer when `sync_core_messages_v0` is in shadow mode.
+    private val messageShadowObserver: MessageShadowObserver = MessageShadowObserver.NoOp,
 ) {
 
     /**
@@ -147,13 +150,34 @@ class RealtimeEventMapper(
         return element as? JsonObject
     }
 
+    /**
+     * Invoke the flag-gated shadow-compare hook, FAIL-OPEN. Shadow-compare is diagnostic-only and must
+     * never affect the authoritative realtime event: any failure of the observer (flag lookup, canonical
+     * pipeline, or the diagnostics logger itself) is swallowed here so the legacy [Message] still reaches
+     * the store/UI unchanged. Returns the receiver untouched. (AD2: mapper-boundary isolation.)
+     */
+    private fun Message.withShadowObserved(eventName: String, element: JsonObject): Message {
+        runCatching { messageShadowObserver.observe(eventName, element, this) }
+            .onFailure { error ->
+                runCatching {
+                    diagnosticsLogger(
+                        "message_shadow_observer_failed eventName=$eventName error=${error::class.simpleName}",
+                    )
+                }
+            }
+        return this
+    }
+
     private fun mapElement(eventName: String, element: JsonObject): RealtimeEvent? = try {
         when (eventName) {
             RealtimeSocketEvents.MessageNew ->
-                decodeMessageWire(element)?.toDomain()?.let(::MessageNew)
+                decodeMessageWire(element)?.toDomain()
+                    ?.withShadowObserved(eventName, element)
+                    ?.let(::MessageNew)
             RealtimeSocketEvents.MessageUpdated ->
                 decodeMessageWire(element)?.toDomain()
                     ?.withRealtimeReactionsClearedIfExplicitNull(element)
+                    ?.withShadowObserved(eventName, element)
                     ?.let(::MessageUpdated)
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->

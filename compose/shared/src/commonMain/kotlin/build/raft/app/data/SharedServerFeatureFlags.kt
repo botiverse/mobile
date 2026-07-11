@@ -110,6 +110,15 @@ class SharedServerFeatureFlags(
 
     fun isEnabled(serverId: ServerId?, key: String): Boolean = snapshotFor(serverId).isEnabled(key)
 
+    /**
+     * True if [key] is enabled in ANY resolved server snapshot. Used by the sync-core shadow-compare gate,
+     * which is a global diagnostic (not per-server user-facing behavior) and runs before the per-event
+     * serverId is resolved. Once the server evaluate accepts `platform` (slock #186) and shadow becomes
+     * per-server, replace this with a serverId-scoped read.
+     */
+    fun isEnabledForAnyResolvedServer(key: String): Boolean =
+        snapshots.values.any { it.resolved && it.isEnabled(key) }
+
     /** Evaluate the registered flags for [serverId] and cache the snapshot. Returns the resolved snapshot. */
     suspend fun prefetch(serverId: ServerId): ServerFeatureFlagSnapshot {
         val response = api.evaluate(serverId, keys)
