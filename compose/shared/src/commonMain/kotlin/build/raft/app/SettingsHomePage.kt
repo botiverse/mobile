@@ -5336,19 +5336,43 @@ private fun SettingsLanguageRegionContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading language and region settings.", null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.LoaderCircle,
+                        stringResource(MR.strings.common_loading),
+                        stringResource(MR.strings.settings_language_loading),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Languages, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Languages,
+                        stringResource(MR.strings.settings_state_unavailable),
+                        state.reason.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Language Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.TriangleAlert,
+                        stringResource(MR.strings.settings_error_language),
+                        state.error.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Lock,
+                        stringResource(MR.strings.settings_state_permission_required),
+                        state.blocker.settingsUserFacingMessage(),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
@@ -5402,11 +5426,11 @@ private fun SettingsLanguagePreferenceCard(
         !busy &&
             dirty &&
             ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
-    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS, "Save")
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
+    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = stringResource(MR.strings.settings_language_title)) {
         SettingsSegmentedControlField(
-            label = "Translation mode",
-            detail = "Automatic translates supported messages. Manual keeps messages original until you choose Translate on a message. Original keeps messages in their source language.",
+            label = stringResource(MR.strings.settings_translation_mode),
+            detail = stringResource(MR.strings.settings_translation_mode_detail),
             selectedValue = selectedDisplay,
             options = snapshot.translationDisplay.toTranslationModeOptions(),
             onValueSelected = onDisplayDraftChange,
@@ -5456,10 +5480,10 @@ private fun SettingsDateTimePreferenceCard(
     val busy = timezoneBusy || timeFormatBusy
     val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
     val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
-    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS, "Save")
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = "Date & Time") {
-        SlockBrutalSectionLabel(label = "Timezone")
-        SettingsFormDetailText("Used for local timestamps and scheduling defaults.")
+    val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_timezone))
+        SettingsFormDetailText(stringResource(MR.strings.settings_timezone_detail))
         SlockBrutalSelectField(
             options = snapshot.timezone.toSelectOptions(),
             selectedId = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
@@ -5468,13 +5492,13 @@ private fun SettingsDateTimePreferenceCard(
             enabled = snapshot.timezone.available && !busy
         )
         SettingsSegmentedControlField(
-            label = "Time format",
-            detail = "Display only. Does not affect agent behavior.",
+            label = stringResource(MR.strings.settings_time_format),
+            detail = stringResource(MR.strings.settings_time_format_detail),
             selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
             options =
                 listOf(
-                    SegmentedControlOption("12h", "12-hour", SlockLucideIconName.Clock3),
-                    SegmentedControlOption("24h", "24-hour", SlockLucideIconName.Clock)
+                    SegmentedControlOption("12h", stringResource(MR.strings.settings_time_format_12_hour), SlockLucideIconName.Clock3),
+                    SegmentedControlOption("24h", stringResource(MR.strings.settings_time_format_24_hour), SlockLucideIconName.Clock)
                 ),
             onValueSelected = onTimeFormatDraftChange,
             enabled = snapshot.timeFormat.available && !busy
@@ -5527,15 +5551,15 @@ private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<Seg
         )
     }
 
+@Composable
 private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLabel(
-    actions: Set<String>,
-    fallback: String
+    actions: Set<String>
 ): String =
     when {
-        this == null || action !in actions -> fallback
-        inProgress -> "Saving"
-        errorCode != null -> "Retry"
-        else -> "Saved"
+        this == null || action !in actions -> stringResource(MR.strings.common_save)
+        inProgress -> stringResource(MR.strings.settings_state_saving)
+        errorCode != null -> stringResource(MR.strings.common_retry)
+        else -> stringResource(MR.strings.settings_state_saved)
     }
 
 @Composable
@@ -5565,14 +5589,14 @@ private fun SettingsServerTranslationPreferenceCard(
     onServerTranslationChange: (Boolean) -> Unit
 ) {
     val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Wand, title = "Workspace translation") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Wand, title = stringResource(MR.strings.settings_workspace_translation)) {
         SettingsSegmentedControlField(
             detail = snapshot.serverTranslation.detail,
             selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
             options =
                 listOf(
-                    SegmentedControlOption("on", "On", SlockLucideIconName.CircleCheck),
-                    SegmentedControlOption("off", "Off", SlockLucideIconName.X)
+                    SegmentedControlOption("on", stringResource(MR.strings.settings_option_on), SlockLucideIconName.CircleCheck),
+                    SegmentedControlOption("off", stringResource(MR.strings.settings_option_off), SlockLucideIconName.X)
                 ),
             onValueSelected = { onServerTranslationChange(it == "on") },
             enabled = snapshot.serverTranslation.available && !busy
@@ -5600,19 +5624,43 @@ private fun SettingsAppearanceContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading appearance settings.", null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.LoaderCircle,
+                        stringResource(MR.strings.common_loading),
+                        stringResource(MR.strings.settings_appearance_loading),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Type, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Type,
+                        stringResource(MR.strings.settings_state_unavailable),
+                        state.reason.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Appearance Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.TriangleAlert,
+                        stringResource(MR.strings.settings_error_appearance),
+                        state.error.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Lock,
+                        stringResource(MR.strings.settings_state_permission_required),
+                        state.blocker.settingsUserFacingMessage(),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Content ->
                 item {
@@ -5645,7 +5693,7 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = "Message font size") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_message_font_size_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
@@ -5677,16 +5725,16 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            "Preview",
+            stringResource(MR.strings.settings_appearance_preview),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             SlockAvatar(avatarWireValue = "letter:AI", label = "AI", avatarSize = 28.dp)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Onboarding Assistant", style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(stringResource(MR.strings.settings_appearance_preview_sender), style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
                 Text(
-                    "@Joy #proj-uiux love the new design — doing a git pull now to try it locally.",
+                    stringResource(MR.strings.settings_appearance_preview_message),
                     style = bodyStyle,
                     color = SlockColor.TextBlack
                 )
@@ -5828,14 +5876,14 @@ private fun SettingsMessageAlignmentCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = "My message alignment") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageAlignmentPreference.detail,
             selectedValue = selectedKey.ifBlank { "left" },
             options =
                 listOf(
-                    SegmentedControlOption("left", "Left"),
-                    SegmentedControlOption("right", "Right")
+                    SegmentedControlOption("left", stringResource(MR.strings.settings_message_alignment_left)),
+                    SegmentedControlOption("right", stringResource(MR.strings.settings_message_alignment_right))
                 ),
             onValueSelected = onAlignmentChange,
             enabled = snapshot.messageAlignmentPreference.available && !busy
@@ -5854,7 +5902,7 @@ private fun SettingsCompactMessagesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
     val preference = snapshot.compactConsecutiveMessages
-    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = "Compact consecutive messages") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
         SettingsFormDetailText(preference.detail)
         Row(
             modifier =
@@ -5876,7 +5924,12 @@ private fun SettingsCompactMessagesCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (preference.enabled) "Repeated avatars hidden" else "Show every message avatar",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_compact_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_compact_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 2,
@@ -5946,7 +5999,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
     val preference = snapshot.activityTaskStatusBadges
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = "Activity task status badges") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
         SettingsFormDetailText(preference.detail)
         Row(
             modifier =
@@ -5968,7 +6021,12 @@ private fun SettingsActivityTaskStatusBadgesCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (preference.enabled) "Show task status chips in Activity rows" else "Keep Activity rows visually quiet",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_activity_task_badges_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_activity_task_badges_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 2,
@@ -5994,7 +6052,7 @@ private fun SettingsComposerSendKeyCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = "Composer keyboard key") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
         SettingsFormDetailText(preference.detail)
         Row(
             modifier =
@@ -6016,7 +6074,12 @@ private fun SettingsComposerSendKeyCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (preference.enabled) "Keyboard action sends messages" else "Keyboard action inserts a new line",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_composer_key_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_composer_key_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 2,
@@ -6041,7 +6104,7 @@ private fun SettingsThreadRowAffordancesCard(
     onThreadRowAffordanceChange: (ThreadRowAffordancePreference, Boolean) -> Unit
 ) {
     val preference = snapshot.threadRowAffordances
-    SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = "Message row actions") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_mobile_message_row_actions)) {
         SettingsFormDetailText(preference.detail)
         preference.options.forEach { option ->
             val affordance = ThreadRowAffordancePreference.fromStorageKey(option.key) ?: return@forEach
@@ -6089,12 +6152,21 @@ private fun SettingsThreadRowAffordancesCard(
     }
 }
 
+@Composable
 private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): String =
     when (this) {
         ThreadRowAffordancePreference.Reactions ->
-            if (enabled) "Show reaction actions in message menus" else "Hide reaction actions"
+            if (enabled) {
+                stringResource(MR.strings.settings_mobile_reactions_enabled)
+            } else {
+                stringResource(MR.strings.settings_mobile_reactions_disabled)
+            }
         ThreadRowAffordancePreference.Saved ->
-            if (enabled) "Show saved badges on message rows" else "Keep saved state out of message rows"
+            if (enabled) {
+                stringResource(MR.strings.settings_mobile_saved_enabled)
+            } else {
+                stringResource(MR.strings.settings_mobile_saved_disabled)
+            }
     }
 
 @Composable
@@ -6105,7 +6177,7 @@ private fun SettingsImageAnnotationCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.inProgress
     val preference = snapshot.imageAnnotation
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = "Support image annotation") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = stringResource(MR.strings.settings_mobile_image_annotation)) {
         SettingsFormDetailText(preference.detail)
         Row(
             modifier =
@@ -6127,7 +6199,12 @@ private fun SettingsImageAnnotationCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (preference.enabled) "Composer images open the annotation transfer page" else "Composer images upload directly",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_image_annotation_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_image_annotation_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
                     maxLines = 2,
@@ -6170,19 +6247,43 @@ private fun SettingsNotificationsContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.LoaderCircle, "Loading", "Loading notification settings.", null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.LoaderCircle,
+                        stringResource(MR.strings.common_loading),
+                        stringResource(MR.strings.settings_notifications_loading),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Bell, "Unavailable", state.reason.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Bell,
+                        stringResource(MR.strings.settings_state_unavailable),
+                        state.reason.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Notification Error", state.error.settingsUserFacingMessage(), "Retry", onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.TriangleAlert,
+                        stringResource(MR.strings.settings_error_notification),
+                        state.error.settingsUserFacingMessage(),
+                        stringResource(MR.strings.common_retry),
+                        onRetry
+                    )
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.settingsUserFacingMessage(), null, onRetry)
+                    SettingsLoadStateCard(
+                        SlockLucideIconName.Lock,
+                        stringResource(MR.strings.settings_state_permission_required),
+                        state.blocker.settingsUserFacingMessage(),
+                        null,
+                        onRetry
+                    )
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
@@ -6241,7 +6342,7 @@ private fun SettingsPushStatusCard(
     val anyActionBusy = actionState?.inProgress == true
     val permissionGranted = settingsNotificationPermissionGranted(snapshot.notificationPermission.statusLabel)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel("System")
+        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_system))
         SettingsNotificationPermissionBanner(
             status = snapshot.notificationPermission.statusLabel,
             detail = snapshot.notificationPermission.detail,
@@ -6256,26 +6357,26 @@ private fun SettingsPushStatusCard(
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
 
-        SettingsNotificationSectionLabel("On this device")
+        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_on_device))
         SettingsNotificationPreferenceGroup {
             SettingsNotificationToggleRow(
-                title = "Message notifications",
-                detail = "Show a system notification for new unread messages while Raft is in the background.",
+                title = stringResource(MR.strings.settings_notifications_message_title),
+                detail = stringResource(MR.strings.settings_notifications_message_detail),
                 checked = notificationPreferenceSnapshot.enabled,
                 enabled = !preferenceBusy,
                 onCheckedChange = onNotificationPreferenceChange
             )
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
-                title = "Background realtime",
-                detail = "Keep realtime connected in the background. Android may still pause long-running sessions.",
+                title = stringResource(MR.strings.settings_notifications_background_realtime_title),
+                detail = stringResource(MR.strings.settings_notifications_background_realtime_detail),
                 checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                 enabled = !foregroundKeepAliveBusy,
                 onCheckedChange = onForegroundKeepAlivePreferenceChange
             )
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
-                title = "Foreground message banners",
+                title = stringResource(MR.strings.settings_foreground_banners_title),
                 detail = snapshot.foregroundMessageBanners.detail,
                 checked = snapshot.foregroundMessageBanners.enabled,
                 enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
@@ -6283,9 +6384,9 @@ private fun SettingsPushStatusCard(
             )
             SettingsNotificationDivider()
             SettingsNotificationActionRow(
-                title = "Send a test notification",
+                title = stringResource(MR.strings.settings_notifications_test_title),
                 detail = snapshot.testNotification.detail,
-                status = snapshot.testNotification.statusLabel.ifBlank { "Ready" },
+                status = snapshot.testNotification.statusLabel.ifBlank { stringResource(MR.strings.settings_state_ready) },
                 enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
                 onClick = onTest
             )
@@ -6355,14 +6456,24 @@ private fun SettingsNotificationPermissionBanner(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = if (permissionGranted) "Notifications allowed" else "Notification access needed",
+                    text =
+                        if (permissionGranted) {
+                            stringResource(MR.strings.settings_notifications_permission_allowed)
+                        } else {
+                            stringResource(MR.strings.settings_notifications_permission_needed)
+                        },
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = detail.ifBlank { status.ifBlank { "Open Android settings to review notification access." } },
+                    text =
+                        detail.ifBlank {
+                            status.ifBlank {
+                                stringResource(MR.strings.settings_notifications_permission_open_settings)
+                            }
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
@@ -6373,7 +6484,7 @@ private fun SettingsNotificationPermissionBanner(
         }
         if (!permissionGranted) {
             SlockBrutalActionButton(
-                label = "Request permission",
+                label = stringResource(MR.strings.settings_notifications_request_permission),
                 onClick = onPermission,
                 enabled = permissionAvailable && !busy,
                 leadingIcon = SlockLucideIconName.Bell,
@@ -6477,10 +6588,10 @@ private fun SettingsServerMuteCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel("Workspace")
+        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_workspace))
         SettingsNotificationPreferenceGroup {
             SettingsNotificationToggleRow(
-                title = "Mute this workspace",
+                title = stringResource(MR.strings.settings_notifications_mute_workspace),
                 detail = snapshot.muteServer.detail,
                 checked = snapshot.muteServer.enabled,
                 enabled = snapshot.muteServer.available && !busy,
