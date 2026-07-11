@@ -3,6 +3,7 @@ import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { bundleManager } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
+import display from '@ohos.display';
 import UIAbility from '@ohos.app.ability.UIAbility';
 import Want from '@ohos.app.ability.Want';
 import window from '@ohos.window';
@@ -17,6 +18,7 @@ import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import slockOhosRealtimeKeepAlive from '../kuikly/SlockOhosRealtimeKeepAlive';
 import { SlockOhosAppDiagnostics } from './SlockOhosAppDiagnostics';
+import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { Hands } from '@botiverse/hands';
 import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
@@ -91,6 +93,9 @@ class SlockOhosSharedLogSink {
 export default class EntryAbility extends UIAbility {
   private static uiFontsRegistered: boolean = false;
   private mainWindow?: window.Window;
+  private windowSizeCallback?: Callback<window.Size>;
+  private foldStatusCallback?: Callback<display.FoldStatus>;
+  private foldPosture: string = 'unknown';
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
@@ -122,6 +127,7 @@ export default class EntryAbility extends UIAbility {
     this.mainWindow = mainWindow;
     mainWindow.setWindowLayoutFullScreen(true);
     this.updateSafeAreaStorage(mainWindow);
+    this.registerAdaptivePaneBridge(mainWindow);
     mainWindow.on('avoidAreaChange', (data: window.AvoidAreaOptions) => {
       if (data.type === window.AvoidAreaType.TYPE_SYSTEM ||
         data.type === window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR) {
@@ -235,6 +241,81 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  /** Sends host-only geometry through the root pager event channel, never route pageData. */
+  private registerAdaptivePaneBridge(mainWindow: window.Window): void {
+    this.publishAdaptivePane(mainWindow);
+    this.windowSizeCallback = (size: window.Size) => {
+      this.publishAdaptivePane(mainWindow, size.width, size.height);
+    };
+    mainWindow.on('windowSizeChange', this.windowSizeCallback);
+
+    try {
+      if (!display.isFoldable()) {
+        return;
+      }
+      this.foldPosture = this.foldPostureName(display.getFoldStatus());
+      this.foldStatusCallback = (status: display.FoldStatus) => {
+        this.foldPosture = this.foldPostureName(status);
+        this.publishAdaptivePane(mainWindow);
+      };
+      display.on('foldStatusChange', this.foldStatusCallback);
+      this.publishAdaptivePane(mainWindow);
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to observe fold posture. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+  }
+
+  private unregisterAdaptivePaneBridge(mainWindow: window.Window): void {
+    try {
+      if (this.windowSizeCallback !== undefined) {
+        mainWindow.off('windowSizeChange', this.windowSizeCallback);
+      }
+      if (this.foldStatusCallback !== undefined) {
+        display.off('foldStatusChange', this.foldStatusCallback);
+      }
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to stop adaptive pane observers. Cause: %{public}s', JSON.stringify(err) ?? '');
+    } finally {
+      this.windowSizeCallback = undefined;
+      this.foldStatusCallback = undefined;
+      this.foldPosture = 'unknown';
+    }
+  }
+
+  private publishAdaptivePane(mainWindow: window.Window, width?: number, height?: number): void {
+    try {
+      const windowRect = mainWindow.getWindowProperties().windowRect;
+      const displayInfo = display.getDefaultDisplaySync();
+      slockOhosAdaptivePaneBridge.publish({
+        widthPx: width ?? windowRect.width,
+        heightPx: height ?? windowRect.height,
+        density: displayInfo.densityPixels,
+        posture: this.foldPosture,
+      });
+    } catch (err) {
+      hilog.warn(0x0000, 'testTag', 'Failed to publish adaptive pane state. Cause: %{public}s', JSON.stringify(err) ?? '');
+    }
+  }
+
+  private foldPostureName(status: display.FoldStatus): string {
+    switch (status) {
+      case display.FoldStatus.FOLD_STATUS_EXPANDED:
+      case display.FoldStatus.FOLD_STATUS_EXPANDED_WITH_SECOND_EXPANDED:
+        return 'expanded';
+      case display.FoldStatus.FOLD_STATUS_FOLDED:
+      case display.FoldStatus.FOLD_STATUS_FOLDED_WITH_SECOND_EXPANDED:
+        return 'folded';
+      case display.FoldStatus.FOLD_STATUS_HALF_FOLDED:
+      case display.FoldStatus.FOLD_STATUS_HALF_FOLDED_WITH_SECOND_EXPANDED:
+      case display.FoldStatus.FOLD_STATUS_EXPANDED_WITH_SECOND_HALF_FOLDED:
+      case display.FoldStatus.FOLD_STATUS_FOLDED_WITH_SECOND_HALF_FOLDED:
+      case display.FoldStatus.FOLD_STATUS_HALF_FOLDED_WITH_SECOND_HALF_FOLDED:
+        return 'half_folded';
+      default:
+        return 'unknown';
+    }
+  }
+
   private restoreMainWindowLayout(): void {
     if (this.mainWindow === undefined) {
       return;
@@ -250,6 +331,9 @@ export default class EntryAbility extends UIAbility {
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    if (this.mainWindow !== undefined) {
+      this.unregisterAdaptivePaneBridge(this.mainWindow);
+    }
     this.mainWindow = undefined;
   }
 

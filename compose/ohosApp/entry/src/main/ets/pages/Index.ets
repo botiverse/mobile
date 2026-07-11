@@ -9,6 +9,7 @@ import globalNativeManager from '../kuikly/MyNativeManager';
 import slockOhosMotionBridge from '../kuikly/SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../kuikly/SlockOhosClipboard';
+import slockOhosAdaptivePaneBridge from '../kuikly/SlockOhosAdaptivePaneBridge';
 import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosAppDiagnostics } from '../entryability/SlockOhosAppDiagnostics';
 
@@ -72,6 +73,7 @@ struct Index {
           });
           slockOhosMotionBridge.setController(controller);
           slockOhosRealtimeBridge.setController(controller);
+          slockOhosAdaptivePaneBridge.setController(controller);
         },
       })
       if (this.exception) {
