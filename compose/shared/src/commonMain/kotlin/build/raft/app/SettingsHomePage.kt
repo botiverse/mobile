@@ -13610,14 +13610,40 @@ private fun SharedHomeSearchPanel(
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
-    val entityResults = remember(state.query, homeState, state.senderFilters) {
-        homeSearchEntityResults(state.query, homeState, state.senderFilters)
+    val channelEntityLabel = stringResource(MR.strings.search_entity_channel)
+    val dmEntityLabel = stringResource(MR.strings.search_entity_dm)
+    val agentEntityLabel = stringResource(MR.strings.search_entity_agent)
+    val personEntityLabel = stringResource(MR.strings.search_entity_person)
+    val membersEntityLabel = stringResource(MR.strings.search_entity_members)
+    val threadDiscussionLabel = stringResource(MR.strings.search_thread_discussion)
+    val entityResults = remember(
+        state.query,
+        homeState,
+        state.senderFilters,
+        channelEntityLabel,
+        dmEntityLabel,
+        agentEntityLabel,
+        personEntityLabel,
+        membersEntityLabel
+    ) {
+        homeSearchEntityResults(
+            query = state.query,
+            homeState = homeState,
+            senderFilters = state.senderFilters,
+            channelLabel = channelEntityLabel,
+            dmLabel = dmEntityLabel,
+            agentLabel = agentEntityLabel,
+            personLabel = personEntityLabel,
+            membersLabel = membersEntityLabel
+        )
     }
     val projectedItems =
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
         }
-    val groupedResults = remember(projectedItems) { groupHomeSearchResults(projectedItems) }
+    val groupedResults = remember(projectedItems, threadDiscussionLabel) {
+        groupHomeSearchResults(projectedItems, threadDiscussionLabel)
+    }
     var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
     var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
     var scopeAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -13718,7 +13744,7 @@ private fun SharedHomeSearchPanel(
                 }
                 if (entityResults.isNotEmpty()) {
                     item {
-                        SharedHomeSearchSectionLabel("Channels & DMs")
+                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_channels_dms))
                     }
                     items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                         SharedHomeSearchEntityRow(
@@ -13732,7 +13758,7 @@ private fun SharedHomeSearchPanel(
                 }
                 if (groupedResults.isNotEmpty()) {
                     item {
-                        SharedHomeSearchSectionLabel("Messages")
+                        SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_messages))
                     }
                 }
                 groupedResults.forEach { group ->
@@ -13765,7 +13791,7 @@ private fun SharedHomeSearchPanel(
                     item {
                         SharedHomeLoadMoreRow(
                             loading = state.loadingMore,
-                            label = "Load more results",
+                            label = stringResource(MR.strings.search_action_load_more_results),
                             onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
                         )
                     }
@@ -13779,11 +13805,11 @@ private fun SharedHomeSearchPanel(
             "scope" ->
                 SlockFilterPopover(
                     anchor = scopeAnchor,
-                    title = "Scope",
+                    title = stringResource(MR.strings.search_filter_scope),
                     searchPlaceholder = "",
                     searchText = "",
                     onSearchChange = {},
-                    options = SearchScope.entries.map { SlockFilterOption(it.key, it.label) },
+                    options = SearchScope.entries.map { SlockFilterOption(it.key, it.localizedSearchLabel()) },
                     selectedIds = state.selectedScopes.mapTo(linkedSetOf()) { it.key },
                     onToggle = { key ->
                         SearchScope.entries.firstOrNull { it.key == key }?.let {
@@ -13803,8 +13829,8 @@ private fun SharedHomeSearchPanel(
             "sender" ->
                 SlockFilterPopover(
                     anchor = senderAnchor,
-                    title = "From",
-                    searchPlaceholder = "Search senders",
+                    title = stringResource(MR.strings.search_filter_from),
+                    searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
                     searchText = senderSearch,
                     onSearchChange = { senderSearch = it },
                     options = state.senderFilterOptions(),
@@ -13821,7 +13847,7 @@ private fun SharedHomeSearchPanel(
                     showClearWhenSelected = true,
                     headerSlot = {
                         if (state.senderFiltersLoading) {
-                            Text("Loading senders...", style = SlockType.Caption, color = SlockColor.TextMutedGray)
+                            Text(stringResource(MR.strings.search_filter_loading_senders), style = SlockType.Caption, color = SlockColor.TextMutedGray)
                         } else if (state.senderFiltersErrorCode != null) {
                             Text(state.senderFiltersErrorCode, style = SlockType.Caption, color = SlockColor.AccentRed)
                         }
@@ -13830,8 +13856,8 @@ private fun SharedHomeSearchPanel(
             "channel" ->
                 SlockFilterPopover(
                     anchor = channelAnchor,
-                    title = "Channels",
-                    searchPlaceholder = "Search...",
+                    title = stringResource(MR.strings.search_filter_channels),
+                    searchPlaceholder = stringResource(MR.strings.search_filter_search),
                     searchText = channelSearch,
                     onSearchChange = { channelSearch = it },
                     options = channelFilters.map { SlockFilterOption(it.id, it.label, it.icon) },
@@ -13851,11 +13877,11 @@ private fun SharedHomeSearchPanel(
             "time" ->
                 SlockFilterPopover(
                     anchor = timeAnchor,
-                    title = "Time",
+                    title = stringResource(MR.strings.search_filter_time),
                     searchPlaceholder = "",
                     searchText = "",
                     onSearchChange = {},
-                    options = SearchTimeRange.entries.map { SlockFilterOption(it.key, it.searchLabel) },
+                    options = SearchTimeRange.entries.map { SlockFilterOption(it.key, it.localizedSearchLabel()) },
                     selectedIds = setOf(state.timeRange.key),
                     onToggle = { key ->
                         SearchTimeRange.entries.firstOrNull { it.key == key }?.let {
@@ -13874,14 +13900,14 @@ private fun SharedHomeSearchPanel(
             "sort" ->
                 SlockFilterPopover(
                     anchor = sortAnchor,
-                    title = "Sort",
+                    title = stringResource(MR.strings.search_filter_sort),
                     searchPlaceholder = "",
                     searchText = "",
                     onSearchChange = {},
                     options =
                         listOf(
-                            SlockFilterOption("relevance", "Relevant"),
-                            SlockFilterOption("recent", "Recent")
+                            SlockFilterOption("relevance", stringResource(MR.strings.search_sort_relevant)),
+                            SlockFilterOption("recent", stringResource(MR.strings.search_sort_recent))
                         ),
                     selectedIds = setOf(state.sort.searchKey),
                     onToggle = { key ->
@@ -14052,6 +14078,21 @@ private fun SharedHomeSavedPanel(
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
         }
+    val copyLinkLabel = stringResource(MR.strings.saved_action_copy_link)
+    val copyMarkdownLabel = stringResource(MR.strings.saved_action_copy_markdown)
+    val removeLabel = stringResource(MR.strings.saved_action_remove)
+    val contextMenuItems = remember(copyLinkLabel, copyMarkdownLabel, removeLabel) {
+        listOf(
+            SlockBaseMenuItem(SharedHomeSavedMenuActionCopyLink, copyLinkLabel, SlockLucideIconName.Link),
+            SlockBaseMenuItem(SharedHomeSavedMenuActionCopyMarkdown, copyMarkdownLabel, SlockLucideIconName.Copy),
+            SlockBaseMenuItem(
+                SharedHomeSavedMenuActionRemove,
+                removeLabel,
+                SlockLucideIconName.Bookmark,
+                dividerBefore = true
+            )
+        )
+    }
     if (state.loading && projectedItems.isEmpty()) {
         Column(
             modifier =
@@ -14142,7 +14183,7 @@ private fun SharedHomeSavedPanel(
                     item {
                         SharedHomeLoadMoreRow(
                             loading = state.loadingMore,
-                            label = "Load More",
+                            label = stringResource(MR.strings.saved_action_load_more),
                             onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
                         )
                     }
@@ -14155,7 +14196,7 @@ private fun SharedHomeSavedPanel(
         activeMenu?.let { menu ->
             SlockBaseMenuOverlay(
                 anchor = menu.anchor,
-                items = SharedHomeSavedContextMenuItems,
+                items = contextMenuItems,
                 selectedId = "",
                 uppercaseLabels = false,
                 onDismiss = { activeMenu = null },
@@ -14176,13 +14217,6 @@ private fun SharedHomeSavedPanel(
 private const val SharedHomeSavedMenuActionCopyLink = "copy-link"
 private const val SharedHomeSavedMenuActionCopyMarkdown = "copy-markdown"
 private const val SharedHomeSavedMenuActionRemove = "remove"
-
-private val SharedHomeSavedContextMenuItems =
-    listOf(
-        SlockBaseMenuItem(SharedHomeSavedMenuActionCopyLink, "Copy Link", SlockLucideIconName.Link),
-        SlockBaseMenuItem(SharedHomeSavedMenuActionCopyMarkdown, "Copy Markdown", SlockLucideIconName.Copy),
-        SlockBaseMenuItem(SharedHomeSavedMenuActionRemove, "Remove from Saved", SlockLucideIconName.Bookmark, dividerBefore = true)
-    )
 
 private data class SharedHomeSavedContextMenuState(
     val item: InboxItem,
@@ -14273,14 +14307,14 @@ private fun SharedHomeSavedHeader(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    "Saved",
+                    stringResource(MR.strings.saved_title),
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "$count saved",
+                    stringResource(MR.strings.saved_count, count),
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
@@ -14403,6 +14437,8 @@ private fun SharedHomeSearchFilters(
     val channelActive = state.selectedChannelId != null
     val timeActive = state.timeRange != SearchTimeRange.Any
     val sortActive = state.sort != SearchSort.Relevance
+    val scopeLabel = stringResource(MR.strings.search_filter_scope)
+    val channelLabel = stringResource(MR.strings.search_filter_channel)
     SharedHomeSearchControlsBlock {
         LazyRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
@@ -14410,7 +14446,7 @@ private fun SharedHomeSearchFilters(
         ) {
             item {
                 SlockAnchoredToolbarChip(
-                    label = if (scopeActive) "Scope ${state.selectedScopes.size}" else "Scope",
+                    label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                     active = scopeActive,
                     enabled = true,
                     uppercase = !scopeActive,
@@ -14428,7 +14464,7 @@ private fun SharedHomeSearchFilters(
             if (showSenderFilter) {
                 item {
                     SlockAnchoredToolbarChip(
-                        label = state.senderFilterLabel(),
+                        label = state.localizedSenderFilterLabel(),
                         active = senderActive,
                         enabled = true,
                         uppercase = !senderActive,
@@ -14445,7 +14481,7 @@ private fun SharedHomeSearchFilters(
                 }
                 item {
                     SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: "Channel",
+                        label = selectedChannel?.label ?: channelLabel,
                         active = channelActive,
                         enabled = true,
                         uppercase = selectedChannel == null,
@@ -14462,7 +14498,7 @@ private fun SharedHomeSearchFilters(
                 }
                 item {
                     SlockAnchoredToolbarChip(
-                        label = state.timeRange.searchLabel,
+                        label = state.timeRange.localizedSearchLabel(),
                         active = timeActive,
                         enabled = true,
                         uppercase = false,
@@ -14480,7 +14516,7 @@ private fun SharedHomeSearchFilters(
             } else {
                 item {
                     SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: "Channel",
+                        label = selectedChannel?.label ?: channelLabel,
                         active = channelActive,
                         enabled = true,
                         uppercase = selectedChannel == null,
@@ -14499,7 +14535,7 @@ private fun SharedHomeSearchFilters(
             if (!showSenderFilter) {
                 item {
                     SlockAnchoredToolbarChip(
-                        label = state.timeRange.searchLabel,
+                        label = state.timeRange.localizedSearchLabel(),
                         active = timeActive,
                         enabled = true,
                         uppercase = false,
@@ -14517,7 +14553,7 @@ private fun SharedHomeSearchFilters(
             }
             item {
                 SlockAnchoredToolbarChip(
-                    label = state.sort.searchLabel,
+                    label = state.sort.localizedSearchLabel(),
                     active = sortActive,
                     enabled = true,
                     uppercase = false,
@@ -14535,7 +14571,7 @@ private fun SharedHomeSearchFilters(
             if (hasActiveFilters) {
                 item {
                     SlockToolbarChip(
-                        label = "Clear All",
+                        label = stringResource(MR.strings.search_filter_clear_all),
                         active = false,
                         enabled = true,
                         uppercase = false,
@@ -14687,7 +14723,8 @@ private fun SharedHomeSavedResultCard(
     onContextMenu: (Offset) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
-    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
+    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
+        ?: stringResource(MR.strings.saved_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
@@ -14752,7 +14789,7 @@ private fun SharedHomeSavedResultCard(
                         ) {
                             SlockLucideIcon(SlockLucideIconName.MessageSquare, color = "#66000000", modifier = Modifier.size(10.dp))
                             Text(
-                                text = "thread",
+                                text = stringResource(MR.strings.saved_meta_thread),
                                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                                 color = SlockColor.TextBlack.copy(alpha = 0.4f),
                                 maxLines = 1,
@@ -14922,7 +14959,12 @@ private fun SharedHomeSearchResultsCount(
     searching: Boolean
 ) {
     Text(
-        text = if (searching) "SEARCHING..." else "$totalResults results",
+        text =
+            if (searching) {
+                stringResource(MR.strings.search_state_searching)
+            } else {
+                stringResource(MR.strings.search_results_count, totalResults)
+            },
         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.6.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
@@ -15003,10 +15045,10 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
     SharedHomeOutlinedMetaBadge(
         label =
             when (type) {
-                SearchEntityType.Channel -> "Channel"
-                SearchEntityType.DirectMessage -> "DM"
-                SearchEntityType.Human -> "DM"
-                SearchEntityType.Agent -> "DM"
+                SearchEntityType.Channel -> stringResource(MR.strings.search_entity_channel)
+                SearchEntityType.DirectMessage -> stringResource(MR.strings.search_entity_dm)
+                SearchEntityType.Human -> stringResource(MR.strings.search_entity_dm)
+                SearchEntityType.Agent -> stringResource(MR.strings.search_entity_dm)
             },
         compact = true
     )
@@ -15044,7 +15086,7 @@ private fun SharedHomeThreadResultGroup(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SharedHomeMiniMetaBadge("Thread", SlockLucideIconName.MessageSquare, compact = true)
+                SharedHomeMiniMetaBadge(stringResource(MR.strings.search_meta_thread), SlockLucideIconName.MessageSquare, compact = true)
                 Text(
                     text = sourceLabel,
                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
@@ -15053,7 +15095,7 @@ private fun SharedHomeThreadResultGroup(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${group.items.size} hits",
+                    text = stringResource(MR.strings.search_hits_count, group.items.size),
                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
@@ -15109,7 +15151,8 @@ private fun SharedHomeSearchMessageResultRow(
     timeContext: AppShellThreadTimeContext? = null,
     onOpen: () -> Unit
 ) {
-    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
+    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
+        ?: stringResource(MR.strings.search_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
     val compactMeta = nested
@@ -15153,7 +15196,7 @@ private fun SharedHomeSearchMessageResultRow(
                     )
                 }
                 if (item.kind == InboxItemKind.Thread && !nested) {
-                    SharedHomeMiniMetaBadge("thread", SlockLucideIconName.MessageSquare)
+                    SharedHomeMiniMetaBadge(stringResource(MR.strings.search_meta_thread), SlockLucideIconName.MessageSquare)
                 }
                 if (item.hasDraft) {
                     SharedHomeDraftPencilIcon(compact = nested)
@@ -15343,7 +15386,7 @@ private fun SharedHomeLoadMoreRow(
         contentAlignment = Alignment.Center
     ) {
         SlockBrutalActionButton(
-            label = if (loading) "Loading..." else label,
+            label = if (loading) stringResource(MR.strings.common_loading) else label,
             enabled = !loading,
             minWidth = 0.dp,
             minHeight = 30.dp,
@@ -15385,12 +15428,12 @@ private fun SharedHomeSearchSortSegmentedControl(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SharedHomeSearchSortSegmentButton(
-            label = "Relevant",
+            label = stringResource(MR.strings.search_sort_relevant),
             selected = sort == SearchSort.Relevance,
             onClick = { onSortChange(SearchSort.Relevance) }
         )
         SharedHomeSearchSortSegmentButton(
-            label = "Recent",
+            label = stringResource(MR.strings.search_sort_recent),
             selected = sort == SearchSort.Recent,
             onClick = { onSortChange(SearchSort.Recent) }
         )
@@ -15589,7 +15632,10 @@ private sealed interface HomeSearchResultGroup {
     ) : HomeSearchResultGroup
 }
 
-private fun groupHomeSearchResults(items: List<InboxItem>): List<HomeSearchResultGroup> {
+private fun groupHomeSearchResults(
+    items: List<InboxItem>,
+    threadDiscussionLabel: String
+): List<HomeSearchResultGroup> {
     val groups = mutableListOf<HomeSearchResultGroup>()
     val threadGroups = linkedMapOf<String, MutableList<InboxItem>>()
     items.forEach { item ->
@@ -15599,31 +15645,41 @@ private fun groupHomeSearchResults(items: List<InboxItem>): List<HomeSearchResul
             return@forEach
         }
         val existing = threadGroups.getOrPut(threadKey) {
-            mutableListOf<InboxItem>().also { groups += HomeSearchResultGroup.Thread(threadKey, item.parentMessagePreview ?: "Thread discussion", it) }
+            mutableListOf<InboxItem>().also {
+                groups += HomeSearchResultGroup.Thread(threadKey, item.parentMessagePreview ?: threadDiscussionLabel, it)
+            }
         }
         existing += item
     }
     return groups
 }
 
-private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOption> =
-    senderFilters
+@Composable
+private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOption> {
+    val meLabel = stringResource(MR.strings.search_sender_me)
+    return senderFilters
         .map { sender ->
             SlockFilterOption(
                 id = sender.id,
-                label = if (sender.isSelf) "Me" else sender.displayLabel,
+                label = if (sender.isSelf) meLabel else sender.displayLabel,
                 icon = if (sender.kind == MemberKind.Agent) SlockLucideIconName.Bot else SlockLucideIconName.CircleUser
             )
         }
         .distinctBy { it.id }
+}
 
-private fun SharedHomeSearchPanelState.senderFilterLabel(): String {
+@Composable
+private fun SharedHomeSearchPanelState.localizedSenderFilterLabel(): String {
     val selectedIds = selectedSenderIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-    if (selectedIds.isEmpty()) return "From"
+    if (selectedIds.isEmpty()) return stringResource(MR.strings.search_filter_from)
+    val meLabel = stringResource(MR.strings.search_sender_me)
     val selected = senderFilters.filter { it.id in selectedIds.toSet() }
     return when (selectedIds.size) {
-        1 -> "From: ${selected.singleOrNull()?.let { if (it.isSelf) "Me" else it.displayLabel } ?: selectedIds.first()}"
-        else -> "From: ${selectedIds.size} selected"
+        1 -> stringResource(
+            MR.strings.search_filter_from_value,
+            selected.singleOrNull()?.let { if (it.isSelf) meLabel else it.displayLabel } ?: selectedIds.first()
+        )
+        else -> stringResource(MR.strings.search_filter_from_selected, selectedIds.size)
     }
 }
 
@@ -15633,7 +15689,12 @@ private val SearchSenderFilterItem.displayLabel: String
 private fun homeSearchEntityResults(
     query: String,
     homeState: SharedHomeState,
-    senderFilters: List<SearchSenderFilterItem>
+    senderFilters: List<SearchSenderFilterItem>,
+    channelLabel: String,
+    dmLabel: String,
+    agentLabel: String,
+    personLabel: String,
+    membersLabel: String
 ): List<SearchEntityResult> {
     val normalizedQuery = query.trim().lowercase()
     if (normalizedQuery.isBlank()) return emptyList()
@@ -15659,7 +15720,7 @@ private fun homeSearchEntityResults(
                 key = "conversation:${conversation.threadId.value}",
                 type = type,
                 title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
-                subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) "Channel" else "DM",
+                subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
                 threadId = conversation.threadId.value,
                 memberId = conversation.presenceMemberId?.value,
                 conversationIdentity = conversation.toThreadLaunchConversationIdentity(),
@@ -15677,9 +15738,9 @@ private fun homeSearchEntityResults(
                 title = sender.displayLabel,
                 subtitle =
                     buildString {
-                        append(if (sender.kind == MemberKind.Agent) "Agent" else "Person")
+                        append(if (sender.kind == MemberKind.Agent) agentLabel else personLabel)
                         if (sender.handle.isNotBlank()) append(" · @${sender.handle}")
-                        if (conversation == null) append(" · Members")
+                        if (conversation == null) append(" · $membersLabel")
                     },
                 threadId = conversation?.threadId?.value,
                 memberId = sender.id,
@@ -15701,21 +15762,35 @@ private fun HomeConversationRow.isAgentDirectMessage(): Boolean =
     kind == ConversationKind.DirectMessage &&
         directMessagePeerType.equals("agent", ignoreCase = true)
 
-private val SearchTimeRange.searchLabel: String
-    get() =
+@Composable
+private fun SearchScope.localizedSearchLabel(): String =
+    stringResource(
         when (this) {
-            SearchTimeRange.Any -> "Any time"
-            SearchTimeRange.Today -> "Today"
-            SearchTimeRange.Last7Days -> "Last 7 days"
-            SearchTimeRange.Last30Days -> "Last 30 days"
+            SearchScope.Mentioned -> MR.strings.search_scope_mentioned
+            SearchScope.Humans -> MR.strings.search_scope_humans
+            SearchScope.Agents -> MR.strings.search_scope_agents
         }
+    )
 
-private val SearchSort.searchLabel: String
-    get() =
+@Composable
+private fun SearchTimeRange.localizedSearchLabel(): String =
+    stringResource(
         when (this) {
-            SearchSort.Relevance -> "Relevant"
-            SearchSort.Recent -> "Recent"
+            SearchTimeRange.Any -> MR.strings.search_time_any
+            SearchTimeRange.Today -> MR.strings.search_time_today
+            SearchTimeRange.Last7Days -> MR.strings.search_time_last_7_days
+            SearchTimeRange.Last30Days -> MR.strings.search_time_last_30_days
         }
+    )
+
+@Composable
+private fun SearchSort.localizedSearchLabel(): String =
+    stringResource(
+        when (this) {
+            SearchSort.Relevance -> MR.strings.search_sort_relevant
+            SearchSort.Recent -> MR.strings.search_sort_recent
+        }
+    )
 
 private val SearchSort.searchKey: String
     get() =
