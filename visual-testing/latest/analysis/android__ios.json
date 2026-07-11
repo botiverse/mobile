@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T22:15:46.476Z",
+  "generatedAt": "2026-07-11T05:30:46.998Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 89,
-    "ready": 81,
-    "pending": 8
+    "total": 90,
+    "ready": 79,
+    "pending": 11
   },
   "cases": [
     {
@@ -260,7 +260,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffe83fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
+      "imageHash": "p1:0000000007fc0ffe03fc07fe43fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
       "generatedAt": "2026-07-10T13:23:03.909Z",
       "severity": "low",
       "summary": [
@@ -935,12 +935,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05728318548223765
+      "metricMismatch": 0.05726360702664024
     },
     {
       "id": "components.thread.header.states",
       "status": "ready",
-      "imageHash": "p1:0e1c1e1c01e001e000200000000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
+      "imageHash": "p1:0e1c1e1c01e001e000000000000000000000000000007ffefffefffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff0000fff81fff",
       "generatedAt": "2026-07-09T22:22:56.668Z",
       "severity": "low",
       "summary": [
@@ -970,7 +970,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.01377141815530436
+      "metricMismatch": 0.013744750948542439
     },
     {
       "id": "components.thread.message.row",
@@ -1071,7 +1071,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.42654534775387853
+      "metricMismatch": 0.42654501019429925
     },
     {
       "id": "components.thread.message-menu.task",
@@ -1272,43 +1272,21 @@
     },
     {
       "id": "components.home.search.results",
-      "status": "ready",
-      "imageHash": "p1:1ffc1ffe85f601f680030003800700078007000781061107dffedffffffeffff80fe80ff9ffe9fff80fec0ff80fe80ffdffe5fffdffe7fff80fe81f78006800f8386038f83fe87ffc8fe48ff9ffe9fff807e807fc1fe49ffc83ef83ffffefffffffefffffffefffffffefffffffefffffffefffffffeffff00027ffeffffffff",
-      "generatedAt": "2026-07-10T22:13:38.116Z",
-      "severity": "medium",
-      "summary": [
-        "Highlight/selection backgrounds on matched terms appear slightly different in extent and padding between Android and iOS, contributing to the 42.78% pixel mismatch.",
-        "Background tint extends much further down on Android (covers full height behind filters and results), while iOS background is restricted to the top region only — large empty pale band on Android.",
-        "Search field bounds, icon button bounds, and filter chip bounds are visibly larger on the iOS render (scaled with viewport); on Android they are more compact.",
-        "Last 7 days filter chip text is clipped/truncated on both sides, but truncation point differs slightly (Android shows 'day' cutoff earlier, iOS cuts at 'day' slightly later).",
-        "Top header section ('Home Search Results' label and breadcrumb) occupies more vertical space on iOS relative to content; spacing between header, search bar, and filter row is larger on iOS."
-      ],
-      "likelyCauses": [
-        "Different device pixel ratios / raw canvas sizes not normalized before diff (baseline 390×844 vs current 1170×2532) causing scale-related mismatches in bounds and padding.",
-        "Page-level background container has different height/stop on the two platforms (Android paints full-height pale background, iOS only behind header).",
-        "Filter chip and search input use platform-default padding/minHeight that diverges between Android and iOS Kuikly renderers.",
-        "Text highlight/span backgrounds computed with different vertical padding or line-height metrics across platforms."
-      ],
-      "suggestedOwner": "components/home/search-results (Kuikly cross-platform parity owner)",
-      "suggestedFixes": [
-        "Normalize both renders to the same logical viewport (e.g., scale baseline to match current or compare at dp level) before pixel diffing to remove DPR-driven bounds differences.",
-        "Unify the page background extent — make the pale background cover the same region (either full-height or header-only) on both platforms.",
-        "Pin explicit minHeight/horizontalPadding on SearchInput, icon buttons, and filter chips so Android and iOS produce identical bounds.",
-        "Audit Text span/mark highlight styling to use consistent vertical padding and background shape across platforms.",
-        "Verify the 'Last 7 days' chip uses an explicit width or allows text truncation consistently; consider shortening label to '7 days' or providing ellipsis with same cutoff."
-      ],
-      "intentional": [
-        "Platform-default text shaping and font metrics differences are expected but should be constrained via explicit text style tokens."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.42780917081864944
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffe85f601f680030003800700078007000780160017dffedffffffeffff80fe80ff9ffe9fff80fec0ff80fe80ffdffe5fffdffe7fff80fe81f78006800f8386038f83fe87ffc8fe48ff9ffe9fff807e807fc1fe49ffc83ef83ffffefffffffefffffffefffffffefffffffefffffffefffffffeffff00027ffeffffffff",
+      "generatedAt": "2026-07-11T05:30:46.113Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.4281460552787567
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:0ffe1ffe85f701f7800300078007000780070007900310e3f1f2f1f3f002f00384f380d394f394fbc7f3c7bb80028003f807d803ffffffff81ff81f78007800f83af83bf87ff87ffcfffcfff9fff9fffc47fc07ff9fff9fff83ff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:0ffe1ffe85f701f7800300078007000780070007902310e3f1f2f1f3f002f00384f380d394f394fbc7f3c7bb80028003f807d803ffffffff81ff81f78007800f83af83bf87ff87ffcfffcfff9fff9fffc47fc07ff9fff9fff83ff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-10T22:13:40.829Z",
       "severity": "medium",
       "summary": [
@@ -1337,7 +1315,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.44277690012287174
+      "metricMismatch": 0.4431137845829789
     },
     {
       "id": "components.home.saved.results",
@@ -1712,6 +1690,19 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.02898961666734179
+    },
+    {
+      "id": "components.settings.root.page",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe0ffe0ffe0ffe81fe01fe87fe07fe87fe07fe87fe07fe8ffe0ffe0ffe0ffefffe7ffe07fe07fe07fe07fe8ffe0ffe83fe03fec3fe43fe83fe03fe8ffe07fe9ffe3ffe8ffe0ffe83fe03fe03fe03fec7fe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-11T05:30:46.409Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.026711427066877347
     },
     {
       "id": "components.settings.page.states",
@@ -2216,38 +2207,16 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "ready",
-      "imageHash": "p1:0ffc0ffc87fe07fe80fe01fe04060a068012001600120012805200128012001280020002800200028032003280020002a00220028002000280064006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
-      "generatedAt": "2026-07-10T22:14:05.185Z",
-      "severity": "medium",
-      "summary": [
-        "The card containing 'Message font size' description, font size buttons (Small/Medium/Large), and Preview block has a noticeably larger right/bottom shadow offset on Android (left) than on iOS (right); iOS shadow is more compact.",
-        "On Android the description text wraps to 3 lines with the word 'sizes.' on its own line; on iOS it wraps to 3 lines differently (e.g., 'code blocks keep fixed UI / sizes.'), indicating a slightly different text width/column due to padding or font metrics.",
-        "Horizontal padding inside the 'Message font size' card appears larger on iOS, pushing the Small/Medium/Large button group slightly more inward and reducing inter-button gaps compared to Android.",
-        "The vertical gap between the Small/Medium/Large segmented buttons row and the Preview card is smaller on iOS than on Android, making the iOS layout feel more compact.",
-        "The bottom edge of the outer card (shadow extent) sits closer to the Preview card on iOS, suggesting a reduced outer-card padding-bottom on iOS."
-      ],
-      "likelyCauses": [
-        "Platform-default font metrics (San Francisco on iOS vs Roboto on Android) causing different line-break points in the description paragraph.",
-        "Kuikly shadow/elevation token mapped differently per platform, producing a larger blurred shadow on Android than iOS for the same card component.",
-        "Inconsistent card/segmented-control horizontal padding tokens between Android and iOS implementations of the same Appearance page.",
-        "Spacing token (gap between segmented control and Preview block) not normalized across platforms."
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Normalize card outer padding (horizontal and vertical) using a shared dp token for both Android and iOS implementations of the Appearance page.",
-        "Unify shadow/elevation style for the 'Message font size' card; if intentional, ensure both platforms use the same elevation token so the visual weight matches.",
-        "Adjust segmented control (Small/Medium/Large) inner padding/gap to a shared token so inter-button spacing is identical across platforms.",
-        "Verify the gap between the segmented control and the Preview card uses the same spacing token on both ends.",
-        "Optionally standardize body font or apply text wrapping rules so the description paragraph breaks consistently across platforms."
-      ],
-      "intentional": [
-        "Different platform-native font rendering (San Francisco vs Roboto) and minor line-break differences in the description text are expected and acceptable."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.16294439718610332
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffe9ffe07fe81fe01fe0e061e068002000680120012905210f28012001280020002800200028032003280020012a00220028002000280064006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
+      "generatedAt": "2026-07-11T05:30:46.743Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16403538974629017
     },
     {
       "id": "components.settings.notifications.page",
@@ -2354,7 +2323,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2367,7 +2336,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2380,7 +2349,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2393,7 +2362,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2406,7 +2375,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2419,7 +2388,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.210Z",
+      "generatedAt": "2026-07-11T05:30:46.700Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2724,7 +2693,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.391Z",
+      "generatedAt": "2026-07-11T05:30:46.910Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2737,7 +2706,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:46.391Z",
+      "generatedAt": "2026-07-11T05:30:46.910Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

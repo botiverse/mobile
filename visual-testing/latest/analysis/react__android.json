@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T22:15:40.167Z",
+  "generatedAt": "2026-07-11T05:30:40.436Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 89,
-    "ready": 85,
-    "pending": 4
+    "total": 90,
+    "ready": 82,
+    "pending": 8
   },
   "cases": [
     {
@@ -812,7 +812,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:38.860Z",
+      "generatedAt": "2026-07-11T05:30:39.067Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -896,7 +896,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:38.873Z",
+      "generatedAt": "2026-07-11T05:30:39.077Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -935,43 +935,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.1883064260842039
+      "metricMismatch": 0.1883000949667616
     },
     {
       "id": "components.thread.header.states",
-      "status": "ready",
-      "imageHash": "p1:ffffffffbffe7ffcbffe3ffc0ffe1ffeffff7fffffffffffffffffff818181e1818081e1808081e1878087e187868ff481010021cf81cffbffffffff000000000dbf07ff023f03bf003f088f0fff0fff00000000ffff0000ffffffffffffffffffffffffffffffff00000000fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-07-10T22:12:00.524Z",
-      "severity": "medium",
-      "summary": [
-        "Android header is missing the search (magnifying glass) icon present in React (only back, #, settings, people icons render).",
-        "Trailing count badge differs: React shows '0' after the people icon, Android shows '4'.",
-        "Android subtitle text is longer ('Home shell, server badge, an…') than React's ('Home shell, …'), shifting layout width.",
-        "Android tab bar lacks the 4th tab visible in React; only Chat, Tasks, Files are rendered (the rightmost tab column is empty/missing).",
-        "Active tab indicator placement differs — Android's yellow Chat tab is wider/larger than React's."
-      ],
-      "likelyCauses": [
-        "Android implementation did not bind the search action button in the thread header.",
-        "Member-count data source discrepancy (stale fixture vs live data) between platforms.",
-        "Subtitle truncation logic / max-width not aligned across platforms.",
-        "Tab bar item count or visibility flags diverged between React and Android builds.",
-        "Tab bar default width and active-state styling tokens differ across platforms."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Add the missing search icon to the Android thread header action row, matching React's icon set and spacing.",
-        "Unify the member-count badge source so both platforms render the same number; verify in the test fixture.",
-        "Align subtitle truncation width / character cutoff between React and Android.",
-        "Ensure Android renders all 4 tab items; check visibility and weight configuration for the trailing tab.",
-        "Reconcile active tab dimensions and yellow highlight width to the design spec used by React."
-      ],
-      "intentional": [
-        "Badge count value difference could reflect a real data divergence in the test seed rather than a UI bug."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17365622032288697
+      "status": "pending",
+      "imageHash": "p1:ffffffffbffe7ffcbffe3ffc0ffe1ffeffff7fffffffffffffffffff818181e1818081f0808081e1878087e187868ff481010021cf81cffbffffffff000000000dbf07ff023f03bf003f088f0fff0fff00000000ffff0000ffffffffffffffffffffffffffffffff00000000fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-07-11T05:30:39.132Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1787226970560304
     },
     {
       "id": "components.thread.message.row",
@@ -1008,7 +985,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.33665082194493956
+      "metricMismatch": 0.33664807112519535
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1323,7 +1300,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5936673822929748
+      "metricMismatch": 0.5938027436842603
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1357,7 +1334,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.5948744953484291
+      "metricMismatch": 0.5948900230890752
     },
     {
       "id": "components.home.saved.results",
@@ -1423,7 +1400,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.15648462554235054
+      "metricMismatch": 0.1565103020394475
     },
     {
       "id": "components.tasks.panel.states",
@@ -1602,7 +1579,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:39.172Z",
+      "generatedAt": "2026-07-11T05:30:39.388Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1747,6 +1724,19 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.1504486166808442
+    },
+    {
+      "id": "components.settings.root.page",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe4ffecffe0ffe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe7ffe87fe07fe83fe07fe83fe0ffec3fe03fe83fe43fe87fe03fefffe4ffe8ffe5ffe8ffe0ffe83fe03fefffe03fefffe57fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-11T05:30:39.573Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.038260690511875306
     },
     {
       "id": "components.settings.page.states",
@@ -2259,7 +2249,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe00020a068000001601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2012807c00028004800631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe000200068000000601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2012807c00028004800631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-07-10T22:12:49.486Z",
       "severity": "high",
       "summary": [
@@ -2288,7 +2278,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.30748268319358363
+      "metricMismatch": 0.3088474365725551
     },
     {
       "id": "components.settings.notifications.page",
@@ -2397,46 +2387,22 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe80100030801008310000000000020fe080ff0fff8fff001f8fff0bffffffdfff83ffc7ffffffffff81fbffff803f01ffffffffffffffffff8fff0fff8fff0fffe7ffd87fc3fff1fffffff1ff947ffffffffff7ffd3ff0c3f80010c3f80010c7f80ff0007803f0003803fffffffff97ffdfff87ff80781c02ffffffff",
-      "generatedAt": "2026-07-10T22:12:54.343Z",
-      "severity": "high",
-      "summary": [
-        "Header subtitle is truncated differently: React shows 'S…' while Android shows 'screensho…' with different wrap/ellipsis position",
-        "Avatar in header is missing on React (solid cyan placeholder) but rendered as a pixel-art QR/avatar on Android",
-        "Tab bar order differs: React shows Profile / Activity / Chat / Reminders in 4 tabs; Android shows Profile / Activi… / Chat / Reminders plus a trailing folder icon tab not present on React",
-        "Profile hero section on React shows truncated 'Product…' name with inline 'Capturing determin…' status text and @handle on a separate line; Android shows full 'Product UX Designer' name with @handle below and '● Working' status as a third line",
-        "Role pill differs: React shows 'No role' (white/neutral), Android shows 'Member' (purple fill)"
-      ],
-      "likelyCauses": [
-        "React and Android implementations are rendering the same model data with different layout components (flex row vs grid, different truncation policies)",
-        "Avatar/image source is only resolved on the Android client (pixel-art fallback) while React falls back to a solid placeholder",
-        "Role value is being mapped to different display states ('No role' empty state vs 'Member' default) across platforms",
-        "Tab/navigation component is not shared; Android renders an additional trailing tab (folder) not in the React route map",
-        "Environment variables list is being rendered with different flex direction (column vs row wrap) per platform"
-      ],
-      "suggestedOwner": "mobile-android",
-      "suggestedFixes": [
-        "Align the agent-detail screen to a shared layout spec: fix header subtitle truncation, avatar fallback, and tab set between web and native",
-        "Use a consistent role pill component (label + color) across platforms; decide whether empty role renders as 'No role' or 'Member'",
-        "Normalize the INFO block to a single key/value row layout (Computer on left, status/version on right) instead of wrapping",
-        "Unify Runtime Config to a 4-up single row on both platforms, matching React's current layout",
-        "Render Environment Variables as a vertical list with consistent truncation on both platforms"
-      ],
-      "intentional": [
-        "Different platform tab order/trailing tab may be intentional for Android system conventions",
-        "Status/version and date text differences may reflect separate test fixtures rather than a layout bug"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.182903619988928
+      "status": "pending",
+      "imageHash": "p1:03fc07fcfe7e0030fffe0000fffe0000fffe0000fffe081effff001efffe0bfefffe0ffefffe03fefffe03fefffe07fefffe0000fffe41fefffe3ffefffe0ffefffe0ffefffe187efffe70fefffe70fefffe7ffefffe03fefffe0c3efffe0c3efffe0c7efffe0002fffe0000fffe47fefffe03fefffe83fc00000000fff81fff",
+      "generatedAt": "2026-07-11T05:30:39.991Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10942635125099576
     },
     {
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:39.640Z",
+      "generatedAt": "2026-07-11T05:30:39.899Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2447,36 +2413,16 @@
     },
     {
       "id": "screens.members.agent-detail.reminders",
-      "status": "ready",
-      "imageHash": "p1:03fc03fc00100030801000000000000000000000dffe7ffefffe0006fffe00fefe7e7ffefa5e7ffef81e7ffec0067ffee0067ffeffbe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-10T22:12:57.369Z",
-      "severity": "high",
-      "summary": [
-        "React shows a loading state ('Loading...' text) while Android shows populated content (a reminder card 'Roll 1-6; if 3, tidy Product-UX memory/files' with 'in 6 hours · Jun 20, 02:30').",
-        "Tab bar ordering differs: React shows 'Activity | Chat | Reminders(active) | Workspace | ...' with Workspace visible, while Android shows 'Profile | Activi...(truncated) | Chat | Reminders(active) | Workspace...' — Android has an extra 'Profile' tab prepended and the 'Activity' label is truncated to 'Activi...'.",
-        "Avatar differs: React avatar is a solid teal/cyan square block; Android avatar is a mosaic/checkered pattern with white and teal squares.",
-        "Subtitle text differs: React shows truncated 'Turns product feedback, s...' while Android shows 'Turns product feedback, screensho...' (different truncation ellipsis position).",
-        "Both screen states are semantically different (empty/loading vs populated), making pixel-level comparison largely invalid."
-      ],
-      "likelyCauses": [
-        "Race condition or loading-state timing mismatch — React snapshot caught the screen mid-load, Android was captured after data resolved.",
-        "Tab bar configuration mismatch between platforms (extra 'Profile' tab on Android; possible different label widths causing truncation).",
-        "Avatar asset/size differs between web and native (placeholder mosaic used on Android).",
-        "Snapshot capture orchestration captured the two platforms at different points in the data-fetch lifecycle."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Stabilize the test by waiting for the screen's data-loaded state (e.g., a known element or skeleton-to-loaded transition) before capturing on both platforms.",
-        "Align the tab bar definition across React and Android (decide whether 'Profile' should appear; ensure label widths accommodate full text without truncation to 'Activi...').",
-        "Normalize the agent avatar rendering — use the same asset or placeholder on both platforms.",
-        "Re-run the comparison after both sides reach the same state (either both empty or both populated) to isolate true visual diffs from timing artifacts.",
-        "Split snapshot contracts: one for the empty/loading state and one for the populated state."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.06320296782382095
+      "status": "pending",
+      "imageHash": "p1:03fc03cc7c3e00307ffe00007ffe00007ffe00007ffe7ffe7ffe00067ffe00067ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-11T05:30:40.038Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.039905955901216594
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2677,7 +2623,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.254696128866745
+      "metricMismatch": 0.25469714154548273
     },
     {
       "id": "screens.settings.computers",

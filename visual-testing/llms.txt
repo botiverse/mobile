@@ -1,31 +1,32 @@
 # Raft Visual Testing
 
-Generated: 2026-07-10 22:15:48 UTC
-Latest run: f845b2d-20260710220551
-Latest commit: f845b2d-20260710220551
-Commit subject: fix(home): remeasure server badge after switch (#592)
+Generated: 2026-07-11 05:30:48 UTC
+Latest run: ea5a365-20260711052840
+Latest commit: ea5a365-20260711052840
+Commit subject: fix(home): show joint channels before channels (#601)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 89, same 0, pass 0, basic-pass 2, different 83, missing 4
-AI analysis: ready 85 / total 89, pending 4
-Visual coverage matrix: active 90 / total 109, pending 16, skipped 3
+Summary: total 90, same 0, pass 0, basic-pass 4, different 82, missing 4
+AI analysis: ready 82 / total 90, pending 8
+Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 89, same 0, pass 0, basic-pass 2, different 83, missing 4
-- react__ios: total 89, same 0, pass 12, basic-pass 8, different 58, missing 11
-- android__ios: total 89, same 0, pass 13, basic-pass 11, different 57, missing 8
+- react__android: total 90, same 0, pass 0, basic-pass 4, different 82, missing 4
+- react__ios: total 90, same 0, pass 12, basic-pass 9, different 58, missing 11
+- android__ios: total 90, same 0, pass 13, basic-pass 12, different 57, missing 8
 
 ## Capture Type Coverage
 
-- Components Parity (component-fixture): active 76, pending 2, total 80
+- Components Parity (component-fixture): active 77, pending 2, total 81
 - Screens Parity (real-screen): active 14, pending 14, total 29
 
 ## Provider Coverage
 
-- react: active 90, pending 13, unsupported 0
-- android: active 84, pending 19, unsupported 0
-- harmony: active 0, pending 83, unsupported 0
+- react: active 91, pending 13, unsupported 0
+- android: active 85, pending 19, unsupported 0
+- harmony: active 0, pending 84, unsupported 0
+- ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
 
@@ -80,6 +81,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - components.settings.language-region.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.notifications.page: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.settings.page.states: Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.
+- components.settings.root.page: Real mobile Settings tab root / first screen: React Sidebar mobileInline grouped list vs Android shared SettingsAppShellContent home route. Covers PERSONAL, WORKSPACE, ABOUT groups and Mobile, About, Release Notes rows.
 - components.settings.server.profile: React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.
 - components.tasks.panel.states: Real React TasksPanel (server mode, list view) with shared tasksFixture.json rows covering todo / in_progress / in_review / done status sections, task numbers, and per-status InlineBadgeEditor chips.
 - components.tasks.status-menu: Real React InlineBadgeEditor status menu rendered open with all five selectable statuses (Todo / In Progress / In Review / Done / Closed) and the current status check-marked.
@@ -116,6 +118,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- ea5a365-20260711052840: react vs android, total 90, pass 0, basic-pass 4, different 82, matrix runs/ea5a365-20260711052840/component-matrix.json, page runs/ea5a365-20260711052840/
 - f845b2d-20260710220551: react vs android, total 89, pass 0, basic-pass 2, different 83, matrix runs/f845b2d-20260710220551/component-matrix.json, page runs/f845b2d-20260710220551/
 - 6df430f-20260710131759: react vs android, total 89, pass 0, basic-pass 6, different 79, matrix runs/6df430f-20260710131759/component-matrix.json, page runs/6df430f-20260710131759/
 - 4890633-20260709221654: react vs android, total 89, pass 0, basic-pass 5, different 80, matrix runs/4890633-20260709221654/component-matrix.json, page runs/4890633-20260709221654/

@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-10T22:15:43.265Z",
+  "generatedAt": "2026-07-11T05:30:43.588Z",
   "baseline": "react",
   "current": "ios",
   "comparison": "react__ios",
   "analysisProvider": "minimax",
   "analysisModel": "MiniMax-M3",
   "summary": {
-    "total": 89,
-    "ready": 78,
-    "pending": 11
+    "total": 90,
+    "ready": 77,
+    "pending": 13
   },
   "cases": [
     {
@@ -284,37 +284,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffec3fcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-10T13:22:42.883Z",
-      "severity": "low",
-      "summary": [
-        "Status dot colors and layout (green, orange, gray, blue, pink) match between React and iOS at the component region",
-        "Waiting pulse label renders with consistent typography weight, size, and color across both sides",
-        "No missing, clipped, or misaligned elements in the compared component bounds",
-        "Pixel-perfect similarity is 99.77% with only 0.23% mismatch, indicating negligible visual differences",
-        "Differences are confined to expected platform-level antialiasing/rasterization at the canvas viewport scale (342x92 vs 1170x2532)"
-      ],
-      "likelyCauses": [
-        "Minor subpixel/antialiasing differences from rendering engines (browser vs iOS UIKit/SwiftUI) at different DPRs",
-        "Scale normalization across canvas sizes (342x92 vs 1170x2532) producing slight edge softening on iOS side",
-        "Ignoring antialiasing tolerance is likely the only contributor to the residual mismatch"
-      ],
-      "suggestedOwner": "design-system",
-      "suggestedFixes": [
-        "No action required—visual parity is within tolerance (RGB 97.95%, pixel-perfect 99.77%)",
-        "If desired, tighten dot stroke/border tokens to be identical across platforms to eliminate residual antialiasing variance",
-        "Confirm StatusDot component spec is used verbatim on iOS (tokens: sizes, colors, pulse animation curve)",
-        "Keep existing tolerance (pixelRatio 0.02, layoutDp 1, ignoreAntialiasing true) — no adjustment needed",
-        "Re-run snapshot only if StatusDot props or layout API changes"
-      ],
-      "intentional": [
-        "Platform-level antialiasing differences between web and iOS rendering",
-        "Different raw canvas dimensions (342x92 vs 1170x2532) while component bounds remain equivalent"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe03fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-07-11T05:30:42.155Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.0022987807347997213
     },
     {
@@ -827,7 +805,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:42.079Z",
+      "generatedAt": "2026-07-11T05:30:42.324Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -910,7 +888,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:42.149Z",
+      "generatedAt": "2026-07-11T05:30:42.398Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -988,7 +966,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0236443607296688
+      "metricMismatch": 0.023703771215619507
     },
     {
       "id": "components.thread.message.row",
@@ -1126,7 +1104,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.10678866069861326
+      "metricMismatch": 0.10678933581777184
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1331,12 +1309,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23679568193786205
+      "metricMismatch": 0.23694150767610478
     },
     {
       "id": "components.home.search.channel-dropdown",
       "status": "ready",
-      "imageHash": "p1:07fe0ffe07e701f60007000700070007620f0007300010030002d1f2fe00f002fe1e8002008794f20000c63a00068002200f58039fff7fff83ff80f7403f800fffdf038fe3ff87ff41ff48ff7fff9fffffff807fffff49fffffff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "imageHash": "p1:07fe0ffe07e701f60007000300070007620f0007300010030002d1f2fe00f002fe1e8002008794f20000c63a00068002200f58039fff7fff83ff80f7403f800fffdf038fe3ff87ff41ff48ff7fff9fffffff807fffff49fffffff83ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
       "generatedAt": "2026-07-10T13:22:43.583Z",
       "severity": "high",
       "summary": [
@@ -1365,7 +1343,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.23440407231876426
+      "metricMismatch": 0.23442230053604463
     },
     {
       "id": "components.home.saved.results",
@@ -1436,7 +1414,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.08615465629683638
+      "metricMismatch": 0.08617457231201309
     },
     {
       "id": "components.tasks.panel.states",
@@ -1605,7 +1583,7 @@
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:42.536Z",
+      "generatedAt": "2026-07-11T05:30:42.810Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1752,6 +1730,19 @@
       "analysisModel": "MiniMax-M3",
       "error": null,
       "metricMismatch": 0.15315618206613468
+    },
+    {
+      "id": "components.settings.root.page",
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffc0000000000000000000000008ffe0ffecffe0ffe81fe01fec7fe07fec7fe07fe83fe07fedffe0ffe87fe0ffe83fe7ffe87fe07fe83fe07fe83fe0ffec3fe03fe83fe43fe87fe03fefffe07fe8ffe3ffe8ffe0ffe83fe03fefffe03fefffe03fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-11T05:30:42.993Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.037656121305410406
     },
     {
       "id": "components.settings.page.states",
@@ -2276,7 +2267,7 @@
     {
       "id": "components.settings.appearance.page",
       "status": "ready",
-      "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe00020a068000001601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2002807c00028004c00631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "imageHash": "p1:0ffc0ffc8ffe07fe81fe01fe000208068000000601fc0012804c001280040012a3fc0002807c0002807c0032bffc00020ffc2002807c00028004c00631bcfffe8000fffe80007ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
       "generatedAt": "2026-07-09T14:37:22.970Z",
       "severity": "high",
       "summary": [
@@ -2308,7 +2299,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.182371288532426
+      "metricMismatch": 0.1837303033985499
     },
     {
       "id": "components.settings.notifications.page",
@@ -2416,7 +2407,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2429,7 +2420,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2442,7 +2433,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2455,7 +2446,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2468,7 +2459,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2481,7 +2472,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.005Z",
+      "generatedAt": "2026-07-11T05:30:43.317Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2803,7 +2794,7 @@
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.177Z",
+      "generatedAt": "2026-07-11T05:30:43.486Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2816,7 +2807,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-10T22:15:43.177Z",
+      "generatedAt": "2026-07-11T05:30:43.486Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
