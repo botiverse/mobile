@@ -1978,6 +1978,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val shellRuntime = remember(sharedStores, storeScope) { sharedStores.shellRuntime(storeScope) }
     val appShellServerMembersStore =
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val appShellRealtimeDomainEventOwner =
+        remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
+    val appShellAgentDetailStore =
+        remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val runtimeServerId by shellRuntime.currentServerId.collectAsState()
     val navigationStoreScope = remember(storeScope.shellInstanceId, runtimeServerId) {
         SlockShellStoreScope.create(
@@ -2960,10 +2964,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     realtimeLastSeq
                 }
             realtimeSessionKey = nextSessionKey
-            sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+            appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
             bridge.realtimeConnect(
                 serverId = serverId,
                 accessToken = accessToken,
+                shellInstanceId = storeScope.shellInstanceId,
                 lastSeq = resumeSeq
             )
         }
@@ -3300,10 +3305,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(refreshed))
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
-                    sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+                    appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
                     bridge.realtimeConnect(
                         serverId = refreshedServerId,
                         accessToken = refreshed.accessToken,
+                        shellInstanceId = storeScope.shellInstanceId,
                         lastSeq = realtimeLastSeq,
                         forceReconnect = true
                     )
@@ -3326,7 +3332,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
     DisposableEffect(
-        sharedStores.realtimeDomainEventOwner,
+        appShellRealtimeDomainEventOwner,
         homeShellStore,
         settingsViewModel,
         bridge
@@ -3352,7 +3358,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                 },
                 applyAgentActivity = { event ->
-                    sharedStores.agentDetailStore.dispatch(
+                    appShellAgentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
                     )
                     appShellServerMembersStore.applyPresence(event)
@@ -3361,7 +3367,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     membersAgentDetailRefreshKey += 1
                 },
                 joinChannel = { channelId ->
-                    realtimeEvents.joinChannel(channelId)
+                    realtimeEvents.joinChannel(channelId, latestReadySession?.currentServerId)
                 },
                 emitRouteMarker = { event ->
                     if (event.shouldEmitAppShellRouteMarker()) {
@@ -3379,8 +3385,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 },
                 log = slockLogger("SlockRealtimeDomain")
             )
-        sharedStores.realtimeDomainEventOwner.registerSinks(sinks)
-        onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
+        appShellRealtimeDomainEventOwner.registerSinks(sinks)
+        onDispose { appShellRealtimeDomainEventOwner.unregisterSinks(sinks) }
     }
 
     DisposableEffect(hostNetworkEvents) {
@@ -3431,6 +3437,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         ) ?: return@launch
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
                     val activeSession = latestReadySession
+                    if (!shouldRouteRealtimeEventToShell(activeSession?.currentServerId, serverId)) {
+                        bridge.log(
+                            "shared_realtime_event_skip reason=server_mismatch " +
+                                "eventServerId=$serverId shellServerId=${activeSession?.currentServerId.orEmpty()}"
+                        )
+                        return@launch
+                    }
                     if (
                         event is ServerMembershipRemoved &&
                         event.serverId.value == activeSession?.currentServerId
@@ -3439,7 +3452,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             "SlockRealtimeDomain",
                             "shared_realtime_server_membership_removed serverId=${event.serverId.value}"
                         )
-                        bridge.realtimeDisconnect("server_membership_removed")
+                        bridge.realtimeDisconnect(
+                            reason = "server_membership_removed",
+                            serverId = event.serverId.value,
+                            shellInstanceId = storeScope.shellInstanceId,
+                            explicitClose = true
+                        )
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
                             shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
@@ -3455,7 +3473,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             "SlockRealtimeDomain",
                             "shared_realtime_server_deleted serverId=${event.serverId.value}"
                         )
-                        bridge.realtimeDisconnect("server_deleted")
+                        bridge.realtimeDisconnect(
+                            reason = "server_deleted",
+                            serverId = event.serverId.value,
+                            shellInstanceId = storeScope.shellInstanceId,
+                            explicitClose = true
+                        )
                         latestResetAppShellSessionState()
                         appShellCoroutineScope.launch {
                             shellAuthStore.updateSelectedServer(serverId = null, serverSlug = null)
@@ -3464,7 +3487,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         return@launch
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
+                    appShellRealtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                     if (event is RealtimeRefreshRequired && event.scope == RealtimeRefreshScope.Announcements) {
                         // task #226: announcement:new — refetch the latest active
                         // announcement so the modal pops live.
@@ -3703,7 +3726,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
-                            agentDetailStore = sharedStores.agentDetailStore,
+                            agentDetailStore = appShellAgentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
                             serverMembersStore = appShellServerMembersStore,
                             membersRefreshKey = membersListRefreshKey,
@@ -3939,6 +3962,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             topSafeArea = shellScope.topSafeArea,
             serverMembersStore = appShellServerMembersStore,
             currentServerStore = sharedStores.localDataStore,
+            currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
                 foregroundMessageBanner = null
                 openHomeMessageRequest(
@@ -16555,6 +16579,12 @@ internal fun resolveSharedShellRealtimeServerId(
     eventData.optString("serverId").takeIf { it.isNotBlank() }
         ?: event.serverIdHint()?.value
         ?: session?.currentServerId
+
+internal fun shouldRouteRealtimeEventToShell(shellServerId: String?, eventServerId: String?): Boolean {
+    val shellServer = shellServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
+    val eventServer = eventServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
+    return shellServer == eventServer
+}
 
 private fun RealtimeEvent.serverIdHint(): ServerId? =
     when (this) {

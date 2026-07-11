@@ -950,6 +950,7 @@ internal fun MembersPageContent() {
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1295,7 +1296,7 @@ internal fun MembersPageContent() {
                     bridge.toast(openProfileFailed)
                     bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
                 } else {
-                    sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
+                    agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
                     pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
                         .openPage(MEMBER_DETAIL_PAGE, pageData)
                 }
@@ -1689,7 +1690,7 @@ private fun rememberMemberDetailRouteProvider(
                 logger = { message -> bridge.log("member_detail_settings_repository $message") }
             )
         }
-    val agentDetailStore = sharedStores.agentDetailStore
+    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()

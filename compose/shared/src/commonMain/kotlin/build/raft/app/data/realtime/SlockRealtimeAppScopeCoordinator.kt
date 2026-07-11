@@ -515,6 +515,15 @@ class SlockRealtimeAppScopeCoordinator(
 
     private fun onEnhancedNotify(event: SlockEnhancedNotifyEvent): Boolean {
         if (event.eventName != SlockRealtimeNotifyContract.RoomsEventName) return false
+        val targetServerId =
+            event.eventData.optString(SlockRealtimeNotifyContract.KeyServerId)
+                .trim()
+                .takeIf { it.isNotBlank() }
+        val ownedServerId = engine.serverId?.value
+        if (targetServerId != null && targetServerId != ownedServerId) {
+            sink.log("room_command_skip reason=server_mismatch targetServerId=$targetServerId ownedServerId=${ownedServerId.orEmpty()}")
+            return false
+        }
         return onRoomCommand(
             action = event.eventData.optString(SlockRealtimeNotifyContract.KeyAction),
             channelIdValue = event.eventData.optString(SlockRealtimeNotifyContract.KeyChannelId),

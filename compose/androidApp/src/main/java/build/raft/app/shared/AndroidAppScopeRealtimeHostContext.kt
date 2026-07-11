@@ -121,7 +121,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
         fun create(
             context: Context,
-            scope: CoroutineScope
+            scope: CoroutineScope,
+            pinnedServerId: ServerId? = null
         ): AndroidAppScopeRealtimeHostContext {
             val appContext = context.applicationContext
             val sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
@@ -138,6 +139,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 SessionRealtimeRepository(
                     store = sessionStore,
                     client = client,
+                    pinnedServerId = pinnedServerId,
                     tokenProvider =
                         SharedAuthTokenProvider(
                             sessionStore = sessionStore,

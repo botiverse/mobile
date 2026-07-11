@@ -13,6 +13,8 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.Presence
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskDeleted
@@ -27,6 +29,36 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class SharedRealtimeDomainEventOwnerTest {
+    @Test
+    fun separateShellOwnersDoNotCrossDeliverServerEvents() {
+        val ownerA = SharedRealtimeDomainEventOwner()
+        val ownerB = SharedRealtimeDomainEventOwner()
+        val deliveredA = mutableListOf<String>()
+        val deliveredB = mutableListOf<String>()
+        ownerA.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, _ -> deliveredA += serverId }
+            )
+        )
+        ownerB.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, _ -> deliveredB += serverId }
+            )
+        )
+
+        ownerA.accept(
+            serverId = "server-a",
+            event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-a"))
+        )
+        ownerB.accept(
+            serverId = "server-b",
+            event = RealtimeRefreshRequired(RealtimeRefreshScope.Home, "test", ServerId("server-b"))
+        )
+
+        assertEquals(listOf("server-a"), deliveredA)
+        assertEquals(listOf("server-b"), deliveredB)
+    }
+
     @Test
     fun appShellActivePagerStartsOpenAndThenFiltersInactivePagers() {
         val owner = AppShellActivePagerOwner()

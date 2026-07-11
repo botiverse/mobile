@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 class SessionRealtimeRepository(
     private val store: AuthSessionStore,
     private val client: SocketIoRealtimeClient,
+    private val pinnedServerId: ServerId? = null,
     private val tokenProvider: SharedAuthTokenProvider? = null
 ) : RealtimeRepository {
     init {
@@ -41,7 +42,7 @@ class SessionRealtimeRepository(
                             // remains the single native realtime refresh trigger.
                             tokenProvider.currentSession()
                         }
-                    refreshed?.toRealtimeAuthForSelectedServer()
+                    refreshed?.toRealtimeAuth(pinnedServerId)
                 }
             }
         }
@@ -91,8 +92,8 @@ class SessionRealtimeRepository(
     override fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription =
         client.observeEvents(listener)
 
-    private fun build.raft.app.data.StoredAuthSession.toRealtimeAuthForSelectedServer(): RealtimeAuth? {
-        val selectedServerId = currentServerId ?: return null
+    private fun build.raft.app.data.StoredAuthSession.toRealtimeAuth(pinnedServerId: ServerId?): RealtimeAuth? {
+        val selectedServerId = pinnedServerId?.value ?: currentServerId ?: return null
         return RealtimeAuth(
             token = accessToken,
             serverId = ServerId(selectedServerId)

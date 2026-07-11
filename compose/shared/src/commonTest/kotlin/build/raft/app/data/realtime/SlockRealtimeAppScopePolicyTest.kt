@@ -143,11 +143,18 @@ class SlockRealtimeAppScopePolicyTest {
 
         enhancedNotifyBus.emitRoomCommand(
             action = SlockRealtimeNotifyContract.ActionJoinChannel,
-            channelId = "channel-1"
+            channelId = "channel-1",
+            serverId = "server-1"
         )
         enhancedNotifyBus.emitRoomCommand(
             action = SlockRealtimeNotifyContract.ActionJoinChannel,
-            channelId = "channel-1"
+            channelId = "channel-1",
+            serverId = "server-1"
+        )
+        enhancedNotifyBus.emitRoomCommand(
+            action = SlockRealtimeNotifyContract.ActionJoinChannel,
+            channelId = "channel-b",
+            serverId = "server-2"
         )
         enhancedNotifyBus.emitRoomCommand(action = "unsupported", channelId = "channel-2")
         enhancedNotifyBus.emitRoomCommand(
@@ -310,14 +317,17 @@ class SlockRealtimeAppScopePolicyTest {
             }
         }
 
-        fun emitRoomCommand(action: String, channelId: String) {
+        fun emitRoomCommand(action: String, channelId: String, serverId: String? = null) {
             emit(
                 SlockEnhancedNotifyEvent(
                     eventName = SlockRealtimeNotifyContract.RoomsEventName,
                     eventData =
                         JSONObject()
                             .put(SlockRealtimeNotifyContract.KeyAction, action)
-                            .put(SlockRealtimeNotifyContract.KeyChannelId, channelId),
+                            .put(SlockRealtimeNotifyContract.KeyChannelId, channelId)
+                            .also { payload ->
+                                serverId?.let { payload.put(SlockRealtimeNotifyContract.KeyServerId, it) }
+                            },
                     source = "notify"
                 )
             )
