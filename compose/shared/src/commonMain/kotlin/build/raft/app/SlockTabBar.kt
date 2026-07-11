@@ -269,8 +269,16 @@ internal fun SlockAppBottomTabBarHost(
             return
         }
         SlockAppTabBarRenderer.IosLiquidGlass -> {
-            // iOS UITabBar consumes its own bounds (pointInside), no blocker needed.
-            SlockNativeFloatingBottomTabBarHost(items = items, onSelect = onSelect, modifier = hostModifier, bottomSafeArea = bottomSafeArea)
+            // The iOS host paints edge-to-edge. Seat the native dock band at the
+            // host bottom so UITabBar receives the real bottom safe area instead
+            // of leaving that inset as a second empty band below the tab bar.
+            SlockNativeFloatingBottomTabBarHost(
+                items = items,
+                onSelect = onSelect,
+                modifier = hostModifier,
+                bottomSafeArea = bottomSafeArea,
+                seatDockAtHostBottom = true
+            )
             return
         }
         SlockAppTabBarRenderer.AndroidFloating -> {
