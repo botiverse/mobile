@@ -106,6 +106,8 @@ Code spans and fenced code remain literal and never become chips.
 
 The chip uses the existing Slock reference-chip height, black 1dp frame, font weight, collision/padding, and native rich-text chrome path. It must not introduce a separately measured Compose child that changes line wrapping.
 
+This does **not** mean implementing three independent feature UIs. The parser, token plan, label resolution, actions, preview store, preview projection, quoted-card Compose UI, and navigation intent all live once in commonMain. Platform-specific work is limited to the existing Kuikly RichText adapter seam: each native text renderer consumes the same `MessagePermalink` chrome token and reports whether that token is actually drawn/hit-tested. The quoted preview card itself remains one shared Compose component.
+
 Label resolution order:
 
 1. current loaded conversation directory row matching `(serverId, channelId)`;
@@ -120,7 +122,7 @@ Visible label:
 
 The chip's accessibility label must include `Raft message link`, the resolved label, and `thread reply` when `threadParentMessageId != null`.
 
-Add a new rich-text inline kind/chrome token such as `MessagePermalink`. Android, iOS, and OHOS native renderers must either render the same Slock ref chrome or truthfully report the divergence through existing rich-text capability markers. Do not claim cross-platform parity from commonMain alone.
+Add a new rich-text inline kind/chrome token such as `MessagePermalink`. Extend the existing platform token adapters rather than creating platform-specific message-link components. At the reference baseline Android and iOS report `slockRefChrome=true`, while OHOS still truthfully reports `slockRefChrome=false`; implementation must update each adapter/capability only when its real renderer consumes the new token. Do not claim cross-platform parity from commonMain alone.
 
 ### 5.3 Click behavior
 
@@ -274,6 +276,7 @@ Do not pass preview title, author, body, attachment labels, archived state, `Con
 ### Phase C — visual and device acceptance
 
 - deterministic visual fixtures for channel, DM, thread reply, archived, loading, unavailable, attachment counts, long/CJK-adjacent URLs, and narrow wrapping;
+- one shared Compose quoted-card implementation; platform diffs are restricted to the existing RichText `MessagePermalink` token adapter/capability layer;
 - Android connected-device tap/open gate;
 - OHOS and iOS screenshot/tap gates using the real rich-text renderer;
 - no parity promotion until renderer capability markers and device evidence agree.
