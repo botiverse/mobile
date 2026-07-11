@@ -94,9 +94,9 @@ export class SlockOhosRealtimeHostContext {
 
   onPageHide(keepAlive: boolean = false): void {
     slockOhosRealtimeKnoiBridge.onAppHidden();
+    this.sendAppLifecycleEvent(keepAlive ? 'hide_keep_alive' : 'hide');
     if (keepAlive) {
       console.info('[SlockOhosRealtime] page_hide_keep_alive socket_retained');
-      this.sendAppLifecycleEvent('hide_keep_alive');
       return;
     }
     this.socketIo.suspend('background');

@@ -26,6 +26,32 @@ import org.junit.Test
 
 class AndroidAppScopeRealtimeOwnerTest {
     @Test
+    fun hiddenVisibilityClosesReceiptGateBeforeRuntime() {
+        val calls = mutableListOf<String>()
+
+        applyAndroidHostVisibilityTransition(
+            visibility = AndroidHostVisibility.Hidden,
+            publishVisibility = { calls += "gate_hidden" },
+            applyRuntimeVisibility = { calls += "runtime_hidden" }
+        )
+
+        assertEquals(listOf("gate_hidden", "runtime_hidden"), calls)
+    }
+
+    @Test
+    fun visibleVisibilityRestoresRuntimeBeforeOpeningReceiptGate() {
+        val calls = mutableListOf<String>()
+
+        applyAndroidHostVisibilityTransition(
+            visibility = AndroidHostVisibility.Visible,
+            publishVisibility = { calls += "gate_visible" },
+            applyRuntimeVisibility = { calls += "runtime_visible" }
+        )
+
+        assertEquals(listOf("runtime_visible", "gate_visible"), calls)
+    }
+
+    @Test
     fun backgroundUnreadNotificationPolicyRequiresBackgroundEnabledPreferenceAndNoConsumers() {
         assertTrue(
             AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(

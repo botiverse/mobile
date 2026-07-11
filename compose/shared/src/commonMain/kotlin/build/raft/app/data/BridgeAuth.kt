@@ -630,6 +630,7 @@ internal interface SharedThreadNetworkApi {
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse
     suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse
     suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse
+    suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
     suspend fun saveMessage(messageId: String): HomeNetworkResponse
     suspend fun unsaveMessage(messageId: String): HomeNetworkResponse

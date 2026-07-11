@@ -59,6 +59,7 @@ internal interface SlockThreadApi {
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
     suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
+    suspend fun markChannelReadToSeq(channelId: String, seq: Long): ThreadApiResult<Unit>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
     suspend fun saveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
@@ -178,6 +179,9 @@ internal class SlockThreadApiClient(
 
     override suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit> =
         transport.sendAttachmentComment(attachmentId, body).mapThreadUnit()
+
+    override suspend fun markChannelReadToSeq(channelId: String, seq: Long): ThreadApiResult<Unit> =
+        transport.markChannelReadToSeq(channelId, seq).mapThreadUnit()
 
     override suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit> =
         transport.markChannelReadAll(channelId).mapThreadUnit()
@@ -321,6 +325,14 @@ internal class NetworkSlockThreadApi(
             bodyText = threadApiJson.encodeToString(AttachmentCommentRequestBody(body))
         )
 
+    override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse =
+        networkClient.request(
+            DataRequestPriority.Foreground,
+            "channels/${channelId.trim()}/read",
+            method = "POST",
+            bodyText = threadApiJson.encodeToString(ThreadReadToSeqRequest(seq))
+        )
+
     override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "channels/${channelId.trim()}/read-all", method = "POST")
 
@@ -379,6 +391,9 @@ internal class NetworkSlockThreadApi(
             bodyText = buildSharedCreateOrOpenThreadBody(parentMessageId.trim())
         )
 }
+
+@Serializable
+private data class ThreadReadToSeqRequest(val seq: Long)
 
 internal sealed interface ThreadApiResult<out T> {
     data class Success<T>(val data: T) : ThreadApiResult<T>

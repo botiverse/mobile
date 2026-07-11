@@ -8,6 +8,16 @@ internal const val SLOCK_SHELL_INSTANCE_ID = "slockShellInstanceId"
 internal const val SLOCK_SHELL_SERVER_ID = "serverId"
 internal const val SLOCK_DOCUMENT_SHELL = "slockDocumentShell"
 
+internal fun appLifecycleEventTargetsShell(
+    eventShellInstanceId: String,
+    routeShellInstanceId: String
+): Boolean =
+    if (eventShellInstanceId.isBlank()) {
+        routeShellInstanceId == SlockShellStoreScope.Legacy.shellInstanceId
+    } else {
+        eventShellInstanceId == routeShellInstanceId
+    }
+
 /** Identity-only launch contract shared by AppShell and its child routes. */
 internal fun JSONObject.slockShellStoreScope(fallbackShellInstanceId: String): SlockShellStoreScope =
     SlockShellStoreScope.create(
