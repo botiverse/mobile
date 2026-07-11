@@ -10,6 +10,9 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.SettingsBillingActionSnapshot
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.AppLocale
+import build.raft.app.data.KeyValueLocalePreferenceStore
+import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -381,7 +384,17 @@ internal fun SettingsBillingWebViewContent(
     onUrlChange: (String) -> Unit = {},
     onLoadFailure: (String) -> Unit = {}
 ) {
-    val webUrl = remember(session, webBaseUrl) { settingsBillingWebViewUrl(webBaseUrl, session) }
+    val localeTag =
+        remember {
+            try {
+                KeyValueLocalePreferenceStore(slockSharedPreferenceStore()).readLocaleSync().languageTag
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                AppLocale.Default.languageTag
+            }
+        }
+    val webUrl = remember(session, webBaseUrl, localeTag) { settingsBillingWebViewUrl(webBaseUrl, session, localeTag) }
     val injectedJavaScript = remember(session) { settingsBillingWebViewInjectedJavaScript(session) }
     if (session == null) {
         SettingsBillingLoadingContent()
@@ -402,7 +415,11 @@ internal fun SettingsBillingWebViewContent(
 
 private val settingsBillingWebViewJson = Json
 
-private fun settingsBillingWebViewUrl(webBaseUrl: String?, session: StoredAuthSession?): String {
+internal fun settingsBillingWebViewUrl(
+    webBaseUrl: String?,
+    session: StoredAuthSession?,
+    localeTag: String = AppLocale.Default.languageTag
+): String {
     val serverSlug = session?.selectedServerSlug
         ?: session?.servers?.firstOrNull { it.id == session.currentServerId }?.slug
         ?: session?.servers?.firstOrNull()?.slug
@@ -410,7 +427,7 @@ private fun settingsBillingWebViewUrl(webBaseUrl: String?, session: StoredAuthSe
         ?.takeIf { it.isNotBlank() }
         ?.let { "s/$it/settings/billing" }
         ?: "settings/billing"
-    return sharedSettingsWebUrl(webBaseUrl, path)
+    return "${sharedSettingsWebUrl(webBaseUrl, path)}?lang=$localeTag"
 }
 
 private fun settingsBillingWebViewInjectedJavaScript(session: StoredAuthSession?): String {
@@ -459,7 +476,8 @@ private fun settingsBillingMobileWebViewChromeScript(): String =
           for (var index = 0; index < headers.length; index += 1) {
             var header = headers[index];
             var text = (header.textContent || "").replace(/\s+/g, " ").trim();
-            if (text.indexOf("Plan & Billing") === -1) {
+            var isBillingHeader = header.getAttribute("data-slock-settings-tab") === "billing";
+            if (!isBillingHeader && text.indexOf("Plan & Billing") === -1 && text.indexOf("套餐与账单") === -1) {
               continue;
             }
             header.setAttribute("data-slock-mobile-billing-hidden-header", "true");
