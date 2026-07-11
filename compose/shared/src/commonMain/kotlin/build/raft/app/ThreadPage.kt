@@ -111,6 +111,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
+import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
@@ -2173,62 +2174,81 @@ private fun ThreadMessageVisualScreenContent() {
                 )
             }
         }
-    Column(
-        modifier =
-            Modifier
-                .width(threadMessageVisualWidth(visualFixture))
-                // task #415: the visual route's window gives BOUNDED height
-                // constraints (unlike production's LazyColumn, whose items
-                // measure unbounded). TextStringRichNode clamps the natively
-                // measured text height to constraints.maxHeight, but the native
-                // view still draws the full layout — so a body taller than the
-                // window overlapped the siblings placed at the clamped height.
-                // Measure unbounded like production.
-                .wrapContentHeight(align = Alignment.Top, unbounded = true)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md)
+    val visualMessagePermalinkLabelResolver =
+        remember(visualFixture) {
+            { target: SlockMessagePermalinkTarget ->
+                when (target.channelId.value) {
+                    "channel-proj-server-management" ->
+                        if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW) {
+                            "proj"
+                        } else {
+                            "proj-server-management"
+                        }
+                    "dm-mahua" -> "Mahua"
+                    else -> null
+                }
+            }
+        }
+    CompositionLocalProvider(
+        LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver
     ) {
-        if (message != null) {
-            ThreadMessageCard(
-                message = message,
-                replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
-                highlightedMentions = highlightedMentions,
-                alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
-                showReplyAction = payload.showReplyActions,
-                resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
-                    value = message.taskAssigneeName,
-                    id = message.taskAssigneeId
-                ),
-                resolveMarkdownTagLabel =
-                    remember(payload.members) {
-                        { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
-                    },
-                taskOpenEnabled = payload.showTaskOpenActions,
-                taskStatusActionsEnabled = payload.showTaskStatusActions,
-                showReactionAddAction = payload.showReactionActions,
-                isMarkdownTagValid = isMarkdownTagValid,
-                markdownTagContextSignature = markdownTagContextSignature,
-                timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                onShowActions = {},
-                onOpenMember = {},
-                onOpenThread = {},
-                onOpenTask = {},
-                onOpenTaskStatusMenu = {},
-                onToggleReaction = {},
-                onOpenAttachment = {},
-                onOpenMarkdownTag = {},
-                onOpenMarkdownUrl = {},
-                outerPadding = 0.dp
-            )
-            if (menuActions.isNotEmpty()) {
-                Spacer(Modifier.height(SlockSpacing.Sm))
-                ThreadMessageMenuChrome(
-                    actions = menuActions,
-                    showReactionActions = payload.showReactionActions,
-                    reactionAtlasImage = LocalThreadReactionAtlasImage.current,
-                    onReact = {},
-                    modifier = Modifier
+        Column(
+            modifier =
+                Modifier
+                    .width(threadMessageVisualWidth(visualFixture))
+                    // task #415: the visual route's window gives BOUNDED height
+                    // constraints (unlike production's LazyColumn, whose items
+                    // measure unbounded). TextStringRichNode clamps the natively
+                    // measured text height to constraints.maxHeight, but the native
+                    // view still draws the full layout — so a body taller than the
+                    // window overlapped the siblings placed at the clamped height.
+                    // Measure unbounded like production.
+                    .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(SlockSpacing.Md)
+        ) {
+            if (message != null) {
+                ThreadMessageCard(
+                    message = message,
+                    replyMetadata = visualReplyMetadataByParentId.threadReplyMetadataFor(message),
+                    highlightedMentions = highlightedMentions,
+                    alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                    showReplyAction = payload.showReplyActions,
+                    resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
+                        value = message.taskAssigneeName,
+                        id = message.taskAssigneeId
+                    ),
+                    resolveMarkdownTagLabel =
+                        remember(payload.members) {
+                            { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+                        },
+                    taskOpenEnabled = payload.showTaskOpenActions,
+                    taskStatusActionsEnabled = payload.showTaskStatusActions,
+                    showReactionAddAction = payload.showReactionActions,
+                    isMarkdownTagValid = isMarkdownTagValid,
+                    markdownTagContextSignature = markdownTagContextSignature,
+                    timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                    onShowActions = {},
+                    onOpenMember = {},
+                    onOpenThread = {},
+                    onOpenTask = {},
+                    onOpenTaskStatusMenu = {},
+                    onToggleReaction = {},
+                    onOpenAttachment = {},
+                    onOpenMarkdownTag = {},
+                    onOpenMarkdownUrl = {},
+                    outerPadding = 0.dp
                 )
+                if (menuActions.isNotEmpty()) {
+                    Spacer(Modifier.height(SlockSpacing.Sm))
+                    ThreadMessageMenuChrome(
+                        actions = menuActions,
+                        showReactionActions = payload.showReactionActions,
+                        reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                        onReact = {},
+                        modifier = Modifier
+                    )
+                }
             }
         }
     }
@@ -3701,6 +3721,32 @@ internal fun SharedThreadRouteContent(
             slockMemberAvatarResolver(serverMembersStore, currentSession?.currentServerId)
         }
     val renderedThread = renderedPayload
+    val messagePermalinkLabelResolver =
+        remember(
+            conversationIdentityProvider,
+            currentSession?.currentServerId,
+            currentServerSlug,
+            renderedThread,
+            stableHeaderProjection
+        ) {
+            { target: SlockMessagePermalinkTarget ->
+                val currentServerId = currentSession?.currentServerId?.takeIf(String::isNotBlank)
+                val sameServer =
+                    currentServerSlug?.takeIf(String::isNotBlank)?.let { slug ->
+                        target.serverSlug.equals(slug, ignoreCase = true)
+                    } ?: true
+                if (!sameServer || currentServerId == null) {
+                    null
+                } else {
+                    conversationIdentityProvider
+                        ?.resolveProjection(ServerId(currentServerId), target.channelId.value)
+                        ?.title
+                        ?: target.channelId.value
+                            .takeIf { id -> id in renderedThread.activeRealtimeRoomIds() }
+                            ?.let { stableHeaderProjection?.title ?: renderedThread.title }
+                }
+            }
+        }
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -4631,7 +4677,8 @@ internal fun SharedThreadRouteContent(
                 ThreadInlineVideoPreviewHost(
                     states = inlineVideoPreviewStates,
                     requestPreview = ::requestInlineVideoPreview
-                )
+                ),
+            LocalSlockMessagePermalinkLabelResolver provides messagePermalinkLabelResolver
         ) {
             ThreadPageContent(
             threadInstanceKey = threadInstanceKey,
@@ -7784,9 +7831,9 @@ private fun threadMessagePermalinkVisualPayload(instanceId: String): KuiklyThrea
                     timestampLabel = "07/11 23:55",
                     messageType = "Chat",
                     body =
-                        "Single line: https://app.raft.build/s/mobile/channel/channel-design?msg=msg-single\n\n" +
-                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-design?msg=msg-edge after.\n\n" +
-                            "Thread reply: https://app.raft.build/s/mobile/channel/channel-design?thread=channel-design:msg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-visual?msg=msg-dm.\n\n" +
+                        "Single line: https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-single\n\n" +
+                            "Line-end collision keeps text on both sides before https://app.raft.build/s/mobile/channel/channel-proj-server-management?msg=msg-edge after.\n\n" +
+                            "Thread reply: https://app.raft.build/s/mobile/channel/channel-proj-server-management?thread=channel-proj-server-management:msg-parent&msg=msg-reply and DM: https://app.raft.build/s/mobile/dm/dm-mahua?msg=msg-dm.\n\n" +
                             "External negative stays a link: https://example.com/visual. Code negative stays literal: `https://app.raft.build/s/mobile/channel/channel-design?msg=msg-code`.",
                     threadChannelId = "thread-msg-permalink-visual"
                 )

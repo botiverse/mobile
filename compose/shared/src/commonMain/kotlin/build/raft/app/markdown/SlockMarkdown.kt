@@ -1,6 +1,7 @@
 package build.raft.app.markdown
 
 import build.raft.app.SlockColor
+import build.raft.app.SlockMessagePermalinkTarget
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
 import build.raft.app.toSlockMessagePermalinkTarget
@@ -11,6 +12,7 @@ import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +81,12 @@ data class ThreadMarkdownTag(
     val channelName: String? = null,
     val threadShortId: String? = null
 )
+
+internal typealias SlockMessagePermalinkLabelResolver =
+    (SlockMessagePermalinkTarget) -> String?
+
+internal val LocalSlockMessagePermalinkLabelResolver =
+    compositionLocalOf<SlockMessagePermalinkLabelResolver> { { null } }
 
 enum class ThreadMarkdownTagKind {
     ChannelThread,
@@ -1016,9 +1024,10 @@ private object SlockMarkdownTextProvider : TextProvider {
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
         val markdownOverflow = slockMarkdownContentOverflow(overflow)
-        val resolvedText = remember(text, resolvedStyle) {
+        val permalinkLabelResolver = LocalSlockMessagePermalinkLabelResolver.current
+        val resolvedText = remember(text, resolvedStyle, permalinkLabelResolver) {
             text
-                .withSlockMessagePermalinkChips()
+                .withSlockMessagePermalinkChips(permalinkLabelResolver)
                 .withSlockMarkdownSpanFonts(resolvedStyle)
         }
         val resolvedInlineContent = resolvedText.filteredSlockMarkdownInlineContent(inlineContent)
@@ -1194,21 +1203,23 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
  * text span. The URL remains the click identity; renderer input contains only
  * ordinary text/link data plus [InlineBoxSpanStyle].
  */
-internal fun AnnotatedString.withSlockMessagePermalinkChips(): AnnotatedString {
+internal fun AnnotatedString.withSlockMessagePermalinkChips(
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null }
+): AnnotatedString {
     val source = withoutLinksInsideSlockInlineCode()
     val permalinkLinks =
         source.getLinkAnnotations(0, source.length)
             .mapNotNull { range ->
                 val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
-                link.url.toSlockMessagePermalinkTarget() ?: return@mapNotNull null
-                range to link
+                val target = link.url.toSlockMessagePermalinkTarget() ?: return@mapNotNull null
+                Triple(range, link, target)
             }
-            .sortedBy { (range, _) -> range.start }
+            .sortedBy { (range, _, _) -> range.start }
     if (permalinkLinks.isEmpty()) return source
 
     val builder = AnnotatedString.Builder(source.length)
     var cursor = 0
-    permalinkLinks.forEach { (range, link) ->
+    permalinkLinks.forEach { (range, link, target) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
         builder.append(source, cursor, range.start)
         builder.withLink(
@@ -1218,12 +1229,28 @@ internal fun AnnotatedString.withSlockMessagePermalinkChips(): AnnotatedString {
                 linkInteractionListener = link.linkInteractionListener
             )
         ) {
-            append("linked message  msg")
+            append("⛓︎ ")
+            append(target.slockMessagePermalinkChipTargetLabel(resolveLabel(target)))
+            append("  msg")
         }
         cursor = range.end
     }
     builder.append(source, cursor, source.length)
     return builder.toAnnotatedString()
+}
+
+private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipTargetLabel(
+    resolvedLabel: String?
+): String {
+    val prefix = if (routeKind == build.raft.app.model.ConversationKind.DirectMessage) "@" else "#"
+    val name =
+        resolvedLabel
+            ?.trim()
+            ?.removePrefix("#")
+            ?.removePrefix("@")
+            ?.takeIf(String::isNotBlank)
+            ?: return "linked message"
+    return "$prefix$name"
 }
 
 /** Markdown parsers may retain autolink annotations inside code spans. */
@@ -1280,8 +1307,8 @@ private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
                     borderWidth = 1.dp,
                     paddingStart = 4.dp,
                     paddingEnd = 4.dp,
-                    paddingTop = 2.dp,
-                    paddingBottom = 2.dp,
+                    paddingTop = 1.dp,
+                    paddingBottom = 1.dp,
                     marginStart = 2.dp,
                     marginEnd = 2.dp
                 )

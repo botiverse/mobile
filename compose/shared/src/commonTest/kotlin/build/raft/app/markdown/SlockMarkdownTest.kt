@@ -56,10 +56,13 @@ class SlockMarkdownTest {
                 append(" now")
             }
 
-        val resolved = source.withSlockMessagePermalinkChips()
+        val resolved =
+            source.withSlockMessagePermalinkChips { target ->
+                "proj-server-management".takeIf { target.channelId.value == "channel-1" }
+            }
         val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
 
-        assertEquals("See linked message  msg now", resolved.text)
+        assertEquals("See ⛓︎ #proj-server-management  msg now", resolved.text)
         assertEquals(url, link.url)
         assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), link.styles?.style?.inlineBoxStyle?.backgroundColor)
         assertEquals(SlockColor.BorderBlack, link.styles?.style?.inlineBoxStyle?.borderColor)
@@ -79,6 +82,17 @@ class SlockMarkdownTest {
             }
 
         assertSame(source, source.withSlockMessagePermalinkChips())
+    }
+
+    @Test
+    fun unresolvedRaftMessagePermalinkUsesNeutralFallback() {
+        val url = "https://app.raft.build/s/another/channel/private-id?msg=message-1"
+        val source =
+            buildAnnotatedString {
+                withLink(LinkAnnotation.Url(url)) { append(url) }
+            }
+
+        assertEquals("⛓︎ linked message  msg", source.withSlockMessagePermalinkChips().text)
     }
 
     @Test
