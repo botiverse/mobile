@@ -621,6 +621,78 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun settingsComputersProductionResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_computers_detail_subtitle,
+            MR.strings.settings_computers_add_computer,
+            MR.strings.settings_computers_detail_computer,
+            MR.strings.settings_computers_detail_loading,
+            MR.strings.settings_computers_detail_unavailable,
+            MR.strings.settings_computers_detail_no_access,
+            MR.strings.settings_computers_detail_error_load,
+            MR.strings.settings_computers_section_agents,
+            MR.strings.settings_computers_action_select,
+            MR.strings.settings_computers_action_create,
+            MR.strings.settings_computers_section_workspaces,
+            MR.strings.settings_computers_section_actions,
+            MR.strings.settings_computers_rotate_key_title,
+            MR.strings.settings_computers_rotate_key_detail,
+            MR.strings.settings_computers_rotate_key_action,
+            MR.strings.settings_computers_rotate_key_busy,
+            MR.strings.settings_computers_delete_title,
+            MR.strings.settings_computers_delete_detail,
+            MR.strings.settings_computers_delete_action,
+            MR.strings.settings_computers_delete_busy,
+            MR.strings.settings_computers_status_connected,
+            MR.strings.settings_computers_status_offline,
+            MR.strings.settings_computers_section_name,
+            MR.strings.settings_computers_label_name,
+            MR.strings.settings_computers_action_saving,
+            MR.strings.settings_computers_section_description,
+            MR.strings.settings_computers_label_description,
+            MR.strings.settings_computers_placeholder_description,
+            MR.strings.settings_computers_state_no_description,
+            MR.strings.settings_computers_section_info,
+            MR.strings.settings_computers_label_os,
+            MR.strings.settings_computers_label_version,
+            MR.strings.settings_computers_label_created,
+            MR.strings.settings_computers_label_runtimes,
+            MR.strings.settings_computers_state_unknown,
+            MR.strings.settings_computers_kind_computer,
+            MR.strings.settings_computers_kind_daemon,
+            MR.strings.settings_computers_error_title_cannot_delete,
+            MR.strings.settings_computers_error_title_request_rejected,
+            MR.strings.settings_computers_error_title_offline,
+            MR.strings.settings_computers_error_title_permission,
+            MR.strings.settings_computers_error_title_session,
+            MR.strings.settings_computers_error_title_action,
+            MR.strings.settings_computers_create_agent_error_empty,
+            MR.strings.settings_computers_create_agent_error_forbidden
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "settings computers static copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.settings_computers_workspace_modified.format(listOf("today")),
+            MR.strings.settings_computers_file_count_one.format(listOf(1)),
+            MR.strings.settings_computers_file_count_many.format(listOf(2)),
+            MR.strings.settings_computers_run_offline.format(listOf("computer")),
+            MR.strings.settings_computers_run_online.format(listOf("computer")),
+            MR.strings.settings_computers_run_version.format(listOf("computer", "1.0")),
+            MR.strings.settings_computers_create_agent_error_load_computers.format(listOf("code")),
+            MR.strings.settings_computers_create_agent_error_failed.format(listOf("code"))
+        ).forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "settings computers formatted copy must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun productionEmptyAndErrorStateResourcesAreGenerated() {
         listOf(
             MR.strings.common_no_matches,
