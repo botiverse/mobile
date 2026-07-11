@@ -99,6 +99,56 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun memberDetailActionAndStateResourcesAreGenerated() {
+        listOf(
+            MR.strings.member_tab_activity,
+            MR.strings.member_tab_chat,
+            MR.strings.member_tab_reminders,
+            MR.strings.member_tab_workspace,
+            MR.strings.member_tab_apps,
+            MR.strings.member_action_copy_id,
+            MR.strings.member_action_delete_agent,
+            MR.strings.member_action_restart_session,
+            MR.strings.member_state_profile_loading,
+            MR.strings.member_state_private_hidden,
+            MR.strings.member_state_workspace_loading,
+            MR.strings.member_state_no_connected_apps,
+            MR.strings.member_section_activity_diagnostics,
+            MR.strings.member_action_save_permissions,
+            MR.strings.member_hint_permissions_notifications,
+            MR.strings.member_hint_permissions_cli,
+            MR.strings.member_dialog_change_avatar,
+            MR.strings.member_dialog_edit_runtime_config,
+            MR.strings.member_hint_chat_audit_only,
+            MR.strings.member_hint_no_scheduled_reminders,
+            MR.strings.member_hint_connected_apps,
+            MR.strings.member_error_workspace_load,
+            MR.strings.member_error_apps_load,
+            MR.strings.member_error_permissions_load,
+            MR.strings.member_permission_channels,
+            MR.strings.member_permission_message_send_hint
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "member detail static copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.member_dialog_restart_title,
+            MR.strings.member_section_skills_count,
+            MR.strings.member_error_tab_order_save_detail,
+            MR.strings.member_label_connected_since,
+            MR.strings.member_label_revision
+        ).forEach { resource ->
+            assertTrue(
+                resource.format(listOf("Agent")) is ResourceFormattedStringDesc,
+                "formatted member copy must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun homeSearchActivityAndSavedPanelResourcesAreGenerated() {
         listOf(
             MR.strings.search_section_channels_dms,
