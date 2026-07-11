@@ -473,14 +473,19 @@ private fun SharedActivityHeader(
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = "Activity",
+                    text = stringResource(MR.strings.home_nav_activity),
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "$totalCount active" + if (totalUnreadCount > 0) " · $totalUnreadCount unread" else "",
+                    text =
+                        if (totalUnreadCount > 0) {
+                            stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
+                        } else {
+                            stringResource(MR.strings.activity_header_active_count, totalCount)
+                        },
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = SlockColor.TextBlack.copy(alpha = 0.52f),
                     maxLines = 1,
@@ -516,7 +521,7 @@ private fun SharedActivityFilterBar(
                 selectedValue = selectedFilter.wireValue,
                 options =
                     InboxFilter.entries.map { filter ->
-                        SegmentedControlOption(value = filter.wireValue, label = filter.label)
+                        SegmentedControlOption(value = filter.wireValue, label = filter.localizedLabel())
                     },
                 onValueSelected = { value ->
                     InboxFilter.entries.firstOrNull { it.wireValue == value }?.let(onFilterSelected)
@@ -694,7 +699,10 @@ private fun SharedActivityList(
         }
         if (pendingUpdateCount > 0) {
             SlockBrutalActionButton(
-                label = "↑ $pendingUpdateCount new update${if (pendingUpdateCount == 1) "" else "s"}",
+                label = stringResource(
+                    if (pendingUpdateCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
+                    pendingUpdateCount
+                ),
                 onClick = {
                     scrollScope.launch {
                         listState.animateScrollToTopExpressive()
@@ -715,7 +723,12 @@ private fun SharedActivityList(
                     listOf(
                         SlockBaseMenuItem(
                             id = "toggle-read",
-                            label = if (item.unreadCount > 0) "Mark as Read" else "Mark as Unread",
+                            label =
+                                if (item.unreadCount > 0) {
+                                    stringResource(MR.strings.home_action_mark_as_read)
+                                } else {
+                                    stringResource(MR.strings.home_action_mark_as_unread)
+                                },
                             icon = SlockLucideIconName.Mail
                         ),
                         SlockBaseMenuItem(id = "done", label = stringResource(MR.strings.common_done), icon = SlockLucideIconName.Check)
@@ -812,6 +825,9 @@ private fun SharedActivityRow(
     onOpenMenu: (Offset) -> Unit
 ) {
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
+    val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
+    val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
+    val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
         Row(
             modifier = surfaceModifier.padding(12.dp),
@@ -846,7 +862,12 @@ private fun SharedActivityRow(
                     if (item.kind == InboxItemKind.Thread) {
                         SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
                     }
-                    val primaryPreview = item.primaryActivityPreviewText(senderProfiles)
+                    val primaryPreview = item.primaryActivityPreviewText(
+                        senderProfiles = senderProfiles,
+                        threadFallback = threadFallback,
+                        actionFallback = actionFallback,
+                        conversationFallback = conversationFallback
+                    )
                     Text(
                         text = primaryPreview.toAnnotatedString(),
                         style =
@@ -861,7 +882,12 @@ private fun SharedActivityRow(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                item.secondaryActivityPreviewText(senderProfiles)?.let { secondary ->
+                item.secondaryActivityPreviewText(
+                    senderProfiles = senderProfiles,
+                    threadFallback = threadFallback,
+                    actionFallback = actionFallback,
+                    conversationFallback = conversationFallback
+                )?.let { secondary ->
                     Spacer(Modifier.height(4.dp))
                     Text(
                         text = secondary.toAnnotatedString(),
@@ -948,7 +974,10 @@ private fun SharedActivityFooter(
             when (slot) {
                 SharedActivityFooterSlot.Replies ->
                     Text(
-                        text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
+                        text = stringResource(
+                            if (item.replyCount == 1) MR.strings.activity_replies_one else MR.strings.activity_replies_many,
+                            item.replyCount
+                        ),
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.42f),
                         maxLines = 1,
@@ -960,7 +989,7 @@ private fun SharedActivityFooter(
                 )
                 SharedActivityFooterSlot.Mention ->
                     SharedActivityCountPill(
-                        "you",
+                        stringResource(MR.strings.activity_mention_you),
                         iconName = SlockLucideIconName.AtSign,
                         backgroundColor = SlockColor.BrandYellow,
                         textColor = SlockColor.TextBlack,
@@ -968,7 +997,7 @@ private fun SharedActivityFooter(
                     )
                 SharedActivityFooterSlot.New ->
                     SharedActivityCountPill(
-                        "${item.unreadCount} new",
+                        stringResource(MR.strings.activity_new_count, item.unreadCount),
                         backgroundColor = SlockColor.AccentPink,
                         textColor = SlockColor.SurfaceWhite,
                         modifier = Modifier.align(Alignment.CenterVertically)
@@ -1192,13 +1221,15 @@ private fun SharedActivityStateBody(
     )
 }
 
-private val InboxFilter.label: String
-    get() =
+@Composable
+private fun InboxFilter.localizedLabel(): String =
+    stringResource(
         when (this) {
-            InboxFilter.All -> "All"
-            InboxFilter.Unread -> "Unread"
-            InboxFilter.Mentions -> "Mentions"
+            InboxFilter.All -> MR.strings.activity_filter_all
+            InboxFilter.Unread -> MR.strings.activity_filter_unread
+            InboxFilter.Mentions -> MR.strings.activity_filter_mentions
         }
+    )
 
 private fun InboxFilter.emptyCopy(): String =
     when (this) {
@@ -1265,11 +1296,15 @@ internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String
         ?: lastMessageAt
         ?: ""
 
-private fun InboxItem.previewText(): String =
+private fun InboxItem.previewText(
+    threadFallback: String,
+    actionFallback: String,
+    conversationFallback: String
+): String =
     when (kind) {
-        InboxItemKind.Thread -> parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: "Thread update"
-        InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: "Action required"
-        else -> lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
+        InboxItemKind.Thread -> parentMessagePreview ?: latestActivityPreview ?: lastMessagePreview ?: threadFallback
+        InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: actionFallback
+        else -> lastMessagePreview ?: latestActivityPreview ?: conversationFallback
     }
 
 internal fun InboxItem.primaryPreviewText(
@@ -1306,18 +1341,27 @@ internal data class ActivityPreviewText(
 }
 
 internal fun InboxItem.primaryActivityPreviewText(
-    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    threadFallback: String = "Thread update",
+    actionFallback: String = "Action required",
+    conversationFallback: String = "Conversation update"
 ): ActivityPreviewText =
     ActivityPreviewText(
         senderName = if (kind == InboxItemKind.Thread || kind == InboxItemKind.MentionAction) null else senderDisplayName(senderProfiles),
-        body = previewText()
+        body = previewText(threadFallback, actionFallback, conversationFallback)
     )
 
 internal fun InboxItem.secondaryActivityPreviewText(
-    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
+    threadFallback: String = "Thread update",
+    actionFallback: String = "Action required",
+    conversationFallback: String = "Conversation update"
 ): ActivityPreviewText? =
     latestActivityPreview
-        ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
+        ?.takeIf {
+            kind == InboxItemKind.Thread && replyCount > 0 &&
+                it != previewText(threadFallback, actionFallback, conversationFallback)
+        }
         ?.let { preview ->
             ActivityPreviewText(senderName = senderDisplayName(senderProfiles), body = preview)
         }

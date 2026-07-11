@@ -99,6 +99,38 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun homeSearchActivityAndSavedPanelResourcesAreGenerated() {
+        listOf(
+            MR.strings.search_section_channels_dms,
+            MR.strings.search_filter_search_senders,
+            MR.strings.search_time_last_30_days,
+            MR.strings.search_thread_discussion,
+            MR.strings.activity_filter_mentions,
+            MR.strings.activity_fallback_action_required,
+            MR.strings.saved_action_copy_markdown,
+            MR.strings.saved_action_remove
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "home panel literal resources must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.search_results_count.format(listOf(3)),
+            MR.strings.search_filter_from_value.format(listOf("Artin")),
+            MR.strings.activity_header_active_unread_count.format(listOf(4, 2)),
+            MR.strings.activity_updates_many.format(listOf(3)),
+            MR.strings.saved_count.format(listOf(5))
+        ).forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "formatted home panel resources must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun threadComposerActionStringResourcesAreGenerated() {
         val desc: StringDesc = MR.strings.thread_composer_insert_newline.desc()
         assertTrue(
