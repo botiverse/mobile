@@ -5937,13 +5937,13 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_message_font_size_title)) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
             options =
                 snapshot.messageBodyFontSize.options.map {
-                    SegmentedControlOption(it.key, it.label, SlockLucideIconName.Type)
+                    SegmentedControlOption(it.key, it.label)
                 },
             onValueSelected = onFontSizeDraftChange,
             enabled = snapshot.messageBodyFontSize.available && !busy
