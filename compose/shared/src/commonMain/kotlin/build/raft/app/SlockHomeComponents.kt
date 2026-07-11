@@ -122,6 +122,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.compose.localized
+import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.abs
@@ -269,6 +271,7 @@ data class SlockHomeNotificationItem(
     val title: String = "",
     val body: String = "",
     val actionLabel: String = "",
+    val primaryActionActive: Boolean = false,
     val targetId: String? = null,
     val kind: SlockHomeNotificationKind = SlockHomeNotificationKind.Warning,
     val icon: SlockHomeNotificationIcon = SlockHomeNotificationIcon.Default
@@ -2739,8 +2742,17 @@ internal fun List<SlockHomeNotificationItem>.homeNotificationTriggerIconName(): 
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
         com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("NOTIFICATIONS", style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
-            Text("${notifications.size} ${if (notifications.size == 1) "item" else "items"}", style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 1)
+            Text(stringResource(MR.strings.home_notification_center_title), style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
+            Text(
+                if (notifications.size == 1) {
+                    MR.strings.home_notification_center_item_count_one.format(listOf(notifications.size)).localized()
+                } else {
+                    MR.strings.home_notification_center_item_count_many.format(listOf(notifications.size)).localized()
+                },
+                style = SlockType.Button,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
         }
         Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         notifications.forEachIndexed { index, notification ->
@@ -2774,7 +2786,7 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
                         shadowOffset = notification.primaryActionShadowOffset()
                     )
                 }
-                HomeNotificationActionButton("Dismiss", SlockColor.SurfaceWhite, onDismiss)
+                HomeNotificationActionButton(stringResource(MR.strings.common_dismiss), SlockColor.SurfaceWhite, onDismiss)
             }
         }
     }
@@ -2806,7 +2818,7 @@ internal fun SlockHomeNotificationItem.primaryActionShadowOffset(): Dp =
 
 private fun SlockHomeNotificationItem.isAppUpdateActionActive(): Boolean =
     id == APP_UPDATE_HOME_NOTIFICATION_ID &&
-        actionLabel.trim().lowercase() in setOf("downloading", "install")
+        (primaryActionActive || actionLabel.trim().lowercase() in setOf("downloading", "install"))
 
 @Composable
 private fun HomeNotificationActionButton(text: String, color: Color, onClick: () -> Unit, shadowOffset: Dp = HomeNotificationActionShadowOffset) {

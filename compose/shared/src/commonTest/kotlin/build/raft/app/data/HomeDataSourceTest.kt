@@ -128,6 +128,9 @@ class HomeDataSourceTest {
         assertEquals("App update available", notification.title)
         assertEquals("Current version 1.0.0. Latest version 1.0.1 (1000100).", notification.body)
         assertEquals("Download", notification.actionLabel)
+        assertTrue(notification.titleDesc != null)
+        assertTrue(notification.bodyDesc != null)
+        assertTrue(notification.actionLabelDesc != null)
         assertEquals(SharedHomeNotificationKind.Info, notification.kind)
         assertEquals(SharedHomeNotificationIcon.CircleArrowUp, notification.icon)
     }
@@ -159,6 +162,7 @@ class HomeDataSourceTest {
 
         val notification = (result as DataResult.Content).data.single()
         assertEquals("Install", notification.actionLabel)
+        assertTrue(notification.actionLabelDesc != null)
     }
 
     @Test
