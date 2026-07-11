@@ -348,6 +348,34 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun customModelSelectionKeepsCustomAsTheClosedSelectLabel() {
+        val options =
+            createAgentModelDropdownItemsForSelection(
+                runtime = "codex",
+                runtimeModelsOverride =
+                    listOf(
+                        SharedCreateAgentRuntimeModelOption(
+                            id = "gpt-5.6-sol",
+                            label = "GPT-5.6 Sol",
+                            verified = null
+                        )
+                    ),
+                selectedModel = "gpt-5.6-sol",
+                customModelMode = true,
+                retainUnavailableSelectedPreset = true
+            )
+
+        assertEquals(
+            "Custom",
+            createAgentModelSelectLabel(
+                customModelMode = true,
+                model = "gpt-5.6-sol",
+                modelOptions = options
+            )
+        )
+    }
+
+    @Test
     fun createAgentDialogSubmitExtractsAllRuntimeFormFields() {
         val request =
             buildSharedCreateAgentDialogSubmit(

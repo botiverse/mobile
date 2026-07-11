@@ -390,6 +390,17 @@ internal fun createAgentModelDropdownItemsForSelection(
     }
 }
 
+internal fun createAgentModelSelectLabel(
+    customModelMode: Boolean,
+    model: String,
+    modelOptions: List<CreateAgentModelDropdownItem>
+): String =
+    if (customModelMode) {
+        "Custom"
+    } else {
+        modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
+    }
+
 internal fun createAgentModelPresetIds(
     runtime: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
@@ -1079,12 +1090,7 @@ internal fun AdvancedRuntimeSection(
         SlockBrutalSelectField(
             options = modelSelectItems.toBrutalSelectOptions(),
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
-            selectedLabel =
-                if (customModelMode) {
-                    customModelName.trim().ifBlank { "Custom" }
-                } else {
-                    modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
-                },
+            selectedLabel = createAgentModelSelectLabel(customModelMode, model, modelOptions),
             placeholder = stringResource(MR.strings.agent_create_placeholder_select_model),
             enabled = enabled,
             rowHeight = 36.dp,
