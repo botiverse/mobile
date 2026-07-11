@@ -312,14 +312,13 @@ internal fun SlockSlugInput(
             ) {
                 Text(
                     text = "/",
-                    // CSS centers the LINE BOX, so react's slash ink sits
-                    // (asc-desc)/2 - inkCenter("/") = 5.54 - 4.0 = ~1.5px BELOW the
-                    // tile center (Space Grotesk Bold metrics, deep slash
-                    // descender). The fork's HRLineHeightSpan (kuikly-open
-                    // 2.21.0-2.1.21 glyphVisualCenter patch) ink-centers instead,
-                    // so re-add the offset here. Font-metric-derived, not a magic
-                    // pixel; DELETE if the fork ever reverts to metrics centering.
-                    modifier = Modifier.offset(y = 1.5.dp),
+                    // No vertical nudge on purpose: the fork's glyphVisualCenter
+                    // ink-centering was reverted on staging2 (03ef5cf, in this
+                    // PR's pinned gitlink), so the span now does an even leading
+                    // split. Whether a sub-dp residual remains vs CSS line-box
+                    // centering depends on Skia's bbox-vs-hhea metrics choice -
+                    // measure from capture before compensating, and gate any
+                    // future offset per-platform (commonMain renders on iOS too).
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
                     // react slash = text-black/70. Disabled must match react's GROUP
                     // flatten (glyph over tile first, then x0.6 over white) = opaque

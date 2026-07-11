@@ -360,7 +360,11 @@ internal fun UiSlugInputVisualContent() {
                 .background(SlockColor.SurfaceWhite)
                 .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // 14dp spacing on purpose: the control's 2dp shadow gutter takes layout
+        // space (unlike CSS box-shadow), so 14dp puts the visible boxes 16dp
+        // apart like react's gap-4 (same precedent as UiButtonVisualContent) -
+        // row2 lands at y76 and its shadow stays inside the 342x122 crop.
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SlockSlugInput(value = "design-lab", onValueChange = {}, modifier = Modifier.width(310.dp))
             SlockSlugInput(value = "partner-workspace", onValueChange = {}, enabled = false, modifier = Modifier.width(310.dp))
         }
