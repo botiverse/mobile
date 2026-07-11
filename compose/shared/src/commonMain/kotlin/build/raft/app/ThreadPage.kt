@@ -989,6 +989,7 @@ private fun buildThreadPendingSendMessage(
                     name = attachment.fileName,
                     mimeType = attachment.mimeType.orEmpty(),
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     thumbnailUrl = attachment.previewUri
                 )
             },
@@ -1051,6 +1052,7 @@ internal data class KuiklyThreadAttachmentItem(
     val name: String,
     val mimeType: String = "",
     val sizeLabel: String = "",
+    val sizeBytes: Long = 0L,
     val thumbnailUrl: String? = null,
     val commentCount: Int = 0
 )
@@ -4043,7 +4045,7 @@ internal fun SharedThreadRouteContent(
     fun openComposerAttachmentPreview(attachmentId: String) {
         val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
         val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = listOf(attachment.sizeLabel, attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
         if (!attachment.isReadyThreadAttachmentForSend()) {
             pager.openSlockFilePreviewPage(
                 SlockFilePreviewPayload(
@@ -4082,6 +4084,7 @@ internal fun SharedThreadRouteContent(
                 name = name,
                 mimeType = attachment.mimeType.orEmpty(),
                 sizeLabel = attachment.sizeLabel,
+                sizeBytes = attachment.sizeBytes,
                 thumbnailUrl = attachment.previewUri
         )
         val composerImageGroup = currentComposerPayload().pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
@@ -4421,7 +4424,8 @@ internal fun SharedThreadRouteContent(
                     SharedThreadComposerAttachment(
                         id = file.id,
                         fileName = file.fileName,
-                        sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        sizeLabel = "",
+                        sizeBytes = file.sizeBytes ?: 0L,
                         mimeType = file.mimeType?.takeIf { it.isNotBlank() },
                         previewUri = file.composerLocalPreviewUri(),
                         status = "uploading"
@@ -4464,6 +4468,7 @@ internal fun SharedThreadRouteContent(
                                             id = attachment.id.value,
                                             fileName = attachment.name,
                                             sizeLabel = attachment.sizeLabel,
+                                            sizeBytes = attachment.sizeBytes,
                                             mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
                                             previewUri = previewUri,
                                             status = "ready"
@@ -6655,6 +6660,7 @@ private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId
                     id = item.attachmentId,
                     name = item.name,
                     mimeType = item.mimeType,
+                    sizeBytes = item.sizeBytes,
                     sizeLabel = item.sizeLabel,
                     thumbnailUrl = item.thumbnailUrl
                 )
@@ -6669,6 +6675,7 @@ private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String):
             id = item.attachmentId,
             name = item.name,
             mimeType = item.mimeType,
+            sizeBytes = item.sizeBytes,
             sizeLabel = item.sizeLabel,
             thumbnailUrl = item.thumbnailUrl
         )
@@ -6692,6 +6699,7 @@ internal fun List<KuiklyPendingAttachmentItem>.composerPendingImageAttachmentGro
                     name = attachment.fileName.ifBlank { "Attachment" },
                     mimeType = attachment.mimeType.orEmpty(),
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     thumbnailUrl = attachment.previewUri
                 )
             }
@@ -8022,6 +8030,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                 id = attachment.id,
                 fileName = attachment.fileName,
                 sizeLabel = attachment.sizeLabel,
+                sizeBytes = attachment.sizeBytes,
                 mimeType = attachment.mimeType,
                 previewUri = attachment.previewUri,
                 status = attachment.status,
@@ -8042,6 +8051,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                     id = attachment.id,
                     fileName = attachment.fileName,
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     mimeType = attachment.mimeType,
                     previewUri = attachment.previewUri,
                     status = attachment.status,
@@ -15882,7 +15892,7 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
     isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
-    listOf(sizeLabel, mimeType)
+    listOf(displaySizeLabel(), mimeType)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
@@ -15900,7 +15910,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
             mimeType.isNotBlank() -> mimeType
             else -> "file"
         },
-        sizeLabel
+        displaySizeLabel()
     )
         .filter { it.isNotBlank() }
         .joinToString(" · ")
@@ -15912,6 +15922,10 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
         isPreviewableDocumentAttachment() -> "Document preview"
         else -> null
     }
+
+/** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
+internal fun KuiklyThreadAttachmentItem.displaySizeLabel(): String =
+    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
@@ -16230,7 +16244,7 @@ private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentIte
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val meta = listOf(attachment.sizeLabel, attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+            val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,

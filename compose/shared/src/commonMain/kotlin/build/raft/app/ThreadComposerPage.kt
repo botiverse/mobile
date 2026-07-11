@@ -7,6 +7,7 @@ import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockCheckbox
 import build.raft.app.components.SlockBrutalIconButton
 import build.raft.app.data.SharedMembersLoadStatus
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -394,6 +395,7 @@ internal data class KuiklyPendingAttachmentItem(
     val id: String,
     val fileName: String,
     val sizeLabel: String = "",
+    val sizeBytes: Long = 0L,
     val mimeType: String? = null,
     val previewUri: String? = null,
     val status: String = "ready",
@@ -485,11 +487,19 @@ data class SharedThreadComposerAttachment(
     val id: String,
     val fileName: String,
     val sizeLabel: String = "",
+    val sizeBytes: Long = 0L,
     val mimeType: String? = null,
     val previewUri: String? = null,
     val status: String = "ready",
     val errorCode: String? = null
 )
+
+/** Composer UI formatting boundary; raw bytes win over old persisted display labels. */
+internal fun KuiklyPendingAttachmentItem.displaySizeLabel(): String =
+    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+
+internal fun SharedThreadComposerAttachment.displaySizeLabel(): String =
+    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 data class SharedThreadComposerMemberSuggestion(
     val displayName: String,
@@ -2529,8 +2539,11 @@ private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentIte
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = attachment.mimeType?.takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.strings.thread_composer_attachment_file),
+                text = listOf(
+                    attachment.mimeType?.takeIf { it.isNotBlank() }
+                        ?: stringResource(MR.strings.thread_composer_attachment_file),
+                    attachment.displaySizeLabel(),
+                ).filter { it.isNotBlank() }.joinToString(" · "),
                 style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,

@@ -174,6 +174,7 @@ internal class SqlDelightComposeLocalDataStore(
                         name = attachment.name,
                         mimeType = attachment.mimeType,
                         sizeLabel = attachment.sizeLabel,
+                        sizeBytes = attachment.sizeBytes,
                         thumbnailUrl = attachment.thumbnailUrl,
                         width = attachment.width?.toLong(),
                         height = attachment.height?.toLong(),
@@ -335,6 +336,7 @@ internal class SqlDelightComposeLocalDataStore(
             name = name,
             mimeType = mimeType,
             sizeLabel = sizeLabel,
+            sizeBytes = sizeBytes,
             thumbnailUrl = thumbnailUrl,
             width = width?.toInt(),
             height = height?.toInt()

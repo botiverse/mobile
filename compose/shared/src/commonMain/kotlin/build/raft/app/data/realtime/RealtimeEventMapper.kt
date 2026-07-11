@@ -367,7 +367,6 @@ private data class MessageWireDto(
     val senderName: String? = null,
     val senderDescription: String? = null,
     val senderMembershipStatus: String? = null,
-    val roleDescription: String? = null,
     val attachments: List<AttachmentWireDto> = emptyList(),
     val reactions: List<MessageReactionWireDto>? = null,
     val actionMetadata: WireActionCardMetadata? = null,
@@ -600,7 +599,6 @@ private fun MessageWireDto.toDomain(): Message {
                 else -> MemberKind.Human
             },
         description = senderDescription,
-        roleDescription = roleDescription,
         avatarLabel = (senderName ?: authorId).take(1).uppercase(),
         presence = Presence.Offline,
     )
@@ -681,7 +679,8 @@ private fun AttachmentWireDto.toDomain(): Attachment = Attachment(
     id = AttachmentId(id),
     name = filename,
     mimeType = mimeType,
-    sizeLabel = sizeBytes?.let { "$it B" } ?: "",
+    sizeBytes = sizeBytes ?: 0L,
+    sizeLabel = "",
     thumbnailUrl = thumbnailUrl,
     width = width,
     height = height,

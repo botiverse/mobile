@@ -372,7 +372,10 @@ data class Attachment(
     val id: AttachmentId,
     val name: String,
     val mimeType: String,
+    /** Compatibility-only display value for old snapshots/callers that do not carry [sizeBytes]. */
     val sizeLabel: String,
+    /** Raw wire fact. Presentation layers format this value for display. */
+    val sizeBytes: Long = 0L,
     val thumbnailUrl: String? = null,
     val width: Int? = null,
     val height: Int? = null,

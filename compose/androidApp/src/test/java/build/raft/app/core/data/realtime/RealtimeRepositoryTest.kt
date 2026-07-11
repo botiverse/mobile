@@ -945,12 +945,14 @@ class RealtimeRepositoryTest {
         assertEquals("image-1", message.attachments[0].id.value)
         assertEquals("preview.png", message.attachments[0].name)
         assertEquals("image/png", message.attachments[0].mimeType)
-        assertEquals("43008 B", message.attachments[0].sizeLabel)
+        assertEquals(43008L, message.attachments[0].sizeBytes)
+        assertEquals("", message.attachments[0].sizeLabel)
         assertEquals("https://cdn.example/thumbs/image-1.png", message.attachments[0].thumbnailUrl)
         assertEquals("file-1", message.attachments[1].id.value)
         assertEquals("report.pdf", message.attachments[1].name)
         assertEquals("application/pdf", message.attachments[1].mimeType)
-        assertEquals("2048 B", message.attachments[1].sizeLabel)
+        assertEquals(2048L, message.attachments[1].sizeBytes)
+        assertEquals("", message.attachments[1].sizeLabel)
     }
 
     @Test
@@ -979,7 +981,7 @@ class RealtimeRepositoryTest {
         val message = (event as MessageNew).message
         assertEquals("API Integration", message.author.displayName)
         assertEquals("Data contracts", message.author.description)
-        assertEquals("agent", message.author.roleDescription)
+        assertNull(message.author.roleDescription)
         assertEquals(MemberKind.Agent, message.author.kind)
     }
 

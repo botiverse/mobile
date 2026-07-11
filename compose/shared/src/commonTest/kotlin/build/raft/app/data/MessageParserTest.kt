@@ -124,6 +124,8 @@ class MessageParserTest {
         assertEquals("rid-parser-1", message.randomId)
 
         val attachment = message.attachments.single()
+        assertEquals(2048, attachment.sizeBytes)
+        assertEquals("", attachment.sizeLabel)
         assertEquals(640, attachment.width)
         assertEquals(360, attachment.height)
 

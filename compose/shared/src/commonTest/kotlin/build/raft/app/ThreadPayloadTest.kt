@@ -6524,6 +6524,9 @@ class ThreadPayloadTest {
         assertEquals("att-1", attachments.first().id)
         assertEquals("report.pdf", attachments.first().fileName)
         assertEquals("application/pdf", attachments.first().mimeType)
+        assertEquals(12288L, attachments.first().sizeBytes)
+        assertEquals("", attachments.first().sizeLabel)
+        assertEquals("12.0 KB", attachments.first().displaySizeLabel())
     }
 
     @Test

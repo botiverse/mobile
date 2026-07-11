@@ -22,17 +22,12 @@ import kotlinx.serialization.json.JsonObject
  *  - `attachment.commentCount` — viewer-scoped, excluded from the shared canonical row.
  *  - `task` / delivery / thread-follow / reply-count / saved — task-domain or client-local projections
  *    joined after this boundary.
- *  - `MemberProfile.roleDescription` and all directory enrichment — the real mapper reads a non-canonical
- *    `roleDescription` wire field; it is intentionally dropped here (see MEMBER_ROLE_DESCRIPTION_NOTE).
+ *  - `MemberProfile.roleDescription` and all directory enrichment — roleDescription is not canonical,
+ *    and the former legacy read was removed after the G6 proof below.
  */
 
-// MEMBER_ROLE_DESCRIPTION_NOTE: RealtimeEventMapper.MessageWireDto.toDomain() populates
-// author.roleDescription from a `roleDescription` wire field that is NOT one of the 19 canonical manifest
-// fields. The G6 reverse-closure gate (slock #4593/#4589, green) MECHANICALLY PROVES the message:* producer
-// never emits it: every message:new/updated post-projection key ⊆ 19 canonical ∪ exclusions, and
-// roleDescription is in neither. So server does not send it on message:*, the legacy mapper's read is dead
-// code on this face, and dropping it in shadow parity is provably safe (not heuristic). Follow-up is to
-// REMOVE the legacy dead read — no manifest expansion needed. (LiBai, G6.)
+// The G6 reverse-closure gate proves every message:* post-projection key is contained in canonical(19)
+// plus explicit exclusions; roleDescription is in neither. The dead legacy mapper read is now removed.
 
 /** Maps a realtime socket event name to the manifest production face, or null if not a message-fold event. */
 fun shadowFaceForEvent(eventName: String): ProductionFace? = when (eventName) {
@@ -85,19 +80,15 @@ fun compareCanonicalShadow(
  * compared set are EXCLUDED by omission (not touched here) — see that function for the exclusion ledger.
  *
  * Each normalization below is a compared fact, listed with the exact reason both paths may differ:
- *  - author: identity facts only; drop roleDescription (non-canonical wire field) + directory enrichment,
+ *  - author: identity facts only; drop directory enrichment,
  *    and align displayName/handle to `ifBlank { id }` (legacy uses `senderName ?: id`, projection uses
  *    `ifBlank`; differ only when senderName is an explicit "", a producer violation — known fail-soft delta).
  *  - attachments.commentCount: viewer-scoped, excluded from the canonical row → zero on both.
- *  - attachments.sizeLabel: derived DISPLAY format of the canonical `sizeBytes` fact (the app Message does
- *    not retain bytes). Legacy emits raw "<bytes> B"; projection humanizes via formatAttachmentSizeLabel.
- *    Not a canonical-identity divergence → blanked on both. The label-format change at sole-apply is a
- *    layering fix (Attachment should carry sizeBytes; UI formats) tracked with the team.
  *  - reactions: collapse empty/null "no reactions" to null on both (legacy may emit emptyList()).
  */
 fun Message.toShadowParityView(): Message = copy(
     author = author.toShadowParityView(),
-    attachments = attachments.map { it.copy(commentCount = 0, sizeLabel = "") },
+    attachments = attachments.map { it.copy(commentCount = 0) },
     reactions = reactions?.takeIf { it.isNotEmpty() },
 )
 
