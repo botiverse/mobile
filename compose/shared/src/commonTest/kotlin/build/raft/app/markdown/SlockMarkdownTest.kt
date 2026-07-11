@@ -62,7 +62,8 @@ class SlockMarkdownTest {
             }
         val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
 
-        assertEquals("See ⛓︎ #proj-server-management  msg now", resolved.text)
+        assertEquals("See #proj-server-management msg now", resolved.text)
+        assertEquals(1, resolved.slockMarkdownInlineContentIds().size)
         assertEquals(url, link.url)
         assertEquals(Color(0xFFFCEFBD), link.styles?.style?.inlineBoxStyle?.backgroundColor)
         assertEquals(SlockColor.BorderBlack, link.styles?.style?.inlineBoxStyle?.borderColor)
@@ -92,7 +93,7 @@ class SlockMarkdownTest {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
             }
 
-        assertEquals("⛓︎ linked message  msg", source.withSlockMessagePermalinkChips().text)
+        assertEquals("linked message msg", source.withSlockMessagePermalinkChips().text)
     }
 
     @Test
@@ -107,7 +108,7 @@ class SlockMarkdownTest {
 
         val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
 
-        assertEquals("⛓︎ #proj-server-management  thread", resolved.text)
+        assertEquals("#proj-server-management thread", resolved.text)
     }
 
     @Test
@@ -119,7 +120,7 @@ class SlockMarkdownTest {
 
         val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
 
-        assertEquals("Thread reply: ⛓︎ #proj-server-management  thread", resolved.text)
+        assertEquals("Thread reply: #proj-server-management thread", resolved.text)
     }
 
     @Test
