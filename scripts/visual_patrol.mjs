@@ -129,6 +129,18 @@ function issueBody(c) {
 
 function severityLabel(sev) { return `severity:${String(sev || "unknown").toLowerCase()}`; }
 
+// Idempotently ensure the labels we file with exist (gh issue create fails on an
+// unknown label). Safe to call repeatedly; errors (e.g. already exists) are ignored.
+function ensureLabels(labels) {
+  const colors = { "visual-drift": "d73a4a", "auto-triage": "0e8a16", "severity:critical": "b60205", "severity:high": "e99695", "severity:medium": "fbca04", "severity:low": "c2e0c6" };
+  for (const name of [...new Set(labels)]) {
+    try {
+      execFileSync("gh", ["label", "create", name, "--repo", opts.repo, "--force",
+        "--color", colors[name] || "ededed"], { encoding: "utf8", stdio: "ignore" });
+    } catch { /* already exists or no perms — issue create will surface a real problem */ }
+  }
+}
+
 function fileIssue(c) {
   const title = issueTitle(c);
   const body = issueBody(c);
@@ -159,6 +171,9 @@ function main() {
   const toFile = reportable.slice(0, opts.cap);
   const overflow = reportable.slice(opts.cap);
 
+  if (opts.live && toFile.length) {
+    ensureLabels(toFile.flatMap((c) => ["visual-drift", "auto-triage", severityLabel(c.severity)]));
+  }
   const filed = toFile.map(fileIssue);
 
   const report = {
