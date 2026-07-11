@@ -102,12 +102,19 @@ OUTPUT_APP="$OUTPUT_DIR/raft-ohos-${EXPECTED_VERSION_NAME}-${EXPECTED_VERSION_CO
 cp "$APP_FILE" "$OUTPUT_APP"
 cp "$PACK_INFO" "$OUTPUT_DIR/pack.info"
 
+for hap in "${HAPS[@]}"; do
+  raw_module_name="$(basename "$hap" .hap)"
+  module_name="$(printf '%s' "$raw_module_name" | tr -c 'A-Za-z0-9._-' '-')"
+  cp "$hap" "$OUTPUT_DIR/raft-ohos-${module_name}-${EXPECTED_VERSION_NAME}-${EXPECTED_VERSION_CODE}.hap"
+done
+
 APP_SHA256="$(shasum -a 256 "$OUTPUT_APP" | awk '{print $1}')"
 APP_SIZE="$(wc -c < "$OUTPUT_APP" | tr -d '[:space:]')"
 HAP_COUNT="${#HAPS[@]}"
 
 node - \
   "$OUTPUT_DIR/ohos-release-metadata.json" \
+  "$OUTPUT_DIR" \
   "$EXPECTED_BUNDLE" \
   "$EXPECTED_VERSION_NAME" \
   "$EXPECTED_VERSION_CODE" \
@@ -117,9 +124,12 @@ node - \
   "$APP_SIZE" \
   "$HAP_COUNT" <<'NODE'
 const fs = require("node:fs");
+const crypto = require("node:crypto");
+const path = require("node:path");
 
 const [
   output,
+  outputDir,
   bundleName,
   versionName,
   versionCode,
@@ -129,6 +139,17 @@ const [
   appSize,
   signedHapCount,
 ] = process.argv.slice(2);
+const hapFiles = fs.readdirSync(outputDir)
+  .filter((name) => name.endsWith(".hap"))
+  .sort()
+  .map((name) => {
+    const bytes = fs.readFileSync(path.join(outputDir, name));
+    return {
+      file: name,
+      sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+      size: bytes.length,
+    };
+  });
 const metadata = {
   platform: "ohos",
   bundle_name: bundleName,
@@ -139,6 +160,7 @@ const metadata = {
   app_sha256: appSha256,
   app_size: Number(appSize),
   signed_hap_count: Number(signedHapCount),
+  hap_files: hapFiles,
   generated_at: new Date().toISOString(),
 };
 fs.writeFileSync(output, `${JSON.stringify(metadata, null, 2)}\n`);
@@ -148,3 +170,4 @@ printf 'app_path=%s\n' "$OUTPUT_APP"
 printf 'app_sha256=%s\n' "$APP_SHA256"
 printf 'app_size=%s\n' "$APP_SIZE"
 printf 'signed_hap_count=%s\n' "$HAP_COUNT"
+printf 'hap_path=%s\n' "$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name '*.hap' -print -quit)"
