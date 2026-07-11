@@ -145,6 +145,7 @@ import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.data.SharedHomeNotification
 import build.raft.app.data.SharedHomeNotificationIcon
 import build.raft.app.data.SharedHomeNotificationKind
+import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
 import build.raft.app.data.SharedHomeShellDestinationActivity
 import build.raft.app.data.SharedHomeShellDestinationSaved
 import build.raft.app.data.SharedHomeShellDestinationSearch
@@ -12884,10 +12885,7 @@ private fun SharedHomeScreen(
                         "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
                 )
             }
-            val notificationItems =
-                remember(state.notifications) {
-                    state.notifications.map { it.toHomeNotificationItem() }
-                }
+            val notificationItems = state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -13596,12 +13594,16 @@ private fun SharedCreateChannelMemberRow(
 private val MemberProfile.memberSelectionKey: String
     get() = "${kind.name}:${id.value}"
 
+@Composable
 private fun SharedHomeNotification.toHomeNotificationItem(): SlockHomeNotificationItem =
     SlockHomeNotificationItem(
         id = id,
-        title = title,
-        body = body,
-        actionLabel = actionLabel,
+        title = titleDesc?.localized() ?: title,
+        body = bodyDesc?.localized() ?: body,
+        actionLabel = actionLabelDesc?.localized() ?: actionLabel,
+        primaryActionActive =
+            id == APP_UPDATE_HOME_NOTIFICATION_ID &&
+                actionLabel.trim().lowercase() in setOf("downloading", "install"),
         targetId = targetId,
         kind =
             when (kind) {

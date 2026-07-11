@@ -20,6 +20,10 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
+import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -243,6 +247,9 @@ data class SharedHomeNotification(
     val title: String,
     val body: String,
     val actionLabel: String = "View",
+    val titleDesc: StringDesc? = null,
+    val bodyDesc: StringDesc? = null,
+    val actionLabelDesc: StringDesc? = null,
     val targetId: String? = null,
     val kind: SharedHomeNotificationKind = SharedHomeNotificationKind.Info,
     val icon: SharedHomeNotificationIcon = SharedHomeNotificationIcon.Default
@@ -283,11 +290,21 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
             .takeIf { it.isNotBlank() }
             ?.let { "$it ($latestVersionCode)" }
             ?: "version code $latestVersionCode"
+    val localizedCurrentVersion =
+        currentVersionLabel.ifBlank { currentVersionCode.takeIf { it > 0L }?.toString() ?: "—" }
+    val localizedLatestVersion =
+        latestVersionLabel
+            .takeIf { it.isNotBlank() }
+            ?.let { "$it ($latestVersionCode)" }
+            ?: latestVersionCode.toString()
     return SharedHomeNotification(
         id = APP_UPDATE_HOME_NOTIFICATION_ID,
         title = "App update available",
         body = "Current version $currentVersion. Latest version $latestVersion.",
         actionLabel = appUpdateNotificationActionLabel(),
+        titleDesc = MR.strings.home_notification_app_update_title.desc(),
+        bodyDesc = MR.strings.home_notification_app_update_body.format(listOf(localizedCurrentVersion, localizedLatestVersion)),
+        actionLabelDesc = appUpdateNotificationActionDesc(),
         targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
         kind = SharedHomeNotificationKind.Info,
         icon = SharedHomeNotificationIcon.CircleArrowUp
@@ -301,6 +318,16 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel()
             "install" -> "Install"
             else -> "Download"
         }
+
+private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc(): StringDesc? =
+    (actionLabel.ifBlank { statusLabel }).trim().lowercase().let { action ->
+        when (action) {
+            "downloading" -> MR.strings.home_notification_action_downloading.desc()
+            "install" -> MR.strings.home_notification_action_install.desc()
+            "download", "" -> MR.strings.home_notification_action_download.desc()
+            else -> null
+        }
+    }
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
     val notifications = mutableListOf<SharedHomeNotification>()
@@ -320,6 +347,19 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedH
             title = "$names $verb",
             body = body,
             actionLabel = "View",
+            titleDesc =
+                if (offlineMachines.size == 1) {
+                    MR.strings.home_notification_machine_offline_title_one.format(listOf(names))
+                } else {
+                    MR.strings.home_notification_machine_offline_title_many.format(listOf(names))
+                },
+            bodyDesc =
+                if (offlineMachines.size == 1) {
+                    MR.strings.home_notification_machine_offline_body_one.desc()
+                } else {
+                    MR.strings.home_notification_machine_offline_body_many.desc()
+                },
+            actionLabelDesc = MR.strings.home_action_view.desc(),
             targetId = offlineMachines.first().id,
             kind = SharedHomeNotificationKind.Warning,
             icon = SharedHomeNotificationIcon.WifiOff
@@ -338,6 +378,14 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedH
             title = "$names $verb",
             body = "Stop the daemon and reconnect to update.",
             actionLabel = "View",
+            titleDesc =
+                if (outdatedMachines.size == 1) {
+                    MR.strings.home_notification_machine_outdated_title_one.format(listOf(names))
+                } else {
+                    MR.strings.home_notification_machine_outdated_title_many.format(listOf(names))
+                },
+            bodyDesc = MR.strings.home_notification_machine_outdated_body.desc(),
+            actionLabelDesc = MR.strings.home_action_view.desc(),
             targetId = outdatedMachines.first().id,
             kind = SharedHomeNotificationKind.Warning,
             icon = SharedHomeNotificationIcon.CircleArrowUp

@@ -74,6 +74,21 @@ class KmmResourceI18nTest {
     @Test
     fun homeShellStringResourcesAreGenerated() {
         val homeResources = listOf(
+            MR.strings.home_notification_center_title,
+            MR.strings.home_notification_center_item_count_one,
+            MR.strings.home_notification_center_item_count_many,
+            MR.strings.home_notification_app_update_title,
+            MR.strings.home_notification_app_update_body,
+            MR.strings.home_notification_action_download,
+            MR.strings.home_notification_action_downloading,
+            MR.strings.home_notification_action_install,
+            MR.strings.home_notification_machine_offline_title_one,
+            MR.strings.home_notification_machine_offline_title_many,
+            MR.strings.home_notification_machine_offline_body_one,
+            MR.strings.home_notification_machine_offline_body_many,
+            MR.strings.home_notification_machine_outdated_title_one,
+            MR.strings.home_notification_machine_outdated_title_many,
+            MR.strings.home_notification_machine_outdated_body,
             MR.strings.home_nav_search,
             MR.strings.home_nav_activity,
             MR.strings.home_nav_followed_threads,
