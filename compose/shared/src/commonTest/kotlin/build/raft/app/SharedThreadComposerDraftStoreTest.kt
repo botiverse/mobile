@@ -15,6 +15,130 @@ import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
     @Test
+    fun rapidChangesUpdateStateImmediatelyAndPersistOnlyLatestDraft() {
+        val storage = CountingSharedPreferenceStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val persistSlice =
+            SharedThreadComposerDraftPersistSlice(
+                persistence = persistence,
+                scheduler = scheduler,
+                changeDebounceMillis = 250L
+            )
+        val draftKey = "send=channel-rapid|parent=_|mention=channel-rapid"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-rapid"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "a"))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "ab"))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "abc"))
+
+        assertEquals("abc", store.state.value.seedText)
+        assertEquals(null, persistence.read(draftKey))
+        assertEquals(0, storage.writeCount)
+        assertTrue(persistSlice.activeDraftRecordsState.value.any { it.key == draftKey })
+
+        scheduler.runPending()
+
+        assertEquals("abc", persistence.read(draftKey)?.text)
+        assertEquals(4, storage.writeCount)
+        assertEquals(1, scheduler.executedTaskCount)
+    }
+
+    @Test
+    fun flushPersistsPendingDraftBeforeDebounceDeadline() {
+        val storage = CountingSharedPreferenceStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        val draftKey = "send=channel-blur|parent=_|mention=channel-blur"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-blur"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "persist on blur"))
+        store.dispatch(SharedThreadComposerDraftIntent.Flush)
+
+        assertEquals("persist on blur", persistence.read(draftKey)?.text)
+        assertEquals(4, storage.writeCount)
+
+        scheduler.runPending()
+
+        assertEquals(4, storage.writeCount)
+        assertEquals(0, scheduler.executedTaskCount)
+    }
+
+    @Test
+    fun completedSendCancelsDelayedWriteWithoutResurrectingDraft() {
+        val storage = CountingSharedPreferenceStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        val draftKey = "send=channel-send|parent=_|mention=channel-send"
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-send"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "latest message"))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+
+        assertEquals("latest message", persistence.read(draftKey)?.text)
+
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        scheduler.runIncludingCancelled()
+
+        assertEquals(null, persistence.read(draftKey))
+        assertFalse(persistSlice.activeDraftRecordsState.value.any { it.key == draftKey })
+        assertEquals(1, scheduler.executedTaskCount)
+    }
+
+    @Test
+    fun differentDraftKeysDebounceIndependently() {
+        val storage = CountingSharedPreferenceStore()
+        val persistence = SharedThreadComposerDraftPersistence(storage)
+        val scheduler = FakeThreadComposerDraftPersistenceScheduler()
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence, scheduler = scheduler)
+        val firstKey = "send=channel-one|parent=_|mention=channel-one"
+        val secondKey = "send=channel-two|parent=_|mention=channel-two"
+        val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-one"),
+                draftKey = firstKey
+            )
+        )
+        firstStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "first"))
+        secondStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-two"),
+                draftKey = secondKey
+            )
+        )
+        secondStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "second"))
+
+        scheduler.runPending()
+
+        assertEquals("first", persistence.read(firstKey)?.text)
+        assertEquals("second", persistence.read(secondKey)?.text)
+        assertEquals(2, scheduler.executedTaskCount)
+    }
+
+    @Test
     fun persistedDraftRestoresByComposerKey() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
@@ -1152,5 +1276,63 @@ class SharedThreadComposerDraftStoreTest {
 
         assertEquals(listOf(pending), store.state.value.pendingMentionActions)
         assertEquals(null, store.state.value.mentionActionNotice)
+    }
+}
+
+private class CountingSharedPreferenceStore : build.raft.app.data.SharedPreferenceStore {
+    private val values = mutableMapOf<String, String>()
+    var writeCount: Int = 0
+        private set
+
+    override fun getString(key: String): String? = values[key]
+
+    override fun putString(key: String, value: String?) {
+        writeCount += 1
+        if (value == null) {
+            values.remove(key)
+        } else {
+            values[key] = value
+        }
+    }
+}
+
+private class FakeThreadComposerDraftPersistenceScheduler : SharedThreadComposerDraftPersistenceScheduler {
+    private data class ScheduledTask(
+        val block: () -> Unit,
+        var cancelled: Boolean = false
+    )
+
+    private val tasks = mutableListOf<ScheduledTask>()
+    var executedTaskCount: Int = 0
+        private set
+
+    override fun schedule(
+        delayMillis: Long,
+        block: () -> Unit
+    ): SharedThreadComposerDraftPersistenceCancellation {
+        val task = ScheduledTask(block = block)
+        tasks += task
+        return SharedThreadComposerDraftPersistenceCancellation {
+            task.cancelled = true
+        }
+    }
+
+    fun runPending() {
+        runScheduledTasks(includeCancelled = false)
+    }
+
+    fun runIncludingCancelled() {
+        runScheduledTasks(includeCancelled = true)
+    }
+
+    private fun runScheduledTasks(includeCancelled: Boolean) {
+        val pending = tasks.toList()
+        tasks.clear()
+        pending.forEach { task ->
+            if (includeCancelled || !task.cancelled) {
+                executedTaskCount += 1
+                task.block()
+            }
+        }
     }
 }
