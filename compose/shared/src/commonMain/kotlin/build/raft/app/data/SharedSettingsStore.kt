@@ -857,7 +857,7 @@ class SharedSettingsDataSource(
         // one-way set: the source of truth for the user's preference remains
         // the `LocaleRepository`; the resource global just consumes it.
         StringDesc.localeType = locale.stringDescLocaleType
-        return loadMobile()
+        return loadMobilePreferences()
     }
 
     suspend fun setMessageAlignment(alignmentKey: String): DataResult<SettingsMobileSnapshot> {
@@ -1967,8 +1967,10 @@ class SharedSettingsStore(
                 dataSource.loadConnectedApps().applyToState(destination) { copy(connectedApps = it) }
             SharedSettingsDestination.Billing ->
                 dataSource.loadBilling().applyToState(destination) { copy(billing = it) }
-            SharedSettingsDestination.LanguageRegion ->
+            SharedSettingsDestination.LanguageRegion -> {
+                dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
                 dataSource.loadLanguageRegion().applyToState(destination) { copy(languageRegion = it) }
+            }
             SharedSettingsDestination.Appearance ->
                 dataSource.loadAppearance().applyToState(destination) { copy(appearance = it) }
             SharedSettingsDestination.Notifications ->

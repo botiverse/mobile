@@ -327,6 +327,7 @@ class SharedSettingsStoreTest {
             FakeSettingsRepository(
                 languageRegionResult = DataResult.Content(languageRegionSnapshot())
             )
+        val localeRepository = FakeLocaleRepository(current = AppLocale.SimplifiedChinese)
         val chatLayoutRepository = FakeChatLayoutPreferenceRepository(translationMode = TranslationModePreference.Manual)
         val store =
             SharedSettingsStore(
@@ -334,6 +335,7 @@ class SharedSettingsStoreTest {
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                         settingsRepository = repository,
+                        localeRepository = localeRepository,
                         chatLayoutPreferenceRepository = chatLayoutRepository
                     ),
                 scope = scope
@@ -341,9 +343,12 @@ class SharedSettingsStoreTest {
 
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion))
         val loaded = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
+        val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals("Asia/Shanghai", loaded.timezone.selectedKey)
         assertEquals("manual", loaded.translationDisplay.selectedKey)
+        assertEquals("zh-Hans", mobile.localePreference.selectedKey)
 
+        store.accept(SharedSettingsIntent.SetLocale("en"))
         store.accept(
             SharedSettingsIntent.UpdateLanguageRegionPreference(
                 SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = "Asia/Tokyo")
@@ -358,6 +363,11 @@ class SharedSettingsStoreTest {
         assertTrue(updated.translationDisplay.available)
         assertEquals(TranslationModePreference.Original, chatLayoutRepository.translationMode)
         assertEquals(false, updated.serverTranslation.enabled)
+        assertEquals(AppLocale.English, localeRepository.current)
+        assertEquals(
+            "en",
+            assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data.localePreference.selectedKey
+        )
         assertEquals(
             listOf(
                 "languageRegion",
