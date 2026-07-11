@@ -116,7 +116,17 @@ class KmmResourceI18nTest {
             MR.strings.member_section_activity_diagnostics,
             MR.strings.member_action_save_permissions,
             MR.strings.member_hint_permissions_notifications,
-            MR.strings.member_hint_permissions_cli
+            MR.strings.member_hint_permissions_cli,
+            MR.strings.member_dialog_change_avatar,
+            MR.strings.member_dialog_edit_runtime_config,
+            MR.strings.member_hint_chat_audit_only,
+            MR.strings.member_hint_no_scheduled_reminders,
+            MR.strings.member_hint_connected_apps,
+            MR.strings.member_error_workspace_load,
+            MR.strings.member_error_apps_load,
+            MR.strings.member_error_permissions_load,
+            MR.strings.member_permission_channels,
+            MR.strings.member_permission_message_send_hint
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,
@@ -126,7 +136,10 @@ class KmmResourceI18nTest {
 
         listOf(
             MR.strings.member_dialog_restart_title,
-            MR.strings.member_section_skills_count
+            MR.strings.member_section_skills_count,
+            MR.strings.member_error_tab_order_save_detail,
+            MR.strings.member_label_connected_since,
+            MR.strings.member_label_revision
         ).forEach { resource ->
             assertTrue(
                 resource.format(listOf("Agent")) is ResourceFormattedStringDesc,
