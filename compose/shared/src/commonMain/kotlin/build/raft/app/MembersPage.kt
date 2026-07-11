@@ -3609,7 +3609,6 @@ private fun MembersDetailContent(
                     stateNotice = {
                         MembersAgentDetailStateNotice(
                             state = agentDetailState,
-                            canViewPrivate = canViewPrivate,
                             modifier = Modifier.padding(
                                 start = MembersPageInset,
                                 top = SlockSpacing.Xs,
@@ -3635,7 +3634,6 @@ private fun MembersDetailContent(
                             item {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
-                                    canViewPrivate = canViewPrivate,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
                                 )
                             }
@@ -4815,7 +4813,6 @@ private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDet
 @Composable
 private fun MembersAgentDetailStateNotice(
     state: MembersAgentDetailLoadState,
-    canViewPrivate: Boolean,
     modifier: Modifier = Modifier
 ) {
     val message =
@@ -4828,13 +4825,7 @@ private fun MembersAgentDetailStateNotice(
             is MembersAgentDetailLoadState.Content ->
                 if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
         }
-    val privateMessage =
-        if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
-            stringResource(MR.strings.member_state_private_hidden)
-        } else {
-            null
-        }
-    val resolved = message ?: privateMessage ?: return
+    val resolved = message ?: return
     Box(
         modifier = modifier
             .fillMaxWidth()

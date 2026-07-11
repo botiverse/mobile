@@ -596,7 +596,6 @@
     <string name="member_state_profile_refreshing">Refreshing agent profile...</string>
     <string name="member_error_profile_load">Could not load agent profile: %1$s</string>
     <string name="member_error_profile_private_hidden">Private agent surfaces are hidden: %1$s</string>
-    <string name="member_state_private_hidden">Profile is public. Activity, Chat, Reminders, Workspace, and Apps are hidden for this account.</string>
     <string name="member_state_workspace_loading">Loading workspace files...</string>
     <string name="member_state_workspace_loading_short">Loading</string>
     <string name="member_state_activity_start_agent">Start the agent to see its activity log.</string>

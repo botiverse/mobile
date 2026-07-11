@@ -594,7 +594,6 @@
     <string name="member_state_profile_refreshing">正在刷新智能体资料...</string>
     <string name="member_error_profile_load">无法加载智能体资料：%1$s</string>
     <string name="member_error_profile_private_hidden">该智能体的私有界面已隐藏：%1$s</string>
-    <string name="member_state_private_hidden">资料为公开状态。此账户无法查看活动、聊天、提醒、工作区和应用。</string>
     <string name="member_state_workspace_loading">正在加载工作区文件...</string>
     <string name="member_state_workspace_loading_short">正在加载</string>
     <string name="member_state_activity_start_agent">启动智能体后可查看其活动日志。</string>
