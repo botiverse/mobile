@@ -1808,6 +1808,7 @@ private fun ThreadPageScreen() {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                selectedServerStore = sharedStores.selectedServerStore(storeScope),
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
                 conversationRepository =

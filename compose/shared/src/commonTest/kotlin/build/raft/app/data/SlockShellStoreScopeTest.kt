@@ -13,6 +13,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,6 +23,21 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockShellStoreScopeTest {
+    @Test
+    fun selectedServerStoreOwnsSelectionWhenPersistedSessionDefaultLags() = runBlocking {
+        val store = SelectedServerStore(SlockShellStoreScope.create("shell-selection", "server-1"))
+        val staleSession = session().copy(selectedServerId = "server-1", selectedServerSlug = "one")
+
+        store.reconcile(staleSession)
+        store.select("server-2", "two")
+        val reconciled = store.reconcile(staleSession)
+
+        assertTrue(store.isSelected("server-2"))
+        assertEquals("server-2", store.selectedServerId.value)
+        assertEquals("server-2", reconciled.serverId)
+        assertEquals("two", reconciled.serverSlug)
+    }
+
     @Test
     fun cacheKeysByStableShellIdentityWhileInitialServerRemainsBootstrapData() {
         val cache = SlockShellScopedStoreCache<Any>()
@@ -83,8 +99,8 @@ class SlockShellStoreScopeTest {
     @Test
     fun shellSelectionsStayIndependentWhileProcessStoreTracksLastUsed() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(session())
-        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeA = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val shellA = SlockShellAuthSessionStore(processStore, runtimeA)
         val shellB = SlockShellAuthSessionStore(processStore, runtimeB)
 
@@ -103,7 +119,7 @@ class SlockShellStoreScopeTest {
     @Test
     fun tokenRefreshDoesNotOverwriteAnotherShellsLastUsedServer() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(session())
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val shellB = SlockShellAuthSessionStore(processStore, runtimeB)
         processStore.updateSelectedServer("server-3", "three")
 
@@ -121,7 +137,7 @@ class SlockShellStoreScopeTest {
             InMemorySlockAuthSessionStore(
                 session().copy(selectedServerId = null, selectedServerSlug = null)
             )
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val shellB = SlockShellAuthSessionStore(processStore, runtimeB)
 
         val refreshedForShellB = shellB.readSession()!!.copy(accessToken = "access-next")
@@ -138,7 +154,7 @@ class SlockShellStoreScopeTest {
         val shellStore =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         processStore.updateSelectedServer("server-3", "three")
 
@@ -162,7 +178,7 @@ class SlockShellStoreScopeTest {
         val shellStore =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         processStore.updateSelectedServer("server-3", "three")
 
@@ -184,7 +200,7 @@ class SlockShellStoreScopeTest {
         val shellStore =
             SlockShellAuthSessionStore(
                 racingStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         racingStore.rotateAfterNextRead = true
 
@@ -200,7 +216,7 @@ class SlockShellStoreScopeTest {
         val shellStore =
             SlockShellAuthSessionStore(
                 racingStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         val replacement = shellStore.readSession()!!.copy(accessToken = "replacement-access")
         racingStore.selectBeforeNextReplace = true
@@ -215,8 +231,8 @@ class SlockShellStoreScopeTest {
     @Test
     fun realInboxRepositoriesRouteRequestsThroughTheirShellSelections() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(session())
-        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeA = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val shellA = SlockShellAuthSessionStore(processStore, runtimeA)
         val shellB = SlockShellAuthSessionStore(processStore, runtimeB)
         val networkA = ShellRecordingNetworkClient(shellA)
@@ -241,12 +257,12 @@ class SlockShellStoreScopeTest {
         val shellA =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
             )
         val shellB =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         val networkA = MemberStoreRecordingNetworkClient(shellA)
         val membersStore =
@@ -285,12 +301,12 @@ class SlockShellStoreScopeTest {
     @Test
     fun processClearFansOutServerLossWithoutDisposingShellIdentity() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(session())
-        val runtimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
+        val runtimes = SlockShellScopedStoreCache<SelectedServerStore>()
         val runtimeA = runtimes.getOrPut(SlockShellStoreScope.create("shell-a", "server-1")) {
-            SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+            SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
         }
         val runtimeB = runtimes.getOrPut(SlockShellStoreScope.create("shell-b", "server-2")) {
-            SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         }
         SlockShellAuthSessionStore(processStore, runtimeA).readSession()
         SlockShellAuthSessionStore(processStore, runtimeB).readSession()
@@ -314,8 +330,46 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun processClearLetsSameUserLoginRestoreTheNewPersistedDefault() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val selectedServerStore = SelectedServerStore(SlockShellStoreScope.create("shell-unselected"))
+        val shellStore = SlockShellAuthSessionStore(processStore, selectedServerStore)
+
+        assertEquals("server-1", shellStore.readSession()?.selectedServerId)
+
+        selectedServerStore.clearActiveSelection()
+        processStore.replaceAuthenticatedSession(
+            session().copy(selectedServerId = "server-3", selectedServerSlug = "three")
+        )
+
+        assertEquals("server-3", shellStore.readSession()?.selectedServerId)
+        assertTrue(selectedServerStore.isSelected("server-3"))
+    }
+
+    @Test
+    fun processClearSerializesWithConcurrentSessionReconcile() = runBlocking {
+        val mutationMutex = Mutex(locked = true)
+        val selectedServerStore =
+            SelectedServerStore(
+                scope = SlockShellStoreScope.create("shell-concurrent-clear"),
+                mutex = mutationMutex
+            )
+        val nextSession = session().copy(selectedServerId = "server-3", selectedServerSlug = "three")
+
+        val reconcile = async(start = CoroutineStart.UNDISPATCHED) { selectedServerStore.reconcile(nextSession) }
+        val clear = async(start = CoroutineStart.UNDISPATCHED) { selectedServerStore.clearActiveSelection() }
+        mutationMutex.unlock()
+
+        reconcile.await()
+        clear.await()
+
+        assertEquals(null, selectedServerStore.selectedServerId.value)
+        assertEquals("server-3", selectedServerStore.reconcile(nextSession).serverId)
+    }
+
+    @Test
     fun disposedRuntimeStopsMatchingActiveServer() {
-        val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtime = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
 
         assertEquals("server-1", runtime.currentServerId.value)
         assertFalse(runtime.disposed.value)
@@ -326,12 +380,12 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
-    fun shellWithoutExplicitOrPersistedSelectionKeepsServerRequiredState() = runBlocking {
+    fun explicitServerRequestDoesNotRequireASelectedServer() = runBlocking {
         val processStore =
             InMemorySlockAuthSessionStore(
                 session().copy(selectedServerId = null, selectedServerSlug = null)
             )
-        val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-unselected"))
+        val runtime = SelectedServerStore(SlockShellStoreScope.create("shell-unselected"))
         val shellStore = SlockShellAuthSessionStore(processStore, runtime)
 
         val session = shellStore.readSession()
@@ -342,8 +396,8 @@ class SlockShellStoreScopeTest {
 
         val network = ShellRecordingNetworkClient(shellStore)
         val result = RealInboxRepository(shellStore, network).loadInitial(ServerId("server-1"))
-        assertTrue(result is DataResult.NoPermission)
-        assertTrue(network.requestServerIds.isEmpty())
+        assertTrue(result is DataResult.Empty)
+        assertEquals(listOf("server-1"), network.requestServerIds)
     }
 
     private class ShellRecordingNetworkClient(

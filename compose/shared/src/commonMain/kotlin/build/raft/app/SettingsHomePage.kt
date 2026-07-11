@@ -2014,18 +2014,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val shellRuntime = remember(sharedStores, storeScope) { sharedStores.shellRuntime(storeScope) }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val appShellServerMembersStore =
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val appShellRealtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
     val appShellAgentDetailStore =
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
-    val runtimeServerId by shellRuntime.currentServerId.collectAsState()
-    val navigationStoreScope = remember(storeScope.shellInstanceId, runtimeServerId) {
+    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
+    val navigationStoreScope = remember(storeScope.shellInstanceId, selectedServerId) {
         SlockShellStoreScope.create(
             shellInstanceId = storeScope.shellInstanceId,
-            initialServerId = runtimeServerId ?: storeScope.initialServerId
+            initialServerId = selectedServerId ?: storeScope.initialServerId
         )
     }
     val authDataSource = remember(sharedStores, storeScope) {
@@ -2255,6 +2255,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
+                selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
@@ -2460,7 +2461,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val settingsState by settingsViewModel.state.collectAsState()
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-    val readyServerId = readySession?.currentServerId
+    val readyServerId = selectedServerId
     val renderedHomeServerId =
         (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val latestReadySession by rememberUpdatedState(readySession)
@@ -2486,7 +2487,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
-    LaunchedEffect(announcementsClient, readySession?.currentServerId) {
+    LaunchedEffect(announcementsClient, readyServerId) {
         if (readySession == null) {
             activeAnnouncement = null
             return@LaunchedEffect
@@ -3353,14 +3354,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
                     return
                 }
-        val currentServerId =
-            currentSession.currentServerId
-                ?: run {
-                    bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    return
-                }
-        if (currentServerId != requestedServerId) {
-            bridge.log("shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId currentServerId=$currentServerId")
+        val currentServerId = selectedServerStore.selectedServerId.value
+        if (!selectedServerStore.isSelected(requestedServerId)) {
+            bridge.log(
+                "shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId " +
+                    "currentServerId=${currentServerId.orEmpty()}"
+            )
             bridge.realtimeAuthRefreshFinished(reason, success = false)
             return
         }
@@ -3368,8 +3367,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             when (val result = authDataSource.refreshRealtimeAuth(reason)) {
                 is SharedAuthResult.Success -> {
                     val refreshed = result.data
-                    val refreshedServerId = refreshed.currentServerId
-                    if (refreshedServerId != requestedServerId || refreshed.accessToken.isBlank()) {
+                    val refreshedServerId = selectedServerStore.selectedServerId.value
+                    if (!selectedServerStore.isSelected(requestedServerId) || refreshed.accessToken.isBlank()) {
                         bridge.log("shared_realtime_auth_refresh_skip reason=$reason result=server_mismatch")
                         bridge.realtimeAuthRefreshFinished(reason, success = false)
                         return@launch
@@ -3378,7 +3377,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
                     appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
                     bridge.realtimeConnect(
-                        serverId = refreshedServerId,
+                        serverId = refreshedServerId.orEmpty(),
                         accessToken = refreshed.accessToken,
                         shellInstanceId = storeScope.shellInstanceId,
                         lastSeq = realtimeLastSeq,
@@ -3522,17 +3521,17 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             slockLogger("SlockRealtimeDecode")
                         ) ?: return@launch
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
-                    val activeSession = latestReadySession
-                    if (!shouldRouteRealtimeEventToShell(activeSession?.currentServerId, serverId)) {
+                    val activeSelectedServerId = selectedServerStore.selectedServerId.value
+                    if (!shouldRouteRealtimeEventToShell(activeSelectedServerId, serverId)) {
                         bridge.log(
                             "shared_realtime_event_skip reason=server_mismatch " +
-                                "eventServerId=$serverId shellServerId=${activeSession?.currentServerId.orEmpty()}"
+                                "eventServerId=$serverId shellServerId=${activeSelectedServerId.orEmpty()}"
                         )
                         return@launch
                     }
                     if (
                         event is ServerMembershipRemoved &&
-                        event.serverId.value == activeSession?.currentServerId
+                        selectedServerStore.isSelected(event.serverId.value)
                     ) {
                         slockLogWarn(
                             "SlockRealtimeDomain",
@@ -3553,7 +3552,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     if (
                         event is ServerDeleted &&
-                        event.serverId.value == activeSession?.currentServerId
+                        selectedServerStore.isSelected(event.serverId.value)
                     ) {
                         slockLogWarn(
                             "SlockRealtimeDomain",
@@ -3592,7 +3591,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             val banner =
                                 slockNotificationPushBannerOrNull(
                                     event = event,
-                                    currentServerId = activeSession?.currentServerId,
+                                    currentServerId = activeSelectedServerId,
                                     visibleConversationKey =
                                         appShellVisibleForegroundConversationKey(
                                             selectedTab = latestSelectedTab,
@@ -16704,11 +16703,12 @@ internal data class AppShellNotificationThreadLaunchRequest(
 
 internal fun notificationLaunchHomeContentReady(
     content: SharedHomeContentState.Content?,
-    targetServerId: String?
+    targetServerId: String?,
+    selectedServerId: String?
 ): Boolean {
     val target = targetServerId?.trim().takeIf { !it.isNullOrBlank() } ?: return false
     val readyContent = content ?: return false
-    return readyContent.snapshot.server.id.value == target && readyContent.session.currentServerId == target
+    return readyContent.snapshot.server.id.value == target && selectedServerId == target
 }
 
 private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotificationThreadLaunchRequest? {
@@ -16819,8 +16819,7 @@ internal fun appShellSessionIdentityChanged(
     cachedSession: StoredAuthSession?,
     currentSession: StoredAuthSession?
 ): Boolean =
-    cachedSession?.user?.id != currentSession?.user?.id ||
-        cachedSession?.currentServerId != currentSession?.currentServerId
+    cachedSession?.user?.id != currentSession?.user?.id
 
 internal fun appShellSessionChangeRestoreIntent(identityChanged: Boolean): SharedAuthGateIntent =
     if (identityChanged) SharedAuthGateIntent.Restore else SharedAuthGateIntent.RefreshSilently

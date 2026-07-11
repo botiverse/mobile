@@ -189,8 +189,8 @@ class SharedHomeStoreTest {
     @Test
     fun shellScopedHomeStoresKeepRuntimeServerSelectionsIndependent() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(sampleSession())
-        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeA = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val authA = SlockShellAuthSessionStore(processStore, runtimeA)
         val authB = SlockShellAuthSessionStore(processStore, runtimeB)
         val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

@@ -32,6 +32,7 @@ class AgentIssueReportRepositoryTest {
         val repository =
             AgentIssueReportRepository(
                 sessionStore = InMemorySlockAuthSessionStore(session),
+                selectedServerStore = selectedServerStore(),
                 networkClient = network,
                 sha256Hex = { bundle ->
                     hashedBundle = bundle
@@ -140,6 +141,7 @@ class AgentIssueReportRepositoryTest {
         val repository =
             AgentIssueReportRepository(
                 sessionStore = InMemorySlockAuthSessionStore(session),
+                selectedServerStore = selectedServerStore(),
                 networkClient = network,
                 sha256Hex = { "a".repeat(64) }
             )
@@ -161,6 +163,9 @@ class AgentIssueReportRepositoryTest {
         assertEquals("agent_issue_report_server_mismatch", error.error.code)
         assertTrue(network.calls.isEmpty())
     }
+
+    private fun selectedServerStore(): SelectedServerStore =
+        SelectedServerStore(SlockShellStoreScope.create("agent-issue-test", serverId.value))
 }
 
 private class RecordingAgentIssueNetworkClient : SlockNetworkClient {

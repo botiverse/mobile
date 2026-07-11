@@ -247,4 +247,3 @@ private fun JsonObject.strictLong(key: String): Long? =
 
 private fun JsonObject.strictInt(key: String): Int? =
     (this[key] as? JsonPrimitive)?.takeUnless(JsonPrimitive::isString)?.intOrNull
-

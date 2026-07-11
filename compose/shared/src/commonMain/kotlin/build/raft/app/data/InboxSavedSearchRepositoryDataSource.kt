@@ -18,7 +18,8 @@ private suspend fun SlockNetworkClient.inbox(
     priority: DataRequestPriority,
     filter: InboxFilter,
     limit: Int,
-    offset: Int
+    offset: Int,
+    serverId: ServerId
 ): HomeNetworkResponse =
     request(
         priority,
@@ -27,7 +28,8 @@ private suspend fun SlockNetworkClient.inbox(
             "filter" to filter.wireValue,
             "limit" to limit.toString(),
             "offset" to offset.toString()
-        )
+        ),
+        serverIdOverride = serverId
     )
 
 private suspend fun SlockNetworkClient.markInboxDone(
@@ -39,38 +41,44 @@ private suspend fun SlockNetworkClient.markInboxDone(
 private suspend fun SlockNetworkClient.saved(
     priority: DataRequestPriority,
     limit: Int,
-    offset: Int
+    offset: Int,
+    serverId: ServerId
 ): HomeNetworkResponse =
     request(
         priority,
         "channels/saved",
-        query = listOf("limit" to limit.toString(), "offset" to offset.toString())
+        query = listOf("limit" to limit.toString(), "offset" to offset.toString()),
+        serverIdOverride = serverId
     )
 
 private suspend fun SlockNetworkClient.saveMessage(
     priority: DataRequestPriority,
-    bodyText: String
+    bodyText: String,
+    serverId: ServerId
 ): HomeNetworkResponse =
-    request(priority, "channels/saved", method = "POST", bodyText = bodyText)
+    request(priority, "channels/saved", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.unsaveMessage(
     priority: DataRequestPriority,
-    messageId: MessageId
+    messageId: MessageId,
+    serverId: ServerId
 ): HomeNetworkResponse =
-    request(priority, "channels/saved/${messageId.value}", method = "DELETE")
+    request(priority, "channels/saved/${messageId.value}", method = "DELETE", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.checkSavedMessages(
     priority: DataRequestPriority,
-    bodyText: String
+    bodyText: String,
+    serverId: ServerId
 ): HomeNetworkResponse =
-    request(priority, "channels/saved/check", method = "POST", bodyText = bodyText)
+    request(priority, "channels/saved/check", method = "POST", bodyText = bodyText, serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.searchMessages(
     priority: DataRequestPriority,
     query: String,
     limit: Int,
     offset: Int,
-    options: SearchQueryOptions
+    options: SearchQueryOptions,
+    serverId: ServerId
 ): HomeNetworkResponse =
     request(
         priority,
@@ -92,7 +100,8 @@ private suspend fun SlockNetworkClient.searchMessages(
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .distinct()
-                .map { "senderId" to it }
+                .map { "senderId" to it },
+        serverIdOverride = serverId
     )
 
 class RealInboxRepository(
@@ -139,7 +148,7 @@ class RealInboxRepository(
         val context = sessionStore.serverContext(serverId) ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset) },
+            block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset, serverId) },
             emptyWhen = { it.items.isEmpty() },
             source = "inbox",
             mapOnDefault = false,
@@ -206,7 +215,8 @@ class RealSavedRepository(
             block = {
                 networkClient.checkSavedMessages(
                     DataRequestPriority.Visible,
-                    buildSharedSavedMessageCheckBody(normalizedIds)
+                    buildSharedSavedMessageCheckBody(normalizedIds),
+                    serverId
                 )
             },
             source = "saved_check",
@@ -230,10 +240,11 @@ class RealSavedRepository(
                 if (save) {
                     networkClient.saveMessage(
                         DataRequestPriority.Foreground,
-                        buildSharedSaveMessageBody(messageId)
+                        buildSharedSaveMessageBody(messageId),
+                        serverId
                     )
                 } else {
-                    networkClient.unsaveMessage(DataRequestPriority.Foreground, messageId)
+                    networkClient.unsaveMessage(DataRequestPriority.Foreground, messageId, serverId)
                 }
             },
             source = if (save) "saved_save_message" else "saved_unsave_message",
@@ -250,7 +261,7 @@ class RealSavedRepository(
         val context = sessionStore.serverContext(serverId) ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.saved(DataRequestPriority.Visible, limit, offset) },
+            block = { networkClient.saved(DataRequestPriority.Visible, limit, offset, serverId) },
             emptyWhen = { it.items.isEmpty() },
             source = "saved",
             warningLogger = warningLogger,
@@ -294,7 +305,8 @@ class RealSearchRepository(
                     trimmedQuery,
                     limit,
                     offset,
-                    options
+                    options,
+                    serverId
                 )
             },
             emptyWhen = { it.items.isEmpty() },
@@ -342,9 +354,8 @@ private data class InboxLikeServerContext(val server: ServerSummary)
 
 private suspend fun SlockAuthSessionStore.serverContext(serverId: ServerId): InboxLikeServerContext? {
     val session = readSession() ?: return null
-    val selectedId = session.currentServerId ?: return null
-    if (selectedId != serverId.value) return null
-    val server = session.servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val server = session.servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
     return InboxLikeServerContext(server)
 }
 
