@@ -170,6 +170,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -3576,17 +3577,19 @@ private fun MembersDetailContent(
                     }
                 }
             )
-            if (runtimeErrorText != null) {
+            val runtimeErrorBanner =
+                membersAgentRuntimeErrorBannerState(
+                    memberKind = member.kind,
+                    selectedTab = selectedTab,
+                    runtimeErrorText = runtimeErrorText
+                )
+            if (runtimeErrorBanner != null) {
                 MembersAgentRuntimeErrorBanner(
-                    errorText = runtimeErrorText,
+                    errorText = runtimeErrorBanner.errorText,
                     canViewPrivate = canViewPrivate,
+                    showViewLogs = runtimeErrorBanner.showViewLogs,
                     onViewLogs = { selectedTabOverride = MembersAgentDetailTab.Activity },
-                    onCopyInfo = { copyDiagnostics() },
-                    modifier = Modifier.padding(
-                        start = MembersPageInset,
-                        top = SlockSpacing.Sm,
-                        end = MembersPageInset
-                    )
+                    onCopyInfo = { copyDiagnostics() }
                 )
             }
             if (member.kind == MemberKind.Agent) {
@@ -4793,6 +4796,24 @@ private fun MembersAgentTabBar(
     }
 }
 
+internal data class MembersAgentRuntimeErrorBannerState(
+    val errorText: String,
+    val showViewLogs: Boolean
+)
+
+internal fun membersAgentRuntimeErrorBannerState(
+    memberKind: MemberKind,
+    selectedTab: MembersAgentDetailTab,
+    runtimeErrorText: String?
+): MembersAgentRuntimeErrorBannerState? {
+    if (memberKind != MemberKind.Agent) return null
+    val errorText = runtimeErrorText?.takeIf { it.isNotBlank() } ?: return null
+    return MembersAgentRuntimeErrorBannerState(
+        errorText = errorText,
+        showViewLogs = selectedTab != MembersAgentDetailTab.Activity
+    )
+}
+
 @Composable
 private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
     SlockTabSpec(
@@ -4848,6 +4869,7 @@ private fun MembersAgentDetailStateNotice(
 private fun MembersAgentRuntimeErrorBanner(
     errorText: String,
     canViewPrivate: Boolean,
+    showViewLogs: Boolean,
     onViewLogs: () -> Unit,
     onCopyInfo: () -> Unit,
     modifier: Modifier = Modifier
@@ -4855,15 +4877,12 @@ private fun MembersAgentRuntimeErrorBanner(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.AccentOrange)
-            .background(SlockColor.SurfaceCream)
-            .padding(SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = MembersPageInset, vertical = SlockSpacing.Sm),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             SlockStatusIndicator(
                 color = SlockColor.AccentOrange,
@@ -4879,35 +4898,41 @@ private fun MembersAgentRuntimeErrorBanner(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-        }
-        if (canViewPrivate) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.member_action_view_logs),
-                    leadingIcon = SlockLucideIconName.FileText,
-                    minWidth = 92.dp,
-                    minHeight = 30.dp,
-                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    shadowOffset = 2.dp,
-                    onClick = onViewLogs
-                )
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.member_action_copy_info),
-                    leadingIcon = SlockLucideIconName.Copy,
-                    minWidth = 92.dp,
-                    minHeight = 30.dp,
-                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    shadowOffset = 2.dp,
-                    onClick = onCopyInfo
-                )
+            if (canViewPrivate) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    MembersAgentRuntimeErrorAction(
+                        label = stringResource(MR.strings.member_action_copy_info),
+                        onClick = onCopyInfo
+                    )
+                    if (showViewLogs) {
+                        MembersAgentRuntimeErrorAction(
+                            label = stringResource(MR.strings.member_action_view_logs),
+                            onClick = onViewLogs
+                        )
+                    }
+                }
             }
         }
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
+}
+
+@Composable
+private fun MembersAgentRuntimeErrorAction(
+    label: String,
+    onClick: () -> Unit
+) {
+    Text(
+        text = label,
+        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+            .withSlockFontWeight(FontWeight.Bold)
+            .copy(textDecoration = TextDecoration.Underline),
+        color = SlockColor.TextBlack.copy(alpha = 0.6f),
+        modifier = Modifier.clickable(onClick = onClick)
+    )
 }
 
 @Composable
