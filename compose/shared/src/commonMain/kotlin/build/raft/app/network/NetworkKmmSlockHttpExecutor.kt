@@ -33,6 +33,16 @@ private const val SLOCK_REQUEST_TIMEOUT_MILLIS = 30_000L
 @Volatile
 private var networkKmmInitialized = false
 
+/**
+ * Installs the platform's curl runtime configuration (app-owned CA bundle +
+ * explicit proxy decision) before a request is built (task #252). Only the
+ * OHOS transport runs on libcurl — Android/iOS use the library's pooled ktor
+ * engines — so those actuals are no-ops. The OHOS actual is idempotent and
+ * cheap once configured; on failure it retries on the next request and logs
+ * a structured reason, while NetworkKMM itself keeps failing closed.
+ */
+internal expect fun ensurePlatformCurlRuntimeInstalled(warningLogger: (String) -> Unit): Boolean
+
 internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
     if (networkKmmInitialized) return
     try {
@@ -85,6 +95,7 @@ internal class NetworkKmmSlockHttpExecutor(
         bodyText: String?,
         jsonBody: Boolean
     ): SlockHttpExecutorResponse {
+        ensurePlatformCurlRuntimeInstalled(warningLogger)
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
         val traceHeaders = networkKmmTraceHeaders(headers)
@@ -143,6 +154,7 @@ internal class NetworkKmmSlockHttpExecutor(
         files: List<MultipartFile>,
         headers: Map<String, String>
     ): SlockHttpExecutorResponse {
+        ensurePlatformCurlRuntimeInstalled(warningLogger)
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
         val traceHeaders = networkKmmTraceHeaders(headers)

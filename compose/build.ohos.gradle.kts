@@ -89,3 +89,29 @@ val copyMrKuiklyAssetsForOhosEntry = tasks.register<Sync>("copyMrKuiklyAssetsFor
 project(":shared").tasks.matching { it.name == "mergeOhosResources" }.configureEach {
     finalizedBy(copyMrResourcesForOhosEntry, copyMrKuiklyAssetsForOhosEntry)
 }
+
+// task #252: the OHOS curl transport verifies the app-owned CA bundle against
+// NetworkCurlCaBundleManifest.SHA256 at runtime; this gate catches a drifted
+// or hand-edited resfile PEM at build time instead of as a fleet-wide
+// fail-closed network outage. The hex literal is the same manifest pin —
+// runtime configure() remains the authority if they ever disagree.
+val verifyOhosCurlCaBundle = tasks.register("verifyOhosCurlCaBundle") {
+    val pemFile = layout.projectDirectory.file(
+        "ohosApp/entry/src/main/resources/resfile/cacert-2026-05-14.pem"
+    )
+    val pinnedSha256 = "86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c"
+    inputs.file(pemFile)
+    doLast {
+        val bytes = pemFile.asFile.readBytes()
+        val actual = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString(separator = "") { "%02x".format(it) }
+        check(actual == pinnedSha256) {
+            "OHOS curl CA bundle drifted from NetworkCurlCaBundleManifest: " +
+                "expected $pinnedSha256, actual $actual (${pemFile.asFile})"
+        }
+    }
+}
+project(":shared").tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+    dependsOn(verifyOhosCurlCaBundle)
+}

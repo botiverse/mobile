@@ -22,6 +22,10 @@ import {
   SLOCK_OHOS_PLATFORM_FILE_READER_SERVICE,
   SlockOhosPlatformFileReader
 } from './SlockOhosPlatformFileReader';
+import {
+  SLOCK_OHOS_CURL_RUNTIME_SERVICE,
+  SlockOhosCurlRuntimeConfig
+} from './SlockOhosCurlRuntime';
 import BuildProfile from 'BuildProfile';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -186,6 +190,15 @@ export default class EntryAbility extends UIAbility {
     registerSingleServiceProvider(
       SLOCK_SHARED_LOG_SINK_SERVICE,
       new SlockOhosSharedLogSink()
+    );
+    // task #252: the NetworkKMM curl transport refuses every request until
+    // the app installs its CA/proxy runtime configuration. The shared side
+    // resolves the bundle path through this service and calls
+    // VBTransportCurl.configure before the first request is built, so the
+    // registration must sit in this same pre-loadContent sequence.
+    registerSingleServiceProvider(
+      SLOCK_OHOS_CURL_RUNTIME_SERVICE,
+      new SlockOhosCurlRuntimeConfig(this.context)
     );
     // KmmResource contract: must complete after KNOI setup()/init() and
     // before any Kuikly/shared page exists — the first shared

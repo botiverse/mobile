@@ -93,6 +93,9 @@ object SharedBinaryDownloader {
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
     ): String? {
+        ensurePlatformCurlRuntimeInstalled { warning ->
+            recordDiagnostics("operation=curl_runtime status=warning message=${warning.toSafeDiagnosticsToken()}")
+        }
         // Chunks are delivered straight off the transport without buffering the
         // whole payload; total comes from the response Content-Length at stream
         // start (raft.6) so progress is determinate when the server sends it.
