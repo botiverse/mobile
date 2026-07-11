@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -14,6 +15,117 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
+    @Test
+    fun messageContextHydratesDeletedAgentDmDetailByChannelId() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/context/message-1" to
+                            """{"channelId":"dm-deleted-agent","targetMessageId":"message-1","messages":[${messageJson("message-1", "dm-deleted-agent")}]}""",
+                        "GET channels/dm-deleted-agent" to
+                            """
+                            {
+                              "id":"dm-deleted-agent",
+                              "name":"removed-search-peer",
+                              "type":"dm",
+                              "joined":true,
+                              "peerType":"agent",
+                              "peerId":"agent-deleted",
+                              "peerName":"removed-search-peer",
+                              "peerDisplayName":"Removed Search Peer",
+                              "peerDescription":"Historical agent conversation"
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getMessageContext(MessageId("message-1"))
+
+        val conversation = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.conversation
+        assertEquals(ConversationKind.DirectMessage, conversation.kind)
+        assertEquals("dm-deleted-agent", conversation.channelId?.value)
+        assertEquals("Removed Search Peer", conversation.name)
+        assertEquals("agent", conversation.directMessagePeerType)
+        assertEquals("agent-deleted", conversation.presenceMemberId?.value)
+        assertEquals(
+            listOf(
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/context/message-1"),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "channels/dm-deleted-agent")
+            ),
+            network.requests
+        )
+    }
+
+    @Test
+    fun messageContextStillOpensWhenChannelDetailCannotBeHydrated() = runBlocking {
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/context/message-1" to
+                            """{"channelId":"channel-1","targetMessageId":"message-1","messages":[${messageJson("message-1", "channel-1")}]}""",
+                        "GET channels/channel-1" to """{"threads":[]}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+
+        val result = repository.getMessageContext(MessageId("message-1"))
+
+        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(result).data
+        assertEquals("message-1", snapshot.highlightedMessageId?.value)
+        assertEquals(ConversationKind.Thread, snapshot.conversation.kind)
+        assertEquals("channel-1", snapshot.conversation.name)
+        assertTrue(logs.any { it.contains("conversation_detail_parse_failed channelId=channel-1") })
+    }
+
+    @Test
+    fun messageContextKeepsCanonicalReplyThreadWhenParentDetailIsDm() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/context/reply-1" to
+                            """
+                            {
+                              "channelId":"thread-1",
+                              "targetMessageId":"reply-1",
+                              "canonicalTarget":{
+                                "kind":"thread",
+                                "channelId":"dm-parent",
+                                "messageId":"reply-1",
+                                "threadParentMessageId":"parent-1",
+                                "threadChannelId":"thread-1"
+                              },
+                              "messages":[${messageJson("reply-1", "thread-1")}]
+                            }
+                            """.trimIndent(),
+                        "GET channels/dm-parent" to
+                            """
+                            {
+                              "id":"dm-parent",
+                              "name":"removed-search-peer",
+                              "type":"dm",
+                              "peerType":"agent",
+                              "peerId":"agent-deleted",
+                              "peerName":"removed-search-peer"
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getMessageContext(MessageId("reply-1"))
+
+        val conversation = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.conversation
+        assertEquals(ConversationKind.Thread, conversation.kind)
+        assertEquals("dm-parent", conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-1", conversation.thread?.parentMessageId?.value)
+        assertEquals("thread-1", conversation.thread?.streamChannelId?.value)
+    }
+
     @Test
     fun getThreadLoadsCanonicalMessagesAndMergesThreadSummaries() = runBlocking {
         val network =
