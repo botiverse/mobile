@@ -949,6 +949,7 @@ open class SlockKuiklyActivity :
             SlockKuiklyPageData.fromJson(
                     JSONObject(text).apply {
                         put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, androidHostExcludesNavigationBar())
+                        put(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, true)
                     }
             )
 
@@ -1168,6 +1169,8 @@ open class SlockKuiklyActivity :
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
         private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
+        private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
+                "slockKeyboardInsetExcludesBottomSafeArea"
         private const val NAVIGATION_MODE_SETTING = "navigation_mode"
         private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
         private const val NAVIGATION_MODE_GESTURAL = 2

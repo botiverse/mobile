@@ -9,6 +9,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 
 private const val KEY_NATIVE_SAFE_AREA_INSETS_ARE_PIXELS = "slockNativeSafeAreaInsetsArePixels"
+private const val KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA =
+    "slockKeyboardInsetExcludesBottomSafeArea"
 
 @Composable
 internal fun slockTopSafeAreaPadding(): Dp {
@@ -52,6 +54,12 @@ internal fun slockBottomSafeAreaPadding(): Dp {
         hostDp = hostInsetDp
     ).dp
 }
+
+@Composable
+internal fun slockKeyboardInsetExcludesBottomSafeArea(): Boolean =
+    ((LocalActivity.current.getPager() as Pager).pageData)
+        .params
+        .optBoolean(KEY_KEYBOARD_INSET_EXCLUDES_BOTTOM_SAFE_AREA, false)
 
 internal fun resolveSlockSafeAreaDp(primaryDp: Float, fallbackDp: Float): Float =
     primaryDp.coerceAtLeast(fallbackDp).coerceAtLeast(0f)
