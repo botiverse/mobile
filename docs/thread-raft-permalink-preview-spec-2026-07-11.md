@@ -124,9 +124,11 @@ Visible label:
 
 The chip's accessibility label must include `Raft message link`, the resolved label, and `thread reply` when `threadParentMessageId != null`.
 
-#### Generic inline box-span primitive
+#### Generic inline box decoration on the existing span model
 
-Before adding msg-specific chrome, extend Kuikly RichText with a semantic-agnostic inline box style, tentatively:
+Kuikly already has the span abstraction this feature needs: `RichTextView` owns `TextSpan`/`ImageSpan` children through `ISpan`, and the Compose `BasicText` path lowers `AnnotatedString` ranges into those existing `TextSpan` nodes. Span click and long-press also already use that carrier. Do not introduce a parallel span hierarchy or a Slock-specific message span.
+
+Before adding msg-specific chrome, extend the existing `TextSpan` plus Compose span-lowering bridge with a semantic-agnostic inline box style value, tentatively:
 
 ```kotlin
 data class InlineBoxSpanStyle(
@@ -145,6 +147,9 @@ data class InlineBoxSpanStyle(
 
 Exact public names/types belong to the Kuikly fork API review, but the behavior contract is fixed:
 
+- `InlineBoxSpanStyle` is a decoration/style value attached to the existing `TextSpan`, not a replacement for `TextSpan`/`ISpan`;
+- Compose `AnnotatedString`/`SpanStyle` lowering attaches the same box decoration to the generated `TextSpan`, rather than creating a second rendering path;
+
 - layout reserves padding, border, and margins before line breaking; paint-only expansion is forbidden;
 - wrapped spans create one box fragment per visual line;
 - side borders/padding appear only at true semantic span edges, not at internal wrap boundaries;
@@ -154,7 +159,7 @@ Exact public names/types belong to the Kuikly fork API review, but the behavior 
 - spans without a box style retain current text behavior and cost;
 - renderer input is style geometry plus action identity, never Slock semantic kinds such as `MessagePermalink`, `Channel`, or `Task`.
 
-Current `slockRefChrome` is a specialized predecessor of this primitive: its shared style token exposes `chipFill` and `horizontalChromeSp`, while some border/padding behavior remains renderer-hardcoded. Add a compatibility mapper from current Slock chrome tokens to `InlineBoxSpanStyle`; do not break existing channel/thread/task/mention/inline-code visuals. The msg chip uses the generic primitive directly as the first new consumer. Existing chips may migrate incrementally after parity tests, rather than forcing a risky all-chip rewrite in this feature.
+Current `slockRefChrome` is a specialized predecessor of this decoration: its shared style token exposes `chipFill` and `horizontalChromeSp`, while some border/padding behavior remains renderer-hardcoded. Add a compatibility mapper from current Slock chrome tokens to the new `TextSpan` box style; do not break existing channel/thread/task/mention/inline-code visuals. The msg chip uses the generic decoration directly as the first new consumer. Existing chips may migrate incrementally after parity tests, rather than forcing a risky all-chip rewrite in this feature.
 
 The generic primitive lands in KuiklyUI `staging2` first, followed by the mobile gitlink/artifact update. Platform render backends may require internal adapter code because their text APIs differ, but they all consume one Kuikly API/serialized style contract; there are no platform-specific Slock msg-chip components. Add a truthful capability such as `inlineBoxSpanChrome`, and promote it per platform only after that renderer passes layout, draw, copy, and hit-test gates. The reference baseline's existing specialized capability is Android/iOS `slockRefChrome=true`, OHOS `slockRefChrome=false`; it must not be reused to overclaim the new generic primitive.
 
@@ -294,8 +299,8 @@ Do not pass preview title, author, body, attachment labels, archived state, `Con
 
 ### Phase A0 — Kuikly generic inline box span
 
-- add `InlineBoxSpanStyle` (final API name subject to fork review) to the shared Kuikly RichText contract;
-- serialize background, border, four-direction padding, edge margin, and optional radius through the existing text-span bridge;
+- add `InlineBoxSpanStyle` (final API name subject to fork review) as a style value on existing `TextSpan`; do not add a parallel span class/hierarchy;
+- carry background, border, four-direction padding, edge margin, and optional radius through both the existing RichText `TextSpan` contract and Compose `AnnotatedString`/`SpanStyle` lowering bridge;
 - implement final-layout fragment measurement/draw/hit-test/copy behavior in each renderer backend behind the same API;
 - map existing `slockRefChrome` style tokens through the primitive without visual changes;
 - land on KuiklyUI `staging2`, publish the fork artifacts, then update the mobile gitlink/HAR.
@@ -304,7 +309,7 @@ Do not pass preview title, author, body, attachment labels, archived state, `Con
 
 - canonical typed parser with environment host input;
 - Markdown link annotation/action for message permalinks;
-- msg chip style expressed only as `InlineBoxSpanStyle` + text/action tokens;
+- msg chip style expressed only as the existing `TextSpan` carrying `InlineBoxSpanStyle` + text/action tokens;
 - click routing;
 - parser/chip/host/cross-server tests.
 
