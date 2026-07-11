@@ -2,9 +2,38 @@ package build.raft.app.data
 
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
+import platform.darwin.NSObjectProtocol
+
+private const val SlockPlatformEventOriginKey = "slockPlatformEventOrigin"
+private const val SlockPlatformEventOriginShared = "shared"
+private const val SlockPlatformEventSourceIosHost = "ios_host"
 
 private object IosSlockPlatformEventDispatcher {
+    private var realtimeObserver: NSObjectProtocol? = null
+
+    fun ensureNativeIngress() {
+        if (realtimeObserver != null) return
+        realtimeObserver =
+            NSNotificationCenter.defaultCenter.addObserverForName(
+                name = GeneratedRealtimeContract.Notify.EventName,
+                `object` = null,
+                queue = null
+            ) { notification ->
+                notification ?: return@addObserverForName
+                if (notification.userInfo?.get(SlockPlatformEventOriginKey) == SlockPlatformEventOriginShared) {
+                    return@addObserverForName
+                }
+                SlockEnhancedNotifyCenter.post(
+                    eventName = GeneratedRealtimeContract.Notify.EventName,
+                    eventData = notification.toEventData(),
+                    crossProcess = true,
+                    source = SlockPlatformEventSourceIosHost
+                )
+            }
+    }
+
     fun dispatch(event: SlockEnhancedNotifyEvent) {
         NSNotificationCenter.defaultCenter.postNotificationName(
             aName = event.eventName,
@@ -24,6 +53,7 @@ private object IosSlockPlatformEventDispatcher {
 private fun JSONObject.toIosUserInfo(): Map<Any?, Any?> =
     buildMap {
         put("stringify", toString())
+        put(SlockPlatformEventOriginKey, SlockPlatformEventOriginShared)
         GeneratedRealtimeContract.PayloadKey.All.forEach { key ->
             optString(key).takeIf { it.isNotBlank() }?.let { value ->
                 put(key, value)
@@ -37,8 +67,26 @@ private fun JSONObject.toIosEnvelopeUserInfo(eventDataJson: String): Map<Any?, A
         SlockEnhancedNotifyContract.KeyData to eventDataJson,
         SlockEnhancedNotifyContract.KeyCrossProcess to optString(SlockEnhancedNotifyContract.KeyCrossProcess),
         SlockEnhancedNotifyContract.KeySource to optString(SlockEnhancedNotifyContract.KeySource),
+        SlockPlatformEventOriginKey to SlockPlatformEventOriginShared,
         "stringify" to toString()
     )
 
-internal actual fun createSlockPlatformEventBus(): SlockEventBus =
-    SlockPlatformDispatchingEventBus(IosSlockPlatformEventDispatcher::dispatch)
+private fun NSNotification.toEventData(): JSONObject {
+    val serialized = userInfo?.get("stringify")?.toString()?.takeIf { it.isNotBlank() }
+    if (serialized != null) {
+        runCatching { JSONObject(serialized) }.getOrNull()?.let { return it }
+    }
+    return JSONObject().apply {
+        userInfo.orEmpty().forEach { (rawKey, rawValue) ->
+            val key = rawKey?.toString()?.takeIf { it.isNotBlank() } ?: return@forEach
+            if (key != SlockPlatformEventOriginKey && rawValue != null) {
+                put(key, rawValue.toString())
+            }
+        }
+    }
+}
+
+internal actual fun createSlockPlatformEventBus(): SlockEventBus {
+    IosSlockPlatformEventDispatcher.ensureNativeIngress()
+    return SlockPlatformDispatchingEventBus(IosSlockPlatformEventDispatcher::dispatch)
+}
