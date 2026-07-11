@@ -58,6 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ohos-release.yml")'
+          bash -n scripts/sign_ohos_app_pack.sh
           bash -n scripts/validate_ohos_app_pack.sh
           node --check scripts/set_ohos_app_version.mjs
 
@@ -554,19 +555,42 @@ jobs:
         shell: bash
         run: hvigorw --sync -p product=default --analyze=normal --no-daemon
 
-      - name: Assemble signed release .app
+      - name: Assemble unsigned release .app
         working-directory: compose/ohosApp
         shell: bash
-        env:
-          SIGNING_CERT: ${{ steps.signing.outputs.cert }}
-          SIGNING_PROFILE: ${{ steps.signing.outputs.profile }}
-          SIGNING_KEY: ${{ steps.signing.outputs.key }}
         run: |
           hvigorw --mode project \
             -p product=default \
             -p buildMode=release \
             -p requiredDeviceType=phone \
             assembleApp --analyze=normal --no-daemon
+
+      - name: Sign release HAPs
+        shell: bash
+        env:
+          SIGNING_CERT: ${{ steps.signing.outputs.cert }}
+          SIGNING_PROFILE: ${{ steps.signing.outputs.profile }}
+          SIGNING_KEY: ${{ steps.signing.outputs.key }}
+        run: |
+          set -euo pipefail
+          mapfile -t apps < <(find compose/ohosApp -type f -name '*.app' -path '*/build/*' -print)
+          if [[ ${#apps[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one generated .app before signing, found ${#apps[@]}"
+            printf '%s\n' "${apps[@]}"
+            exit 1
+          fi
+          SIGN_TOOL="$(find "$DEVECO_SDK_HOME" -path '*/openharmony/toolchains/lib/hap-sign-tool.jar' -print -quit)"
+          test -n "$SIGN_TOOL"
+          scripts/sign_ohos_app_pack.sh \
+            --app "${apps[0]}" \
+            --sign-tool "$SIGN_TOOL" \
+            --cert "$SIGNING_CERT" \
+            --profile "$SIGNING_PROFILE" \
+            --keystore "$SIGNING_KEY" \
+            --key-alias "$KEY_ALIAS" \
+            --key-password "$KEY_PASSWORD" \
+            --keystore-password "$KEYSTORE_PASSWORD" \
+            --compatible-version 23
 
       - name: Validate signed package and create metadata
         id: validate

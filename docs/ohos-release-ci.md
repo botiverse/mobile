@@ -38,6 +38,13 @@ starts dependency prebuilds. Binary secrets are decoded only under
 `$RUNNER_TEMP`, are permission-restricted, and are removed in an `always()`
 cleanup step.
 
+Hvigor project signing expects DevEco-encrypted password fields tied to a
+workstation-local `material/` directory, so CI does not inject raw repository
+passwords into `signingConfig`. Hvigor assembles the unsigned `.app`, then the
+workflow signs every contained HAP with the official `hap-sign-tool.jar` using
+the raw passwords only as masked process arguments. The validation step then
+independently verifies every signed HAP.
+
 The existing GitHub Packages secrets are also used:
 
 - `SLOCK_GITHUB_PACKAGES_USERNAME`, defaulting to `bytemain`
