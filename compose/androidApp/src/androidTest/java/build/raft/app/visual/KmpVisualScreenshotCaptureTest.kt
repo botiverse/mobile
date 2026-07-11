@@ -639,6 +639,20 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageSavedBadge() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.saved-badge",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-saved")
+                    .put("visualFixture", "saved"),
+            crop = THREAD_MESSAGE_ROW_SAVED_CROP,
+            requireReactionAtlas = true
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowDeletedHuman() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.deleted-human",
@@ -3038,6 +3052,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 16,
                 widthDp = 374,
                 heightDp = 108
+            )
+        private val THREAD_MESSAGE_ROW_SAVED_CROP =
+            VisualCrop(
+                leftDp = 16,
+                topDp = 16,
+                widthDp = 374,
+                heightDp = 140
             )
         private val THREAD_MESSAGE_ROW_DELETED_HUMAN_CROP =
             VisualCrop(

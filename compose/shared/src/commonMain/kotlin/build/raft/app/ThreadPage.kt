@@ -7158,6 +7158,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
@@ -7182,6 +7183,17 @@ internal fun threadVisualFixture(
 ): KuiklyThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_SAVED -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                showMessageSaveAction = true,
+                showInlineSaveAction = false,
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index == 0) message.copy(isSaved = true) else message
+                    }
+            )
+        }
         THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT ->
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
@@ -12742,7 +12754,6 @@ private fun ThreadMessageCard(
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
-            showInlineSaveAction = showInlineSaveAction,
             richContentEnabled = richContentEnabled,
             hasLocalSendState = message.hasLocalSendState(),
             isSaved = message.isSaved
@@ -13089,16 +13100,17 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
 
 internal fun shouldShowThreadMessageSavedBadge(
     showSaveAction: Boolean,
-    showInlineSaveAction: Boolean,
     richContentEnabled: Boolean,
     hasLocalSendState: Boolean,
     isSaved: Boolean
 ): Boolean =
     showSaveAction &&
-        showInlineSaveAction &&
         richContentEnabled &&
         !hasLocalSendState &&
         isSaved
+
+internal val ThreadMessageSavedBadgeColor = SlockColor.AccentOrange.copy(alpha = 0.15f)
+internal const val ThreadMessageSavedBadgeIconColorArgb = SlockColor.AccentOrangeArgb
 
 @Composable
 private fun ThreadMessageSelectionToggle(
@@ -14386,7 +14398,9 @@ private fun ThreadMessageFooterMeta(
                 label = stringResource(MR.strings.thread_label_saved),
                 iconName = SlockLucideIconName.Bookmark,
                 iconSize = 11.dp,
-                color = SlockColor.BrandYellow,
+                iconColorArgb = ThreadMessageSavedBadgeIconColorArgb,
+                iconFillArgb = ThreadMessageSavedBadgeIconColorArgb,
+                color = ThreadMessageSavedBadgeColor,
                 modifier = Modifier.widthIn(max = 96.dp),
                 pressFeedback = false,
                 clickIdentity = "thread-saved:${message.id}",

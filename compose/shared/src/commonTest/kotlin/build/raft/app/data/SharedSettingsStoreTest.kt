@@ -784,7 +784,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
         store.accept(SharedSettingsIntent.SetComposerSendKey(false))
-        store.accept(SharedSettingsIntent.SetThreadRowAffordance("saved", true))
         store.accept(SharedSettingsIntent.SetThreadRowAffordance("reactions", false))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
@@ -797,7 +796,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
         assertEquals(false, chatLayoutRepository.composerSendKeyEnabled)
-        assertEquals(setOf(ThreadRowAffordancePreference.Saved), chatLayoutRepository.threadRowAffordances)
+        assertEquals(emptySet(), chatLayoutRepository.threadRowAffordances)
         assertEquals("Enabled", mobile.pushNotifications.statusLabel)
         assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals(
@@ -817,8 +816,9 @@ class SharedSettingsStoreTest {
         assertEquals("Enabled", mobile.activityTaskStatusBadges.statusLabel)
         assertEquals(false, mobile.composerSendKey.enabled)
         assertEquals("New line", mobile.composerSendKey.statusLabel)
-        assertEquals(setOf("saved"), mobile.threadRowAffordances.selectedKeys)
-        assertEquals("Saved", mobile.threadRowAffordances.statusLabel)
+        assertEquals(emptySet(), mobile.threadRowAffordances.selectedKeys)
+        assertEquals("Off", mobile.threadRowAffordances.statusLabel)
+        assertEquals(listOf("reactions"), mobile.threadRowAffordances.options.map { it.key })
         assertNull(store.state.value.actionState?.errorCode)
 
         store.accept(SharedSettingsIntent.SetLocale("system"))

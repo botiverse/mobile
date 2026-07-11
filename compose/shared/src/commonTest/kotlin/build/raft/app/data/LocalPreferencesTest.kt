@@ -82,7 +82,10 @@ class LocalPreferencesTest {
                 LargeScreenNavigationPreference.FloatingDock
             )
         )
-        assertTrue(snapshot.supportedThreadRowAffordances.contains(ThreadRowAffordancePreference.Saved))
+        assertEquals(
+            listOf(ThreadRowAffordancePreference.Reactions),
+            snapshot.supportedThreadRowAffordances
+        )
     }
 
     @Test
@@ -129,12 +132,9 @@ class LocalPreferencesTest {
         assertEquals(true, restored.activityTaskStatusBadgesEnabled)
         assertEquals(false, restored.composerSendKeyEnabled)
         assertEquals(TranslationModePreference.Manual, restored.translationMode)
-        assertEquals(
-            setOf(ThreadRowAffordancePreference.Reactions, ThreadRowAffordancePreference.Saved),
-            savedAction.threadRowAffordances
-        )
-        assertEquals(setOf(ThreadRowAffordancePreference.Saved), reactionAction.threadRowAffordances)
-        assertEquals(setOf(ThreadRowAffordancePreference.Saved), restored.threadRowAffordances)
+        assertEquals(setOf(ThreadRowAffordancePreference.Reactions), savedAction.threadRowAffordances)
+        assertEquals(emptySet(), reactionAction.threadRowAffordances)
+        assertEquals(emptySet(), restored.threadRowAffordances)
         assertEquals(false, disabledImageAnnotation.imageAnnotationEnabled)
         assertEquals(false, repository.setForegroundMessageBannersEnabled(false).foregroundMessageBannersEnabled)
         assertEquals(false, disabledActivityTaskStatusBadges.activityTaskStatusBadgesEnabled)
