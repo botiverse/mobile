@@ -250,6 +250,61 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun connectedAppsAndServerManagementStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_connected_apps_title,
+            MR.strings.settings_connected_apps_overview_title,
+            MR.strings.settings_connected_apps_marketplace_installed_detail,
+            MR.strings.settings_connected_apps_action_register_client,
+            MR.strings.settings_connected_apps_publish_status,
+            MR.strings.settings_server_profile_title,
+            MR.strings.settings_server_section_owners_admins,
+            MR.strings.settings_server_action_create_join_link,
+            MR.strings.settings_server_delete_warning_prefix,
+            MR.strings.settings_server_action_save_permissions
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Connected Apps and server management copy must use KMM Resource strings"
+            )
+        }
+
+        listOf(
+            MR.strings.settings_connected_apps_delete_detail.format(listOf("Example")),
+            MR.strings.settings_connected_apps_publish_rejection.format(listOf("Reason")),
+            MR.strings.settings_server_leave_detail.format(listOf("Workspace")),
+            MR.strings.settings_server_invited_by.format(listOf("Owner"))
+        ).forEach { desc ->
+            assertTrue(desc is ResourceFormattedStringDesc)
+        }
+    }
+
+    @Test
+    fun aboutDiagnosticsStorageDeveloperStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_about_title,
+            MR.strings.settings_about_action_check_update,
+            MR.strings.settings_storage_loading,
+            MR.strings.settings_storage_clear_image_cache,
+            MR.strings.settings_developer_api_environment,
+            MR.strings.settings_developer_environment_save_detail,
+            MR.strings.settings_diagnostics_title,
+            MR.strings.settings_diagnostics_profiler_title,
+            MR.strings.settings_diagnostics_action_export_logs,
+            MR.strings.settings_state_saved
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "About, diagnostics, storage, and developer copy must use KMM Resource strings"
+            )
+        }
+
+        assertTrue(
+            MR.strings.settings_about_open_web_detail.format(listOf("https://app.raft.build")) is ResourceFormattedStringDesc
+        )
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.

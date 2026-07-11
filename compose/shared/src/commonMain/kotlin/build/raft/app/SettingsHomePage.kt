@@ -5171,7 +5171,7 @@ private fun SettingsConnectedAppsContent(
             is ScreenLoadState.Empty ->
                 item {
                     SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = stringResource(MR.strings.settings_connected_apps_empty)) {
-                        SettingsFormEmptyText("Connected Apps are unavailable for this workspace.")
+                        SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_unavailable))
                         SlockBrutalActionButton(
                             label = stringResource(MR.strings.common_retry),
                             onClick = onRefresh,
@@ -5194,8 +5194,8 @@ private fun SettingsConnectedAppsContent(
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsFormSectionCard(iconName = SlockLucideIconName.Lock, title = "Permission Required") {
-                        SettingsFormErrorText(settingsConnectedAppsPermissionCopy(state.blocker))
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.Lock, title = stringResource(MR.strings.settings_connected_apps_permission_required)) {
+                        SettingsFormErrorText(settingsConnectedAppsPermissionCopy(state.blocker, stringResource(MR.strings.settings_connected_apps_permission_admin)))
                     }
                 }
             is ScreenLoadState.Content -> {
@@ -5308,7 +5308,7 @@ private fun SettingsConnectedAppsOverviewCard(
     loading: Boolean,
     onRegister: () -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = "Connected Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = stringResource(MR.strings.settings_connected_apps_title)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -5316,22 +5316,22 @@ private fun SettingsConnectedAppsOverviewCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
-                    "Third-party apps for this server",
+                    stringResource(MR.strings.settings_connected_apps_overview_title),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    "Browse reviewed marketplace apps, see apps installed on this server, and manage apps registered by this server.",
+                    stringResource(MR.strings.settings_connected_apps_overview_detail),
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SettingsConnectedAppsBadge("EXPERIMENTAL", SlockColor.BrandYellow)
-                    if (loading) SettingsConnectedAppsBadge("Loading", SlockColor.EmptyStateGray)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_experimental), SlockColor.BrandYellow)
+                    if (loading) SettingsConnectedAppsBadge(stringResource(MR.strings.settings_connected_apps_badge_loading), SlockColor.EmptyStateGray)
                 }
             }
             SlockBrutalActionButton(
-                label = "Register app",
+                label = stringResource(MR.strings.settings_connected_apps_action_register),
                 onClick = onRegister,
                 leadingIcon = SlockLucideIconName.Plus,
                 backgroundColor = SlockColor.AccentPink,
@@ -5342,9 +5342,9 @@ private fun SettingsConnectedAppsOverviewCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SettingsConnectedAppsMetric("Marketplace", (snapshot?.builtIn.orEmpty().size + snapshot?.marketplace.orEmpty().size).toString(), Modifier.weight(1f))
-            SettingsConnectedAppsMetric("Installed", snapshot?.installed.orEmpty().size.toString(), Modifier.weight(1f))
-            SettingsConnectedAppsMetric("My apps", snapshot?.registered.orEmpty().size.toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric(stringResource(MR.strings.settings_connected_apps_metric_marketplace), (snapshot?.builtIn.orEmpty().size + snapshot?.marketplace.orEmpty().size).toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric(stringResource(MR.strings.settings_connected_apps_metric_installed), snapshot?.installed.orEmpty().size.toString(), Modifier.weight(1f))
+            SettingsConnectedAppsMetric(stringResource(MR.strings.settings_connected_apps_metric_my_apps), snapshot?.registered.orEmpty().size.toString(), Modifier.weight(1f))
         }
     }
 }
@@ -5361,19 +5361,19 @@ private fun SettingsConnectedAppsTabControl(
             listOf(
                 SegmentedControlOption(
                     value = "marketplace",
-                    label = "Marketplace",
+                    label = stringResource(MR.strings.settings_connected_apps_tab_marketplace),
                     iconName = SlockLucideIconName.Store,
                     count = snapshot?.let { it.builtIn.size + it.marketplace.size }
                 ),
                 SegmentedControlOption(
                     value = "installed",
-                    label = "Installed",
+                    label = stringResource(MR.strings.settings_connected_apps_tab_installed),
                     iconName = SlockLucideIconName.CircleCheck,
                     count = snapshot?.installed?.size
                 ),
                 SegmentedControlOption(
                     value = "myapps",
-                    label = "My Apps",
+                    label = stringResource(MR.strings.settings_connected_apps_tab_my_apps),
                     iconName = SlockLucideIconName.KeyRound,
                     count = snapshot?.registered?.size
                 )
@@ -6778,18 +6778,18 @@ private fun SettingsConnectedAppSecretCard(
     secret: SettingsConnectedAppSecretSnapshot,
     onCopySecret: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "Client Secret") {
-        SettingsFormDetailText("Copy this secret now. It is shown once and is not persisted in diagnostics.")
-        SlockBrutalReadOnlyField(label = "Client ID", value = secret.clientId)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_client_secret_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_client_secret_detail))
+        SlockBrutalReadOnlyField(label = stringResource(MR.strings.settings_connected_apps_label_client_id), value = secret.clientId)
         SlockBrutalReadOnlyField(
-            label = "Client Secret",
+            label = stringResource(MR.strings.settings_connected_apps_label_client_secret),
             value = secret.clientSecret,
             maxLines = 2,
             textStyle = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
             textColor = SlockColor.TextBlack
         )
         SlockBrutalActionButton(
-            label = "Copy Secret",
+            label = stringResource(MR.strings.settings_connected_apps_action_copy_secret),
             onClick = { onCopySecret(secret.clientSecret) },
             leadingIcon = SlockLucideIconName.Copy,
             backgroundColor = SlockColor.BrandYellow
@@ -6823,14 +6823,14 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
-                SettingsFormDetailText(if (app.installed) "Installed from marketplace." else "Available from marketplace.")
+                SettingsFormDetailText(if (app.installed) stringResource(MR.strings.settings_connected_apps_marketplace_installed_detail) else stringResource(MR.strings.settings_connected_apps_marketplace_available_detail))
             }
         }
-        SettingsConnectedAppDetailField("Publisher", app.developer)
-        SettingsConnectedAppDetailField("Category", app.category.settingsConnectedAppCategoryLabel())
-        SettingsConnectedAppDetailField("Homepage", app.homepageDomain)
-        SettingsConnectedAppDetailField("Callback", app.callbackDomain)
-        SettingsConnectedAppDetailField("Data Access", app.dataAccessSummary)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), app.developer)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_category), app.category.settingsConnectedAppCategoryLabel(stringResource(MR.strings.settings_connected_apps_category_other)))
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_callback), app.callbackDomain)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_data_access), app.dataAccessSummary)
         actionState.connectedAppsErrorFor(action, app.id)?.let { SettingsFormErrorText(it) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
@@ -6843,9 +6843,9 @@ private fun SettingsConnectedAppMarketplaceDetailDialog(
             }
             SlockBrutalActionButton(
                 label =
-                    actionState.connectedAppsStatusFor(
+                    actionState.connectedAppsLocalizedStatusFor(
                         action,
-                        if (app.installed) "Uninstall" else "Install",
+                        if (app.installed) stringResource(MR.strings.settings_connected_apps_action_uninstall) else stringResource(MR.strings.settings_connected_apps_action_install),
                         app.id
                     ),
                 onClick = {
@@ -6883,13 +6883,13 @@ private fun SettingsConnectedAppBuiltInDetailDialog(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SettingsFormDetailText(app.description ?: stringResource(MR.strings.settings_common_no_description))
-                SettingsFormDetailText("Built in by Raft.")
+                SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_builtin_by_raft))
             }
         }
-        SettingsConnectedAppDetailField("Publisher", "Raft")
-        SettingsConnectedAppDetailField("Client ID", app.clientId)
-        SettingsConnectedAppDetailField("Homepage", app.homepageDomain)
-        SettingsConnectedAppDetailField("Agent Manifest", app.agentManifestUrl)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_publisher), "Raft")
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_client_id), app.clientId)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_homepage), app.homepageDomain)
+        SettingsConnectedAppDetailField(stringResource(MR.strings.settings_connected_apps_label_agent_manifest), app.agentManifestUrl)
         app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_open),
@@ -6913,25 +6913,25 @@ private fun SettingsConnectedAppsConfirmDialog(
     val client = snapshot?.registered?.firstOrNull { it.id == target.id }
     val marketplaceApp = snapshot?.marketplace?.firstOrNull { it.id == target.id }
     val installedApp = snapshot?.installed?.firstOrNull { it.id == target.id }
-    val appName = client?.name ?: marketplaceApp?.name ?: installedApp?.name ?: "this app"
+    val appName = client?.name ?: marketplaceApp?.name ?: installedApp?.name ?: stringResource(MR.strings.settings_connected_apps_this_app)
     val deleting = target.kind == SettingsConnectedAppsConfirmKind.DeleteClient
     val action = if (deleting) CONNECTED_APPS_ACTION_DELETE else CONNECTED_APPS_ACTION_UNINSTALL
     val busy = actionState.connectedAppsBusyFor(action, target.id)
     SlockUnifiedDialog(
-        title = if (deleting) "Delete OAuth Client" else "Uninstall App",
+        title = if (deleting) stringResource(MR.strings.settings_connected_apps_delete_title) else stringResource(MR.strings.settings_connected_apps_uninstall_title),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 424.dp
     ) {
         SettingsFormDetailText(
             if (deleting) {
-                "Delete $appName and revoke its client secret, grants, and marketplace linkage. This cannot be undone."
+                MR.strings.settings_connected_apps_delete_detail.format(listOf(appName)).localized()
             } else {
-                "Uninstall $appName from this workspace and revoke its access."
+                MR.strings.settings_connected_apps_uninstall_detail.format(listOf(appName)).localized()
             }
         )
         SettingsConnectedAppDetailField(
-            label = "Client ID",
+            label = stringResource(MR.strings.settings_connected_apps_label_client_id),
             value = client?.clientId ?: marketplaceApp?.clientId ?: installedApp?.clientId
         )
         actionState.connectedAppsErrorFor(action, target.id)?.let { SettingsFormErrorText(it) }
@@ -6944,7 +6944,7 @@ private fun SettingsConnectedAppsConfirmDialog(
                 backgroundColor = SlockColor.SurfaceWhite
             )
             SlockBrutalActionButton(
-                label = actionState.connectedAppsStatusFor(action, if (deleting) "Delete" else "Uninstall", target.id),
+                label = actionState.connectedAppsLocalizedStatusFor(action, if (deleting) stringResource(MR.strings.common_delete) else stringResource(MR.strings.settings_connected_apps_action_uninstall), target.id),
                 onClick = {
                     if (deleting) {
                         onConfirmDelete(target.id)
@@ -6972,9 +6972,9 @@ private fun SettingsConnectedAppsBuiltInBand(
     apps: List<SettingsConnectedAppBuiltInSnapshot>,
     onOpenDetail: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = stringResource(MR.strings.settings_connected_apps_builtin_title)) {
         Text(
-            "Available to all Raft users and agents.",
+            stringResource(MR.strings.settings_connected_apps_builtin_detail),
             style = SlockType.Button.copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
@@ -6984,8 +6984,8 @@ private fun SettingsConnectedAppsBuiltInBand(
             apps.forEach { app ->
                 SettingsConnectedAppActionRow(
                     title = app.name,
-                    detail = listOfNotNull("Available to all users & agents", app.description, app.homepageDomain).joinToString(" · "),
-                    buttonLabel = "Open",
+                    detail = listOfNotNull(stringResource(MR.strings.settings_connected_apps_builtin_item_detail), app.description, app.homepageDomain).joinToString(" · "),
+                    buttonLabel = stringResource(MR.strings.common_open),
                     buttonIcon = SlockLucideIconName.ExternalLink,
                     buttonColor = SlockColor.AccentPink,
                     enabled = true,
@@ -7006,22 +7006,23 @@ private fun SettingsConnectedAppsMarketplaceCard(
     onCategoryChange: (String) -> Unit,
     onOpenDetail: (String) -> Unit
 ) {
-    val categoryOptions = marketplace.settingsConnectedAppCategoryOptions()
+    val otherCategoryLabel = stringResource(MR.strings.settings_connected_apps_category_other)
+    val categoryOptions = marketplace.settingsConnectedAppCategoryOptions(stringResource(MR.strings.settings_connected_apps_category_all), otherCategoryLabel)
     val resolvedCategory =
         category.takeIf { selected -> categoryOptions.any { it.id == selected } } ?: SETTINGS_CONNECTED_APPS_CATEGORY_ALL
     val filteredMarketplace = marketplace.settingsConnectedAppFilteredMarketplace(search, resolvedCategory)
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Marketplace") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = stringResource(MR.strings.settings_connected_apps_tab_marketplace)) {
         SlockBrutalSearchField(
             value = search,
-            placeholder = "Search apps",
+            placeholder = stringResource(MR.strings.settings_connected_apps_marketplace_search),
             onValueChange = onSearchChange
         )
         SlockRaftUiSelectField(
             options = categoryOptions,
             selectedId = resolvedCategory,
             onSelect = { onCategoryChange(it.id) },
-            title = "Category",
-            placeholder = "All categories"
+            title = stringResource(MR.strings.settings_connected_apps_label_category),
+            placeholder = stringResource(MR.strings.settings_connected_apps_category_all)
         )
         if (marketplace.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_marketplace))
@@ -7033,12 +7034,12 @@ private fun SettingsConnectedAppsMarketplaceCard(
                     title = app.name,
                     detail =
                         listOfNotNull(
-                            app.category.settingsConnectedAppCategoryLabel(),
+                            app.category.settingsConnectedAppCategoryLabel(otherCategoryLabel),
                             app.developer,
                             app.dataAccessSummary,
-                            if (app.installed) "Installed" else null
+                            if (app.installed) stringResource(MR.strings.settings_connected_apps_state_installed) else null
                         ).joinToString(" · "),
-                    buttonLabel = "Details",
+                    buttonLabel = stringResource(MR.strings.settings_connected_apps_action_details),
                     buttonIcon = SlockLucideIconName.Eye,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = true,
@@ -7059,7 +7060,7 @@ private fun SettingsConnectedAppsInstalledCard(
     onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
     onRequestUninstall: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = "Installed Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = stringResource(MR.strings.settings_connected_apps_installed_title)) {
         if (installed.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_installed_marketplace))
         } else {
@@ -7073,9 +7074,9 @@ private fun SettingsConnectedAppsInstalledCard(
                     detail = listOfNotNull(app.developer, app.description, app.origin).joinToString(" · "),
                     buttonLabel =
                         if (editableClient) {
-                            "Edit"
+                            stringResource(MR.strings.common_edit)
                         } else {
-                            actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, "Uninstall", app.id)
+                            actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, stringResource(MR.strings.settings_connected_apps_action_uninstall), app.id)
                         },
                     buttonIcon = if (editableClient) SlockLucideIconName.Pencil else SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.SurfaceWhite,
@@ -7106,9 +7107,9 @@ private fun SettingsConnectedAppLogoEditor(
     onClearLogo: () -> Unit
 ) {
     val editing = editingClient != null
-    val displayName = fallbackName.ifBlank { editingClient?.name.orEmpty().ifBlank { "App" } }
+    val displayName = fallbackName.ifBlank { editingClient?.name.orEmpty().ifBlank { stringResource(MR.strings.settings_connected_apps_default_app) } }
     val seed = fallbackClientId.ifBlank { editingClient?.clientId.orEmpty().ifBlank { displayName } }
-    SlockBrutalSectionLabel(label = "Logo")
+    SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_connected_apps_label_logo))
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         SettingsConnectedAppLogoBox(
             name = displayName,
@@ -7119,16 +7120,16 @@ private fun SettingsConnectedAppLogoEditor(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
             SettingsFormDetailText(
                 if (editing) {
-                    "Upload a square logo, or reset to the deterministic monogram."
+                    stringResource(MR.strings.settings_connected_apps_logo_detail)
                 } else {
-                    "Register the app first, then upload a logo from Edit."
+                    stringResource(MR.strings.settings_connected_apps_logo_register_first)
                 }
             )
             if (editingClient != null) {
                 val client = editingClient
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SlockBrutalActionButton(
-                        label = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_LOGO_UPLOAD, if (client.logoUrl.isNullOrBlank()) "Upload" else "Change", client.id),
+                        label = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_LOGO_UPLOAD, if (client.logoUrl.isNullOrBlank()) stringResource(MR.strings.settings_connected_apps_action_upload) else stringResource(MR.strings.settings_connected_apps_action_change), client.id),
                         onClick = onUploadLogo,
                         enabled = enabled && !busy,
                         leadingIcon = SlockLucideIconName.Upload,
@@ -7137,7 +7138,7 @@ private fun SettingsConnectedAppLogoEditor(
                     )
                     if (!client.logoUrl.isNullOrBlank()) {
                         SlockBrutalActionButton(
-                            label = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_LOGO_CLEAR, "Reset", client.id),
+                            label = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_LOGO_CLEAR, stringResource(MR.strings.settings_connected_apps_action_reset), client.id),
                             onClick = onClearLogo,
                             enabled = enabled && !busy,
                             leadingIcon = SlockLucideIconName.RotateCcw,
@@ -7211,12 +7212,12 @@ private fun settingsConnectedAppInitials(name: String): String {
 private fun SettingsConnectedAppClientSnapshot.canRequestMarketplacePublish(): Boolean =
     publishStatus.trim().lowercase() in setOf("private", "rejected")
 
-private fun SettingsConnectedAppClientSnapshot.publishStatusCopy(): String =
+private fun SettingsConnectedAppClientSnapshot.publishStatusCopy(privateLabel: String): String =
     publishStatus.trim()
         .takeIf { it.isNotBlank() }
         ?.replace("_", " ")
         ?.replaceFirstChar { it.uppercase() }
-        ?: "Private"
+        ?: privateLabel
 
 @Composable
 private fun SettingsConnectedAppEditorCard(
@@ -7258,28 +7259,28 @@ private fun SettingsConnectedAppEditorCard(
         actionState?.inProgress == true &&
             actionState.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) &&
             actionState.itemId == editingId
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = if (editing) "Edit OAuth Client" else "Register OAuth Client") {
-        SettingsFormDetailText("Create server-local OAuth clients for trusted integrations. The client secret is shown once after creation.")
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = if (editing) stringResource(MR.strings.settings_connected_apps_edit_title) else stringResource(MR.strings.settings_connected_apps_register_title)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_connected_apps_register_detail))
         SlockBrutalTextField(
-            label = "App Name",
+            label = stringResource(MR.strings.settings_connected_apps_label_app_name),
             value = name,
-            placeholder = "My integration",
+            placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_app_name),
             onValueChange = onNameChange,
             required = true,
             enabled = enabled
         )
         SlockBrutalTextField(
-            label = "Client ID",
+            label = stringResource(MR.strings.settings_connected_apps_label_client_id),
             value = clientId,
-            placeholder = "Optional custom client id",
+            placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_client_id),
             onValueChange = onClientIdChange,
             optional = true,
             enabled = enabled && !editing
         )
         SlockBrutalTextField(
-            label = "Description",
+            label = stringResource(MR.strings.agent_create_label_description),
             value = description,
-            placeholder = "What this app does",
+            placeholder = stringResource(MR.strings.settings_connected_apps_placeholder_description),
             onValueChange = onDescriptionChange,
             optional = true,
             enabled = enabled,
@@ -7287,7 +7288,7 @@ private fun SettingsConnectedAppEditorCard(
             fieldMinHeight = 78.dp
         )
         SlockBrutalTextField(
-            label = "Homepage URL",
+            label = stringResource(MR.strings.settings_connected_apps_label_homepage_url),
             value = homepageUrl,
             placeholder = "https://example.com",
             onValueChange = onHomepageUrlChange,
@@ -7295,7 +7296,7 @@ private fun SettingsConnectedAppEditorCard(
             enabled = enabled
         )
         SlockBrutalTextField(
-            label = "Return URL",
+            label = stringResource(MR.strings.settings_connected_apps_label_return_url),
             value = returnUrl,
             placeholder = "https://example.com/oauth/callback",
             onValueChange = onReturnUrlChange,
@@ -7303,7 +7304,7 @@ private fun SettingsConnectedAppEditorCard(
             enabled = enabled
         )
         SlockBrutalTextField(
-            label = "Agent Manifest URL",
+            label = stringResource(MR.strings.settings_connected_apps_label_manifest_url),
             value = manifestUrl,
             placeholder = "https://example.com/.well-known/slock-agent.json",
             onValueChange = onManifestUrlChange,
@@ -7322,7 +7323,7 @@ private fun SettingsConnectedAppEditorCard(
         )
         if (editing && canRequestPublish) {
             SlockBrutalTextField(
-                label = "Publish Category",
+                label = stringResource(MR.strings.settings_connected_apps_label_publish_category),
                 value = publishCategory,
                 placeholder = "productivity",
                 onValueChange = onPublishCategoryChange,
@@ -7330,7 +7331,7 @@ private fun SettingsConnectedAppEditorCard(
                 enabled = enabled
             )
             SlockBrutalTextField(
-                label = "Data Access Summary",
+                label = stringResource(MR.strings.settings_connected_apps_label_data_access_summary),
                 value = publishDataAccess,
                 placeholder = "Profile and workspace metadata",
                 onValueChange = onPublishDataAccessChange,
@@ -7342,13 +7343,13 @@ private fun SettingsConnectedAppEditorCard(
         } else if (editingClient != null) {
             SettingsFormDetailText(
                 listOfNotNull(
-                    "Publish status: ${editingClient.publishStatusCopy()}",
-                    editingClient.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { "Rejection: $it" }
+                    MR.strings.settings_connected_apps_publish_status.format(listOf(editingClient.publishStatusCopy(stringResource(MR.strings.settings_connected_apps_publish_private)))).localized(),
+                    editingClient.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { MR.strings.settings_connected_apps_publish_rejection.format(listOf(it)).localized() }
                 ).joinToString(" ")
             )
         }
         if (!canManage) {
-            SettingsFormErrorText("Only server owners/admins can manage OAuth clients.")
+            SettingsFormErrorText(stringResource(MR.strings.settings_connected_apps_permission_manage))
         }
         if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_REGISTER, CONNECTED_APPS_ACTION_UPDATE) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
@@ -7359,9 +7360,9 @@ private fun SettingsConnectedAppEditorCard(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SlockBrutalActionButton(
                 label =
-                    actionState.connectedAppsStatusFor(
+                    actionState.connectedAppsLocalizedStatusFor(
                         if (editing) CONNECTED_APPS_ACTION_UPDATE else CONNECTED_APPS_ACTION_REGISTER,
-                        if (editing) "Save Client" else "Register Client",
+                        if (editing) stringResource(MR.strings.settings_connected_apps_action_save_client) else stringResource(MR.strings.settings_connected_apps_action_register_client),
                         editingId.takeIf { editing }
                     ),
                 onClick = {
@@ -7416,7 +7417,7 @@ private fun SettingsConnectedAppClientsCard(
     publishCategory: String,
     publishDataAccess: String
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "My Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = stringResource(MR.strings.settings_connected_apps_my_apps_title)) {
         if (clients.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_oauth_clients))
         } else {
@@ -7427,7 +7428,7 @@ private fun SettingsConnectedAppClientsCard(
                 SettingsConnectedAppActionRow(
                     title = app.name,
                     detail = listOfNotNull(app.clientId, app.publishStatus, app.description).joinToString(" · "),
-                    buttonLabel = "Edit",
+                    buttonLabel = stringResource(MR.strings.common_edit),
                     buttonIcon = SlockLucideIconName.Pencil,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = !publishBusy && !deleteBusy,
@@ -7435,9 +7436,9 @@ private fun SettingsConnectedAppClientsCard(
                 )
                 if (canRequestPublish) {
                     SettingsConnectedAppActionRow(
-                        title = "Publish ${app.name}",
-                        detail = app.publishRejectionReason ?: "Request marketplace review for this OAuth client.",
-                        buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_PUBLISH, "Request Publish", app.id),
+                        title = MR.strings.settings_connected_apps_publish_title.format(listOf(app.name)).localized(),
+                        detail = app.publishRejectionReason ?: stringResource(MR.strings.settings_connected_apps_publish_detail),
+                        buttonLabel = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_PUBLISH, stringResource(MR.strings.settings_connected_apps_action_request_publish), app.id),
                         buttonIcon = SlockLucideIconName.Send,
                         buttonColor = SlockColor.AccentCyan,
                         enabled = !publishBusy,
@@ -7455,15 +7456,15 @@ private fun SettingsConnectedAppClientsCard(
                 } else {
                     SettingsFormDetailText(
                         listOfNotNull(
-                            "Publish status: ${app.publishStatusCopy()}",
-                            app.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { "Rejection: $it" }
+                            MR.strings.settings_connected_apps_publish_status.format(listOf(app.publishStatusCopy(stringResource(MR.strings.settings_connected_apps_publish_private)))).localized(),
+                            app.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { MR.strings.settings_connected_apps_publish_rejection.format(listOf(it)).localized() }
                         ).joinToString(" ")
                     )
                 }
                 SettingsConnectedAppActionRow(
-                    title = "Delete ${app.name}",
-                    detail = "Remove this server-local OAuth client and its credentials.",
-                    buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_DELETE, "Delete", app.id),
+                    title = MR.strings.settings_connected_apps_delete_app_title.format(listOf(app.name)).localized(),
+                    detail = stringResource(MR.strings.settings_connected_apps_delete_app_detail),
+                    buttonLabel = actionState.connectedAppsLocalizedStatusFor(CONNECTED_APPS_ACTION_DELETE, stringResource(MR.strings.common_delete), app.id),
                     buttonIcon = SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.AccentRed,
                     enabled = !deleteBusy,
@@ -7488,7 +7489,7 @@ private fun SettingsConnectedAppActionRow(
 ) {
     SettingsServerActionRow(
         title = title,
-        detail = detail.ifBlank { "No description provided." },
+        detail = detail.ifBlank { stringResource(MR.strings.settings_connected_apps_no_description) },
         buttonLabel = buttonLabel,
         buttonIcon = buttonIcon,
         buttonColor = buttonColor,
@@ -7512,7 +7513,7 @@ private fun SettingsConnectedAppInfoRow(
         SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-            Text(detail.ifBlank { "No description provided." }, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            Text(detail.ifBlank { stringResource(MR.strings.settings_connected_apps_no_description) }, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
         }
         Text(status, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
     }
@@ -7536,19 +7537,19 @@ private fun SettingsServerProfileFormCard(
     val trimmedName = draftName.trim()
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
-    val status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) "Save Profile" else "Read only")
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Building2, title = "Profile") {
+    val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(MR.strings.settings_server_action_save_profile) else stringResource(MR.strings.settings_server_state_read_only))
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
         SlockBrutalTextField(
-            label = "Name",
+            label = stringResource(MR.strings.settings_server_label_name),
             value = if (canSave) draftName else currentName,
-            placeholder = currentName.ifBlank { "Workspace name" },
+            placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) },
             onValueChange = onNameChange,
             required = true,
             enabled = canSave && !busy
         )
         SlockBrutalReadOnlyField(
-            label = "Slug",
-            value = currentSlug.ifBlank { "Not provided" }
+            label = stringResource(MR.strings.settings_server_label_slug),
+            value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
         )
         if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
             Text(
@@ -7623,12 +7624,12 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedModalSlug = modalConfirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Danger Zone") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_section_danger_zone_title)) {
         if (canLeave) {
             SettingsServerActionRow(
-                title = "Leave Server",
-                detail = "You will lose access to ${serverName.ifBlank { "this server" }} and all of its channels. You can be re-invited later.",
-                buttonLabel = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave Server"),
+                title = stringResource(MR.strings.settings_server_action_leave),
+                detail = MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
+                buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
                 buttonIcon = SlockLucideIconName.LogOut,
                 buttonColor = SlockColor.AccentOrange,
                 enabled = !leaveBusy,
@@ -7636,7 +7637,7 @@ private fun SettingsServerDangerZoneCard(
             )
             if (leaveConfirmed) {
                 Text(
-                    "Tap Leave Server again to confirm.",
+                    stringResource(MR.strings.settings_server_leave_confirm),
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -7644,9 +7645,9 @@ private fun SettingsServerDangerZoneCard(
         }
         if (canDelete) {
             SettingsServerActionRow(
-                title = "Delete Server",
-                detail = "Permanently remove ${serverName.ifBlank { "this server" }} and all of its data. This cannot be undone.",
-                buttonLabel = "Delete Server",
+                title = stringResource(MR.strings.settings_server_action_delete),
+                detail = MR.strings.settings_server_delete_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
+                buttonLabel = stringResource(MR.strings.settings_server_action_delete),
                 buttonIcon = SlockLucideIconName.Trash2,
                 buttonColor = SlockColor.AccentRed,
                 enabled = !deleteBusy,
@@ -7700,7 +7701,7 @@ private fun SettingsServerDeleteConfirmationDialog(
     onCancel: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val resolvedName = serverName.ifBlank { "this server" }
+    val resolvedName = serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) }
     val resolvedSlug = expectedServerSlug.ifBlank { "server-slug" }
     Modal(onWillDismiss = { if (!deleteBusy) onDismiss() }) {
         Box(
@@ -7741,7 +7742,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "DELETE SERVER",
+                            stringResource(MR.strings.settings_delete_server),
                             style =
                                 SlockType.PageTitle.copy(
                                     fontSize = 18.sp,
@@ -7767,7 +7768,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Type ",
+                            stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
                             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray
                         )
@@ -7779,7 +7780,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            " to confirm:",
+                            stringResource(MR.strings.settings_server_delete_confirm_suffix),
                             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray
                         )
@@ -7810,7 +7811,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                             textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
                         )
                         SlockBrutalActionButton(
-                            label = if (deleteBusy) "Deleting..." else "Delete Server",
+                            label = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
                             onClick = onDelete,
                             enabled = deleteEnabled,
                             modifier = Modifier.width(112.dp),
@@ -7837,8 +7838,17 @@ private fun SettingsServerDeleteWarningBanner(
     serverName: String?,
     text: String? = null
 ) {
-    val message = remember(serverName, text) {
-        settingsServerDeleteWarningBannerText(serverName = serverName, text = text)
+    val fallbackName = stringResource(MR.strings.settings_server_this_server)
+    val prefix = stringResource(MR.strings.settings_server_delete_warning_prefix)
+    val suffix = stringResource(MR.strings.settings_server_delete_warning_suffix)
+    val message = remember(serverName, text, fallbackName, prefix, suffix) {
+        settingsServerDeleteWarningBannerText(
+            serverName = serverName,
+            text = text,
+            fallbackName = fallbackName,
+            prefix = prefix,
+            suffix = suffix
+        )
     }
     Row(
         modifier =
@@ -7866,12 +7876,13 @@ private fun SettingsServerDeleteWarningBanner(
 
 internal fun settingsServerDeleteWarningBannerText(
     serverName: String?,
-    text: String? = null
+    text: String? = null,
+    fallbackName: String = "this server",
+    prefix: String = "This will permanently delete ",
+    suffix: String = " and all its data (agents, channels, messages). This cannot be undone."
 ): AnnotatedString {
     if (text != null) return AnnotatedString(text)
-    val resolvedName = serverName ?: "this server"
-    val prefix = "This will permanently delete "
-    val suffix = " and all its data (agents, channels, messages). This cannot be undone."
+    val resolvedName = serverName ?: fallbackName
     return buildAnnotatedString {
         append(prefix)
         append(resolvedName)
@@ -8008,11 +8019,11 @@ private fun SettingsServerAdminsCard(
             selectedRole = selectedRoleOptions.firstOrNull() ?: "admin"
         }
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = "Owners & Admins") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = stringResource(MR.strings.settings_server_section_owners_admins)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
             Text(
-                "Add owner/admin",
+                stringResource(MR.strings.settings_server_action_add_admin),
                 style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -8029,7 +8040,7 @@ private fun SettingsServerAdminsCard(
                                     listOfNotNull(
                                         candidate.name.takeIf { it.isNotBlank() },
                                         candidate.detail?.takeIf { it.isNotBlank() }
-                                    ).joinToString(" · ").ifBlank { "Unknown member" }
+                                    ).joinToString(" · ").ifBlank { stringResource(MR.strings.settings_server_state_unknown_member) }
                             )
                         },
                     selectedId = selectedCandidateId,
@@ -8042,7 +8053,7 @@ private fun SettingsServerAdminsCard(
                                 ).joinToString(" · ")
                             }
                             .orEmpty(),
-                    placeholder = "Select member...",
+                    placeholder = stringResource(MR.strings.settings_server_placeholder_select_member),
                     enabled = actionState?.inProgress != true,
                     onSelect = { option -> selectedCandidateId = option.id }
                 )
@@ -8056,18 +8067,18 @@ private fun SettingsServerAdminsCard(
                             listOf(
                                 SlockBrutalSelectOption(
                                     id = "owner",
-                                    label = "Owner",
+                                    label = stringResource(MR.strings.settings_server_role_owner),
                                     enabled = "owner" in selectedRoleOptions
                                 ),
                                 SlockBrutalSelectOption(
                                     id = "admin",
-                                    label = "Admin",
+                                    label = stringResource(MR.strings.settings_server_role_admin),
                                     enabled = "admin" in selectedRoleOptions
                                 )
                             ),
                         selectedId = selectedRole,
                         selectedLabel = selectedRole.replaceFirstChar { it.uppercase() },
-                        placeholder = "Role",
+                        placeholder = stringResource(MR.strings.settings_server_label_role),
                         enabled = selectedCandidate != null && selectedRoleOptions.isNotEmpty() && actionState?.inProgress != true,
                         modifier = Modifier.weight(1f),
                         onSelect = { option -> selectedRole = option.id }
@@ -8075,8 +8086,8 @@ private fun SettingsServerAdminsCard(
                     SlockBrutalActionButton(
                         label =
                             selectedCandidate
-                                ?.let { actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Update Role", it.id) }
-                                ?: "Update Role",
+                                ?.let { actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_ROLE, stringResource(MR.strings.settings_server_action_update_role), it.id) }
+                                ?: stringResource(MR.strings.settings_server_action_update_role),
                         onClick = {
                             val candidateId = selectedCandidate?.id ?: return@SlockBrutalActionButton
                             onAction(SERVER_ACTION_MEMBER_ROLE, "$candidateId:$selectedRole")
@@ -8098,17 +8109,17 @@ private fun SettingsServerAdminsCard(
             admins.forEach { admin ->
                 val targetRole = admin.normalizedRole()
                 val canDemote = canChangeServerMemberRole(normalizedActorRole, targetRole, "member") && !(targetRole == "owner" && ownerCount <= 1)
-                val fallback = if (targetRole == "owner") "Remove Owner" else "Remove Admin"
+                val fallback = if (targetRole == "owner") stringResource(MR.strings.settings_server_action_remove_owner) else stringResource(MR.strings.settings_server_action_remove_admin)
                 val disabledLabel =
                     if (targetRole == "owner" && ownerCount <= 1) {
-                        "Last owner"
+                        stringResource(MR.strings.settings_server_state_last_owner)
                     } else {
-                        "Owner only"
+                        stringResource(MR.strings.settings_server_state_owner_only)
                     }
                 SettingsServerActionRow(
                     title = admin.name,
-                    detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
-                    buttonLabel = if (canDemote) actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
+                    detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: stringResource(MR.strings.settings_server_role_admin) },
+                    buttonLabel = if (canDemote) actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
                     buttonIcon = SlockLucideIconName.UserMinus,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = canDemote && actionState?.inProgress != true,
@@ -8130,7 +8141,7 @@ private fun SettingsServerInvitesCard(
     timeContext: SlockTimeContext?,
     onAction: (String, String?) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = "Pending Invites") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = stringResource(MR.strings.settings_section_pending_invites_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (invites.isEmpty()) {
             SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_pending_invites))
@@ -8140,10 +8151,10 @@ private fun SettingsServerInvitesCard(
                     title = invite.email,
                     detail =
                         listOfNotNull(
-                            invite.inviterName?.let { "Invited by $it" },
+                            invite.inviterName?.let { MR.strings.settings_server_invited_by.format(listOf(it)).localized() },
                             formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
                         ).joinToString(" · "),
-                    buttonLabel = actionState.serverStatusFor(SERVER_ACTION_INVITE_REVOKE, "Revoke", invite.id),
+                    buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_INVITE_REVOKE, stringResource(MR.strings.settings_server_action_revoke), invite.id),
                     buttonIcon = SlockLucideIconName.X,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
@@ -8175,18 +8186,18 @@ private fun SettingsServerJoinLinksCard(
     val maxUsesInvalid = trimmedMaxUses.isNotBlank() && (parsedMaxUses == null || parsedMaxUses <= 0)
     val createBusy = actionState?.action == SERVER_ACTION_JOIN_LINK_CREATE && actionState.inProgress
     val createEnabled = !createBusy && !maxUsesInvalid
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = "Join Links") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = stringResource(MR.strings.settings_section_join_links_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
-            label = "Max Uses",
+            label = stringResource(MR.strings.settings_server_label_max_uses),
             value = maxUses,
-            placeholder = "Unlimited",
+            placeholder = stringResource(MR.strings.settings_server_placeholder_unlimited),
             onValueChange = onMaxUsesChange,
             optional = true,
             enabled = !createBusy
         )
         SlockBrutalTextField(
-            label = "Expires At",
+            label = stringResource(MR.strings.settings_server_label_expires_at),
             value = expiresAt,
             placeholder = "2026-06-01T09:00:00Z",
             onValueChange = onExpiresAtChange,
@@ -8194,10 +8205,10 @@ private fun SettingsServerJoinLinksCard(
             enabled = !createBusy
         )
         if (maxUsesInvalid) {
-            SettingsFormErrorText("Max Uses must be a positive number.")
+            SettingsFormErrorText(stringResource(MR.strings.settings_server_error_max_uses))
         }
         SlockBrutalActionButton(
-            label = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, "Create Join Link"),
+            label = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, stringResource(MR.strings.settings_server_action_create_join_link)),
             onClick = {
                 onCreate(
                     SettingsServerJoinLinkCreateRequest(
@@ -8223,7 +8234,7 @@ private fun SettingsServerJoinLinksCard(
                             link.usageLabel,
                             formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
                         ).joinToString(" · "),
-                    buttonLabel = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, "Revoke", link.id),
+                    buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, stringResource(MR.strings.settings_server_action_revoke), link.id),
                     buttonIcon = SlockLucideIconName.Unlink,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
@@ -8258,29 +8269,29 @@ private fun SettingsServerAgreementCard(
         agreement != null &&
             (enabled != agreement.enabled || title.trim() != agreement.title || bodyMarkdown != agreement.bodyMarkdown)
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
-    SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = "Pre-join Agreement") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = stringResource(MR.strings.settings_section_pre_join_agreement_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (enabled) "enabled" else "disabled",
             options = listOf(
-                SegmentedControlOption("enabled", "Required", SlockLucideIconName.CircleCheck),
-                SegmentedControlOption("disabled", "Disabled", SlockLucideIconName.X)
+                SegmentedControlOption("enabled", stringResource(MR.strings.settings_server_agreement_required), SlockLucideIconName.CircleCheck),
+                SegmentedControlOption("disabled", stringResource(MR.strings.settings_server_agreement_disabled), SlockLucideIconName.X)
             ),
             onValueSelected = { onEnabledChange(it == "enabled") },
             enabled = canSave && !busy
         )
         SlockBrutalTextField(
-            label = "Title",
+            label = stringResource(MR.strings.settings_server_label_title),
             value = title,
-            placeholder = "Community agreement",
+            placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_title),
             onValueChange = { onTitleChange(it.take(180)) },
             required = enabled,
             enabled = canSave && !busy
         )
         SlockBrutalTextField(
-            label = "Body Markdown",
+            label = stringResource(MR.strings.settings_server_label_body_markdown),
             value = bodyMarkdown,
-            placeholder = "Write the agreement new members must accept.",
+            placeholder = stringResource(MR.strings.settings_server_placeholder_agreement_body),
             onValueChange = onBodyChange,
             required = enabled,
             enabled = canSave && !busy,
@@ -8289,10 +8300,10 @@ private fun SettingsServerAgreementCard(
         )
         SettingsFormDetailText("${bodyMarkdown.length} / $PreJoinAgreementBodyMaxLength characters")
         if (titleTooLong) {
-            SettingsFormErrorText("Agreement title must be 160 characters or fewer.")
+            SettingsFormErrorText(stringResource(MR.strings.settings_server_error_agreement_title))
         }
         if (bodyTooLong) {
-            SettingsFormErrorText("Agreement body must be 5,000 characters or fewer.")
+            SettingsFormErrorText(stringResource(MR.strings.settings_server_error_agreement_body))
         }
         SettingsAgreementPreview(bodyMarkdown)
         if (actionState?.action == SERVER_ACTION_AGREEMENT_SAVE && actionState.errorCode != null) {
@@ -8300,7 +8311,7 @@ private fun SettingsServerAgreementCard(
         }
         if (canSave) {
             SlockBrutalActionButton(
-                label = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, "Save Agreement"),
+                label = actionState.serverLocalizedStatusFor(SERVER_ACTION_AGREEMENT_SAVE, stringResource(MR.strings.settings_server_action_save_agreement)),
                 onClick = onSubmit,
                 enabled = saveEnabled,
                 leadingIcon = SlockLucideIconName.Save,
@@ -8317,12 +8328,12 @@ private fun SettingsAgreementPreview(bodyMarkdown: String) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
-            "Preview",
+            stringResource(MR.strings.settings_server_label_preview),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
         if (bodyMarkdown.isBlank()) {
-            SettingsFormEmptyText("Agreement preview will appear here.")
+            SettingsFormEmptyText(stringResource(MR.strings.settings_server_empty_agreement_preview))
         } else {
             SlockMarkdownBody(
                 body = bodyMarkdown,
@@ -8349,16 +8360,16 @@ private fun SettingsServerOnboardingCard(
     val currentGreeting = onboarding?.agentAllChannelGreetingEnabled ?: true
     val dirty = onboarding != null && (selectedAgentId != currentAgentId || greetingEnabled != currentGreeting)
     val agents = onboarding?.agents.orEmpty()
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Bot, title = "Onboarding") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Bot, title = stringResource(MR.strings.settings_section_onboarding_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         Text(
-            "Human Onboarding Agent",
+            stringResource(MR.strings.settings_server_label_onboarding_agent),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
         SettingsServerSelectRow(
-            title = "Disabled (no automatic onboarding)",
-            detail = "Do not assign an agent to greet new humans automatically.",
+            title = stringResource(MR.strings.settings_server_onboarding_disabled),
+            detail = stringResource(MR.strings.settings_server_onboarding_disabled_detail),
             selected = selectedAgentId.isBlank(),
             enabled = canSave && !busy,
             onClick = { onAgentSelected("") }
@@ -8378,15 +8389,15 @@ private fun SettingsServerOnboardingCard(
         }
         SettingsFormDivider()
         Text(
-            "New Agent Greeting",
+            stringResource(MR.strings.settings_server_label_new_agent_greeting),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
         SettingsSegmentedControlField(
             selectedValue = if (greetingEnabled) "yes" else "no",
             options = listOf(
-                SegmentedControlOption("yes", "Yes", SlockLucideIconName.MessageCircle),
-                SegmentedControlOption("no", "No", SlockLucideIconName.MessageCircleOff)
+                SegmentedControlOption("yes", stringResource(MR.strings.common_yes), SlockLucideIconName.MessageCircle),
+                SegmentedControlOption("no", stringResource(MR.strings.common_no), SlockLucideIconName.MessageCircleOff)
             ),
             onValueSelected = { onGreetingEnabledChange(it == "yes") },
             enabled = canSave && !busy
@@ -8396,7 +8407,7 @@ private fun SettingsServerOnboardingCard(
         }
         if (canSave) {
             SlockBrutalActionButton(
-                label = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, "Save Onboarding"),
+                label = actionState.serverLocalizedStatusFor(SERVER_ACTION_ONBOARDING_SAVE, stringResource(MR.strings.settings_server_action_save_onboarding)),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
                 leadingIcon = SlockLucideIconName.Save,
@@ -8418,24 +8429,24 @@ private fun SettingsServerMemberPermissionsCard(
     val canSave = profile?.canSave == true
     val busy = actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.inProgress
     val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
-    SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = "Member Permissions") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = stringResource(MR.strings.settings_section_member_permissions_title)) {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SettingsSegmentedControlField(
             selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
             options = listOf(
-                SegmentedControlOption("hidden", "Hide Humans", SlockLucideIconName.EyeOff),
-                SegmentedControlOption("visible", "Visible", SlockLucideIconName.Eye)
+                SegmentedControlOption("hidden", stringResource(MR.strings.settings_server_option_hide_humans), SlockLucideIconName.EyeOff),
+                SegmentedControlOption("visible", stringResource(MR.strings.settings_server_option_visible), SlockLucideIconName.Eye)
             ),
             onValueSelected = { onHideHumansFromMembersChange(it == "hidden") },
             enabled = canSave && !busy
         )
-        SettingsFormDetailText("Member role users cannot see server-wide human lists, graph surfaces, or human counts when hidden.")
+        SettingsFormDetailText(stringResource(MR.strings.settings_server_member_permissions_detail))
         if (actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode)
         }
         if (canSave) {
             SlockBrutalActionButton(
-                label = actionState.serverStatusFor(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, "Save Permissions"),
+                label = actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, stringResource(MR.strings.settings_server_action_save_permissions)),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
                 leadingIcon = SlockLucideIconName.Save,
@@ -8610,7 +8621,7 @@ private fun SharedSettingsAboutContent(
     LaunchedEffect(releaseNotesUrl) {
         releaseNotesUrl.takeIf { it.isNotBlank() }?.let { onPrefetchReleaseNotes(it) }
     }
-    val payload = snapshot.toAboutPayload(webUrl, updateCheck, actionState)
+    val payload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
@@ -8742,7 +8753,7 @@ internal fun SharedSettingsDeveloperContent(
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
-    val payload = snapshot.toDeveloperPayload(state, actionState)
+    val payload = snapshot.toDeveloperPayload(state, actionState, settingsDeveloperPayloadCopy())
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
@@ -8764,7 +8775,7 @@ private fun SharedSettingsApiEnvironmentContent(
         mutableStateOf(snapshot?.environmentKey?.takeIf { key -> snapshot.options.any { it.key == key } }.orEmpty())
     }
     var label by remember(snapshot?.environmentKey, snapshot?.environmentLabel) {
-        mutableStateOf(snapshot?.environmentLabel.orEmpty().ifBlank { "Custom" })
+        mutableStateOf(snapshot?.environmentLabel.orEmpty())
     }
     var apiBaseUrl by remember(snapshot?.environmentKey, snapshot?.apiBaseUrl) {
         mutableStateOf(snapshot?.apiBaseUrl.orEmpty())
@@ -8786,7 +8797,8 @@ private fun SharedSettingsApiEnvironmentContent(
                 option.webUrl == normalizedWeb
         }
     val requestKey = matchingPreset?.key ?: "custom"
-    val requestLabel = matchingPreset?.label ?: label.trim().ifBlank { "Custom" }
+    val customLabel = stringResource(MR.strings.settings_developer_custom)
+    val requestLabel = matchingPreset?.label ?: label.trim().ifBlank { customLabel }
     val canSave = normalizedApi.startsWith("http") && normalizedSocket.startsWith("http") && !busy
 
     LazyColumn(
@@ -8795,8 +8807,8 @@ private fun SharedSettingsApiEnvironmentContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = "Presets") {
-                SettingsFormDetailText("Choose a preset to fill the environment form, then save to apply it.")
+            SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_developer_presets)) {
+                SettingsFormDetailText(stringResource(MR.strings.settings_developer_presets_detail))
                 snapshot?.options.orEmpty().forEach { option ->
                     SettingsApiEnvironmentPresetRow(
                         option = option,
@@ -8812,17 +8824,17 @@ private fun SharedSettingsApiEnvironmentContent(
                     )
                 }
                 if (snapshot?.options.isNullOrEmpty()) {
-                    SettingsFormEmptyText("No presets are available from this host.")
+                    SettingsFormEmptyText(stringResource(MR.strings.settings_developer_presets_empty))
                 }
             }
         }
         item {
-            SettingsFormSectionCard(iconName = SlockLucideIconName.Server, title = "Environment form") {
-                SettingsFormDetailText("Saving an environment change clears the current session and reconnects realtime against the selected API server.")
+            SettingsFormSectionCard(iconName = SlockLucideIconName.Server, title = stringResource(MR.strings.settings_developer_environment_form)) {
+                SettingsFormDetailText(stringResource(MR.strings.settings_developer_environment_save_detail))
                 SlockBrutalTextField(
-                    label = "Label",
+                    label = stringResource(MR.strings.settings_developer_label),
                     value = label,
-                    placeholder = "Custom",
+                    placeholder = customLabel,
                     onValueChange = {
                         selectedPresetKey = ""
                         label = it
@@ -8830,7 +8842,7 @@ private fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SlockBrutalTextField(
-                    label = "API Base URL",
+                    label = stringResource(MR.strings.settings_developer_api_base_url),
                     value = apiBaseUrl,
                     placeholder = "https://api.example.com/api/",
                     onValueChange = {
@@ -8841,7 +8853,7 @@ private fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SlockBrutalTextField(
-                    label = "Socket Base URL",
+                    label = stringResource(MR.strings.settings_developer_socket_base_url),
                     value = socketBaseUrl,
                     placeholder = "https://api.example.com",
                     onValueChange = {
@@ -8852,7 +8864,7 @@ private fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SlockBrutalTextField(
-                    label = "Web URL",
+                    label = stringResource(MR.strings.settings_developer_web_url),
                     value = webUrl,
                     placeholder = "https://app.raft.build",
                     onValueChange = {
@@ -8863,7 +8875,7 @@ private fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SlockBrutalActionButton(
-                    label = if (busy) "Saving" else "Save environment",
+                    label = if (busy) stringResource(MR.strings.settings_developer_action_saving) else stringResource(MR.strings.settings_developer_action_save_environment),
                     onClick = {
                         onSaveApiEnvironment(
                             SharedSettingsApiEnvironmentRequest(
@@ -8881,7 +8893,7 @@ private fun SharedSettingsApiEnvironmentContent(
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (!canSave && !busy) {
-                    SettingsFormErrorText("API Base URL and Socket Base URL must start with http.")
+                    SettingsFormErrorText(stringResource(MR.strings.settings_developer_error_urls))
                 }
                 if (actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.errorCode != null) {
                     SettingsFormErrorText(actionState.errorCode)
@@ -8928,7 +8940,7 @@ private fun SettingsApiEnvironmentPresetRow(
             )
         }
         Text(
-            text = if (selected) "Current" else "Preset",
+            text = if (selected) stringResource(MR.strings.settings_developer_state_current) else stringResource(MR.strings.settings_developer_state_preset),
             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
@@ -8951,7 +8963,7 @@ private fun SharedSettingsDiagnosticsContent(
     onSendFeedback: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
-    val payload = (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(state, actionState)
+    val payload = (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(state, actionState, settingsDiagnosticsPayloadCopy())
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
@@ -9442,6 +9454,7 @@ private fun SettingsSharedPlaceholder(
     }
 }
 
+@Composable
 private fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
     selectedDestination: String
@@ -9495,16 +9508,16 @@ private fun appShellSettingsHomePayload(
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationStorage,
-                    title = "Storage",
-                    subtitle = "Local cache and temporary files",
+                    title = stringResource(MR.strings.settings_storage_title),
+                    subtitle = stringResource(MR.strings.settings_storage_subtitle),
                     iconName = SlockLucideIconName.Archive,
                     selected = selectedDestination == SettingsDestinationStorage,
                     section = "Personal"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationServer,
-                    title = "Server Profile",
-                    subtitle = "Workspace name, slug, role",
+                    title = stringResource(MR.strings.settings_server_profile_title),
+                    subtitle = stringResource(MR.strings.settings_server_profile_subtitle),
                     iconName = SlockLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationServer,
@@ -9521,16 +9534,16 @@ private fun appShellSettingsHomePayload(
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAdministration,
-                    title = "Administration",
-                    subtitle = "Admins, invites, join links, agreements",
+                    title = stringResource(MR.strings.settings_server_administration_title),
+                    subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
                     iconName = SlockLucideIconName.Shield,
                     selected = selectedDestination == SettingsDestinationAdministration,
                     section = "Workspace"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationConnectedApps,
-                    title = "Connected Apps",
-                    subtitle = "Marketplace, installed apps, OAuth clients",
+                    title = stringResource(MR.strings.settings_connected_apps_title),
+                    subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
                     iconName = SlockLucideIconName.Link2,
                     selected = selectedDestination == SettingsDestinationConnectedApps,
                     section = "Workspace"
@@ -9545,8 +9558,8 @@ private fun appShellSettingsHomePayload(
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
-                    title = "About",
-                    subtitle = "Version and diagnostics",
+                    title = stringResource(MR.strings.settings_about_title),
+                    subtitle = stringResource(MR.strings.settings_about_subtitle),
                     iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
                     section = "About"
@@ -9661,6 +9674,7 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
     )
 }
 
+@Composable
 internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     actionState: build.raft.app.data.SharedSettingsActionState?,
     refreshing: Boolean
@@ -9668,15 +9682,15 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     val storage = (this as? ScreenLoadState.Content<SharedSettingsStorageSnapshot>)?.data
     val statusText =
         when (this) {
-            ScreenLoadState.Loading -> if (refreshing) "Refreshing storage..." else "Loading storage..."
-            is ScreenLoadState.Empty -> "Storage information is not available on this platform."
-            is ScreenLoadState.Error -> "Storage unavailable: ${this.error.settingsUserFacingMessage()}"
-            is ScreenLoadState.NoPermission -> "Storage unavailable: ${this.blocker.settingsUserFacingMessage()}"
+            ScreenLoadState.Loading -> if (refreshing) stringResource(MR.strings.settings_storage_refreshing) else stringResource(MR.strings.settings_storage_loading)
+            is ScreenLoadState.Empty -> stringResource(MR.strings.settings_storage_unavailable)
+            is ScreenLoadState.Error -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.error.settingsUserFacingMessage())).localized()
+            is ScreenLoadState.NoPermission -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.blocker.settingsUserFacingMessage())).localized()
             is ScreenLoadState.Content -> storage?.feedback.orEmpty()
         }
     return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
-        totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) "Refreshing" else "--",
+        totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
         feedback = statusText,
         rows =
             storage?.rows?.map { row ->
@@ -9690,6 +9704,7 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     )
 }
 
+@Composable
 private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolean): KuiklySettingsStorageRow =
     KuiklySettingsStorageRow(
         target = target,
@@ -9700,10 +9715,10 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearLabel =
             if (clearEnabled) {
                 when (target) {
-                    "imageCache" -> "Clear image cache"
-                    "attachmentDownloads" -> "Clear downloaded files"
-                    "temporaryAndLogs" -> "Clear temp files and logs"
-                    else -> "Clear"
+                    "imageCache" -> stringResource(MR.strings.settings_storage_clear_image_cache)
+                    "attachmentDownloads" -> stringResource(MR.strings.settings_storage_clear_downloaded_files)
+                    "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_clear_temp_files)
+                    else -> stringResource(MR.strings.common_clear)
                 }
             } else {
                 ""
@@ -10586,6 +10601,21 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverStatusFor(
         else -> "Saved"
     }
 
+@Composable
+private fun build.raft.app.data.SharedSettingsActionState?.serverLocalizedStatusFor(
+    action: String,
+    fallback: String,
+    itemId: String? = null
+): String =
+    when {
+        isServerConfirmation(action, itemId) -> stringResource(MR.strings.settings_state_confirm)
+        this == null || this.action != action -> fallback
+        itemId != null && this.itemId != itemId -> fallback
+        inProgress -> stringResource(MR.strings.settings_state_loading)
+        errorCode != null -> errorCode
+        else -> stringResource(MR.strings.settings_state_saved)
+    }
+
 private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsStatusFor(
     action: String,
     fallback: String,
@@ -10597,6 +10627,20 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsStatusFo
         inProgress -> "Loading"
         errorCode != null -> errorCode
         else -> "Saved"
+    }
+
+@Composable
+private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsLocalizedStatusFor(
+    action: String,
+    fallback: String,
+    itemId: String? = null
+): String =
+    when {
+        this == null || this.action != action -> fallback
+        itemId != null && this.itemId != itemId -> fallback
+        inProgress -> stringResource(MR.strings.settings_state_loading)
+        errorCode != null -> errorCode
+        else -> stringResource(MR.strings.settings_state_saved)
     }
 
 private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsBusyFor(
@@ -10617,12 +10661,15 @@ private fun build.raft.app.data.SharedSettingsActionState?.connectedAppsErrorFor
             it.errorCode != null
     }?.errorCode
 
-private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(): List<SlockRaftUiSelectionOption> =
-    listOf(SlockRaftUiSelectionOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, "All categories")) +
-        map { it.category.trim().ifBlank { "Other" } }
+private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(
+    allCategoriesLabel: String,
+    otherCategoryLabel: String
+): List<SlockRaftUiSelectionOption> =
+    listOf(SlockRaftUiSelectionOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, allCategoriesLabel)) +
+        map { it.category.trim().ifBlank { otherCategoryLabel } }
             .distinct()
             .sorted()
-            .map { SlockRaftUiSelectionOption(it, it.settingsConnectedAppCategoryLabel()) }
+            .map { SlockRaftUiSelectionOption(it, it.settingsConnectedAppCategoryLabel(otherCategoryLabel)) }
 
 private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppFilteredMarketplace(
     search: String,
@@ -10640,18 +10687,18 @@ private fun SettingsConnectedAppMarketplaceSnapshot.settingsConnectedAppMatchesS
         .any { it.lowercase().contains(query) }
 }
 
-private fun String.settingsConnectedAppCategoryLabel(): String =
+private fun String.settingsConnectedAppCategoryLabel(otherCategoryLabel: String): String =
     trim()
-        .ifBlank { "Other" }
+        .ifBlank { otherCategoryLabel }
         .replace("-", " ")
         .replace("_", " ")
         .split(" ")
         .filter { it.isNotBlank() }
         .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
-private fun settingsConnectedAppsPermissionCopy(blocker: PermissionBlocker): String =
+private fun settingsConnectedAppsPermissionCopy(blocker: PermissionBlocker, adminRequiredCopy: String): String =
     if (blocker.code == "server_admin_required" || blocker.requiredCapability == "manage_integrations") {
-        "Only server owners and admins can manage connected apps."
+        adminRequiredCopy
     } else {
         blocker.settingsUserFacingMessage()
     }
@@ -10679,46 +10726,267 @@ private val profilerActionKeys =
         DIAGNOSTICS_ACTION_PROFILER_EXPORT
     )
 
+internal data class SettingsAboutPayloadCopy(
+    val title: String = "About",
+    val detail: String = "Version, build, and source",
+    val applicationSection: String = "Application",
+    val application: String = "Application",
+    val version: String = "Version",
+    val buildTime: String = "Build time",
+    val gitCommit: String = "Git commit",
+    val packageLabel: String = "Package",
+    val unknown: String = "Unknown",
+    val buildUnknown: String = "Build unknown",
+    val actions: String = "Actions",
+    val checkUpdate: String = "Check for update",
+    val checkUpdateDetail: String = "Checks for a newer Android build and opens the installer when available.",
+    val checking: String = "Checking",
+    val check: String = "Check",
+    val licenses: String = "Open Source Licenses",
+    val licensesDetail: String = "Review third-party libraries included in the Android app package.",
+    val open: String = "Open",
+    val copyEnvironment: String = "Copy environment info",
+    val copyEnvironmentDetail: String = "Copy the same sanitized environment used for diagnostics and feedback.",
+    val copy: String = "Copy",
+    val openRaft: String = "Open Raft",
+    val openWebDetail: (String) -> String = { "Open $it in the system browser." }
+)
+
+@Composable
+private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPayloadCopy {
+    val localizedOpenWebDetail = MR.strings.settings_about_open_web_detail.format(listOf(resolvedWebUrl)).localized()
+    return SettingsAboutPayloadCopy(
+        title = stringResource(MR.strings.settings_about_title),
+        detail = stringResource(MR.strings.settings_about_version_build_source),
+        applicationSection = stringResource(MR.strings.settings_about_section_application),
+        application = stringResource(MR.strings.settings_about_label_application),
+        version = stringResource(MR.strings.settings_about_label_version),
+        buildTime = stringResource(MR.strings.settings_about_label_build_time),
+        gitCommit = stringResource(MR.strings.settings_about_label_git_commit),
+        packageLabel = stringResource(MR.strings.settings_about_label_package),
+        unknown = stringResource(MR.strings.settings_about_state_unknown),
+        buildUnknown = stringResource(MR.strings.settings_about_state_build_unknown),
+        actions = stringResource(MR.strings.settings_about_section_actions),
+        checkUpdate = stringResource(MR.strings.settings_about_action_check_update),
+        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail),
+        checking = stringResource(MR.strings.settings_about_state_checking),
+        check = stringResource(MR.strings.settings_about_action_check),
+        licenses = stringResource(MR.strings.settings_open_source_licenses_title),
+        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail),
+        open = stringResource(MR.strings.settings_state_open),
+        copyEnvironment = stringResource(MR.strings.settings_about_action_copy_environment),
+        copyEnvironmentDetail = stringResource(MR.strings.settings_about_copy_environment_detail),
+        copy = stringResource(MR.strings.settings_about_action_copy),
+        openRaft = stringResource(MR.strings.settings_about_action_open_raft),
+        openWebDetail = { localizedOpenWebDetail }
+    )
+}
+
+internal data class SettingsDeveloperPayloadCopy(
+    val title: String = "Developer",
+    val detail: String = "API server and diagnostics",
+    val apiServer: String = "API Server",
+    val currentApi: String = "Current API",
+    val currentSocket: String = "Current socket",
+    val apiEnvironment: String = "API Environment",
+    val environmentLoading: String = "Loading developer environment options.",
+    val environmentDetail: String = "Choose presets or edit API, socket, and web URLs.",
+    val saving: String = "Saving",
+    val loading: String = "Loading",
+    val open: String = "Open",
+    val unknown: String = "Unknown",
+    val current: String = "Current",
+    val realtime: String = "Realtime",
+    val diagnostics: String = "Diagnostics",
+    val diagnosticsDetail: String = "Open auth, sanitized logs, profiler, and feedback tools.",
+    val routeLauncher: String = "Route launcher",
+    val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare."
+)
+
+@Composable
+private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
+    SettingsDeveloperPayloadCopy(
+        title = stringResource(MR.strings.settings_developer_title),
+        detail = stringResource(MR.strings.settings_developer_detail),
+        apiServer = stringResource(MR.strings.settings_developer_section_api_server),
+        currentApi = stringResource(MR.strings.settings_developer_current_api),
+        currentSocket = stringResource(MR.strings.settings_developer_current_socket),
+        apiEnvironment = stringResource(MR.strings.settings_developer_api_environment),
+        environmentLoading = stringResource(MR.strings.settings_developer_environment_loading),
+        environmentDetail = stringResource(MR.strings.settings_developer_environment_detail),
+        saving = stringResource(MR.strings.settings_state_saving),
+        loading = stringResource(MR.strings.settings_state_loading),
+        open = stringResource(MR.strings.settings_state_open),
+        unknown = stringResource(MR.strings.settings_about_state_unknown),
+        current = stringResource(MR.strings.settings_developer_state_current),
+        realtime = stringResource(MR.strings.settings_developer_state_realtime),
+        diagnostics = stringResource(MR.strings.settings_diagnostics_title),
+        diagnosticsDetail = stringResource(MR.strings.settings_developer_diagnostics_detail),
+        routeLauncher = stringResource(MR.strings.settings_developer_route_launcher),
+        routeLauncherDetail = stringResource(MR.strings.settings_developer_route_launcher_detail)
+    )
+
+internal data class SettingsDiagnosticsPayloadCopy(
+    val title: String = "Diagnostics",
+    val detailProfiler: String = "Auth, sanitized app diagnostics, and Kuikly recomposition profiler",
+    val detailStatus: String = "Auth, sanitized app diagnostics, and Kuikly profiler status",
+    val detailBasic: String = "Auth and sanitized app diagnostics",
+    val environment: String = "Environment",
+    val loadStatus: String = "Load status",
+    val actions: String = "Actions",
+    val partialDiagnostics: String = "Partial diagnostics",
+    val partial: String = "Partial",
+    val profiler: String = "Recomposition profiler",
+    val profilerStatus: String = "Shared profiler status",
+    val profilerDetail: String = "Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.",
+    val resetProfiler: String = "Reset scene window",
+    val resetProfilerDetail: String = "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
+    val refreshProfiler: String = "Refresh report",
+    val refreshProfilerDetail: String = "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
+    val exportProfiler: String = "Export report",
+    val exportProfilerDetail: String = "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
+    val loading: String = "Loading",
+    val on: String = "On",
+    val pending: String = "Pending",
+    val off: String = "Off",
+    val reset: String = "Reset",
+    val wait: String = "Wait",
+    val refresh: String = "Refresh",
+    val pull: String = "Pull",
+    val export: String = "Export",
+    val write: String = "Write",
+    val disabled: String = "Disabled",
+    val send: String = "Send",
+    val exportLogs: String = "Export logs",
+    val exportLogsDetail: String = "Export environment, status, and recent app JSONL logs.",
+    val sendDiagnostics: String = "Send diagnostics",
+    val sendDiagnosticsDetail: String = "Share sanitized diagnostics with support.",
+    val app: String = "App",
+    val build: String = "Build",
+    val versionCode: String = "Version code",
+    val packageLabel: String = "Package",
+    val platform: String = "Platform",
+    val deviceFacts: String = "Device facts",
+    val display: String = "Display",
+    val installTime: String = "Install time",
+    val session: String = "Session",
+    val selectedServer: String = "Selected server",
+    val unknown: String = "Unknown",
+    val version: String = "Version",
+    val source: String = "Source",
+    val sdk: String = "SDK",
+    val host: String = "Host",
+    val device: String = "Device",
+    val screen: String = "Screen",
+    val density: String = "Density",
+    val fontScale: String = "Font scale",
+    val noSignedInUser: String = "No signed-in user",
+    val socket: String = "Socket"
+)
+
+@Composable
+private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
+    SettingsDiagnosticsPayloadCopy(
+        title = stringResource(MR.strings.settings_diagnostics_title),
+        detailProfiler = stringResource(MR.strings.settings_diagnostics_detail_profiler),
+        detailStatus = stringResource(MR.strings.settings_diagnostics_detail),
+        detailBasic = stringResource(MR.strings.settings_diagnostics_detail_basic),
+        environment = stringResource(MR.strings.settings_diagnostics_section_environment),
+        loadStatus = stringResource(MR.strings.settings_diagnostics_section_load_status),
+        actions = stringResource(MR.strings.settings_diagnostics_section_actions),
+        partialDiagnostics = stringResource(MR.strings.settings_diagnostics_partial),
+        partial = stringResource(MR.strings.settings_diagnostics_state_partial),
+        profiler = stringResource(MR.strings.settings_diagnostics_profiler_title),
+        profilerStatus = stringResource(MR.strings.settings_diagnostics_profiler_status),
+        profilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_detail),
+        resetProfiler = stringResource(MR.strings.settings_diagnostics_profiler_reset),
+        resetProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_reset_detail),
+        refreshProfiler = stringResource(MR.strings.settings_diagnostics_profiler_refresh),
+        refreshProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_refresh_detail),
+        exportProfiler = stringResource(MR.strings.settings_diagnostics_profiler_export),
+        exportProfilerDetail = stringResource(MR.strings.settings_diagnostics_profiler_export_detail),
+        loading = stringResource(MR.strings.settings_state_loading),
+        on = stringResource(MR.strings.settings_state_on),
+        pending = stringResource(MR.strings.settings_state_pending),
+        off = stringResource(MR.strings.settings_state_off),
+        reset = stringResource(MR.strings.settings_state_reset),
+        wait = stringResource(MR.strings.settings_state_wait),
+        refresh = stringResource(MR.strings.settings_state_refresh),
+        pull = stringResource(MR.strings.settings_state_pull),
+        export = stringResource(MR.strings.settings_state_export),
+        write = stringResource(MR.strings.settings_state_write),
+        disabled = stringResource(MR.strings.settings_state_disabled),
+        send = stringResource(MR.strings.settings_state_send),
+        exportLogs = stringResource(MR.strings.settings_diagnostics_action_export_logs),
+        exportLogsDetail = stringResource(MR.strings.settings_diagnostics_export_logs_detail),
+        sendDiagnostics = stringResource(MR.strings.settings_diagnostics_action_send),
+        sendDiagnosticsDetail = stringResource(MR.strings.settings_diagnostics_send_detail),
+        app = stringResource(MR.strings.settings_diagnostics_label_app),
+        build = stringResource(MR.strings.settings_diagnostics_label_build),
+        versionCode = stringResource(MR.strings.settings_diagnostics_label_version_code),
+        packageLabel = stringResource(MR.strings.settings_diagnostics_label_package),
+        platform = stringResource(MR.strings.settings_diagnostics_label_platform),
+        deviceFacts = stringResource(MR.strings.settings_diagnostics_label_device_facts),
+        display = stringResource(MR.strings.settings_diagnostics_label_display),
+        installTime = stringResource(MR.strings.settings_diagnostics_label_install_time),
+        session = stringResource(MR.strings.settings_diagnostics_label_session),
+        selectedServer = stringResource(MR.strings.settings_diagnostics_label_selected_server),
+        unknown = stringResource(MR.strings.settings_about_state_unknown),
+        version = stringResource(MR.strings.settings_diagnostics_state_version),
+        source = stringResource(MR.strings.settings_diagnostics_state_source),
+        sdk = stringResource(MR.strings.settings_diagnostics_state_sdk),
+        host = stringResource(MR.strings.settings_diagnostics_state_host),
+        device = stringResource(MR.strings.settings_diagnostics_state_device),
+        screen = stringResource(MR.strings.settings_diagnostics_state_screen),
+        density = stringResource(MR.strings.settings_diagnostics_state_density),
+        fontScale = stringResource(MR.strings.settings_diagnostics_state_font_scale),
+        noSignedInUser = stringResource(MR.strings.settings_diagnostics_state_no_user),
+        socket = stringResource(MR.strings.settings_diagnostics_state_socket)
+    )
+
+@Composable
 private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
     SharedSettingsAboutSnapshot(
         appName = "Raft",
-        versionLabel = "Loading",
-        signedInUserLabel = session?.user?.bestDisplayName ?: "Unknown",
-        selectedServerLabel = session?.currentServerSummary()?.name ?: "None",
-        sessionStatusLabel = if (session != null) "Signed in" else "Signed out",
-        socketStatusLabel = "Checking",
-        notificationStatusLabel = "Checking"
+        versionLabel = stringResource(MR.strings.settings_state_loading),
+        signedInUserLabel = session?.user?.bestDisplayName ?: stringResource(MR.strings.settings_about_state_unknown),
+        selectedServerLabel = session?.currentServerSummary()?.name ?: stringResource(MR.strings.settings_about_state_none),
+        sessionStatusLabel = if (session != null) stringResource(MR.strings.settings_about_state_signed_in) else stringResource(MR.strings.settings_about_state_signed_out),
+        socketStatusLabel = stringResource(MR.strings.settings_about_state_checking),
+        notificationStatusLabel = stringResource(MR.strings.settings_about_state_checking)
     )
 
 internal fun SharedSettingsAboutSnapshot.toAboutPayload(
     webUrl: String,
     updateCheck: SharedSettingsUpdateCheckSnapshot? = null,
-    actionState: SharedSettingsActionState? = null
+    actionState: SharedSettingsActionState? = null,
+    copy: SettingsAboutPayloadCopy = SettingsAboutPayloadCopy()
 ): KuiklySharedSettingsPayload {
     val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
+    val raftLabel = "Raft"
     val updateCheckBusy =
         actionState?.action == DEVELOPER_ACTION_QUIVER_UPDATE_CHECK && actionState.inProgress
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
-        title = "About",
+        title = copy.title,
         heroIconName = SlockLucideIconName.Info,
-        heroLabel = appName.ifBlank { "Raft" },
-        detail = "Version, build, and source",
+        heroLabel = appName.ifBlank { raftLabel },
+        detail = copy.detail,
         sections =
             listOf(
                 KuiklySharedSettingsSection(
-                    title = "Application",
+                    title = copy.applicationSection,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, "Application", appName.ifBlank { "Raft" }),
-                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
-                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, "Build time", buildTime.ifBlank { "Unknown" }),
-                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, "Git commit", gitCommit.ifBlank { "Unknown" }),
-                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" })
+                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }),
+                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }),
+                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }),
+                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }),
+                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown })
                         )
                 ),
                 KuiklySharedSettingsSection(
-                    title = "Actions",
+                    title = copy.actions,
                     rows =
                         buildList {
                             if (updateCheck?.supported == true) {
@@ -10726,13 +10994,13 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     KuiklySharedSettingsRow(
                                         key = DEVELOPER_ACTION_QUIVER_UPDATE_CHECK,
                                         iconName = SlockLucideIconName.Download,
-                                        title = "Check for update",
-                                        detail = updateCheck.detail.ifBlank { "Checks for a newer Android build and opens the installer when available." },
+                                        title = copy.checkUpdate,
+                                        detail = updateCheck.detail.ifBlank { copy.checkUpdateDetail },
                                         status =
                                             when {
-                                                updateCheckBusy -> "Checking"
+                                                updateCheckBusy -> copy.checking
                                                 updateCheck.statusLabel.isNotBlank() -> updateCheck.statusLabel
-                                                else -> "Check"
+                                                else -> copy.check
                                             },
                                         enabled = !updateCheckBusy
                                     )
@@ -10742,9 +11010,9 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 KuiklySharedSettingsRow(
                                     key = "openSourceLicenses",
                                     iconName = SlockLucideIconName.FileText,
-                                    title = "Open Source Licenses",
-                                    detail = "Review third-party libraries included in the Android app package.",
-                                    status = "Open",
+                                    title = copy.licenses,
+                                    detail = copy.licensesDetail,
+                                    status = copy.open,
                                     enabled = true
                                 )
                             )
@@ -10752,13 +11020,13 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 KuiklySharedSettingsRow(
                                     key = "copyEnvironmentInfo",
                                     iconName = SlockLucideIconName.Clipboard,
-                                    title = "Copy environment info",
-                                    detail = "Copy the same sanitized environment used for diagnostics and feedback.",
-                                    status = "Copy",
+                                    title = copy.copyEnvironment,
+                                    detail = copy.copyEnvironmentDetail,
+                                    status = copy.copy,
                                     enabled = true
                                 )
                             )
-                            add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true))
+                            add(KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true))
                         }
                 )
             )
@@ -10767,53 +11035,54 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
 
 internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
-    actionState: SharedSettingsActionState?
+    actionState: SharedSettingsActionState?,
+    copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy()
 ): KuiklySharedSettingsPayload {
     val environmentDetail =
         when (state) {
             is ScreenLoadState.Error -> state.error.settingsUserFacingMessage()
             is ScreenLoadState.Empty -> state.reason.settingsUserFacingMessage()
             is ScreenLoadState.NoPermission -> state.blocker.settingsUserFacingMessage()
-            ScreenLoadState.Loading -> "Loading developer environment options."
-            is ScreenLoadState.Content -> "Choose presets or edit API, socket, and web URLs."
+            ScreenLoadState.Loading -> copy.environmentLoading
+            is ScreenLoadState.Content -> copy.environmentDetail
         }
     val environmentStatus =
         when {
-            actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.inProgress -> "Saving"
+            actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.inProgress -> copy.saving
             this?.environmentLabel.orEmpty().isNotBlank() -> this?.environmentLabel.orEmpty()
-            state is ScreenLoadState.Loading -> "Loading"
-            else -> "Open"
+            state is ScreenLoadState.Loading -> copy.loading
+            else -> copy.open
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
-        title = "Developer",
-        detail = this?.feedback ?: this?.environmentLabel.orEmpty().ifBlank { "API server and diagnostics" },
+        title = copy.title,
+        detail = this?.feedback ?: this?.environmentLabel.orEmpty().ifBlank { copy.detail },
         heroIconName = SlockLucideIconName.Terminal,
-        heroLabel = "Developer",
+        heroLabel = copy.title,
         sections =
             listOf(
                 KuiklySharedSettingsSection(
-                    title = "API Server",
+                    title = copy.apiServer,
                     rows =
                         listOf(
                             KuiklySharedSettingsRow(
                                 key = "currentApi",
                                 iconName = SlockLucideIconName.Globe,
-                                title = "Current API",
-                                detail = this?.apiBaseUrl.orEmpty().ifBlank { "Unknown" },
-                                status = this?.environmentLabel.orEmpty().ifBlank { "Current" }
+                                title = copy.currentApi,
+                                detail = this?.apiBaseUrl.orEmpty().ifBlank { copy.unknown },
+                                status = this?.environmentLabel.orEmpty().ifBlank { copy.current }
                             ),
                             KuiklySharedSettingsRow(
                                 key = "currentSocket",
                                 iconName = SlockLucideIconName.Activity,
-                                title = "Current socket",
-                                detail = this?.socketBaseUrl.orEmpty().ifBlank { "Unknown" },
-                                status = "Realtime"
+                                title = copy.currentSocket,
+                                detail = this?.socketBaseUrl.orEmpty().ifBlank { copy.unknown },
+                                status = copy.realtime
                             ),
                             KuiklySharedSettingsRow(
                                 key = DEVELOPER_ACTION_API_ENVIRONMENT,
                                 iconName = SlockLucideIconName.SlidersHorizontal,
-                                title = "API Environment",
+                                title = copy.apiEnvironment,
                                 detail = environmentDetail,
                                 status = environmentStatus,
                                 enabled = state is ScreenLoadState.Content
@@ -10821,11 +11090,11 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                         )
                 ),
                 KuiklySharedSettingsSection(
-                    title = "Diagnostics",
+                    title = copy.diagnostics,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open auth, sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("router", SlockLucideIconName.Route, "Route launcher", "Open Kuikly route launcher and icon compare.", status = "Open", enabled = true)
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, copy.diagnostics, copy.diagnosticsDetail, status = copy.open, enabled = true),
+                            KuiklySharedSettingsRow("router", SlockLucideIconName.Route, copy.routeLauncher, copy.routeLauncherDetail, status = copy.open, enabled = true)
                         )
                 )
             )
@@ -10945,7 +11214,8 @@ private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(): St
 
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
-    actionState: build.raft.app.data.SharedSettingsActionState?
+    actionState: build.raft.app.data.SharedSettingsActionState?,
+    copy: SettingsDiagnosticsPayloadCopy = SettingsDiagnosticsPayloadCopy()
 ): KuiklySharedSettingsPayload {
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
@@ -10954,7 +11224,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     val profilerRunning = profiler.statusLabel == "Running"
     val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val environmentRows =
-        snapshot?.about?.toDiagnosticsEnvironmentRows().orEmpty()
+        snapshot?.about?.toDiagnosticsEnvironmentRows(copy).orEmpty()
     val loadStatusRows =
         snapshot?.loadErrorMessage
             ?.takeIf { it.isNotBlank() }
@@ -10963,38 +11233,38 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     KuiklySharedSettingsRow(
                         key = "diagnosticsLoadStatus",
                         iconName = SlockLucideIconName.TriangleAlert,
-                        title = "Partial diagnostics",
+                        title = copy.partialDiagnostics,
                         detail = errorMessage,
-                        status = "Partial"
+                        status = copy.partial
                     )
                 )
             }
             .orEmpty()
     val profilerControlSection =
         KuiklySharedSettingsSection(
-            title = "Recomposition profiler",
+            title = copy.profiler,
             rows =
                 if (profiler.supported) {
                     listOf(
                             KuiklySharedSettingsRow(
                                 "profilerStatus",
                                 SlockLucideIconName.Activity,
-                                "Shared profiler status",
+                                copy.profilerStatus,
                                 profiler.detail,
                                 status = profiler.statusLabel
                             ),
                             KuiklySharedSettingsRow(
                                 DIAGNOSTICS_ACTION_PROFILER_ENABLED,
                                 SlockLucideIconName.Activity,
-                                "Recomposition profiler",
-                                "Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.",
+                                copy.profiler,
+                                copy.profilerDetail,
                                 value = (!profiler.enabled).toString(),
                                 status =
                                     when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_ENABLED) -> "Loading"
-                                        profiler.enabled && profilerRunning -> "On"
-                                        profiler.enabled -> "Pending"
-                                        else -> "Off"
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_ENABLED) -> copy.loading
+                                        profiler.enabled && profilerRunning -> copy.on
+                                        profiler.enabled -> copy.pending
+                                        else -> copy.off
                                     },
                                 enabled = !profilerBusy,
                                 toggleValue = profiler.enabled
@@ -11002,39 +11272,39 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             KuiklySharedSettingsRow(
                                 "resetProfiler",
                                 SlockLucideIconName.RotateCcw,
-                                "Reset scene window",
-                                "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
+                                copy.resetProfiler,
+                                copy.resetProfilerDetail,
                                 status =
                                     when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_RESET) -> "Loading"
-                                        profilerRunning -> "Reset"
-                                        else -> "Wait"
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_RESET) -> copy.loading
+                                        profilerRunning -> copy.reset
+                                        else -> copy.wait
                                     },
                                 enabled = profilerRunning && !profilerBusy
                             ),
                             KuiklySharedSettingsRow(
                                 "refreshProfilerReport",
                                 SlockLucideIconName.RefreshCw,
-                                "Refresh report",
-                                "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
+                                copy.refreshProfiler,
+                                copy.refreshProfilerDetail,
                                 status =
                                     when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_REPORT) -> "Loading"
-                                        profiler.report.reportAvailable -> "Refresh"
-                                        else -> "Pull"
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_REPORT) -> copy.loading
+                                        profiler.report.reportAvailable -> copy.refresh
+                                        else -> copy.pull
                                     },
                                 enabled = !profilerBusy
                             ),
                             KuiklySharedSettingsRow(
                                 "exportProfilerReport",
                                 SlockLucideIconName.FileCode,
-                                "Export report",
-                                "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
+                                copy.exportProfiler,
+                                copy.exportProfilerDetail,
                                 status =
                                     when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_EXPORT) -> "Loading"
-                                        profiler.report.reportAvailable -> "Export"
-                                        else -> "Write"
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_EXPORT) -> copy.loading
+                                        profiler.report.reportAvailable -> copy.export
+                                        else -> copy.write
                                     },
                                 enabled = !profilerBusy
                             )
@@ -11044,14 +11314,14 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         KuiklySharedSettingsRow(
                             "profilerStatus",
                             SlockLucideIconName.Activity,
-                            "Shared profiler status",
+                            copy.profilerStatus,
                             profiler.detail,
                             status = profiler.gateLabel
                         ),
                         KuiklySharedSettingsRow(
                             DIAGNOSTICS_ACTION_PROFILER_ENABLED,
                             SlockLucideIconName.Activity,
-                            "Recomposition profiler",
+                            copy.profiler,
                             profiler.detail,
                             status = profiler.gateLabel,
                             enabled = false,
@@ -11062,95 +11332,97 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
         )
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
-        title = "Diagnostics",
+        title = copy.title,
         detail =
             profiler.actionFeedback
                 ?: if (profiler.supported) {
-                    "Auth, sanitized app diagnostics, and Kuikly recomposition profiler"
+                    copy.detailProfiler
                 } else if (profiler.detail.isNotBlank()) {
-                    "Auth, sanitized app diagnostics, and Kuikly profiler status"
+                    copy.detailStatus
                 } else {
-                    "Auth and sanitized app diagnostics"
+                    copy.detailBasic
                 },
         heroIconName = SlockLucideIconName.ClipboardList,
-        heroLabel = "Diagnostics",
+        heroLabel = copy.title,
         sections =
             listOfNotNull(
                 environmentRows.takeIf { it.isNotEmpty() }?.let {
-                    KuiklySharedSettingsSection(title = "Environment", rows = it)
+                    KuiklySharedSettingsSection(title = copy.environment, rows = it)
                 },
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
-                    KuiklySharedSettingsSection(title = "Load status", rows = it)
+                    KuiklySharedSettingsSection(title = copy.loadStatus, rows = it)
                 }
             ) + listOf(profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
-                    title = "Actions",
+                    title = copy.actions,
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Export logs", "Export environment, status, and recent app JSONL logs.", status = if (diagnosticsExportAvailable) "Export" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized diagnostics with support.", status = "Send", enabled = true)
+                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, copy.exportLogs, copy.exportLogsDetail, status = if (diagnosticsExportAvailable) copy.export else copy.disabled, enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, copy.sendDiagnostics, copy.sendDiagnosticsDetail, status = copy.send, enabled = true)
                         )
                 )
             )
     )
 }
 
-private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(): List<KuiklySharedSettingsRow> =
+private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<KuiklySharedSettingsRow> =
     listOf(
-        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, "App", appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { "Version" }),
-        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, "Build", buildLabel.ifBlank { "Unknown" }, status = sourceLabel.ifBlank { "Source" }),
-        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, "Version code", versionCodeLabel.ifBlank { buildLabel.ifBlank { "Unknown" } }, status = sdkLabel.ifBlank { "SDK" }),
-        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Host"),
-        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, "Platform", platformLabel.ifBlank { "Unknown" }, status = deviceLabel.ifBlank { "Device" }),
-        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, "Device facts", modelLabel.ifBlank { deviceLabel.ifBlank { "Unknown" } }, status = screenLabel.ifBlank { "Screen" }),
-        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, "Display", densityLabel.ifBlank { "Density" }, status = fontScaleLabel.ifBlank { "Font scale" }),
-        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, "Install time", installTimeLabel.ifBlank { "--" }, status = "Host"),
-        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, "Session", signedInUserLabel.ifBlank { "No signed-in user" }, status = sessionStatusLabel.ifBlank { "Unknown" }),
-        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "Unknown" }, status = socketStatusLabel.ifBlank { "Socket" })
+        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }),
+        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }),
+        KuiklySharedSettingsRow("diagnosticsVersionCode", SlockLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }),
+        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host),
+        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, copy.platform, platformLabel.ifBlank { copy.unknown }, status = deviceLabel.ifBlank { copy.device }),
+        KuiklySharedSettingsRow("diagnosticsDeviceFacts", SlockLucideIconName.Smartphone, copy.deviceFacts, modelLabel.ifBlank { deviceLabel.ifBlank { copy.unknown } }, status = screenLabel.ifBlank { copy.screen }),
+        KuiklySharedSettingsRow("diagnosticsDisplay", SlockLucideIconName.Monitor, copy.display, densityLabel.ifBlank { copy.density }, status = fontScaleLabel.ifBlank { copy.fontScale }),
+        KuiklySharedSettingsRow("diagnosticsInstallTime", SlockLucideIconName.Clock, copy.installTime, installTimeLabel.ifBlank { "--" }, status = copy.host),
+        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, copy.session, signedInUserLabel.ifBlank { copy.noSignedInUser }, status = sessionStatusLabel.ifBlank { copy.unknown }),
+        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, copy.selectedServer, selectedServerLabel.ifBlank { copy.unknown }, status = socketStatusLabel.ifBlank { copy.socket })
     )
 
+@Composable
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Account"
         SettingsDestinationComputers -> "Computers"
-        SettingsDestinationServer -> "Server Profile"
-        SettingsDestinationAdministration -> "Administration"
-        SettingsDestinationConnectedApps -> "Connected Apps"
+        SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_title)
+        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
+        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
         SettingsDestinationBilling -> "Billing"
         SettingsDestinationLanguageRegion -> "Language & Region"
         SettingsDestinationAppearance -> "Appearance"
         SettingsDestinationNotifications -> "Notifications"
         SettingsDestinationMobile -> "Mobile"
-        SettingsDestinationStorage -> "Storage"
-        SettingsDestinationAbout -> "About"
-        SettingsDestinationOpenSourceLicenses -> "Open Source Licenses"
+        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
+        SettingsDestinationAbout -> stringResource(MR.strings.settings_about_title)
+        SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
         SettingsDestinationReleaseNotes -> "Release Notes"
-        SettingsDestinationDeveloper -> "Developer"
-        SettingsDestinationApiEnvironment -> "API Environment"
-        SettingsDestinationDiagnostics -> "Diagnostics"
+        SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_title)
+        SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
+        SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
         SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
         SettingsDestinationQuiverFeedback -> "Send feedback"
         else -> "Settings"
     }
 
+@Composable
 private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Profile and sign out"
         SettingsDestinationComputers -> "Connected machines"
-        SettingsDestinationServer -> "Workspace profile"
-        SettingsDestinationAdministration -> "Admins, invites, join links, agreements"
-        SettingsDestinationConnectedApps -> "Marketplace, installed apps, OAuth clients"
+        SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_subtitle)
+        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_subtitle)
+        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_subtitle)
         SettingsDestinationBilling -> "Plan and usage"
         SettingsDestinationLanguageRegion -> "Language, timezone, translation"
         SettingsDestinationAppearance -> "Message font size and preview"
         SettingsDestinationNotifications -> "Push status and workspace mute"
         SettingsDestinationMobile -> "My message alignment"
-        SettingsDestinationStorage -> "Local cache"
-        SettingsDestinationAbout -> "Version and build information"
-        SettingsDestinationOpenSourceLicenses -> "Third-party library notices"
-        SettingsDestinationDeveloper -> "API server, diagnostics, route launcher"
-        SettingsDestinationApiEnvironment -> "Presets and custom server URLs"
-        SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
+        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_subtitle)
+        SettingsDestinationAbout -> stringResource(MR.strings.settings_about_detail)
+        SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_about_licenses_detail)
+        SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_subtitle)
+        SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment_subtitle)
+        SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
         SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
         SettingsDestinationQuiverFeedback -> "Report a problem or suggestion"
         else -> ""
