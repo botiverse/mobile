@@ -414,6 +414,24 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellBottomTabsUseLocalizedLabelsAndRetainSelection() {
+        val tabs =
+            appShellBottomTabs(
+                selectedKey = "members",
+                homeLabel = "localized-home",
+                tasksLabel = "localized-tasks",
+                membersLabel = "localized-members",
+                settingsLabel = "localized-settings"
+            )
+
+        assertEquals(
+            listOf("localized-home", "localized-tasks", "localized-members", "localized-settings"),
+            tabs.map { it.label }
+        )
+        assertEquals(listOf(false, false, true, false), tabs.map { it.selected })
+    }
+
+    @Test
     fun appShellBottomTabsOnlyShowOnPrimarySurfaces() {
         assertEquals(
             true,

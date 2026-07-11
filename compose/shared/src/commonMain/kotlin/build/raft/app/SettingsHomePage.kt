@@ -1577,12 +1577,18 @@ private val bottomTabBarSmokeItems = listOf(
     SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
 )
 
-private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayload> =
+internal fun appShellBottomTabs(
+    selectedKey: String,
+    homeLabel: String,
+    tasksLabel: String,
+    membersLabel: String,
+    settingsLabel: String
+): List<SlockBottomTabItemPayload> =
     listOf(
-        SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = selectedKey == "home"),
-        SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
-        SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users, selected = selectedKey == "members"),
-        SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedKey == "settings")
+        SlockBottomTabItemPayload("home", homeLabel, SlockLucideIconName.House, selected = selectedKey == "home"),
+        SlockBottomTabItemPayload("tasks", tasksLabel, SlockLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
+        SlockBottomTabItemPayload("members", membersLabel, SlockLucideIconName.Users, selected = selectedKey == "members"),
+        SlockBottomTabItemPayload("settings", settingsLabel, SlockLucideIconName.Settings, selected = selectedKey == "settings")
     )
 
 private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settings")
@@ -3548,8 +3554,24 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             selectedHomeDestination = selectedHomeDestination,
             selectedSettingsDestination = selectedSettingsDestination
         )
-    val appShellBottomTabItems = remember(selectedTab) {
-        appShellBottomTabs(selectedTab)
+    val homeTabLabel = stringResource(MR.strings.tab_home)
+    val tasksTabLabel = stringResource(MR.strings.tab_tasks)
+    val membersTabLabel = stringResource(MR.strings.tab_members)
+    val settingsTabLabel = stringResource(MR.strings.tab_settings)
+    val appShellBottomTabItems = remember(
+        selectedTab,
+        homeTabLabel,
+        tasksTabLabel,
+        membersTabLabel,
+        settingsTabLabel
+    ) {
+        appShellBottomTabs(
+            selectedKey = selectedTab,
+            homeLabel = homeTabLabel,
+            tasksLabel = tasksTabLabel,
+            membersLabel = membersTabLabel,
+            settingsLabel = settingsTabLabel
+        )
     }
     val appShellBottomContentInset = shellScope.contentBottomInset(showAppShellBottomTabs)
     LaunchedEffect(foregroundMessageBanner?.id) {
@@ -16913,7 +16935,7 @@ internal fun BottomTabBarVisualContent() {
     // (task #370).
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockBottomTabBar(
-            items = appShellBottomTabs("home"),
+            items = bottomTabBarSmokeItems,
             onSelect = {},
             modifier = Modifier.width(390.dp)
         )
