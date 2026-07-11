@@ -2906,7 +2906,7 @@ internal fun MembersListContent(
                         if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
-                                contentDescription = "Create agent",
+                                contentDescription = stringResource(MR.strings.agent_create_action_create),
                                 onClick = {
                                     if (createAgentSubmit != null) {
                                         activeCreateAgent = true

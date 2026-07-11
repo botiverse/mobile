@@ -92,8 +92,8 @@ internal fun SharedInviteHumanDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val linkText = when {
-                        joinLinkLoading -> "Preparing join link…"
-                        copyableJoinLink == null -> "Join link unavailable"
+                        joinLinkLoading -> stringResource(MR.strings.agent_invite_state_join_link_loading)
+                        copyableJoinLink == null -> stringResource(MR.strings.agent_invite_state_join_link_unavailable)
                         else -> copyableJoinLink
                     }
                     SlockBrutalReadOnlyValueField(
@@ -127,7 +127,7 @@ internal fun SharedInviteHumanDialog(
                         color = SlockColor.TextMutedGrayArgb
                     )
                     Text(
-                        text = "Anyone with this link can join this server.",
+                        text = stringResource(MR.strings.agent_invite_hint_join_link),
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray
                     )
@@ -168,7 +168,12 @@ internal fun SharedInviteHumanDialog(
                     onClick = onDismiss
                 )
                 SlockBrutalActionButton(
-                    label = if (submitting) "Sending..." else "Send invites",
+                    label =
+                        if (submitting) {
+                            stringResource(MR.strings.agent_invite_action_sending)
+                        } else {
+                            stringResource(MR.strings.agent_invite_action_send)
+                        },
                     enabled = canSubmit,
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentRed,

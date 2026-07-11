@@ -60,6 +60,8 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.compose.localized
+import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.core.pager.Pager
 
 // #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
@@ -273,7 +275,9 @@ private fun normalizeCreateAgentRuntimeIds(runtimeIds: List<String>): List<Strin
 
 internal fun createAgentRuntimeDropdownItems(
     machineRuntimeIds: List<String> = emptyList(),
-    allowStaticFallback: Boolean = true
+    allowStaticFallback: Boolean = true,
+    comingSoonSuffix: String = " (coming soon)",
+    notInstalledSuffix: String = " (not installed)"
 ): List<CreateAgentDropdownItem> {
     val machineRuntimeIdsNormalized = normalizeCreateAgentRuntimeIds(machineRuntimeIds)
     if (machineRuntimeIdsNormalized.isEmpty()) {
@@ -290,8 +294,8 @@ internal fun createAgentRuntimeDropdownItems(
         val selectable = runtime.supported && runtime.id in available
         val unavailableSuffix =
             when {
-                !runtime.supported -> " (coming soon)"
-                runtime.id !in available -> " (not installed)"
+                !runtime.supported -> comingSoonSuffix
+                runtime.id !in available -> notInstalledSuffix
                 else -> ""
             }
         CreateAgentDropdownItem(
@@ -315,14 +319,15 @@ internal fun createAgentRuntimeAvailabilityError(
 
 internal fun createAgentMachineDropdownItems(
     machines: List<SharedCreateAgentMachineOption>,
-    requiredComputer: String?
+    requiredComputer: String?,
+    offlineSuffix: String = " (offline)"
 ): List<CreateAgentDropdownItem> =
     machines.map { machine ->
         val isOffline = machine.status != "online"
         val blockedByRequired = !requiredComputer.isNullOrBlank() && machine.id != requiredComputer
         CreateAgentDropdownItem(
             id = machine.id,
-            label = machine.name + if (isOffline) " (offline)" else "",
+            label = machine.name + if (isOffline) offlineSuffix else "",
             enabled = !isOffline && !blockedByRequired
         )
     }
@@ -343,7 +348,8 @@ internal fun createAgentInitialMachineSelection(
 internal fun createAgentModelDropdownItems(
     runtime: String,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList(),
-    allowCustomModel: Boolean = true
+    allowCustomModel: Boolean = true,
+    customLabel: String = "Custom"
 ): List<CreateAgentModelDropdownItem> {
     val modelOptions =
         runtimeModelsOverride
@@ -352,7 +358,7 @@ internal fun createAgentModelDropdownItems(
             ?: RUNTIME_MODELS[runtime].orEmpty()
     val presets = modelOptions.map { CreateAgentModelDropdownItem(id = it.id, label = it.label) }
     return if (allowCustomModel) {
-        presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom", custom = true)
+        presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = customLabel, custom = true)
     } else {
         presets
     }
@@ -364,13 +370,16 @@ internal fun createAgentModelDropdownItemsForSelection(
     allowCustomModel: Boolean = true,
     selectedModel: String,
     customModelMode: Boolean,
-    retainUnavailableSelectedPreset: Boolean
+    retainUnavailableSelectedPreset: Boolean,
+    customLabel: String = "Custom",
+    unavailableSuffix: String = " (not in this computer's config)"
 ): List<CreateAgentModelDropdownItem> {
     val options =
         createAgentModelDropdownItems(
             runtime = runtime,
             runtimeModelsOverride = runtimeModelsOverride,
-            allowCustomModel = allowCustomModel
+            allowCustomModel = allowCustomModel,
+            customLabel = customLabel
         )
     if (!retainUnavailableSelectedPreset || customModelMode || selectedModel.isBlank() ||
         options.any { it.id == selectedModel }
@@ -380,7 +389,7 @@ internal fun createAgentModelDropdownItemsForSelection(
     val unavailable =
         CreateAgentModelDropdownItem(
             id = selectedModel,
-            label = "${getModelLabel(runtime, selectedModel)} (not in this computer's config)"
+            label = getModelLabel(runtime, selectedModel) + unavailableSuffix
         )
     val customIndex = options.indexOfFirst { it.custom }
     return if (customIndex >= 0) {
@@ -393,12 +402,14 @@ internal fun createAgentModelDropdownItemsForSelection(
 internal fun createAgentModelSelectLabel(
     customModelMode: Boolean,
     model: String,
-    modelOptions: List<CreateAgentModelDropdownItem>
+    modelOptions: List<CreateAgentModelDropdownItem>,
+    customLabel: String = "Custom",
+    selectModelLabel: String = "Select model"
 ): String =
     if (customModelMode) {
-        "Custom"
+        customLabel
     } else {
-        modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
+        modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { selectModelLabel }
     }
 
 internal fun createAgentModelPresetIds(
@@ -434,16 +445,22 @@ internal fun createAgentPreferredModelId(
         ?: getDefaultModel(runtime)
 }
 
-internal fun createAgentProviderDropdownItems(): List<CreateAgentDropdownItem> =
+internal fun createAgentProviderDropdownItems(
+    defaultLabel: String = "Default",
+    customLabel: String = "Custom"
+): List<CreateAgentDropdownItem> =
     listOf(
-        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_DEFAULT, label = "Default"),
-        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_CUSTOM, label = "Custom")
+        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_DEFAULT, label = defaultLabel),
+        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_CUSTOM, label = customLabel)
     )
 
-internal fun createAgentReasoningDropdownItems(): List<CreateAgentDropdownItem> =
-    listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = "Default")) +
+internal fun createAgentReasoningDropdownItems(
+    defaultLabel: String = "Default",
+    effortLabels: Map<String, String> = emptyMap()
+): List<CreateAgentDropdownItem> =
+    listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = defaultLabel)) +
         REASONING_EFFORTS.map { (id, label) ->
-            CreateAgentDropdownItem(id = id, label = label)
+            CreateAgentDropdownItem(id = id, label = effortLabels[id] ?: label)
         }
 
 private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
@@ -570,6 +587,7 @@ internal fun SharedCreateAgentDialog(
 
     val trimmedName = name.trim()
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
+    val localizedInlineNameError = inlineNameError?.let { localizedCreateAgentNameError(trimmedName, it) }
     val descriptionTooLong = description.length > DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH
     val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
@@ -604,7 +622,12 @@ internal fun SharedCreateAgentDialog(
     }
 
     SlockUnifiedDialog(
-        title = if (external) "CREATE EXTERNAL AGENT" else "CREATE AGENT",
+        title =
+            if (external) {
+                stringResource(MR.strings.agent_create_title_external)
+            } else {
+                stringResource(MR.strings.agent_create_title)
+            },
         dismissEnabled = !submitting,
         onDismiss = onDismiss,
         hostRoute = SharedCreateAgentDialogHostRoute
@@ -697,7 +720,7 @@ internal fun SharedCreateAgentDialog(
                 if (inlineNameError != null) {
                     item(key = "name-error") {
                         Text(
-                            text = inlineNameError,
+                            text = localizedInlineNameError ?: inlineNameError,
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                             color = SlockColor.AccentRed
                         )
@@ -713,7 +736,7 @@ internal fun SharedCreateAgentDialog(
                                 description = it
                             }
                         },
-                        placeholder = "Leave blank for a general-purpose agent, or describe a role...",
+                        placeholder = stringResource(MR.strings.agent_create_placeholder_description),
                         enabled = !submitting,
                         maxLines = 3,
                         fieldMinHeight = 82.dp
@@ -722,7 +745,10 @@ internal fun SharedCreateAgentDialog(
                 item(key = "description-count") {
                     if (descriptionTooLong) {
                         Text(
-                            text = "Description must be at most $DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH characters.",
+                            text =
+                                MR.strings.agent_create_error_description_length
+                                    .format(listOf(DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                    .localized(),
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                             color = SlockColor.AccentRed
                         )
@@ -801,7 +827,12 @@ internal fun SharedCreateAgentDialog(
                     onClick = onDismiss
                 )
                 SlockBrutalActionButton(
-                    label = if (submitting) "Creating..." else "Create Agent",
+                    label =
+                        if (submitting) {
+                            stringResource(MR.strings.agent_create_action_creating)
+                        } else {
+                            stringResource(MR.strings.agent_create_action_create)
+                        },
                     enabled = canSubmit,
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentPink,
@@ -833,6 +864,19 @@ internal fun SharedCreateAgentDialog(
     }
 }
 
+@Composable
+private fun localizedCreateAgentNameError(name: String, fallback: String): String =
+    when {
+        " is reserved." in fallback ->
+            MR.strings.agent_create_error_name_reserved
+                .format(listOf(name.removePrefix("@").lowercase()))
+                .localized()
+        "at least" in fallback -> stringResource(MR.strings.agent_create_error_name_min)
+        "at most" in fallback -> stringResource(MR.strings.agent_create_error_name_max)
+        "must start with a letter" in fallback -> stringResource(MR.strings.agent_create_error_name_characters)
+        else -> fallback
+    }
+
 // Suppress lint helper: previously used to clear errorMessage local var on input change.
 // Kept for call-site compatibility with the prior signature; no-op now that the field
 // is managed by the parent caller.
@@ -851,7 +895,10 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int) {
             .padding(SlockSpacing.Sm)
     ) {
         Text(
-            text = "Agent limit reached ($currentAgentCount/$maxAgents on this server). Upgrade for more.",
+            text =
+                MR.strings.agent_create_error_limit
+                    .format(listOf(currentAgentCount, maxAgents))
+                    .localized(),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
@@ -873,7 +920,7 @@ private fun MachinePicker(
         SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
         when {
             machinesLoading -> Text(
-                text = "Loading computers...",
+                text = stringResource(MR.strings.agent_create_state_computers_loading),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
@@ -898,19 +945,24 @@ private fun MachinePicker(
                     .padding(SlockSpacing.Sm)
             ) {
                 Text(
-                    text = "No computers. Connect a computer first.",
+                    text = stringResource(MR.strings.agent_create_state_computers_empty),
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray
                 )
             }
             else -> {
-                val machineItems = createAgentMachineDropdownItems(machines, requiredComputer)
+                val machineItems =
+                    createAgentMachineDropdownItems(
+                        machines = machines,
+                        requiredComputer = requiredComputer,
+                        offlineSuffix = stringResource(MR.strings.agent_create_suffix_offline)
+                    )
                 SlockBrutalSelectField(
                     options = machineItems.toBrutalSelectOptions(),
                     selectedId = selectedMachineId.orEmpty(),
                     selectedLabel =
                         machineItems.firstOrNull { it.id == selectedMachineId }?.label
-                            ?: "Select computer",
+                            ?: stringResource(MR.strings.agent_create_placeholder_select_computer),
                     placeholder = stringResource(MR.strings.agent_create_placeholder_select_computer),
                     enabled = enabled,
                     rowHeight = 40.dp,
@@ -920,13 +972,13 @@ private fun MachinePicker(
         }
         if (!requiredComputer.isNullOrBlank()) {
             Text(
-                text = "Required computer: $requiredComputer",
+                text = MR.strings.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
         } else if (!suggestedComputer.isNullOrBlank()) {
             Text(
-                text = "Suggested computer: $suggestedComputer",
+                text = MR.strings.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized(),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
@@ -978,12 +1030,17 @@ internal fun AdvancedRuntimeSection(
             allowCustomModel = customModelSupported,
             selectedModel = model,
             customModelMode = customModelMode,
-            retainUnavailableSelectedPreset = retainUnavailableSelectedPreset
+            retainUnavailableSelectedPreset = retainUnavailableSelectedPreset,
+            customLabel = stringResource(MR.strings.agent_create_label_custom),
+            unavailableSuffix = " " + stringResource(MR.strings.agent_create_suffix_model_unavailable)
         )
-    val runtimeOptions = createAgentRuntimeDropdownItems(
-        machineRuntimeIds = machineRuntimeIds,
-        allowStaticFallback = runtimeAvailabilityError == null
-    )
+    val runtimeOptions =
+        createAgentRuntimeDropdownItems(
+            machineRuntimeIds = machineRuntimeIds,
+            allowStaticFallback = runtimeAvailabilityError == null,
+            comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
+            notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
+        )
     val runtimeEnabled = enabled && runtimeAvailabilityError == null && runtimeOptions.isNotEmpty()
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
@@ -999,7 +1056,7 @@ internal fun AdvancedRuntimeSection(
             selectedLabel =
                 runtimeOptions.firstOrNull { it.id == runtime }?.label
                     ?: runtime.takeIf { runtimeAvailabilityError == null }?.let { getRuntimeDisplayName(it) }
-                    ?: "No runtimes available",
+                    ?: stringResource(MR.strings.agent_create_state_no_runtimes),
             placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
             enabled = runtimeEnabled,
             rowHeight = 36.dp,
@@ -1010,7 +1067,12 @@ internal fun AdvancedRuntimeSection(
         )
         runtimeAvailabilityError?.let { error ->
             Text(
-                text = error,
+                text =
+                    if (error == CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR) {
+                        stringResource(MR.strings.agent_create_error_no_machine_runtimes)
+                    } else {
+                        error
+                    },
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed
             )
@@ -1018,11 +1080,17 @@ internal fun AdvancedRuntimeSection(
         if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
             SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
-            val providerOptions = createAgentProviderDropdownItems()
+            val providerOptions =
+                createAgentProviderDropdownItems(
+                    defaultLabel = stringResource(MR.strings.agent_create_action_default),
+                    customLabel = stringResource(MR.strings.agent_create_label_custom)
+                )
             SlockBrutalSelectField(
                 options = providerOptions.toBrutalSelectOptions(),
                 selectedId = providerMode,
-                selectedLabel = providerOptions.firstOrNull { it.id == providerMode }?.label ?: "Default",
+                selectedLabel =
+                    providerOptions.firstOrNull { it.id == providerMode }?.label
+                        ?: stringResource(MR.strings.agent_create_action_default),
                 placeholder = stringResource(MR.strings.agent_create_placeholder_select_provider),
                 enabled = enabled,
                 rowHeight = 36.dp,
@@ -1036,13 +1104,13 @@ internal fun AdvancedRuntimeSection(
                 }
             )
             Text(
-                text = "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent.",
+                text = stringResource(MR.strings.agent_create_hint_provider),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
             if (providerMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
                 SlockBrutalTextField(
-                    label = "API URL",
+                    label = stringResource(MR.strings.agent_create_label_api_url),
                     required = true,
                     value = providerApiUrl,
                     onValueChange = { onProviderApiUrlChange(it) },
@@ -1051,13 +1119,13 @@ internal fun AdvancedRuntimeSection(
                 )
                 if (providerApiUrl.isNotBlank() && providerUrlInvalid) {
                     Text(
-                        text = "Provider URL must start with http:// or https://",
+                        text = stringResource(MR.strings.agent_create_error_provider_url),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                         color = SlockColor.AccentRed
                     )
                 }
                 SlockBrutalTextField(
-                    label = "API Key",
+                    label = stringResource(MR.strings.agent_create_label_api_key),
                     required = true,
                     value = providerApiKey,
                     // Task #43 QA-4 fix (artin's instruction: same component
@@ -1071,7 +1139,7 @@ internal fun AdvancedRuntimeSection(
                 )
                 if (providerKeyInvalid) {
                     Text(
-                        text = "Provider API key is required for custom provider",
+                        text = stringResource(MR.strings.agent_create_error_provider_key),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                         color = SlockColor.AccentRed
                     )
@@ -1090,7 +1158,14 @@ internal fun AdvancedRuntimeSection(
         SlockBrutalSelectField(
             options = modelSelectItems.toBrutalSelectOptions(),
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
-            selectedLabel = createAgentModelSelectLabel(customModelMode, model, modelOptions),
+            selectedLabel =
+                createAgentModelSelectLabel(
+                    customModelMode = customModelMode,
+                    model = model,
+                    modelOptions = modelOptions,
+                    customLabel = stringResource(MR.strings.agent_create_label_custom),
+                    selectModelLabel = stringResource(MR.strings.agent_create_placeholder_select_model)
+                ),
             placeholder = stringResource(MR.strings.agent_create_placeholder_select_model),
             enabled = enabled,
             rowHeight = 36.dp,
@@ -1119,7 +1194,7 @@ internal fun AdvancedRuntimeSection(
                 )
                 if (customModelName.isBlank()) {
                     Text(
-                        text = "Custom model is required.",
+                        text = stringResource(MR.strings.agent_create_error_custom_model),
                         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                         color = SlockColor.AccentRed
                     )
@@ -1128,12 +1203,24 @@ internal fun AdvancedRuntimeSection(
         }
         if (supportsRuntimeReasoningEffort(runtime)) {
             SlockBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
-            val reasoningOptions = createAgentReasoningDropdownItems()
+            val reasoningOptions =
+                createAgentReasoningDropdownItems(
+                    defaultLabel = stringResource(MR.strings.agent_create_action_default),
+                    effortLabels =
+                        mapOf(
+                            "low" to stringResource(MR.strings.agent_create_reasoning_low),
+                            "medium" to stringResource(MR.strings.agent_create_reasoning_medium),
+                            "high" to stringResource(MR.strings.agent_create_reasoning_high),
+                            "xhigh" to stringResource(MR.strings.agent_create_reasoning_extra_high)
+                        )
+                )
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
             SlockBrutalSelectField(
                 options = reasoningOptions.toBrutalSelectOptions(),
                 selectedId = reasoningSelectedId,
-                selectedLabel = reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label ?: "Default",
+                selectedLabel =
+                    reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label
+                        ?: stringResource(MR.strings.agent_create_action_default),
                 placeholder = stringResource(MR.strings.agent_create_action_default),
                 enabled = enabled,
                 rowHeight = 36.dp,
@@ -1158,7 +1245,7 @@ internal fun AdvancedRuntimeSection(
                     enabled = enabled
                 )
                 Text(
-                    text = "Fast mode",
+                    text = stringResource(MR.strings.agent_create_label_fast_mode),
                     style = SlockType.Caption,
                     color = SlockColor.TextBlack
                 )
@@ -1194,7 +1281,7 @@ internal fun AdvancedRuntimeSection(
                         enabled = enabled
                     )
                     Text(
-                        text = "Spawn-time command. Slock passes stream-json args; the executable must read stream-json from stdin and emit Claude-compatible JSON on stdout. Enter only a path or command name; flags are not shell-parsed.",
+                        text = stringResource(MR.strings.agent_create_hint_command),
                         style = SlockType.Caption,
                         color = SlockColor.TextMutedGray
                     )
@@ -1221,7 +1308,7 @@ private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
             color = SlockColor.TextMutedGrayArgb
         )
         Text(
-            text = "Advanced",
+            text = stringResource(MR.strings.agent_create_label_advanced),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
@@ -1330,7 +1417,7 @@ private fun EnvVarsEditor(
                     .padding(vertical = 4.dp)
         ) {
             Text(
-                text = "+ Add env var",
+                text = stringResource(MR.strings.agent_create_action_add_env_var),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                 color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
             )
