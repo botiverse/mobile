@@ -33,6 +33,13 @@ internal fun appShellServerScopedLazyListPosition(
         listPosition = listPosition
     )
 
+internal fun appShellHomeListServerId(
+    renderedServerId: String?,
+    readyServerId: String?
+): String? =
+    renderedServerId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: readyServerId?.trim()?.takeIf { it.isNotEmpty() }
+
 internal fun appShellLazyListPositionForServer(
     currentServerId: String?,
     savedPosition: AppShellServerScopedLazyListPosition

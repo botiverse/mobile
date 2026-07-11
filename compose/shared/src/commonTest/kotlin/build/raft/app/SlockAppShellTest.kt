@@ -33,6 +33,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -409,6 +410,38 @@ class SlockAppShellTest {
             AppShellLazyListPosition(),
             appShellLazyListPositionForServer(currentServerId = "", savedPosition = saved)
         )
+    }
+
+    @Test
+    fun appShellHomeListServerFollowsRenderedContentUntilTargetArrives() {
+        assertEquals(
+            "server-a",
+            appShellHomeListServerId(
+                renderedServerId = "server-a",
+                readyServerId = "server-b"
+            )
+        )
+        assertEquals(
+            "server-b",
+            appShellHomeListServerId(
+                renderedServerId = null,
+                readyServerId = "server-b"
+            )
+        )
+        assertEquals(null, appShellHomeListServerId(renderedServerId = " ", readyServerId = ""))
+    }
+
+    @Test
+    fun homeServerSwitchPremeasureRampsInSmallFrameSizedSteps() {
+        assertEquals(9, homeListNextServerSwitchBeyondBoundsItemCount(current = 6, target = 24))
+        assertEquals(15, homeListNextServerSwitchBeyondBoundsItemCount(current = 12, target = 15))
+        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
+    }
+
+    @Test
+    fun homeSidebarSlotKeysStayStableWhenServerContentChanges() {
+        assertEquals("home-channel-slot-4", homeSidebarSlotKey("channel", 4))
+        assertNotEquals(homeSidebarSlotKey("channel", 4), homeSidebarSlotKey("dm", 4))
     }
 
     @Test

@@ -1996,6 +1996,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
     var homeListPosition by remember { mutableStateOf(AppShellServerScopedLazyListPosition()) }
+    var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
@@ -2454,7 +2455,29 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = readySession?.currentServerId
+    val renderedHomeServerId =
+        (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val latestReadySession by rememberUpdatedState(readySession)
+    LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
+        val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
+        if (renderedHomeServerId != targetServerId) return@LaunchedEffect
+        bridge.performanceMarker(
+            phase = "home_server_switch_first_content",
+            routeName = "kuikly_home",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "serverId" to targetServerId,
+                    "channels" to
+                        ((homeState.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.channels
+                            ?.size
+                            ?: 0).toString()
+                )
+        )
+        pendingHomeServerSwitchId = null
+    }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
     LaunchedEffect(announcementsClient, readySession?.currentServerId) {
@@ -3705,12 +3728,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        val homeListServerId = readyServerId
+                        val homeListServerId =
+                            appShellHomeListServerId(
+                                renderedServerId = renderedHomeServerId,
+                                readyServerId = readyServerId
+                            )
+                        val homeListPositionServerId = readyServerId ?: homeListServerId
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
-                        key("home-list-${homeListServerId.orEmpty()}") {
-                            SharedHomeScreen(
+                        SharedHomeScreen(
                                 bridge = bridge,
                                 state = homeState,
                                 active = active,
@@ -3723,13 +3750,39 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 onIntent = { intent ->
                                     if (intent is SharedHomeIntent.SelectServer) {
+                                        pendingHomeServerSwitchId =
+                                            intent.serverId.takeIf { it != homeListServerId }
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_select",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata =
+                                                mapOf(
+                                                    "from" to homeListServerId.orEmpty(),
+                                                    "to" to intent.serverId
+                                                )
+                                        )
                                         readySession
                                             ?.withAppShellSelectedServer(intent.serverId)
                                             ?.let { session ->
                                                 authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                                                bridge.performanceMarker(
+                                                    phase = "home_server_switch_session_projected",
+                                                    routeName = "kuikly_home",
+                                                    event = "instant",
+                                                    metadata = mapOf("serverId" to intent.serverId)
+                                                )
                                             }
                                     }
                                     homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
+                                    if (intent is SharedHomeIntent.SelectServer) {
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_store_dispatched",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata = mapOf("serverId" to intent.serverId)
+                                        )
+                                    }
                                 },
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
@@ -3791,17 +3844,17 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
                                 bottomContentPadding = appShellBottomContentInset,
+                                listPositionServerId = homeListPositionServerId,
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
-                                        currentServerId = homeListServerId,
+                                        currentServerId = homeListPositionServerId,
                                         savedPosition = homeListPosition
                                     ),
-                                onListPositionSnapshot = { position ->
+                                onListPositionSnapshot = { serverId, position ->
                                     homeListPosition =
-                                        appShellServerScopedLazyListPosition(homeListServerId, position)
+                                        appShellServerScopedLazyListPosition(serverId, position)
                                 }
                             )
-                        }
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
@@ -13004,8 +13057,9 @@ private fun SharedHomeScreen(
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
 ) {
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
@@ -13374,6 +13428,7 @@ private fun SharedHomeScreen(
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
+                listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )
