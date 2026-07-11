@@ -12905,8 +12905,7 @@ private fun ThreadMessageCard(
                         } else if (richContentEnabled && forwardBundle != null) {
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
-                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                onOpen = { onOpenForwardBundle(forwardBundle) }
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -16570,51 +16569,87 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
-    modifier: Modifier = Modifier,
-    onOpen: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    Button(
-        onClick = onOpen,
-        pressFeedback = false,
+    // Aligned to the react ForwardedBundleCard: an inline bordered white card that
+    // renders the forwarded messages in place (header title + count, then each message's
+    // author / Space-Mono timestamp / body / attachment label, divided by hairlines) —
+    // instead of a summary that opened a separate modal. No avatars (react shows author
+    // text). Space Mono stays on the timestamp only. See visual case components.thread.forward-bundle.
+    Column(
         modifier = modifier
-            .background(SlockColor.SurfaceCream)
+            .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(modifier = Modifier.width(3.dp).height(16.dp).background(SlockColor.BrandYellow))
+            Text(
+                text = bundle.localizedForwardTitle(),
+                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text =
+                    if (bundle.displayCount() == 1) {
+                        stringResource(MR.strings.thread_message_count_one)
+                    } else {
+                        stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
+                    },
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        bundle.messages.forEach { item ->
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Box(modifier = Modifier.width(3.dp).height(20.dp).background(SlockColor.BrandYellow))
-                Text(
-                    text = bundle.localizedForwardTitle(),
-                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 19.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(15.dp), color = "#FF000000")
-            }
-            bundle.messages.take(4).forEach { item ->
-                Text(
-                    text = item.localizedForwardPreviewLine(),
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            val hiddenCount = (bundle.displayCount() - bundle.messages.take(4).size).coerceAtLeast(0)
-            if (hiddenCount > 0) {
-                Text(
-                    text = stringResource(MR.strings.thread_more_messages, hiddenCount),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
+                        Text(
+                            text = timestamp,
+                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (item.body.isNotBlank()) {
+                    Text(
+                        text = item.body,
+                        style = ThreadMessageBodyTextStyle,
+                        color = SlockColor.TextBlack
+                    )
+                }
+                if (item.attachmentCount > 0) {
+                    Text(
+                        text = item.localizedForwardAttachmentLabel(),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
             }
         }
     }
@@ -16759,13 +16794,6 @@ private fun ForwardMessageBundle.displayCount(): Int =
 private fun ForwardMessageItem.forwardPreviewLine(): String {
     val text = body.trim().ifBlank { forwardAttachmentLabel() }
     return "${authorName.ifBlank { "Unknown" }}: $text"
-}
-
-@Composable
-private fun ForwardMessageItem.localizedForwardPreviewLine(): String {
-    val text = body.trim().ifBlank { localizedForwardAttachmentLabel() }
-    val author = authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) }
-    return "$author: $text"
 }
 
 private fun ForwardMessageItem.forwardAttachmentLabel(): String =
@@ -17071,12 +17099,7 @@ internal fun ThreadForwardBundleVisualScreen() {
                     )
             )
         }
-    ThreadForwardBundleModal(
-        bundle = bundle,
-        memberAvatarResolver = EmptySlockMemberAvatarResolver,
-        onDismiss = {},
-        onOpenMember = {}
-    )
+    ThreadForwardBundleCard(bundle = bundle)
 }
 
 @Composable
