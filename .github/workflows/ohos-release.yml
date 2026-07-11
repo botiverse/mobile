@@ -126,13 +126,14 @@ jobs:
       KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.SLOCK_OHOS_KEY_PASSWORD }}
       KEYSTORE_PASSWORD: ${{ secrets.SLOCK_OHOS_KEYSTORE_PASSWORD }}
+      HANDS_OHOS_BEARER_TOKEN: ${{ secrets.HANDS_OHOS_BEARER_TOKEN }}
     steps:
       - name: Require complete release signing configuration
         shell: bash
         run: |
           set -euo pipefail
           missing=0
-          for name in SIGNING_CERT SIGNING_PROFILE SIGNING_KEY KEY_ALIAS KEY_PASSWORD KEYSTORE_PASSWORD; do
+          for name in SIGNING_CERT SIGNING_PROFILE SIGNING_KEY KEY_ALIAS KEY_PASSWORD KEYSTORE_PASSWORD HANDS_OHOS_BEARER_TOKEN; do
             if [[ -z "${!name}" ]]; then
               echo "::error::Missing repository secret for $name"
               missing=1
@@ -403,6 +404,7 @@ jobs:
       KEY_ALIAS: ${{ secrets.SLOCK_OHOS_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.SLOCK_OHOS_KEY_PASSWORD }}
       KEYSTORE_PASSWORD: ${{ secrets.SLOCK_OHOS_KEYSTORE_PASSWORD }}
+      HANDS_BEARER_TOKEN: ${{ secrets.HANDS_OHOS_BEARER_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -628,6 +630,47 @@ jobs:
             echo "No separate OHOS symbol/source-map files were generated"
           fi
 
+      - name: Publish OHOS draft to Hands
+        id: hands
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global @botiverse/hands-cli@0.5.5
+
+          app="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name '*.app' -print -quit)"
+          hap="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name '*.hap' -print -quit)"
+          metadata="$RUNNER_TEMP/ohos-release/ohos-release-metadata.json"
+          test -n "$app" && test -n "$hap" && test -s "$metadata"
+
+          args=(
+            builds publish-ohos raft-ohos
+            --app "$app"
+            --hap "$hap"
+            --metadata "$metadata"
+            --channel main
+            --version-name "$SLOCK_OHOS_VERSION_NAME"
+            --version-code "$SLOCK_OHOS_VERSION_CODE"
+            --changelog "Automated OHOS release draft from ${GITHUB_SHA}"
+            --source-commit "$GITHUB_SHA"
+            --source-branch "$GITHUB_REF_NAME"
+            --ci-provider github-actions
+            --ci-run-id "$GITHUB_RUN_ID"
+            --ci-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --draft
+            --json
+          )
+          symbols="$(find "$RUNNER_TEMP/ohos-release" -maxdepth 1 -type f -name 'ohos-symbols-*.tar.gz' -print -quit)"
+          if [[ -n "$symbols" ]]; then
+            args+=(--symbols "$symbols")
+          fi
+          hands "${args[@]}" | tee "$RUNNER_TEMP/hands-ohos-publish.json"
+          node - "$RUNNER_TEMP/hands-ohos-publish.json" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require("node:fs");
+          const [input, output] = process.argv.slice(2);
+          const result = JSON.parse(fs.readFileSync(input, "utf8"));
+          fs.appendFileSync(output, `build_id=${result.build_id}\nrelease_id=${result.release_id}\n`);
+          NODE
+
       - name: Upload signed OHOS release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -646,6 +689,9 @@ jobs:
             echo "- SHA-256: \`${{ steps.validate.outputs.app_sha256 }}\`"
             echo "- Size: \`${{ steps.validate.outputs.app_size }}\` bytes"
             echo "- Verified signed HAPs: \`${{ steps.validate.outputs.signed_hap_count }}\`"
+            echo "- Standalone HAP: \`${{ steps.validate.outputs.hap_path }}\`"
+            echo "- Hands draft build: \`${{ steps.hands.outputs.build_id }}\`"
+            echo "- Hands draft release: \`${{ steps.hands.outputs.release_id }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove decoded signing assets

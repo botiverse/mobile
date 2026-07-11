@@ -2,8 +2,10 @@
 
 The `OHOS Release` GitHub Actions workflow builds a signed HarmonyOS `.app`
 for `build.raft.mobile`. It is manual-only and uploads the validated package,
-`pack.info`, release metadata, and any generated symbols/source maps as a
-private GitHub Actions artifact.
+each independently verified signed `.hap`, `pack.info`, release metadata, and
+any generated symbols/source maps as a private GitHub Actions artifact. It
+also creates a draft Hands release containing the `.app` for AppGallery and
+the standalone `.hap` for user sideloading.
 
 The release link runs in the repository's HarmonyOS toolchain image on
 `blacksmith-16vcpu-ubuntu-2404`. The workflow gives the Gradle and
@@ -32,6 +34,7 @@ Configure these secrets before dispatching the workflow:
 | `SLOCK_OHOS_KEY_ALIAS` | Alias of the signing key in the keystore |
 | `SLOCK_OHOS_KEY_PASSWORD` | Password for the signing key |
 | `SLOCK_OHOS_KEYSTORE_PASSWORD` | Password for the keystore |
+| `HANDS_OHOS_BEARER_TOKEN` | App-scoped publisher deploy token for the Hands `raft-ohos` app |
 
 The workflow checks that the complete signing configuration exists before it
 starts dependency prebuilds. Binary secrets are decoded only under
@@ -66,9 +69,11 @@ Before upload, CI verifies all of the following:
 - `pack.info` reports the expected bundle, version name, and version code;
 - at least one HAP is present;
 - every contained HAP passes `hap-sign-tool.jar verify-app`;
+- every verified signed HAP is exported as a standalone artifact;
 - the uploaded `.app` has a recorded SHA-256 digest and byte size.
 
 The artifact is named `raft-ohos-<version-name>-<version-code>` and is retained
-for 30 days. Publishing to AppGallery Connect and publishing the package to
-Hands are intentionally separate steps; the current Hands CLI Android publish
-command must not be used for an OHOS `.app`.
+for 30 days. The workflow uses `hands builds publish-ohos --draft` so the
+`.app`, `.hap`, metadata, and symbols share one Hands build while remaining
+invisible to public update checks until the draft is reviewed and activated.
+Signing material is never uploaded to Hands.
