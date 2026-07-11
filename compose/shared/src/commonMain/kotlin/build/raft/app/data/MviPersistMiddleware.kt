@@ -7,7 +7,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.encodeToJsonElement
 
 interface MviPersistStorage {
     fun read(key: String): String?
@@ -64,12 +63,21 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
     private val storage: MviPersistStorage,
     private val spec: MviPersistSpec<State, Intent, Snapshot>,
     private val json: Json = DefaultJson,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val failureLogger: (String) -> Unit = diagnosticsLogger
 ) : MviPersistSlice<State, Intent> {
     override fun reduce(previous: State, intent: Intent, reduced: State): State {
         if (!spec.shouldHydrate(previous, intent, reduced)) return reduced
         val key = spec.key(previous, intent, reduced) ?: return reduced
-        val encoded = storage.read(key) ?: return reduced
+        val encoded =
+            try {
+                storage.read(key)
+            } catch (throwable: Throwable) {
+                failureLogger(
+                    "mvi_persist_skip name=${spec.name} key=$key reason=read_error type=${throwable.typeName()}"
+                )
+                null
+            } ?: return reduced
         val decoded = decodeSnapshot(key, encoded) ?: return reduced
         diagnosticsLogger("mvi_persist_hydrate name=${spec.name} key=$key version=${decoded.version}")
         return spec.mergeHydrated(
@@ -84,23 +92,46 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
     override fun onTransition(previous: State, intent: Intent, next: State) {
         val key = spec.key(previous, intent, next) ?: return
         if (spec.shouldRemove(previous, intent, next)) {
-            storage.remove(key)
-            diagnosticsLogger("mvi_persist_remove name=${spec.name} key=$key")
+            removeSnapshot(key)
             return
         }
         if (!spec.shouldPersist(previous, intent, next)) return
-        val snapshot = spec.partialize(next)
+        val snapshot =
+            try {
+                spec.partialize(next)
+            } catch (throwable: Throwable) {
+                failureLogger(
+                    "mvi_persist_skip name=${spec.name} key=$key reason=partialize_error type=${throwable.typeName()}"
+                )
+                return
+            }
         if (snapshot == null) {
-            storage.remove(key)
-            diagnosticsLogger("mvi_persist_remove name=${spec.name} key=$key reason=empty_snapshot")
+            removeSnapshot(key, reason = "empty_snapshot")
             return
         }
-        val envelope =
-            MviPersistEnvelope(
-                version = spec.version,
-                snapshot = json.encodeToJsonElement(spec.snapshotSerializer, snapshot)
+        val encoded =
+            try {
+                json.encodeToString(
+                    MviPersistEncodeEnvelope.serializer(spec.snapshotSerializer),
+                    MviPersistEncodeEnvelope(
+                        version = spec.version,
+                        snapshot = snapshot
+                    )
+                )
+            } catch (throwable: Throwable) {
+                failureLogger(
+                    "mvi_persist_skip name=${spec.name} key=$key reason=encode_error type=${throwable.typeName()}"
+                )
+                return
+            }
+        try {
+            storage.write(key, encoded)
+        } catch (throwable: Throwable) {
+            failureLogger(
+                "mvi_persist_skip name=${spec.name} key=$key reason=write_error type=${throwable.typeName()}"
             )
-        storage.write(key, json.encodeToString(envelope))
+            return
+        }
         diagnosticsLogger("mvi_persist_write name=${spec.name} key=$key version=${spec.version}")
     }
 
@@ -114,7 +145,7 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
                     spec.migrate(envelope.snapshot, envelope.version)
                 }
             if (snapshot == null) {
-                storage.remove(key)
+                removeSnapshot(key, reason = "unsupported_version")
                 diagnosticsLogger(
                     "mvi_persist_drop name=${spec.name} key=$key reason=unsupported_version version=${envelope.version}"
                 )
@@ -123,12 +154,25 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
                 DecodedSnapshot(version = envelope.version, snapshot = snapshot)
             }
         } catch (throwable: Throwable) {
-            storage.remove(key)
-            diagnosticsLogger(
-                "mvi_persist_drop name=${spec.name} key=$key reason=decode_error type=${throwable::class.simpleName.orEmpty()}"
+            removeSnapshot(key, reason = "decode_error")
+            failureLogger(
+                "mvi_persist_drop name=${spec.name} key=$key reason=decode_error type=${throwable.typeName()}"
             )
             null
         }
+
+    private fun removeSnapshot(key: String, reason: String? = null) {
+        try {
+            storage.remove(key)
+        } catch (throwable: Throwable) {
+            failureLogger(
+                "mvi_persist_skip name=${spec.name} key=$key reason=remove_error type=${throwable.typeName()}"
+            )
+            return
+        }
+        val reasonSuffix = reason?.let { " reason=$it" }.orEmpty()
+        diagnosticsLogger("mvi_persist_remove name=${spec.name} key=$key$reasonSuffix")
+    }
 
     private data class DecodedSnapshot<Snapshot : Any>(
         val version: Int,
@@ -145,7 +189,15 @@ class MviPersistMiddleware<State, Intent, Snapshot : Any>(
 }
 
 @Serializable
+private data class MviPersistEncodeEnvelope<Snapshot>(
+    val version: Int,
+    val snapshot: Snapshot
+)
+
+@Serializable
 private data class MviPersistEnvelope(
     val version: Int,
     val snapshot: JsonElement
 )
+
+private fun Throwable.typeName(): String = this::class.simpleName.orEmpty().ifBlank { "Throwable" }
