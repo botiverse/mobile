@@ -12,11 +12,6 @@ internal data class ThreadLongMessageRenderPlan(
     val lineCount: Int
 )
 
-internal fun threadLongMessageCollapseActive(
-    enabled: Boolean,
-    plan: ThreadLongMessageRenderPlan
-): Boolean = enabled && plan.collapsible
-
 internal fun threadLongMessageRenderPlan(
     body: String,
     lineLimit: Int = ThreadLongMessagePreviewLineLimit,
@@ -31,30 +26,21 @@ internal fun threadLongMessageRenderPlan(
             lineCount = 0
         )
     }
-    val thresholdBody = normalizedBody.trimEnd()
-    if (thresholdBody.isEmpty()) {
-        return ThreadLongMessageRenderPlan(
-            collapsible = false,
-            collapsedBody = normalizedBody,
-            collapsedDisplayText = normalizedBody,
-            lineCount = 1
-        )
-    }
     val safeLineLimit = lineLimit.coerceAtLeast(1)
     val safeCharLimit = charLimit.coerceAtLeast(1)
     var lineCount = 1
-    var lineCutIndex = thresholdBody.length
-    val lineScanLimit = minOf(thresholdBody.length, safeCharLimit)
+    var lineCutIndex = normalizedBody.length
+    val lineScanLimit = minOf(normalizedBody.length, safeCharLimit)
     for (index in 0 until lineScanLimit) {
-        if (thresholdBody[index] == '\n') {
+        if (normalizedBody[index] == '\n') {
             lineCount += 1
-            if (lineCount == safeLineLimit + 1 && lineCutIndex == thresholdBody.length) {
+            if (lineCount == safeLineLimit + 1 && lineCutIndex == normalizedBody.length) {
                 lineCutIndex = index
                 break
             }
         }
     }
-    val collapsible = lineCutIndex < thresholdBody.length || thresholdBody.length > safeCharLimit
+    val collapsible = lineCutIndex < normalizedBody.length || normalizedBody.length > safeCharLimit
     if (!collapsible) {
         return ThreadLongMessageRenderPlan(
             collapsible = false,
@@ -63,13 +49,13 @@ internal fun threadLongMessageRenderPlan(
             lineCount = lineCount
         )
     }
-    val targetCutIndex = minOf(lineCutIndex, safeCharLimit, thresholdBody.length)
+    val targetCutIndex = minOf(lineCutIndex, safeCharLimit, normalizedBody.length)
     val safeCutIndex =
-        thresholdBody.threadLongMessageSafeCutIndex(
+        normalizedBody.threadLongMessageSafeCutIndex(
             targetCutIndex = targetCutIndex,
             preferWhitespaceBoundary = targetCutIndex == safeCharLimit && safeCharLimit < lineCutIndex
         )
-    val preview = thresholdBody.substring(0, safeCutIndex).trimEnd()
+    val preview = normalizedBody.substring(0, safeCutIndex).trimEnd()
     val openFence = preview.threadOpenMarkdownFence()
     return ThreadLongMessageRenderPlan(
         collapsible = true,

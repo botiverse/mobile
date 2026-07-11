@@ -3076,7 +3076,6 @@ internal fun SharedThreadRouteContent(
     val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
-    val longMessageCollapseEnabled = chatLayoutPreferenceStore.readLongMessageCollapseEnabledSync()
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
     val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
@@ -4685,7 +4684,6 @@ internal fun SharedThreadRouteContent(
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             composerSendKeyEnabled = composerSendKeyEnabled,
-            longMessageCollapseEnabled = longMessageCollapseEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
@@ -8132,7 +8130,6 @@ private fun ThreadPageContent(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     composerSendKeyEnabled: Boolean = true,
-    longMessageCollapseEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
     mentionHandleResolver: (KuiklyThreadMessageItem) -> String? = { message -> message.threadMentionHandle() },
@@ -8501,7 +8498,6 @@ private fun ThreadPageContent(
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
-                        longMessageCollapseEnabled = longMessageCollapseEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
                         markdownTagContextSignature = markdownTagContextSignature,
@@ -9513,7 +9509,6 @@ private fun ThreadChatTab(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
-    longMessageCollapseEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -9585,7 +9580,6 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -9646,7 +9640,6 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
                     markdownTagContextSignature = markdownTagContextSignature,
@@ -9697,7 +9690,6 @@ private fun ThreadChatTab(
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
-                longMessageCollapseEnabled = longMessageCollapseEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -9767,16 +9759,12 @@ private fun List<ThreadMarkdownPreparseCandidate>.parserCandidateCount(): Int =
 
 private fun ThreadTimelineSlice.threadInitialMarkdownPreparsePlan(
     contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet(),
-    longMessageCollapseEnabled: Boolean = true
+    expandedLongMessageIds: Set<String> = emptySet()
 ): ThreadMarkdownPreparsePlan {
     if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) {
         return emptyThreadMarkdownPreparsePlan()
     }
-    val orderedCandidates = threadMarkdownOrderedPreparseCandidates(
-        expandedLongMessageIds = expandedLongMessageIds,
-        longMessageCollapseEnabled = longMessageCollapseEnabled
-    )
+    val orderedCandidates = threadMarkdownOrderedPreparseCandidates(expandedLongMessageIds)
     val parserCandidateCount = orderedCandidates.parserCandidateCount()
     if (parserCandidateCount == 0) {
         return emptyThreadMarkdownPreparsePlan()
@@ -9812,14 +9800,13 @@ private fun emptyThreadMarkdownPreparsePlan(): ThreadMarkdownPreparsePlan =
     )
 
 private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
-    expandedLongMessageIds: Set<String>,
-    longMessageCollapseEnabled: Boolean
+    expandedLongMessageIds: Set<String>
 ): List<ThreadMarkdownPreparseCandidate> {
     val messageCandidates =
         messages.map { message ->
             ThreadMarkdownPreparseCandidate(
                 id = message.id,
-                body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                body = message.threadMarkdownPreparseBody(expandedLongMessageIds),
                 messageId = message.id
             )
         }
@@ -9827,7 +9814,7 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
         originMessage?.let { origin ->
             ThreadMarkdownPreparseCandidate(
                 id = "origin:${origin.id}",
-                body = origin.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                body = origin.threadMarkdownPreparseBody(expandedLongMessageIds),
                 messageId = origin.id
             )
         }
@@ -9856,10 +9843,9 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
 }
 
 private fun KuiklyThreadMessageItem.threadMarkdownPreparseBody(
-    expandedLongMessageIds: Set<String>,
-    longMessageCollapseEnabled: Boolean
+    expandedLongMessageIds: Set<String>
 ): String =
-    if (!longMessageCollapseEnabled || id in expandedLongMessageIds) {
+    if (id in expandedLongMessageIds) {
         body
     } else {
         threadLongMessageRenderPlan(body).collapsedBody
@@ -9920,8 +9906,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
     lastVisibleItemIndex: Int,
     overscanItems: Int,
     contentExtrasVisible: Boolean,
-    expandedLongMessageIds: Set<String> = emptySet(),
-    longMessageCollapseEnabled: Boolean = true
+    expandedLongMessageIds: Set<String> = emptySet()
 ): ThreadMarkdownVisiblePreparsePlan {
     if (!contentExtrasVisible ||
         firstVisibleItemIndex < 0 ||
@@ -9942,7 +9927,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                 add(
                     ThreadMarkdownPreparseCandidate(
                         id = "origin:${originMessage.id}",
-                        body = originMessage.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                        body = originMessage.threadMarkdownPreparseBody(expandedLongMessageIds),
                         messageId = originMessage.id
                     )
                 )
@@ -9956,7 +9941,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                     add(
                         ThreadMarkdownPreparseCandidate(
                             id = message.id,
-                            body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
+                            body = message.threadMarkdownPreparseBody(expandedLongMessageIds),
                             messageId = message.id
                         )
                     )
@@ -9999,7 +9984,6 @@ private fun ThreadMessagesList(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
-    longMessageCollapseEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
     markdownTagContextSignature: String = "",
@@ -10270,13 +10254,11 @@ private fun ThreadMessagesList(
             timelineSlice.initialMarkdownPreparseCandidateSignature(contentExtrasVisible),
             focusedMessageTargetSignature,
             contentExtrasVisible,
-            expandedLongMessageIds,
-            longMessageCollapseEnabled
+            expandedLongMessageIds
         ) {
             renderPayload.threadInitialMarkdownPreparsePlan(
                 contentExtrasVisible = contentExtrasVisible,
-                expandedLongMessageIds = expandedLongMessageIds,
-                longMessageCollapseEnabled = longMessageCollapseEnabled
+                expandedLongMessageIds = expandedLongMessageIds
             )
         }
     LaunchedEffect(threadInstanceKey, initialMarkdownPreparsePlan.key, focusedMessageTargetSignature) {
@@ -10400,8 +10382,7 @@ private fun ThreadMessagesList(
                     lastVisibleItemIndex = visibleItems.maxOf { item -> item.index },
                     overscanItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
                     contentExtrasVisible = contentExtrasVisible,
-                    expandedLongMessageIds = expandedLongMessageIds,
-                    longMessageCollapseEnabled = longMessageCollapseEnabled
+                    expandedLongMessageIds = expandedLongMessageIds
                 )
             }
         }
@@ -11040,7 +11021,6 @@ private fun ThreadMessagesList(
                         shareSelectionActive = shareSelectionActive,
                         selectedShareMessageIds = selectedShareMessageIds,
                         onToggleShareSelection = onToggleShareSelection,
-                        longMessageCollapseEnabled = longMessageCollapseEnabled && !shareSelectionCaptureActive,
                         longMessageExpanded = renderPayload.originMessage?.id in expandedLongMessageIds,
                         onToggleLongMessage = { messageId ->
                             toggleLongMessage(messageId, ThreadOriginListItemIndex)
@@ -11320,7 +11300,7 @@ private fun ThreadMessagesList(
                                     translationStore?.retryTranslation(displayMessage.toTranslationCandidate())
                                 },
                                 onOpenForwardBundle = onOpenForwardBundle,
-                                longMessageCollapseEnabled = longMessageCollapseEnabled && !shareSelectionCaptureActive,
+                                longMessageCollapseEnabled = !shareSelectionCaptureActive,
                                 longMessageExpanded = message.id in expandedLongMessageIds,
                                 onToggleLongMessage = {
                                     toggleLongMessage(
@@ -12933,7 +12913,7 @@ private fun ThreadMessageCard(
                                         threadLongMessageRenderPlan(renderedBody)
                                     }
                                 val showLongMessageToggle =
-                                    threadLongMessageCollapseActive(longMessageCollapseEnabled, longMessagePlan)
+                                    longMessageCollapseEnabled && longMessagePlan.collapsible
                                 val bodyForRender =
                                     if (showLongMessageToggle && !longMessageExpanded) {
                                         longMessagePlan.collapsedBody
@@ -15289,7 +15269,6 @@ private fun ThreadOriginCard(
     shareSelectionActive: Boolean = false,
     selectedShareMessageIds: Set<String> = emptySet(),
     onToggleShareSelection: (String) -> Unit = {},
-    longMessageCollapseEnabled: Boolean = false,
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: (String) -> Unit = {}
 ) {
@@ -15389,7 +15368,7 @@ private fun ThreadOriginCard(
                             onMentionAuthor = onMentionAuthor,
                             richContentEnabled = contentExtrasVisible,
                             focused = focusedMessageId == origin.id,
-                            longMessageCollapseEnabled = longMessageCollapseEnabled,
+                            longMessageCollapseEnabled = true,
                             longMessageExpanded = longMessageExpanded,
                             onToggleLongMessage = { onToggleLongMessage(origin.id) }
                         )

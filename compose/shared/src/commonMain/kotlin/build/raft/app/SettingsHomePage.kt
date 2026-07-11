@@ -44,7 +44,6 @@ import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
-import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
 import build.raft.app.data.MOBILE_ACTION_IMAGE_ANNOTATION
@@ -4836,9 +4835,6 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(SharedSettingsIntent.SetCompactConsecutiveMessages(enabled))
                         onCompactConsecutiveMessagesSelected(enabled)
                     },
-                    onLongMessageCollapseChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetLongMessageCollapseEnabled(enabled))
-                    },
                     onImageAnnotationChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetImageAnnotationEnabled(enabled))
                     },
@@ -5934,7 +5930,6 @@ private fun SettingsMobileContent(
     bottomContentPadding: Dp,
     onAlignmentChange: (String?) -> Unit,
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
-    onLongMessageCollapseChange: (Boolean) -> Unit,
     onImageAnnotationChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
     onComposerSendKeyChange: (Boolean) -> Unit,
@@ -5962,13 +5957,6 @@ private fun SettingsMobileContent(
                     snapshot = snapshot,
                     actionState = actionState,
                     onCompactConsecutiveMessagesChange = onCompactConsecutiveMessagesChange
-                )
-            }
-            item {
-                SettingsLongMessageCollapseCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onLongMessageCollapseChange = onLongMessageCollapseChange
                 )
             }
             item {
@@ -6117,50 +6105,6 @@ private fun SettingsCompactMessagesCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
-        }
-    }
-}
-
-@Composable
-private fun SettingsLongMessageCollapseCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onLongMessageCollapseChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.inProgress
-    val preference = snapshot.longMessageCollapse
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = "Collapse long messages") {
-        SettingsFormDetailText(preference.detail)
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onLongMessageCollapseChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = preference.statusLabel,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-                Text(
-                    text = if (preference.enabled) "Preview the first 8 lines" else "Show full messages",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
-                )
-            }
-            SlockSwitchButton(
-                checked = preference.enabled,
-                enabled = preference.available && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
@@ -10374,13 +10318,6 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 iconName = SlockLucideIconName.MessageSquare,
                                 title = "Compact consecutive messages",
                                 fallbackStatus = "Unsupported",
-                                actionState = actionState
-                            ),
-                            mobile.longMessageCollapse.toMobileToggleRow(
-                                key = MOBILE_ACTION_LONG_MESSAGE_COLLAPSE,
-                                iconName = SlockLucideIconName.ClipboardList,
-                                title = "Collapse long messages",
-                                fallbackStatus = "Off",
                                 actionState = actionState
                             ),
                             mobile.foregroundMessageBanners.toMobileToggleRow(

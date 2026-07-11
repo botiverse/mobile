@@ -779,7 +779,6 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.SetLocale("zh-Hans"))
         store.accept(SharedSettingsIntent.SetMessageAlignment("right"))
         store.accept(SharedSettingsIntent.SetCompactConsecutiveMessages(true))
-        store.accept(SharedSettingsIntent.SetLongMessageCollapseEnabled(true))
         store.accept(SharedSettingsIntent.SetImageAnnotationEnabled(true))
         store.accept(SharedSettingsIntent.SetForegroundMessageBanners(true))
         store.accept(SharedSettingsIntent.SetActivityTaskStatusBadges(true))
@@ -791,7 +790,6 @@ class SharedSettingsStoreTest {
         assertEquals(AppLocale.SimplifiedChinese, localeRepository.current)
         assertEquals(MyMessageAlignmentPreference.Right, chatLayoutRepository.alignment)
         assertEquals(true, chatLayoutRepository.compactConsecutiveMessages)
-        assertEquals(true, chatLayoutRepository.longMessageCollapseEnabled)
         assertEquals(true, chatLayoutRepository.imageAnnotationEnabled)
         assertEquals(true, chatLayoutRepository.foregroundMessageBannersEnabled)
         assertEquals(true, chatLayoutRepository.activityTaskStatusBadgesEnabled)
@@ -806,8 +804,6 @@ class SharedSettingsStoreTest {
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
         assertEquals(true, mobile.compactConsecutiveMessages.enabled)
         assertEquals("Enabled", mobile.compactConsecutiveMessages.statusLabel)
-        assertEquals(true, mobile.longMessageCollapse.enabled)
-        assertEquals("Enabled", mobile.longMessageCollapse.statusLabel)
         assertEquals(true, mobile.imageAnnotation.enabled)
         assertEquals("Enabled", mobile.imageAnnotation.statusLabel)
         assertEquals(true, mobile.foregroundMessageBanners.enabled)
@@ -3065,7 +3061,6 @@ class SharedSettingsStoreTest {
     private class FakeChatLayoutPreferenceRepository(
         var alignment: MyMessageAlignmentPreference = MyMessageAlignmentPreference.Left,
         var compactConsecutiveMessages: Boolean = false,
-        var longMessageCollapseEnabled: Boolean = false,
         var imageAnnotationEnabled: Boolean = false,
         var foregroundMessageBannersEnabled: Boolean = false,
         var activityTaskStatusBadgesEnabled: Boolean = false,
@@ -3078,7 +3073,6 @@ class SharedSettingsStoreTest {
             ChatLayoutPreferenceSnapshot(
                 myMessageAlignment = alignment,
                 compactConsecutiveMessages = compactConsecutiveMessages,
-                longMessageCollapseEnabled = longMessageCollapseEnabled,
                 imageAnnotationEnabled = imageAnnotationEnabled,
                 foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
                 activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -3130,11 +3124,6 @@ class SharedSettingsStoreTest {
                 translationMode = translationMode,
                 threadRowAffordances = threadRowAffordances
             )
-        }
-
-        override suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-            longMessageCollapseEnabled = enabled
-            return getChatLayoutPreference()
         }
 
         override suspend fun setImageAnnotationEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {

@@ -1145,13 +1145,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Enabled",
             detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
         ),
-    val longMessageCollapse: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
-        ),
     val imageAnnotation: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

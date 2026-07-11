@@ -372,7 +372,6 @@ sealed interface SharedSettingsIntent {
     data class SetLocale(val localeTag: String) : SharedSettingsIntent
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data class SetCompactConsecutiveMessages(val enabled: Boolean) : SharedSettingsIntent
-    data class SetLongMessageCollapseEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetImageAnnotationEnabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetActivityTaskStatusBadges(val enabled: Boolean) : SharedSettingsIntent
@@ -875,14 +874,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setLongMessageCollapseEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_long_message_collapse_unavailable", retryable = false))
-        repository.setLongMessageCollapseEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setImageAnnotationEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1132,13 +1123,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "Compact message layout preference is not available on this platform."
-                    ),
-            longMessageCollapse =
-                chatLayout?.toSettingsMobileLongMessageCollapseSnapshot()
-                    ?: longMessageCollapse.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Long message collapse preference is not available on this platform."
                     ),
             imageAnnotation =
                 chatLayout?.toSettingsMobileImageAnnotationSnapshot()
@@ -1790,14 +1774,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setCompactConsecutiveMessages(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_COMPACT_MESSAGES)
-            }
-            is SharedSettingsIntent.SetLongMessageCollapseEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE, inProgress = true)
-                    )
-                dataSource.setLongMessageCollapseEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_LONG_MESSAGE_COLLAPSE)
             }
             is SharedSettingsIntent.SetImageAnnotationEnabled -> {
                 _state.value =
@@ -2709,7 +2685,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
-            is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetImageAnnotationEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetActivityTaskStatusBadges,
@@ -2875,7 +2850,6 @@ internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
-internal const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 internal const val MOBILE_ACTION_IMAGE_ANNOTATION = "imageAnnotation"
 internal const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 internal const val MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES = "activityTaskStatusBadges"
@@ -3013,14 +2987,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileCompactMessagesSnapshot
         available = true,
         statusLabel = if (compactConsecutiveMessages) "Enabled" else "Off",
         detail = "Hide repeated avatars for consecutive messages from the same sender. Message times appear while pressing a row."
-    )
-
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileLongMessageCollapseSnapshot(): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = longMessageCollapseEnabled,
-        available = true,
-        statusLabel = if (longMessageCollapseEnabled) "Enabled" else "Off",
-        detail = "Collapse long messages to an 8-line preview. Expand each message when you want to read the full content."
     )
 
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileImageAnnotationSnapshot(): SettingsMobileToggleSnapshot =
