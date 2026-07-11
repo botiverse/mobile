@@ -8,6 +8,7 @@ import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.data.realtime.MessageSeqEnvelope
+import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
 import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
@@ -37,6 +38,7 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -130,6 +132,18 @@ internal class SlockSharedStoreProvider private constructor(
         SharedServerFeatureFlags(
             api = SlockFeatureFlagsNetworkApi(networkClient),
             diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
+
+    /**
+     * Flag-gated sync-core shadow-compare observer injected into [RealtimeEventMapper]. Off by default
+     * (`sync_core_messages_v0`), so it is a single flag lookup on the hot path until the rollout enables it;
+     * when on, it re-projects each message through the canonical pipeline and emits divergence diagnostics
+     * without touching the store. A provider-level singleton so all mapper instances share one gate.
+     */
+    val messageShadowObserver: MessageShadowObserver =
+        SyncCoreMessageShadowObserver(
+            featureFlags = serverFeatureFlags,
+            diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
     init {
