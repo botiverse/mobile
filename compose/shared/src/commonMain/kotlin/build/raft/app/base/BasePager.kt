@@ -46,6 +46,10 @@ internal abstract class BasePager : ComposeContainer() {
     override fun created() {
         super.created()
         isNightMode()
+        // task #25: arm the bridge-log flush loop here because Kuikly page
+        // lifecycle is guaranteed to run on the context thread — the only place
+        // shared code can safely start the setTimeout chain the pump relies on.
+        SlockBridgeLogPump.install(pagerId)
     }
 
     override fun pageDidAppear() {

@@ -49,6 +49,21 @@ internal class BridgeModule : Module() {
     }
 
     fun log(level: BridgeLogLevel, content: String) {
+        // task #25: log() is callable from ANY thread (diagnostics lambdas fire
+        // from worker coroutines), but every bridge call must run on the Kuikly
+        // context thread — the fork aborts otherwise (the TestFlight SIGABRTs).
+        // So log() only enqueues; SlockBridgeLogPump emits via logNow() on the
+        // context thread. Remove once the fork-side boundary marshal (task #26)
+        // makes off-thread fire-and-forget bridge calls safe.
+        SlockBridgeLogPump.enqueue(level, content)
+    }
+
+    /**
+     * Direct bridge emission. Context-thread only — calling this off the
+     * Kuikly context thread is exactly the crash log() now protects against.
+     * Only [SlockBridgeLogPump] should use it.
+     */
+    internal fun logNow(level: BridgeLogLevel, content: String) {
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
         methodArgs.put("level", level.wireValue)
