@@ -42,6 +42,54 @@ class SlockEventBusTest {
     }
 
     @Test
+    fun listenerCanUnsubscribeDuringDeliveryWithoutSkippingSnapshotPeers() {
+        val eventBus = SlockEventBuses.inProcess()
+        val eventName = "test.listenerCanUnsubscribeDuringDeliveryWithoutSkippingSnapshotPeers"
+        val received = mutableListOf<String>()
+        lateinit var firstSubscription: RealtimeSubscription
+        firstSubscription =
+            eventBus.observe(eventName) {
+                received += "first"
+                firstSubscription.close()
+            }
+        val secondSubscription =
+            eventBus.observe(eventName) {
+                received += "second"
+            }
+
+        eventBus.post(eventName, JSONObject())
+        eventBus.post(eventName, JSONObject())
+        secondSubscription.close()
+
+        assertEquals(listOf("first", "second", "second"), received)
+    }
+
+    @Test
+    fun reentrantPostWaitsForCurrentEventSnapshotToFinish() {
+        val eventBus = SlockEventBuses.inProcess()
+        val eventName = "test.reentrantPostWaitsForCurrentEventSnapshotToFinish"
+        val received = mutableListOf<String>()
+        val firstSubscription =
+            eventBus.observe(eventName) { data ->
+                val value = data?.optInt("value") ?: return@observe
+                received += "first:$value"
+                if (value == 1) {
+                    eventBus.post(eventName, JSONObject().put("value", 2))
+                }
+            }
+        val secondSubscription =
+            eventBus.observe(eventName) { data ->
+                received += "second:${data?.optInt("value") ?: return@observe}"
+            }
+
+        eventBus.post(eventName, JSONObject().put("value", 1))
+        firstSubscription.close()
+        secondSubscription.close()
+
+        assertEquals(listOf("first:1", "second:1", "first:2", "second:2"), received)
+    }
+
+    @Test
     fun inProcessEventBusPublishesEnhancedNotifyEnvelope() {
         val eventBus = SlockEventBuses.inProcess()
         val eventName = "test.inProcessEventBusPublishesEnhancedNotifyEnvelope"

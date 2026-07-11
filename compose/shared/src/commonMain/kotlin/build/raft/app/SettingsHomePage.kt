@@ -2513,7 +2513,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     DisposableEffect(appUpdateEvents) {
         val callbackRef =
             appUpdateEvents.addStatusListener {
-                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+                appShellCoroutineScope.launch {
+                    homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.RefreshNotifications))
+                }
             }
         onDispose {
             appUpdateEvents.removeStatusListener(callbackRef)
@@ -2693,7 +2695,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     DisposableEffect(notificationPreferenceEvents) {
         val callbackRef =
             notificationPreferenceEvents.addPreferenceListener { snapshot ->
-                notificationPreferenceSnapshot = snapshot
+                notificationPreferenceScope.launch {
+                    notificationPreferenceSnapshot = snapshot
+                }
             }
         onDispose {
             notificationPreferenceEvents.removePreferenceListener(callbackRef)
@@ -3391,12 +3395,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     DisposableEffect(hostNetworkEvents) {
         val callbackRef =
             hostNetworkEvents.addListener { signal ->
-                hostNetworkStatus =
-                    if (signal.online) {
-                        SlockAppShellNetworkStatus.Online
-                    } else {
-                        SlockAppShellNetworkStatus.Offline
-                    }
+                appShellCoroutineScope.launch {
+                    hostNetworkStatus =
+                        if (signal.online) {
+                            SlockAppShellNetworkStatus.Online
+                        } else {
+                            SlockAppShellNetworkStatus.Offline
+                        }
+                }
             }
         onDispose { hostNetworkEvents.removeListener(callbackRef) }
     }

@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 data class SlockEnhancedNotifyEvent(
     val eventName: String,
@@ -37,13 +39,20 @@ interface SlockEventBus {
 }
 
 object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
+    private val listenersLock = SynchronizedObject()
     private val enhancedListeners = mutableListOf<(SlockEnhancedNotifyEvent) -> Unit>()
     private val listenersByEvent = mutableMapOf<String, MutableList<(JSONObject?) -> Unit>>()
+    private val pendingEvents = ArrayDeque<SlockEnhancedNotifyEvent>()
+    private var deliveringEvents = false
 
     override fun observeNotifyEvents(listener: (SlockEnhancedNotifyEvent) -> Unit): RealtimeSubscription {
-        enhancedListeners += listener
+        synchronized(listenersLock) {
+            enhancedListeners += listener
+        }
         return RealtimeSubscription {
-            enhancedListeners -= listener
+            synchronized(listenersLock) {
+                enhancedListeners -= listener
+            }
         }
     }
 
@@ -52,12 +61,17 @@ object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
         crossProcess: Boolean,
         listener: (JSONObject?) -> Unit
     ): RealtimeSubscription {
-        val listeners = listenersByEvent.getOrPut(eventName) { mutableListOf() }
-        listeners += listener
+        synchronized(listenersLock) {
+            listenersByEvent.getOrPut(eventName) { mutableListOf() } += listener
+        }
         return RealtimeSubscription {
-            listeners -= listener
-            if (listeners.isEmpty()) {
-                listenersByEvent.remove(eventName)
+            synchronized(listenersLock) {
+                listenersByEvent[eventName]?.let { listeners ->
+                    listeners -= listener
+                    if (listeners.isEmpty()) {
+                        listenersByEvent.remove(eventName)
+                    }
+                }
             }
         }
     }
@@ -79,18 +93,73 @@ object SlockEnhancedNotifyCenter : SlockEnhancedNotifyEventBus, SlockEventBus {
     }
 
     private fun publish(event: SlockEnhancedNotifyEvent) {
-        listenersByEvent[event.eventName]?.toList()?.forEach { listener ->
-            listener(event.eventData)
-        }
-        if (event.eventName != SlockEnhancedNotifyContract.EventName) {
-            listenersByEvent[SlockEnhancedNotifyContract.EventName]?.toList()?.forEach { listener ->
-                listener(event.toEnvelopeJson())
+        val shouldDrain =
+            synchronized(listenersLock) {
+                pendingEvents.addLast(event)
+                if (deliveringEvents) {
+                    false
+                } else {
+                    deliveringEvents = true
+                    true
+                }
             }
-        }
-        enhancedListeners.toList().forEach { listener ->
-            listener(event)
+        if (!shouldDrain) return
+        try {
+            while (true) {
+                val delivery = nextDelivery() ?: return
+                delivery.snapshot.event.forEach { listener ->
+                    listener(delivery.event.eventData)
+                }
+                delivery.snapshot.envelope.forEach { listener ->
+                    listener(delivery.event.toEnvelopeJson())
+                }
+                delivery.snapshot.enhanced.forEach { listener ->
+                    listener(delivery.event)
+                }
+            }
+        } catch (throwable: Throwable) {
+            synchronized(listenersLock) {
+                pendingEvents.clear()
+                deliveringEvents = false
+            }
+            throw throwable
         }
     }
+
+    private fun nextDelivery(): EventDelivery? =
+        synchronized(listenersLock) {
+            if (pendingEvents.isEmpty()) {
+                deliveringEvents = false
+                null
+            } else {
+                val event = pendingEvents.removeFirst()
+                EventDelivery(
+                    event = event,
+                    snapshot =
+                        ListenerSnapshot(
+                            event = listenersByEvent[event.eventName]?.toList().orEmpty(),
+                            envelope =
+                                if (event.eventName != SlockEnhancedNotifyContract.EventName) {
+                                    listenersByEvent[SlockEnhancedNotifyContract.EventName]?.toList().orEmpty()
+                                } else {
+                                    emptyList()
+                                },
+                            enhanced = enhancedListeners.toList()
+                        )
+                )
+            }
+        }
+
+    private data class EventDelivery(
+        val event: SlockEnhancedNotifyEvent,
+        val snapshot: ListenerSnapshot
+    )
+
+    private data class ListenerSnapshot(
+        val event: List<(JSONObject?) -> Unit>,
+        val envelope: List<(JSONObject?) -> Unit>,
+        val enhanced: List<(SlockEnhancedNotifyEvent) -> Unit>
+    )
 }
 
 internal fun SlockEnhancedNotifyEvent.toEnvelopeJson(): JSONObject =

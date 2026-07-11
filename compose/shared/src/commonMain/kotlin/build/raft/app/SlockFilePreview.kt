@@ -395,25 +395,28 @@ private fun SlockFilePreviewStandalonePageContent() {
     DisposableEffect(eventBus) {
         val subscription =
             eventBus.observe(SlockFilePreviewAttachmentDownloadEvent) { data ->
-                val progress = data?.toBridgeAttachmentDownloadProgress() ?: return@observe
-                val currentDownloadId = activeDownloadId ?: return@observe
-                if (progress.downloadId != currentDownloadId) return@observe
-                downloadProgress = progress
-                when (progress.status) {
-                    "paused" -> downloadStatus = "paused"
-                    "progress", "resumed" -> downloadStatus = "downloading"
-                    "cancelled" -> {
-                        downloadStatus = "idle"
-                        downloadMessage = downloadStopped
-                        activeDownloadId = null
-                    }
-                    "failed" -> {
-                        downloadStatus = "failed"
-                        downloadMessage = downloadFailed
-                        activeDownloadId = null
+                val eventDataSnapshot = data?.toString() ?: return@observe
+                coroutineScope.launch {
+                    val progress = JSONObject(eventDataSnapshot).toBridgeAttachmentDownloadProgress() ?: return@launch
+                    val currentDownloadId = activeDownloadId ?: return@launch
+                    if (progress.downloadId != currentDownloadId) return@launch
+                    downloadProgress = progress
+                    when (progress.status) {
+                        "paused" -> downloadStatus = "paused"
+                        "progress", "resumed" -> downloadStatus = "downloading"
+                        "cancelled" -> {
+                            downloadStatus = "idle"
+                            downloadMessage = downloadStopped
+                            activeDownloadId = null
+                        }
+                        "failed" -> {
+                            downloadStatus = "failed"
+                            downloadMessage = downloadFailed
+                            activeDownloadId = null
+                        }
                     }
                 }
-        }
+            }
         onDispose {
             subscription.close()
         }
