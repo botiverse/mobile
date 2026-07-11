@@ -125,6 +125,9 @@ import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksViewModel
+import build.raft.app.data.WindowNavigationAction
+import build.raft.app.data.WindowNavigationIntent
+import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.data.hasCompletedTasksSnapshot
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.SharedHomeContentState
@@ -1968,6 +1971,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val windowNavigationCoordinator =
+        remember(sharedStores, storeScope) { sharedStores.windowNavigationCoordinator(storeScope) }
     LaunchedEffect(pager.pagerId, pageVisibleTick, initialAuthRestoreTick) {
         if (pageVisibleTick > 0 || initialAuthRestoreTick > 0) {
             sharedStores.markActiveAppShellPager(pager.pagerId)
@@ -2306,8 +2311,6 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
-    var consumedNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
-    var switchingNotificationLaunchKey by remember { mutableStateOf<String?>(null) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
@@ -2332,13 +2335,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
-    val notificationThreadLaunchRequest =
+    val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
-            pager.pageData.params.appShellNotificationThreadLaunchRequest()
-        }
-    val notificationLaunchServerId =
-        remember(pager.pageData.params.toString()) {
-            pager.pageData.params.appShellNotificationServerId()
+            pager.pageData.params.appShellWindowNavigationIntent(
+                fallbackServerId =
+                    pager.pageData.params
+                        .slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+                        .initialServerId
+            )
         }
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
@@ -2856,95 +2860,90 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         )
     }
 
+    // External sources only transport this typed identity envelope in pageData. The queue and
+    // its consumed/opened markers live with the window's SlockShellStoreScope, so an AppShell
+    // recreation or duplicate PendingIntent cannot replay the route.
     LaunchedEffect(
+        notificationWindowNavigationIntent?.key,
         readySession?.currentServerId,
-        notificationLaunchServerId,
-        notificationThreadLaunchRequest?.threadId,
-        notificationThreadLaunchRequest?.messageId,
-        notificationThreadLaunchRequest?.parentChannelId,
+        readySession?.servers,
         homeState.content,
         appShellConversationDirectory,
         threadTimeContext,
         myMessageAlignment
     ) {
-        val launchRequest = notificationThreadLaunchRequest ?: return@LaunchedEffect
-        val launchKey = "${notificationLaunchServerId.orEmpty()}|${launchRequest.threadId}|${launchRequest.messageId}"
-        if (consumedNotificationLaunchKey == launchKey) {
-            return@LaunchedEffect
-        }
-        val session = readySession ?: return@LaunchedEffect
-        val targetServerId = notificationLaunchServerId
-        if (!targetServerId.isNullOrBlank() && targetServerId != session.currentServerId) {
-            if (switchingNotificationLaunchKey == launchKey) {
-                return@LaunchedEffect
-            }
-            if (session.servers.none { server -> server.id == targetServerId }) {
-                consumedNotificationLaunchKey = launchKey
-                bridge.logWarn(
-                    "app_shell_notification_launch_drop reason=server_unavailable " +
-                        "targetServerId=$targetServerId currentServerId=${session.currentServerId.orEmpty()}"
-                )
-                bridge.toast("Notification server unavailable")
-                return@LaunchedEffect
-            }
-            switchingNotificationLaunchKey = launchKey
-            bridge.log(
-                "app_shell_notification_server_switch_start " +
-                    "targetServerId=$targetServerId currentServerId=${session.currentServerId.orEmpty()}"
-            )
-            when (val result = authDataSource.selectServer(targetServerId)) {
-                is SharedAuthResult.Success -> {
-                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(result.data))
-                    resetAppShellSessionState()
-                    bridge.log("app_shell_notification_server_switch_success targetServerId=$targetServerId")
-                }
-                is SharedAuthResult.Failure -> {
-                    consumedNotificationLaunchKey = launchKey
-                    bridge.logWarn("app_shell_notification_server_switch_failed code=${result.code}")
-                    bridge.toast("Notification server unavailable")
-                }
-                SharedAuthResult.Unauthenticated -> {
-                    consumedNotificationLaunchKey = launchKey
-                    bridge.logWarn("app_shell_notification_server_switch_failed result=unauthenticated")
-                    bridge.toast("Sign in to open this notification")
-                }
-            }
-            switchingNotificationLaunchKey = null
-            return@LaunchedEffect
-        }
+        notificationWindowNavigationIntent?.let(windowNavigationCoordinator::enqueue)
         val content = homeState.content as? SharedHomeContentState.Content
-        if (!notificationLaunchHomeContentReady(content, session.currentServerId)) {
-            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
-            bridge.log(
-                "app_shell_notification_thread_defer reason=home_not_ready_for_server " +
-                    "targetServerId=${session.currentServerId.orEmpty()} " +
-                    "contentServerId=${content?.snapshot?.server?.id?.value.orEmpty()} " +
-                    "threadId=${launchRequest.threadId} messageId=${launchRequest.messageId}"
+        val readiness =
+            WindowNavigationReadiness(
+                knownServerIds = readySession?.servers.orEmpty().mapTo(linkedSetOf()) { server -> server.id },
+                canonicalServerId = readySession?.currentServerId,
+                homeSnapshotServerId = content?.snapshot?.server?.id?.value,
+                homeSessionServerId = content?.session?.currentServerId,
+                conversationDirectory = appShellConversationDirectory
             )
-            return@LaunchedEffect
+        when (val action = windowNavigationCoordinator.advance(readiness)) {
+            is WindowNavigationAction.ActivateServer -> {
+                bridge.log(
+                    "window_navigation_server_activate source=${action.intent.source} " +
+                        "targetServerId=${action.intent.serverId} currentServerId=${readySession?.currentServerId.orEmpty()}"
+                )
+                when (val result = authDataSource.selectServer(action.intent.serverId)) {
+                    is SharedAuthResult.Success -> {
+                        authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(result.data))
+                        resetAppShellSessionState()
+                        bridge.log("window_navigation_server_activated targetServerId=${action.intent.serverId}")
+                    }
+                    is SharedAuthResult.Failure -> {
+                        windowNavigationCoordinator.rejectActivation(action.intent.key, result.code.name)
+                            ?.let { rejection ->
+                                bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
+                                bridge.toast("Notification server unavailable")
+                            }
+                    }
+                    SharedAuthResult.Unauthenticated -> {
+                        windowNavigationCoordinator.rejectActivation(action.intent.key, "unauthenticated")
+                            ?.let { rejection ->
+                                bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
+                                bridge.toast("Sign in to open this notification")
+                            }
+                    }
+                }
+            }
+            is WindowNavigationAction.EnsureHome -> {
+                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Start))
+                bridge.log(
+                    "window_navigation_defer reason=home_not_ready_for_server " +
+                        "source=${action.intent.source} targetServerId=${action.intent.serverId} " +
+                        "contentServerId=${content?.snapshot?.server?.id?.value.orEmpty()}"
+                )
+            }
+            is WindowNavigationAction.OpenConversation -> {
+                selectAppShellTab("home")
+                retainedAppShellTabs = retainedAppShellTabs + "home"
+                homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
+                bridge.log(
+                    "window_navigation_open source=${action.intent.source} " +
+                        "threadId=${action.request.conversationIdentity.threadId.value} " +
+                        "focusedMessageId=${action.request.anchorMessageId.orEmpty()}"
+                )
+                openHomeMessageRequest(action.request, source = action.intent.source)
+            }
+            is WindowNavigationAction.Reject -> {
+                bridge.logWarn(
+                    "window_navigation_drop source=${action.intent.source} reason=${action.reason} " +
+                        "targetServerId=${action.intent.serverId}"
+                )
+                bridge.toast(
+                    if (action.reason == "server_unavailable") {
+                        "Notification server unavailable"
+                    } else {
+                        "Notification conversation unavailable"
+                    }
+                )
+            }
+            null -> Unit
         }
-        val openRequest =
-            appShellConversationDirectory
-                .notificationThreadLaunchRequest(launchRequest, serverId = session.currentServerId.orEmpty())
-        if (openRequest == null) {
-            consumedNotificationLaunchKey = launchKey
-            bridge.logWarn(
-                "app_shell_notification_launch_drop reason=conversation_not_found " +
-                    "threadId=${launchRequest.threadId} channelId=${launchRequest.channelId.orEmpty()} " +
-                    "parentChannelId=${launchRequest.parentChannelId.orEmpty()} messageId=${launchRequest.messageId}"
-            )
-            bridge.toast("Notification conversation unavailable")
-            return@LaunchedEffect
-        }
-        consumedNotificationLaunchKey = launchKey
-        selectAppShellTab("home")
-        retainedAppShellTabs = retainedAppShellTabs + "home"
-        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-        bridge.log(
-            "app_shell_notification_thread_open " +
-                "threadId=${openRequest.conversationIdentity.threadId.value} focusedMessageId=${openRequest.anchorMessageId.orEmpty()}"
-        )
-        openHomeMessageRequest(openRequest, source = "notification")
     }
     LaunchedEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
@@ -16005,6 +16004,21 @@ private fun JSONObject.legacyAppShellNotificationThreadLaunchRequest(): AppShell
 
 private fun JSONObject.appShellNotificationServerId(): String? =
     optString(AppShellNotificationServerIdKey).trim().takeIf { it.isNotBlank() }
+
+/**
+ * Migration bridge for existing notification pageData. The serialized legacy thread payload is
+ * still decoded above, but it enters the AppShell only as a server-qualified typed intent. Once
+ * enqueued, the window-scoped coordinator owns retry, readiness, and exactly-once consumption.
+ */
+internal fun JSONObject.appShellWindowNavigationIntent(fallbackServerId: String?): WindowNavigationIntent? {
+    val request = appShellNotificationThreadLaunchRequest() ?: return null
+    val serverId = appShellNotificationServerId() ?: fallbackServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return WindowNavigationIntent(
+        serverId = serverId,
+        sourceIdentity = request.toConversationOpenSourceMessageIdentity(),
+        source = "system_notification"
+    )
+}
 
 internal fun SharedConversationDirectoryState.notificationThreadLaunchRequest(
     request: AppShellNotificationThreadLaunchRequest,

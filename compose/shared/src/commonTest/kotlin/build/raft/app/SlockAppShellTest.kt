@@ -77,6 +77,42 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun notificationEnvelopeKeepsItsTargetServerWhenBecomingWindowNavigationIntent() {
+        val intent =
+            assertNotNull(
+                JSONObject()
+                    .put("slockNotificationServerId", "server-b")
+                    .put("slockNotificationThreadId", "channel-b")
+                    .put("slockNotificationMessageId", "message-b")
+                    .appShellWindowNavigationIntent(fallbackServerId = "server-a")
+            )
+
+        assertEquals("server-b", intent.serverId)
+        assertEquals("system_notification", intent.source)
+        assertEquals("channel-b", intent.sourceIdentity.threadChannelId)
+        assertEquals("message-b", intent.sourceIdentity.messageId)
+    }
+
+    @Test
+    fun legacyNotificationEnvelopeMayUseOnlyItsWindowLaunchServerAsFallback() {
+        val intent =
+            assertNotNull(
+                JSONObject()
+                    .put("slockNotificationThreadId", "channel-a")
+                    .put("slockNotificationMessageId", "message-a")
+                    .appShellWindowNavigationIntent(fallbackServerId = "server-a")
+            )
+
+        assertEquals("server-a", intent.serverId)
+        assertNull(
+            JSONObject()
+                .put("slockNotificationThreadId", "channel-unknown")
+                .put("slockNotificationMessageId", "message-unknown")
+                .appShellWindowNavigationIntent(fallbackServerId = null)
+        )
+    }
+
+    @Test
     fun shellScopeProvidesExplicitPanelInsets() {
         val scope =
             SlockAppShellScope(

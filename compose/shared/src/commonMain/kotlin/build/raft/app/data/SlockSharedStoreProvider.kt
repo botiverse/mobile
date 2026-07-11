@@ -105,6 +105,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
     private val shellRealtimeDomainEventOwners = SlockShellScopedStoreCache<SharedRealtimeDomainEventOwner>()
     private val shellAgentDetailStores = SlockShellScopedStoreCache<SharedAgentDetailStore>()
+    private val shellNavigationCoordinators = SlockShellScopedStoreCache<SharedWindowNavigationCoordinator>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -206,6 +207,13 @@ internal class SlockSharedStoreProvider private constructor(
                 )
             }
         }
+
+    /**
+     * Owns pending external navigation for one document/AppShell. Recreating the page must not
+     * replay an already opened notification route, while closing the shell drops its queue.
+     */
+    fun windowNavigationCoordinator(scope: SlockShellStoreScope): SharedWindowNavigationCoordinator =
+        shellNavigationCoordinators.getOrPut(scope) { SharedWindowNavigationCoordinator() }
 
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
         createSharedAuthDataSourceForCurrentEnvironment(
@@ -373,6 +381,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellServerMembersStores.remove(scope)
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
+        shellNavigationCoordinators.remove(scope)?.clear()
         shellRuntimes.remove(scope)
     }
 
