@@ -87,7 +87,11 @@ class KmmResourceI18nTest {
             MR.strings.home_action_mark_as_read,
             MR.strings.home_action_mark_as_unread,
             MR.strings.home_action_mute,
-            MR.strings.home_action_unmute
+            MR.strings.home_action_unmute,
+            MR.strings.home_state_no_servers,
+            MR.strings.home_server_switcher_join_chinese_community,
+            MR.strings.home_server_switcher_join_community,
+            MR.strings.home_server_switcher_switch_or_create
         )
 
         homeResources.forEach { resource ->

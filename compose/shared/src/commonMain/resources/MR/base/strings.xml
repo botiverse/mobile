@@ -954,6 +954,9 @@
     <string name="home_action_mute">Mute</string>
     <string name="home_action_unmute">Unmute</string>
     <string name="home_state_no_servers">No servers available</string>
+    <string name="home_server_switcher_join_chinese_community">Join Chinese Community</string>
+    <string name="home_server_switcher_join_community">Join community server</string>
+    <string name="home_server_switcher_switch_or_create">Switch or create server</string>
     <string name="home_error_open_direct_message">Unable to open direct message</string>
     <string name="home_error_open_direct_message_failed">Failed to open direct message</string>
     <string name="home_error_open_direct_message_permission">You do not have permission to open this direct message.</string>

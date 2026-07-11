@@ -358,7 +358,10 @@ data class SlockHomeShellLabels(
             markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
             mute = stringResource(MR.strings.home_action_mute),
             unmute = stringResource(MR.strings.home_action_unmute),
-            noServersAvailable = stringResource(MR.strings.home_state_no_servers)
+            noServersAvailable = stringResource(MR.strings.home_state_no_servers),
+            joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
+            joinCommunityServer = stringResource(MR.strings.home_server_switcher_join_community),
+            switchOrCreateServer = stringResource(MR.strings.home_server_switcher_switch_or_create)
         )
     }
 }

@@ -954,6 +954,9 @@
     <string name="home_action_mute">静音</string>
     <string name="home_action_unmute">取消静音</string>
     <string name="home_state_no_servers">没有可用的服务器</string>
+    <string name="home_server_switcher_join_chinese_community">加入中文社区</string>
+    <string name="home_server_switcher_join_community">加入社区服务器</string>
+    <string name="home_server_switcher_switch_or_create">切换或创建服务器</string>
     <string name="home_error_open_direct_message">无法打开私信</string>
     <string name="home_error_open_direct_message_failed">无法打开私信</string>
     <string name="home_error_open_direct_message_permission">你没有打开此私信的权限。</string>
