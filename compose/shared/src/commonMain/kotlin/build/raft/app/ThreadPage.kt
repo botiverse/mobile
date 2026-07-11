@@ -3543,26 +3543,30 @@ internal fun SharedThreadRouteContent(
     DisposableEffect(realtimeEvents, active) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
-                if (eventData.optString("action") != ThreadLifecycleAction) {
-                    return@addListener
-                }
-                val event = eventData.optString("event")
-                val pageName = eventData.optString("pageName")
-                if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
-                    if (threadLifecycleSeen && active) {
-                        threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-                        // Foreground reconciliation: local joined-room state may
-                        // be stale after background/reconnect — force re-emit
-                        // join:channel for the visible thread rooms (server-side
-                        // join is idempotent), and schedule the coalesced
-                        // per-server member/status refresh.
-                        realtimeEvents.rejoinChannels(
-                            latestForegroundRejoinRoomIds,
-                            latestCurrentSession?.currentServerId
-                        )
-                        foregroundReconciler.onForeground("thread_$event")
-                    } else {
-                        threadLifecycleSeen = true
+                val eventDataSnapshot = eventData.toString()
+                coroutineScope.launch {
+                    val lifecycleData = JSONObject(eventDataSnapshot)
+                    if (lifecycleData.optString("action") != ThreadLifecycleAction) {
+                        return@launch
+                    }
+                    val event = lifecycleData.optString("event")
+                    val pageName = lifecycleData.optString("pageName")
+                    if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
+                        if (threadLifecycleSeen && active) {
+                            threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
+                            // Foreground reconciliation: local joined-room state may
+                            // be stale after background/reconnect — force re-emit
+                            // join:channel for the visible thread rooms (server-side
+                            // join is idempotent), and schedule the coalesced
+                            // per-server member/status refresh.
+                            realtimeEvents.rejoinChannels(
+                                latestForegroundRejoinRoomIds,
+                                latestCurrentSession?.currentServerId
+                            )
+                            foregroundReconciler.onForeground("thread_$event")
+                        } else {
+                            threadLifecycleSeen = true
+                        }
                     }
                 }
             }
@@ -4501,21 +4505,24 @@ internal fun SharedThreadRouteContent(
     DisposableEffect(eventBus, threadInstanceKey) {
         val subscription =
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
-                val eventData = data ?: return@observe
-                if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@observe
-                val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@observe
-                val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
-                val file =
-                    PlatformFile(
-                        id = "edited-$actionId",
-                        fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
-                        mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
-                        sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
-                        previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
-                        fileRef = fileRef
-                    )
-                val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
-                uploadComposerAttachmentFiles(listOf(file), replaceAttachmentId = replaceAttachmentId)
+                val eventDataSnapshot = data?.toString() ?: return@observe
+                coroutineScope.launch {
+                    val eventData = JSONObject(eventDataSnapshot)
+                    if (eventData.optString("threadKey").orEmpty() != threadInstanceKey) return@launch
+                    val fileRef = eventData.optString("fileRef").takeIf { it.isNotBlank() } ?: return@launch
+                    val actionId = eventData.optString("actionId").takeIf { it.isNotBlank() } ?: fileRef.hashCode().toString()
+                    val file =
+                        PlatformFile(
+                            id = "edited-$actionId",
+                            fileName = eventData.optString("fileName").takeIf { it.isNotBlank() } ?: "image.png",
+                            mimeType = eventData.optString("mimeType").takeIf { it.isNotBlank() } ?: "image/png",
+                            sizeBytes = eventData.optLong("sizeBytes", 0L).takeIf { it > 0L },
+                            previewUri = eventData.optString("previewUri").takeIf { it.isNotBlank() } ?: fileRef,
+                            fileRef = fileRef
+                        )
+                    val replaceAttachmentId = eventData.optString("replaceAttachmentId").takeIf { it.isNotBlank() }
+                    uploadComposerAttachmentFiles(listOf(file), replaceAttachmentId = replaceAttachmentId)
+                }
             }
         onDispose {
             subscription.close()
