@@ -3089,6 +3089,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 id = attachment.id.value,
                                 fileName = attachment.name,
                                 sizeLabel = attachment.sizeLabel,
+                                sizeBytes = attachment.sizeBytes,
                                 mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
                                 status = "ready"
                             )
@@ -9553,7 +9554,8 @@ private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
         KuiklyPendingAttachmentItem(
             id = file.feedbackComposerAttachmentId(),
             fileName = file.fileName.ifBlank { copy.attachment },
-            sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            sizeLabel = "",
+            sizeBytes = file.sizeBytes ?: 0L,
             mimeType = file.mimeType,
             previewUri = file.previewUri,
             status = "ready"

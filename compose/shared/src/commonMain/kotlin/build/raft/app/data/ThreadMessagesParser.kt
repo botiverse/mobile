@@ -157,7 +157,8 @@ internal fun parseSharedThreadUploadedAttachments(
                 SharedThreadComposerAttachment(
                     id = att.id,
                     fileName = att.filename.ifBlank { "Attachment ${index + 1}" },
-                    sizeLabel = formatThreadAttachmentSize(att.sizeBytes),
+                    sizeLabel = "",
+                    sizeBytes = att.sizeBytes,
                     mimeType = att.mimeType.ifBlank { null },
                     status = "ready"
                 )
@@ -318,7 +319,8 @@ private fun WireAttachment.toAttachmentItem(index: Int): KuiklyThreadAttachmentI
         id = id,
         name = filename.ifBlank { "Attachment ${index + 1}" },
         mimeType = mimeType,
-        sizeLabel = formatThreadAttachmentSize(sizeBytes),
+        sizeBytes = sizeBytes,
+        sizeLabel = "",
         thumbnailUrl = thumbnailUrl,
         commentCount = commentCount.coerceAtLeast(0)
     )
@@ -347,21 +349,4 @@ private fun WireCommentHostSource.toMessageCommentHostSource(): KuiklyThreadMess
         threadChannelId = threadChannelId?.takeIf { it.isNotBlank() },
         rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }
     )
-}
-
-private fun formatThreadAttachmentSize(bytes: Long): String {
-    if (bytes <= 0) return ""
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var unitIdx = 0
-    while (value >= 1024.0 && unitIdx < units.lastIndex) {
-        value /= 1024.0
-        unitIdx++
-    }
-    return if (unitIdx == 0) {
-        "$bytes B"
-    } else {
-        val rounded = (value * 10).toInt() / 10.0
-        "$rounded ${units[unitIdx]}"
-    }
 }

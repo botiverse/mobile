@@ -3,7 +3,6 @@ package build.raft.app.network.sync
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
-import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
@@ -96,7 +95,8 @@ private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(
     id = AttachmentId(id),
     name = filename,
     mimeType = mimeType,
-    sizeLabel = formatAttachmentSizeLabel(sizeBytes),
+    sizeBytes = sizeBytes,
+    sizeLabel = "",
     thumbnailUrl = thumbnailUrl,
     width = width,
     height = height,

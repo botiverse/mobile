@@ -7,7 +7,7 @@
  * shadow mode must show zero canonical-fact divergence against the authoritative path.
  *
  * Domain-outside / derived-display fields the canonical row does not carry (updatedAt-derived labels,
- * attachment.commentCount, attachment.sizeLabel format, task/thread/reply/saved state) are normalized out
+ * attachment.commentCount, task/thread/reply/saved state) are normalized out
  * by toShadowParityView and are asserted NOT to cause divergence.
  */
 package build.raft.app.network.sync
@@ -103,10 +103,7 @@ class MessageShadowCompareTest {
     }
 
     @Test
-    fun attachmentSizeLabelFormatDiffers_isStillParity() {
-        // Legacy emits raw "2048 B"; projection humanizes via formatAttachmentSizeLabel. sizeLabel is a
-        // derived view of the canonical sizeBytes fact, normalized out — so this is parity, and it documents
-        // the intentional label-format change at sole-apply.
+    fun attachmentSizeBytesRemainRawAndEqualAcrossBothPaths() {
         val payload = buildJsonObject {
             richMessageFields(this)
             putJsonArray("attachments") {
@@ -121,11 +118,9 @@ class MessageShadowCompareTest {
             }
         }
         val legacy = legacyMessage(RealtimeSocketEvents.MessageNew, payload)
-        // Precondition: the two size labels genuinely differ, so parity here is a real exclusion, not luck.
-        assertTrue(
-            legacy.attachments.single().sizeLabel == "2048 B",
-            "legacy sizeLabel expected raw bytes, got ${legacy.attachments.single().sizeLabel}",
-        )
+        // Raw bytes are now preserved through both paths; formatting belongs to the UI boundary.
+        assertTrue(legacy.attachments.single().sizeBytes == 2048L)
+        assertTrue(legacy.attachments.single().sizeLabel.isEmpty())
         assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, payload)
     }
 
@@ -246,7 +241,7 @@ class MessageShadowCompareTest {
         put("senderName", "Alice")
         put("senderDescription", "eng")
         put("senderMembershipStatus", "active")
-        put("roleDescription", "owner") // non-canonical wire field the legacy path reads; must not diverge
+        put("roleDescription", "owner") // unknown non-canonical field is ignored by both paths
         putJsonArray("attachments") {
             add(
                 buildJsonObject {

@@ -73,8 +73,8 @@ internal class SlockSqlDatabase(
         // #491 P1: fresh DB file for the sync-core persistence baseline. Bumping the filename (v2->v3)
         // starts a brand-new DB with schema/migration history reset to zero — the pre-release reset
         // means no live DB to migrate, so the epoch cursor column + (seq,id) restore index ship as the
-        // fresh schema v1 (no v1->v2 migration). Old slock_cache_v2.db is abandoned on next open.
-        const val DatabaseName: String = "slock_cache_v3.db"
+        // Fresh schema v1: pre-release caches are replaceable server mirrors, so v3 is abandoned.
+        const val DatabaseName: String = "slock_cache_v4.db"
 
         val Schema = SlockDatabase.Schema
     }

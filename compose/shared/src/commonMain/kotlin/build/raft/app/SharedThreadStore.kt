@@ -5037,6 +5037,7 @@ private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
             messageId = item.messageId?.value.orEmpty(),
             channelId = item.channelId?.value.orEmpty(),
             name = attachment.name,
+            sizeBytes = attachment.sizeBytes,
             sizeLabel = attachment.sizeLabel,
             createdAtLabel = basePayload.formatFilesTimestampLabel(item.createdAt.orEmpty()),
             sourceLabel = item.filesSourceLabel(),
@@ -6295,6 +6296,7 @@ private fun KuiklyThreadAttachmentItem.toAttachment(): Attachment =
         id = AttachmentId(id),
         name = name,
         mimeType = mimeType,
+        sizeBytes = sizeBytes,
         sizeLabel = sizeLabel,
         thumbnailUrl = thumbnailUrl,
         commentCount = commentCount
@@ -6388,6 +6390,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
                 id = attachment.id.value,
                 name = attachment.name,
                 mimeType = attachment.mimeType,
+                sizeBytes = attachment.sizeBytes,
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.thumbnailUrl,
                 commentCount = attachment.commentCount
