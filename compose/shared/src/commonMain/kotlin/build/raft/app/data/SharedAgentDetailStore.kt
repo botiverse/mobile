@@ -39,6 +39,7 @@ internal data class SharedAgentDetailState(
     val agentId: MemberId? = null,
     val detail: AgentDetailSnapshot? = null,
     val agentActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
+    val agentRealtimeActivityLogs: Map<MemberId, List<AgentActivityEntry>> = emptyMap(),
     val agentActivityObservedAt: Map<MemberId, Long> = emptyMap(),
     val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
     val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
@@ -73,6 +74,16 @@ internal data class SharedAgentDetailActionResult(
     val errorCode: String? = null
 )
 
+internal data class SharedAgentIssueReportRequest(
+    val description: String,
+    val diagnostics: String,
+    val includeRecentMessages: Boolean = true,
+    val includeLiveActivity: Boolean = true,
+    val includeActivityHistory: Boolean = true,
+    val includeRuntimeTranscript: Boolean = false,
+    val liveActivity: List<AgentActivityEntry> = emptyList()
+)
+
 internal interface SharedAgentDetailActions {
     suspend fun runLifecycleAction(
         agentId: MemberId,
@@ -81,7 +92,7 @@ internal interface SharedAgentDetailActions {
 
     fun copyDiagnostics(diagnostics: String)
 
-    suspend fun reportIssue(diagnostics: String): Boolean
+    suspend fun reportIssue(request: SharedAgentIssueReportRequest): Boolean
 
     suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
 }
@@ -160,6 +171,7 @@ internal class SharedAgentDetailStore(
                     SharedAgentDetailState(
                         agentId = intent.memberId,
                         agentActivityLogs = current.agentActivityLogs,
+                        agentRealtimeActivityLogs = current.agentRealtimeActivityLogs,
                         agentActivityObservedAt = current.agentActivityObservedAt,
                         agentActivityVersions = current.agentActivityVersions,
                         agentActivitySeq = current.agentActivitySeq
@@ -168,6 +180,7 @@ internal class SharedAgentDetailStore(
             is SharedAgentDetailIntent.SeedDetailFromMember -> current.seedDetailFromMember(intent.member)
             SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState(
                 agentActivityLogs = current.agentActivityLogs,
+                agentRealtimeActivityLogs = current.agentRealtimeActivityLogs,
                 agentActivityObservedAt = current.agentActivityObservedAt,
                 agentActivityVersions = current.agentActivityVersions,
                 agentActivitySeq = current.agentActivitySeq
@@ -379,11 +392,11 @@ internal class SharedAgentDetailStore(
         )
     }
 
-    suspend fun reportIssue(diagnostics: String, actions: SharedAgentDetailActions): Boolean {
+    suspend fun reportIssue(request: SharedAgentIssueReportRequest, actions: SharedAgentDetailActions): Boolean {
         dispatch(SharedAgentDetailIntent.StartDiagnosticAction("report"))
         val reported =
             try {
-                actions.reportIssue(diagnostics)
+                actions.reportIssue(request)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -419,6 +432,8 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     val agentId = event.memberId
     if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
     val nextActivityLog = agentActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
+    val nextRealtimeActivityLog =
+        agentRealtimeActivityLogs[agentId].orEmpty().withRealtimeAgentActivity(event, observedAtMillis)
     val nextDetail =
         if (this.agentId == agentId) {
             detail?.withAgentActivity(event, observedAtMillis)?.copy(activity = nextActivityLog)
@@ -428,6 +443,7 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     return copy(
         detail = nextDetail,
         agentActivityLogs = agentActivityLogs.withAgentActivityLog(agentId, nextActivityLog),
+        agentRealtimeActivityLogs = agentRealtimeActivityLogs.withAgentActivityLog(agentId, nextRealtimeActivityLog),
         agentActivityObservedAt = agentActivityObservedAt + (agentId to observedAtMillis),
         agentActivityVersions = agentActivityVersions + (agentId to ((agentActivityVersions[agentId] ?: 0L) + 1L)),
         agentActivitySeq = event.serverSeq?.let { agentActivitySeq + (agentId to it) } ?: agentActivitySeq
