@@ -61,7 +61,33 @@ private fun SlockTypographyProbeScreen() {
         }
         item { TypographyProbeSection("Latin Text", LatinWeightRows) }
         item { TypographyProbeSection("CJK Text", CjkWeightRows) }
+        item { TypographyTightLineHeightProbeSection() }
         item { TypographyMarkdownProbeSection() }
+    }
+}
+
+@Composable
+private fun TypographyTightLineHeightProbeSection() {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Tight Fallback Lines", style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(
+            text = "20sp/22sp · combining mark + emoji + CJK",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = "A\u0301g 😀 中文 fallback\nA\u0301g 😀 中文 fallback",
+            style = SlockType.Body.copy(fontSize = 20.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack
+        )
     }
 }
 
