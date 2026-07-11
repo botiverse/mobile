@@ -329,6 +329,47 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun storageAndDiagnosticsFeedbackResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_storage_total_title,
+            MR.strings.settings_storage_refresh,
+            MR.strings.settings_storage_safe_clear_note,
+            MR.strings.settings_storage_row_database,
+            MR.strings.settings_storage_row_database_detail,
+            MR.strings.settings_storage_row_image_cache,
+            MR.strings.settings_storage_row_image_cache_detail,
+            MR.strings.settings_storage_row_downloads,
+            MR.strings.settings_storage_row_downloads_detail,
+            MR.strings.settings_storage_row_temporary,
+            MR.strings.settings_storage_row_temporary_detail,
+            MR.strings.settings_storage_ohos_database_detail,
+            MR.strings.settings_storage_ohos_image_cache_detail,
+            MR.strings.settings_storage_ohos_temporary_detail,
+            MR.strings.settings_storage_feedback_image_cleared,
+            MR.strings.settings_storage_feedback_downloads_cleared,
+            MR.strings.settings_storage_feedback_temporary_cleared,
+            MR.strings.settings_diagnostics_feedback_channel_guidance,
+            MR.strings.settings_diagnostics_feedback_channel_recent,
+            MR.strings.settings_diagnostics_feedback_choose_channel,
+            MR.strings.settings_diagnostics_feedback_cannot_attach,
+            MR.strings.settings_diagnostics_feedback_preparing,
+            MR.strings.settings_diagnostics_feedback_upload_empty,
+            MR.strings.settings_diagnostics_feedback_draft_ready,
+            MR.strings.settings_diagnostics_feedback_upload_failed_prefix,
+            MR.strings.settings_diagnostics_feedback_composer_seed
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "storage and diagnostics feedback copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        assertTrue(
+            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(3)) is ResourceFormattedStringDesc
+        )
+    }
+
+    @Test
     fun settingsRootNavigationStringResourcesAreGenerated() {
         listOf(
             MR.strings.settings_title,

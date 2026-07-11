@@ -2345,6 +2345,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
+    val diagnosticsChooseChannelToast = stringResource(MR.strings.settings_diagnostics_feedback_choose_channel)
+    val diagnosticsCannotAttachToast = stringResource(MR.strings.settings_diagnostics_feedback_cannot_attach)
+    val diagnosticsPreparingToast = stringResource(MR.strings.settings_diagnostics_feedback_preparing)
+    val diagnosticsUploadEmptyToast = stringResource(MR.strings.settings_diagnostics_feedback_upload_empty)
+    val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
+    val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
+    val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
@@ -3020,15 +3027,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     ) {
         val channelId = conversation.channelId?.value?.takeIf { it.isNotBlank() } ?: conversation.threadId.value
         if (conversation.kind != ConversationKind.Channel || channelId.isBlank()) {
-            bridge.toast("Choose a channel for diagnostics")
+            bridge.toast(diagnosticsChooseChannelToast)
             return
         }
         if (!conversation.joined || !conversation.permissions.canSend || !conversation.permissions.canAttach) {
-            bridge.toast("You cannot attach diagnostics in this channel")
+            bridge.toast(diagnosticsCannotAttachToast)
             return
         }
         if (diagnosticsFeedbackUploadChannelId != null) {
-            bridge.toast("Preparing diagnostics attachment...")
+            bridge.toast(diagnosticsPreparingToast)
             return
         }
         bridge.log(
@@ -3036,7 +3043,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "fileName=${draft.fileName} pushCurrent=$pushCurrent"
         )
         diagnosticsFeedbackUploadChannelId = channelId
-        bridge.toast("Preparing diagnostics attachment...")
+        bridge.toast(diagnosticsPreparingToast)
         appShellCoroutineScope.launch {
             val uploadResult =
                 withContext(Dispatchers.Default) {
@@ -3061,7 +3068,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             )
                         }
                     if (uploadedAttachments.isEmpty()) {
-                        bridge.toast("Diagnostics attachment upload returned empty")
+                        bridge.toast(diagnosticsUploadEmptyToast)
                         return@launch
                     }
                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
@@ -3077,26 +3084,27 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onWarn = { bridge.logWarn(it) },
                             threadRowAffordances = threadRowAffordances
                         ).withDiagnosticsFeedbackDraft(
-                            draft = draft
+                            draft = draft,
+                            composerSeedText = diagnosticsComposerSeed
                         )
                     composerDraftPersistSlice.stageUploadedAttachments(
                         draftKey = launchPayload.threadComposerDraftKey(),
                         attachments = uploadedAttachments
                     )
                     pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
-                    bridge.toast("Diagnostics draft ready")
+                    bridge.toast(diagnosticsDraftReadyToast)
                 }
                 is DataResult.Error -> {
                     val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.settingsUserFacingMessage()
-                    bridge.toast("Diagnostics attachment upload failed: $reason")
+                    bridge.toast("$diagnosticsUploadFailedPrefix $reason")
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
                 is DataResult.NoPermission -> {
-                    bridge.toast("You cannot attach diagnostics in this channel")
+                    bridge.toast(diagnosticsCannotAttachToast)
                     bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
                 }
                 is DataResult.Empty -> {
-                    bridge.toast("Diagnostics attachment upload returned empty")
+                    bridge.toast(diagnosticsUploadEmptyToast)
                     bridge.log("diagnostics_feedback_attachment_upload_empty reason=${uploadResult.reason}")
                 }
             }
@@ -9754,8 +9762,11 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         }
     return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
+        totalTitle = stringResource(MR.strings.settings_storage_total_title),
         totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
-        feedback = statusText,
+        refreshLabel = stringResource(MR.strings.settings_storage_refresh),
+        safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
+        feedback = localizedSettingsStorageFeedback(statusText),
         rows =
             storage?.rows?.map { row ->
                 row.toStoragePayloadRow(
@@ -9773,8 +9784,8 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
     KuiklySettingsStorageRow(
         target = target,
         iconName = storageTargetIconName(target),
-        title = title,
-        detail = detail,
+        title = localizedSettingsStorageRowTitle(target, title),
+        detail = localizedSettingsStorageRowDetail(detail),
         size = sizeLabel,
         clearLabel =
             if (clearEnabled) {
@@ -9790,6 +9801,46 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearEnabled = clearEnabled,
         clearInProgress = clearInProgress
     )
+
+@Composable
+private fun localizedSettingsStorageRowTitle(target: String, fallback: String): String =
+    when (target) {
+        "database" -> stringResource(MR.strings.settings_storage_row_database)
+        "imageCache" -> stringResource(MR.strings.settings_storage_row_image_cache)
+        "attachmentDownloads" -> stringResource(MR.strings.settings_storage_row_downloads)
+        "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_row_temporary)
+        else -> fallback
+    }
+
+@Composable
+private fun localizedSettingsStorageRowDetail(detail: String): String =
+    when (detail) {
+        "Messages, task metadata, and server snapshots stored on this device." ->
+            stringResource(MR.strings.settings_storage_row_database_detail)
+        "Downloaded image previews kept for faster viewing." ->
+            stringResource(MR.strings.settings_storage_row_image_cache_detail)
+        "Files downloaded for opening or installing from previews." ->
+            stringResource(MR.strings.settings_storage_row_downloads_detail)
+        "Debug logs and temporary files generated by the app." ->
+            stringResource(MR.strings.settings_storage_row_temporary_detail)
+        "OHOS storage usage is not exposed through the host capability yet." ->
+            stringResource(MR.strings.settings_storage_ohos_database_detail)
+        "Image cache clearing is not available on OHOS yet." ->
+            stringResource(MR.strings.settings_storage_ohos_image_cache_detail)
+        "Use Diagnostics clear logs for the local diagnostics buffer." ->
+            stringResource(MR.strings.settings_storage_ohos_temporary_detail)
+        else -> detail
+    }
+
+@Composable
+private fun localizedSettingsStorageFeedback(feedback: String): String =
+    when (feedback) {
+        "Image cache cleared." -> stringResource(MR.strings.settings_storage_feedback_image_cleared)
+        "Downloaded files cleared." -> stringResource(MR.strings.settings_storage_feedback_downloads_cleared)
+        "Temporary files and diagnostics logs cleared." ->
+            stringResource(MR.strings.settings_storage_feedback_temporary_cleared)
+        else -> feedback
+    }
 
 private fun storageTargetIconName(target: String): SlockLucideIconName =
     when (target) {
@@ -13406,12 +13457,12 @@ private fun SharedDiagnosticsFeedbackChannelPage(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
+                text = stringResource(MR.strings.settings_diagnostics_feedback_channel_guidance),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
             SlockBrutalActionButton(
-                label = "Refresh",
+                label = stringResource(MR.strings.settings_state_refresh),
                 backgroundColor = SlockColor.BrandYellow,
                 onClick = onRefresh
             )
@@ -13457,7 +13508,7 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                 }
             }
             else -> {
-                SlockBrutalSectionLabel(label = "最近使用")
+                SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent))
                 LazyColumn(
                     modifier =
                         Modifier
@@ -13554,13 +13605,17 @@ private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<Conversati
         .toList()
 }
 
+@Composable
 private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
     val latest = lastMessageAt?.takeIf { it.isNotBlank() }
-    val unread = unreadCount.takeIf { it > 0 }?.let { "$it unread" }
+    val unread =
+        unreadCount.takeIf { it > 0 }?.let {
+            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(it)).localized()
+        }
     val sender = lastMessageSenderName?.takeIf { it.isNotBlank() }
     return listOfNotNull(latest, sender, unread)
         .joinToString(" · ")
-        .ifBlank { "Channel" }
+        .ifBlank { stringResource(MR.strings.search_entity_channel) }
 }
 
 private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): PlatformFile =
@@ -13575,14 +13630,16 @@ private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): Platfo
 internal const val DiagnosticsFeedbackComposerSeedText: String =
     "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->"
 
-internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
-    DiagnosticsFeedbackComposerSeedText
+internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(
+    seedText: String = DiagnosticsFeedbackComposerSeedText
+): String = seedText
 
 private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
-    draft: SettingsDiagnosticsFeedbackDraft
+    draft: SettingsDiagnosticsFeedbackDraft,
+    composerSeedText: String
 ): WireThreadLaunchPayload =
     copy(
-        composerSeedText = draft.diagnosticsComposerMessage(),
+        composerSeedText = draft.diagnosticsComposerMessage(composerSeedText),
         composerSyncNonce = composerSyncNonce + 1,
         composerFocusRequestNonce = composerFocusRequestNonce + 1
     )
