@@ -46,6 +46,22 @@ explicit opt-in:
 So merging the workflow does **not** start creating issues — enabling is a deliberate,
 separate switch. Per-run cap + skip logging prevent flooding even when live.
 
+## Verification (adversarial triage)
+
+The nightly AI analysis can over-report, so a filed issue is not yet trusted. Right after
+filing, the `verify` job re-judges each open, not-yet-`verified` drift issue with an
+**independent 3× MiniMax-M3 adversarial panel**: *is this a real cross-platform problem
+worth fixing, or a false positive / capture artifact / fixture-data / intentional
+difference?* Consensus decides:
+
+- majority (≥ 2 of 3) say **real** → label **`verified`** — it enters the fix queue.
+- otherwise → the issue is **closed** as an auto-triaged false positive (with a comment;
+  reopen if wrong).
+
+`scripts/patrol/verify_issues.mjs` (dry-run default). Shared core lives in
+`scripts/patrol/lib.mjs` so future lenses (i18n, code-smell) reuse the same
+dedupe/label/file machinery.
+
 ## Boundaries
 
 - **Style/token drifts** (color/font/spacing): a follow-up (phase 2) attaches an M3 draft
