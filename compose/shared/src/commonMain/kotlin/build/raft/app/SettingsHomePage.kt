@@ -14838,111 +14838,74 @@ private fun SharedHomeSearchFilters(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item {
-                SlockAnchoredToolbarChip(
-                    label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
-                    active = scopeActive,
-                    enabled = true,
-                    uppercase = !scopeActive,
-                    iconName = SlockLucideIconName.AtSign,
-                    activeBackgroundColor = SlockColor.BrandYellow,
-                    activeShadowOffset = SearchControlShadowOffset,
-                    reserveActiveShadowSpace = true,
-                    onAnchorChanged = scopeAnchorChanged,
-                    onClick = { anchor ->
-                        scopeAnchorChanged(anchor)
-                        onOpenFilter("scope")
+            homeSearchFilterOrder(showSenderFilter).forEach { filter ->
+                item(key = "search-filter-${filter.id}") {
+                    when (filter) {
+                        HomeSearchFilter.Sender ->
+                            SlockAnchoredToolbarChip(
+                                label = state.localizedSenderFilterLabel(),
+                                active = senderActive,
+                                enabled = true,
+                                uppercase = !senderActive,
+                                iconName = SlockLucideIconName.CircleUser,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = senderAnchorChanged,
+                                onClick = { anchor ->
+                                    senderAnchorChanged(anchor)
+                                    onOpenFilter("sender")
+                                }
+                            )
+                        HomeSearchFilter.Scope ->
+                            SlockAnchoredToolbarChip(
+                                label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
+                                active = scopeActive,
+                                enabled = true,
+                                uppercase = !scopeActive,
+                                iconName = SlockLucideIconName.AtSign,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = scopeAnchorChanged,
+                                onClick = { anchor ->
+                                    scopeAnchorChanged(anchor)
+                                    onOpenFilter("scope")
+                                }
+                            )
+                        HomeSearchFilter.Channel ->
+                            SlockAnchoredToolbarChip(
+                                label = selectedChannel?.label ?: channelLabel,
+                                active = channelActive,
+                                enabled = true,
+                                uppercase = selectedChannel == null,
+                                iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = channelAnchorChanged,
+                                onClick = { anchor ->
+                                    channelAnchorChanged(anchor)
+                                    onOpenFilter("channel")
+                                }
+                            )
+                        HomeSearchFilter.Time ->
+                            SlockAnchoredToolbarChip(
+                                label = state.timeRange.localizedSearchLabel(),
+                                active = timeActive,
+                                enabled = true,
+                                uppercase = false,
+                                iconName = SlockLucideIconName.Calendar,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = timeAnchorChanged,
+                                onClick = { anchor ->
+                                    timeAnchorChanged(anchor)
+                                    onOpenFilter("time")
+                                }
+                            )
                     }
-                )
-            }
-            if (showSenderFilter) {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.localizedSenderFilterLabel(),
-                        active = senderActive,
-                        enabled = true,
-                        uppercase = !senderActive,
-                        iconName = SlockLucideIconName.CircleUser,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = senderAnchorChanged,
-                        onClick = { anchor ->
-                            senderAnchorChanged(anchor)
-                            onOpenFilter("sender")
-                        }
-                    )
-                }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: channelLabel,
-                        active = channelActive,
-                        enabled = true,
-                        uppercase = selectedChannel == null,
-                        iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = channelAnchorChanged,
-                        onClick = { anchor ->
-                            channelAnchorChanged(anchor)
-                            onOpenFilter("channel")
-                        }
-                    )
-                }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.timeRange.localizedSearchLabel(),
-                        active = timeActive,
-                        enabled = true,
-                        uppercase = false,
-                        iconName = SlockLucideIconName.Calendar,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = timeAnchorChanged,
-                        onClick = { anchor ->
-                            timeAnchorChanged(anchor)
-                            onOpenFilter("time")
-                        }
-                    )
-                }
-            } else {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: channelLabel,
-                        active = channelActive,
-                        enabled = true,
-                        uppercase = selectedChannel == null,
-                        iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = channelAnchorChanged,
-                        onClick = { anchor ->
-                            channelAnchorChanged(anchor)
-                            onOpenFilter("channel")
-                        }
-                    )
-                }
-            }
-            if (!showSenderFilter) {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.timeRange.localizedSearchLabel(),
-                        active = timeActive,
-                        enabled = true,
-                        uppercase = false,
-                        iconName = SlockLucideIconName.Calendar,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = timeAnchorChanged,
-                        onClick = { anchor ->
-                            timeAnchorChanged(anchor)
-                            onOpenFilter("time")
-                        }
-                    )
                 }
             }
             item {
@@ -14983,6 +14946,20 @@ private fun SharedHomeSearchFilters(
         }
     }
 }
+
+internal enum class HomeSearchFilter(val id: String) {
+    Sender("sender"),
+    Scope("scope"),
+    Channel("channel"),
+    Time("time"),
+}
+
+internal fun homeSearchFilterOrder(showSenderFilter: Boolean): List<HomeSearchFilter> =
+    if (showSenderFilter) {
+        listOf(HomeSearchFilter.Sender, HomeSearchFilter.Scope, HomeSearchFilter.Channel, HomeSearchFilter.Time)
+    } else {
+        listOf(HomeSearchFilter.Scope, HomeSearchFilter.Channel, HomeSearchFilter.Time)
+    }
 
 @Composable
 private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() -> Unit) {
