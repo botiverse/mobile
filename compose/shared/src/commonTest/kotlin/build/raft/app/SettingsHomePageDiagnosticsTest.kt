@@ -416,6 +416,66 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
+    fun openSourceLicensesPayloadUsesInjectedPresentationCopyForStaticStates() {
+        val copy =
+            SettingsOpenSourceLicensesPayloadCopy(
+                title = "开源许可",
+                sectionLicenses = "许可",
+                loading = "正在加载",
+                loadingDetail = "正在加载许可元数据。",
+                wait = "请稍候",
+                emptyTitle = "未找到许可",
+                emptyDetail = "未包含依赖。",
+                empty = "为空"
+            )
+
+        val loading = ScreenLoadState.Loading.toOpenSourceLicensesPayload(copy)
+        assertEquals("开源许可", loading.title)
+        assertEquals("正在加载", loading.sections.single().rows.single().title)
+        assertEquals("正在加载许可元数据。", loading.sections.single().rows.single().detail)
+        assertEquals("请稍候", loading.sections.single().rows.single().status)
+
+        val empty =
+            ScreenLoadState.Content(
+                SharedSettingsOpenSourceLicensesSnapshot(items = emptyList())
+            ).toOpenSourceLicensesPayload(copy)
+        assertEquals("许可", empty.sections.single().title)
+        assertEquals("未找到许可", empty.sections.single().rows.single().title)
+        assertEquals("未包含依赖。", empty.sections.single().rows.single().detail)
+        assertEquals("为空", empty.sections.single().rows.single().status)
+    }
+
+    @Test
+    fun feedbackFailurePresentationKeepsServerCodeOutOfUserFacingCopy() {
+        val copy =
+            SettingsQuiverFeedbackCopy(
+                submissionFailedTitle = "发送失败",
+                submissionFailedBody = "暂时无法发送反馈，请重试。",
+                submissionPermissionTitle = "需要权限",
+                submissionPermissionBody = "你没有发送反馈的权限。"
+            )
+
+        val networkFailure = copy.submissionFailure("settings_feedback_submit_rate_limited")
+        assertEquals("发送失败", networkFailure.title)
+        assertEquals("暂时无法发送反馈，请重试。", networkFailure.composerStatus)
+        assertEquals("暂时无法发送反馈，请重试。", networkFailure.body)
+        assertEquals("settings_feedback_submit_rate_limited", networkFailure.diagnosticDetail)
+
+        val permissionFailure = copy.submissionPermissionFailure("server_forbidden")
+        assertEquals("需要权限", permissionFailure.title)
+        assertEquals("你没有发送反馈的权限。", permissionFailure.body)
+        assertEquals("server_forbidden", permissionFailure.diagnosticDetail)
+    }
+
+    @Test
+    fun indexedLocalizedTemplatesKeepLocaleSpecificArgumentOrder() {
+        assertEquals(
+            "来自 Android 发布运行时 的 3 个库",
+            "来自 %2${'$'}s 的 %1${'$'}d 个库".replaceLocalizedFormatArgs(3, "Android 发布运行时")
+        )
+    }
+
+    @Test
     fun aboutPayloadShowsManualUpdateCheckAction() {
         val payload =
             SharedSettingsAboutSnapshot(
