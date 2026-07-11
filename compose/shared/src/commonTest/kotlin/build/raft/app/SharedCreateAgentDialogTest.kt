@@ -148,7 +148,7 @@ class SharedCreateAgentDialogTest {
 
         assertTrue(items.size > 1)
         assertEquals(CREATE_AGENT_CUSTOM_MODEL_ID, items.last().id)
-        assertEquals("Custom...", items.last().label)
+        assertEquals("Custom", items.last().label)
         assertTrue(items.last().custom)
         assertFalse(items.dropLast(1).any { it.custom })
     }

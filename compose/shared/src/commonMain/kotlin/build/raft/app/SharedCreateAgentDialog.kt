@@ -352,7 +352,7 @@ internal fun createAgentModelDropdownItems(
             ?: RUNTIME_MODELS[runtime].orEmpty()
     val presets = modelOptions.map { CreateAgentModelDropdownItem(id = it.id, label = it.label) }
     return if (allowCustomModel) {
-        presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
+        presets + CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom", custom = true)
     } else {
         presets
     }
@@ -1081,7 +1081,7 @@ internal fun AdvancedRuntimeSection(
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
             selectedLabel =
                 if (customModelMode) {
-                    customModelName.trim().ifBlank { "Custom..." }
+                    customModelName.trim().ifBlank { "Custom" }
                 } else {
                     modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
                 },

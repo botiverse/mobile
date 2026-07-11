@@ -29,9 +29,12 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.extension.NestedScrollMode
+import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -205,42 +208,65 @@ private fun SlockBrutalSelectMenu(
                     .offset(x = shadowOffset, y = shadowOffset)
                     .background(SlockColor.ShadowBlack)
         )
-        LazyColumn(
+        // Keep the viewport chrome outside the scrolling node. Kuikly's
+        // LazyColumn repositions its native children while scrolling; when
+        // the background and border live on that same node, those children
+        // can repaint over the border and make the menu look split into
+        // multiple boxes. The outer Box owns the fixed white surface, clip,
+        // and continuous border; only its contents scroll.
+        Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(listHeight)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .background(SlockColor.SurfaceWhite)
+                    .clipToBounds()
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
-            items(options.size, key = { idx -> options[idx].id }) { idx ->
-                val option = options[idx]
-                val selected = selectedId == option.id
-                val rowEnabled = enabled && option.enabled
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(rowHeight)
-                            .clickable(enabled = rowEnabled) { onSelect(option) }
-                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
-                        if (selected) {
-                            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
+            LazyColumn(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(listHeight)
+                        // The select lives in a floating overlay while its
+                        // trigger often sits inside a form LazyColumn. Keep
+                        // the drag entirely in this menu so an in-progress
+                        // option scroll cannot also move/focus the underlying
+                        // form after native capture was removed.
+                        .nestedScroll(
+                            scrollUp = NestedScrollMode.SELF_ONLY,
+                            scrollDown = NestedScrollMode.SELF_ONLY
+                        )
+            ) {
+                items(options.size, key = { idx -> options[idx].id }) { idx ->
+                    val option = options[idx]
+                    val selected = selectedId == option.id
+                    val rowEnabled = enabled && option.enabled
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(rowHeight)
+                                .clickable(enabled = rowEnabled) { onSelect(option) }
+                                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
+                            if (selected) {
+                                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
+                            }
                         }
+                        Text(
+                            text = option.label,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = if (rowEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    Text(
-                        text = option.label,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = if (rowEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
                 }
             }
         }
