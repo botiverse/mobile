@@ -1,0 +1,221 @@
+package build.raft.app.network.sync
+
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class CanonicalMessageRowProjectionTest {
+
+    private fun row(
+        senderType: String = "agent",
+        messageType: String = "chat",
+        senderDescription: String? = "Builder",
+        attachments: List<CanonicalAttachmentWire>? = null,
+        reactions: List<CanonicalReactionWire>? = null,
+        actionMetadata: kotlinx.serialization.json.JsonElement? = null,
+        conversationContext: CanonicalConversationContextWire? = null,
+        commentRef: CanonicalCommentRefWire? = null,
+    ) = CanonicalMessageRow(
+        id = MessageId("m1"),
+        channelId = ChannelId("c1"),
+        seq = 42,
+        senderType = senderType,
+        senderId = "u1",
+        content = "hello",
+        messageType = messageType,
+        createdAt = "2026-07-12T04:00:00Z",
+        randomId = "r1",
+        threadId = "thread-c1",
+        senderName = "Ada",
+        senderDescription = senderDescription,
+        senderMembershipStatus = "active",
+        mentions = listOf(CanonicalMentionWire("u2", "Bob", "human")),
+        attachments = attachments ?: listOf(
+            CanonicalAttachmentWire(
+                id = "a1",
+                filename = "image.png",
+                mimeType = "image/png",
+                sizeBytes = 1536,
+                width = 640,
+                height = 480,
+                thumbnailUrl = "https://example.test/thumb.png",
+            ),
+        ),
+        reactions = reactions ?: listOf(CanonicalReactionWire("🔥", 2, listOf("u2"), listOf("Bob"))),
+        commentRef = commentRef,
+        actionMetadata = actionMetadata,
+        conversationContext = conversationContext,
+    )
+
+    @Test
+    fun mapsCanonicalFieldsAndRebuildsFlatSender() {
+        var hydrationSawFallback = false
+        val message = row(
+            conversationContext = CanonicalConversationContextWire(
+                channelType = "direct_message",
+                parentChannelId = "parent-c",
+                parentChannelType = "joint",
+                parentMessageId = "parent-m",
+            ),
+            commentRef = CanonicalCommentRefWire(
+                attachmentId = "a1",
+                filename = "image.png",
+                hostMessageId = "host-m",
+                hostSource = CanonicalCommentHostSourceWire(
+                    type = "thread",
+                    routeKind = "channel",
+                    channelId = "host-c",
+                ),
+                anchorLabel = "line 4",
+                anchorQuote = "wire-only quote",
+            ),
+        ).toAppMessage { fallback ->
+            hydrationSawFallback = true
+            assertEquals("u1", fallback.id.value)
+            assertEquals(MemberKind.Agent, fallback.kind)
+            assertEquals("Builder", fallback.description)
+            assertNull(fallback.membershipStatus)
+            fallback.copy(serverRole = "admin")
+        }
+
+        assertTrue(hydrationSawFallback)
+        assertEquals("m1", message.id.value)
+        assertEquals("c1", message.threadId.value)
+        assertEquals("c1", message.channelId?.value)
+        assertNull(message.threadChannelId)
+        assertEquals(42, message.seq)
+        assertEquals("Ada", message.author.displayName)
+        assertEquals("admin", message.author.serverRole)
+        assertEquals("2026-07-12T04:00:00Z", message.timestampLabel)
+        assertEquals("hello", message.body)
+        assertEquals(MessageType.Chat, message.messageType)
+        assertEquals("r1", message.randomId)
+        assertEquals("1.5 KB", message.attachments.single().sizeLabel)
+        assertEquals(640, message.attachments.single().width)
+        assertEquals(0, message.attachments.single().commentCount)
+        assertEquals("🔥", message.reactions?.single()?.emoji)
+        assertEquals("host-c", message.commentRef?.hostSource?.channelId?.value)
+        assertEquals(ConversationKind.DirectMessage, message.conversationContext?.channelKind)
+        assertEquals(ConversationKind.Joint, message.conversationContext?.parentChannelKind)
+        assertEquals("parent-m", message.conversationContext?.parentMessageId?.value)
+        assertEquals("active", message.senderMembershipStatus)
+        assertNull(message.task)
+        assertNull(message.updatedAtLabel)
+    }
+
+    @Test
+    fun parsesSystemMessageTypeAndActionCardMetadata() {
+        val actionMetadata = buildJsonObject {
+            put("kind", "action-card")
+            put("state", "prepared")
+            put("action", buildJsonObject {
+                put("type", "create-channel")
+                put("name", "Launch")
+                put("humans", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("u1")) })
+            })
+        }
+        val message = row(senderType = "system", messageType = "SYSTEM", actionMetadata = actionMetadata)
+            .toAppMessage()
+
+        assertEquals(MessageType.System, message.messageType)
+        assertEquals(MemberKind.System, message.author.kind)
+        assertEquals("action-card", message.metadata["actionCard.kind"])
+        assertEquals("create-channel", message.metadata["actionCard.type"])
+        assertEquals("Launch", message.metadata["actionCard.name"])
+    }
+
+    @Test
+    fun projectsForwardBundleFromRawActionMetadata() {
+        val actionMetadata = buildJsonObject {
+            put("kind", "forwarded-bundle")
+            put("forwardedItems", buildJsonArray {
+                add(buildJsonObject {
+                    put("sourceMessageId", "source-m")
+                    put("sourceCreatedAt", "t1")
+                    put("contentSnapshot", "forwarded body")
+                    put("sourceAuthorSnapshot", buildJsonObject {
+                        put("type", "human")
+                        put("id", "u9")
+                        put("name", "Nina")
+                    })
+                })
+            })
+        }
+        val message = row(actionMetadata = actionMetadata).toAppMessage()
+
+        assertTrue(message.metadata.isEmpty())
+        assertEquals("Forwarded", message.forwardBundle?.title)
+        assertEquals("source-m", message.forwardBundle?.messages?.single()?.id)
+        assertEquals("forwarded body", message.forwardBundle?.messages?.single()?.body)
+    }
+
+    @Test
+    fun unknownWireKindsFallBackWithoutThrowing() {
+        val message = row(
+            senderType = "future-sender-kind",
+            messageType = "future-message-kind",
+            actionMetadata = buildJsonObject { put("future", true) },
+            conversationContext = CanonicalConversationContextWire(
+                channelType = "future-channel-kind",
+                parentChannelType = "future-parent-kind",
+            ),
+            commentRef = CanonicalCommentRefWire(
+                attachmentId = "a1",
+                filename = "image.png",
+                hostSource = CanonicalCommentHostSourceWire(
+                    type = "future-host-kind",
+                    routeKind = "future-route-kind",
+                    channelId = "c2",
+                ),
+            ),
+        ).toAppMessage()
+
+        assertEquals(MemberKind.Human, message.author.kind)
+        assertEquals(MessageType.Chat, message.messageType)
+        assertNull(message.conversationContext)
+        assertNull(message.commentRef?.hostSource)
+        assertTrue(message.metadata.isEmpty())
+        assertNull(message.forwardBundle)
+    }
+
+    @Test
+    fun adversarialValuesMatchLegacyMapperFailSoftRules() {
+        val message = row(
+            senderType = "system",
+            messageType = "chat",
+            senderDescription = "",
+            attachments = listOf(
+                CanonicalAttachmentWire(
+                    id = "a-empty",
+                    filename = "",
+                    mimeType = "",
+                    sizeBytes = 0,
+                ),
+            ),
+            reactions = listOf(
+                CanonicalReactionWire(emoji = "", count = 1),
+                CanonicalReactionWire(emoji = "ok", count = -1),
+            ),
+            commentRef = CanonicalCommentRefWire(attachmentId = "", filename = ""),
+        ).toAppMessage()
+
+        // RealtimeEventMapper treats senderType=system as Human unless messageType itself is system.
+        assertEquals(MemberKind.Human, message.author.kind)
+        // Empty wire strings stay empty; the mapper must not invent presentation fallbacks.
+        assertEquals("", message.author.description)
+        assertEquals("", message.attachments.single().name)
+        assertEquals("", message.attachments.single().mimeType)
+        // Legacy mapper drops malformed reactions and an invalid commentRef.
+        assertNull(message.reactions)
+        assertNull(message.commentRef)
+    }
+}

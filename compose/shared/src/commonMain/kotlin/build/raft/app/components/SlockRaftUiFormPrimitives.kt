@@ -7,6 +7,7 @@ import build.raft.app.SlockStroke
 import build.raft.app.SlockType
 import build.raft.app.TextField
 import build.raft.app.withSlockFontWeight
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -31,6 +32,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal enum class SlockFormFieldLabelStyle {
     Uppercase,
@@ -130,7 +132,7 @@ private fun SlockFormFieldLabel(
         }
         if (optional) {
             Text(
-                text = "(optional)",
+                text = stringResource(MR.strings.common_optional_suffix),
                 style =
                     SlockType.Caption
                         .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = 14.sp)

@@ -1,0 +1,173 @@
+package build.raft.app.network.sync
+
+import build.raft.app.commentHostRouteKindOrNull
+import build.raft.app.commentHostTypeOrNull
+import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.data.toForwardMessageBundle
+import build.raft.app.data.toMessageMetadata
+import build.raft.app.data.toThreadActionCard
+import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageCommentHostSource
+import build.raft.app.model.MessageCommentRef
+import build.raft.app.model.MessageConversationContext
+import build.raft.app.model.MessageDeliveryState
+import build.raft.app.model.MessageId
+import build.raft.app.model.MessageReaction
+import build.raft.app.model.MessageType
+import build.raft.app.model.Presence
+import build.raft.app.model.ThreadId
+import build.raft.app.parseConversationKindOrNull
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+
+/**
+ * Optional app-directory enrichment applied after the canonical flat sender has been rebuilt.
+ * The canonical row remains the source for identity/kind and supplies a complete fallback when
+ * the member directory has no matching entry.
+ */
+typealias CanonicalMemberHydration = (MemberProfile) -> MemberProfile
+
+private val canonicalProjectionJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+}
+
+/**
+ * Lossy app projection of the wire-shaped canonical row. Task state is intentionally left null:
+ * it is owned by the legacy task projection and joined after this boundary. Likewise, no
+ * `updatedAtLabel` is synthesized from the canonical row; sync identity/order uses epoch + seq + id.
+ */
+fun CanonicalMessageRow.toAppMessage(
+    memberHydration: CanonicalMemberHydration = { it },
+): Message {
+    val fallbackAuthor = MemberProfile(
+        id = MemberId(senderId),
+        displayName = senderName.ifBlank { senderId },
+        handle = senderName.ifBlank { senderId },
+        kind = senderMemberKind(),
+        description = senderDescription,
+        avatarLabel = senderName.ifBlank { senderId }.take(1).uppercase(),
+        presence = Presence.Offline,
+    )
+    val action = actionMetadata.toAppActionProjection()
+    return Message(
+        id = id,
+        // The wire `threadId` is an anchor, not the app navigation ThreadId. Messages live in the
+        // channel bucket, which remains the app navigation identity.
+        threadId = ThreadId(channelId.value),
+        channelId = channelId,
+        // message:* does not carry app thread linkage; preserve RealtimeEventMapper parity.
+        threadChannelId = null,
+        seq = seq,
+        author = memberHydration(fallbackAuthor),
+        timestampLabel = createdAt,
+        body = content,
+        messageType = if (messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        metadata = action.metadata,
+        attachments = attachments.map(CanonicalAttachmentWire::toAppAttachment),
+        deliveryState = MessageDeliveryState.Sent,
+        task = null,
+        updatedAtLabel = null,
+        reactions = reactions.mapNotNull(CanonicalReactionWire::toAppReaction).takeIf { it.isNotEmpty() },
+        senderMembershipStatus = senderMembershipStatus,
+        commentRef = commentRef?.toAppCommentRef(),
+        forwardBundle = action.forwardBundle,
+        conversationContext = conversationContext?.toAppConversationContext(),
+        randomId = randomId?.takeIf { it.isNotBlank() },
+    )
+}
+
+private fun CanonicalMessageRow.senderMemberKind(): MemberKind =
+    when {
+        senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
+        messageType.equals("system", ignoreCase = true) -> MemberKind.System
+        else -> MemberKind.Human
+    }
+
+private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(
+    id = AttachmentId(id),
+    name = filename,
+    mimeType = mimeType,
+    sizeLabel = formatAttachmentSizeLabel(sizeBytes),
+    thumbnailUrl = thumbnailUrl,
+    width = width,
+    height = height,
+    // Viewer-scoped commentCount is explicitly excluded from the canonical shared row.
+    commentCount = 0,
+)
+
+private fun CanonicalReactionWire.toAppReaction(): MessageReaction? {
+    val validEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
+    if (count < 0) return null
+    return MessageReaction(
+        emoji = validEmoji,
+        count = count,
+        reactorIds = reactorIds,
+        reactorNames = reactorNames,
+    )
+}
+
+private fun CanonicalCommentRefWire.toAppCommentRef(): MessageCommentRef? {
+    val validAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val validFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentRef(
+        attachmentId = AttachmentId(validAttachmentId),
+        filename = validFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        hostSource = hostSource?.toAppCommentHostSource(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() },
+    )
+}
+
+private fun CanonicalCommentHostSourceWire.toAppCommentHostSource(): MessageCommentHostSource? {
+    val validType = type.commentHostTypeOrNull() ?: return null
+    val validRouteKind = routeKind.commentHostRouteKindOrNull() ?: return null
+    val validChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentHostSource(
+        type = validType,
+        routeKind = validRouteKind,
+        channelId = ChannelId(validChannelId),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+    )
+}
+
+private fun CanonicalConversationContextWire.toAppConversationContext(): MessageConversationContext? {
+    val context = MessageConversationContext(
+        channelKind = parseConversationKindOrNull(channelType),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        parentChannelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        parentChannelKind = parseConversationKindOrNull(parentChannelType),
+    )
+    return context.takeIf {
+        it.channelKind != null ||
+            it.parentMessageId != null ||
+            it.parentChannelId != null ||
+            it.parentChannelKind != null
+    }
+}
+
+private data class AppActionProjection(
+    val metadata: Map<String, String> = emptyMap(),
+    val forwardBundle: build.raft.app.model.ForwardMessageBundle? = null,
+)
+
+private fun JsonElement?.toAppActionProjection(): AppActionProjection {
+    val element = this ?: return AppActionProjection()
+    val wire = runCatching {
+        canonicalProjectionJson.decodeFromJsonElement(WireActionCardMetadata.serializer(), element)
+    }.getOrNull() ?: return AppActionProjection()
+    return AppActionProjection(
+        metadata = wire.toThreadActionCard()?.toMessageMetadata().orEmpty(),
+        forwardBundle = wire.toForwardMessageBundle(),
+    )
+}

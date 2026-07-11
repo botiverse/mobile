@@ -8,6 +8,7 @@ import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.data.realtime.MessageSeqEnvelope
+import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
 import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
@@ -37,12 +38,14 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -120,6 +123,29 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
 
+    /**
+     * Server feature-flag evaluation (sync-core rollout gate). Prefetched per shell when its selected
+     * server changes (see [selectedServerStore]) — this is what makes `sync_core_messages_v0` traffic
+     * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
+     */
+    val serverFeatureFlags: SharedServerFeatureFlags =
+        SharedServerFeatureFlags(
+            api = SlockFeatureFlagsNetworkApi(networkClient),
+            diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
+
+    /**
+     * Flag-gated sync-core shadow-compare observer injected into [RealtimeEventMapper]. Off by default
+     * (`sync_core_messages_v0`), so it is a single flag lookup on the hot path until the rollout enables it;
+     * when on, it re-projects each message through the canonical pipeline and emits divergence diagnostics
+     * without touching the store. A provider-level singleton so all mapper instances share one gate.
+     */
+    val messageShadowObserver: MessageShadowObserver =
+        SyncCoreMessageShadowObserver(
+            featureFlags = serverFeatureFlags,
+            diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
+        )
+
     init {
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
@@ -141,7 +167,25 @@ internal class SlockSharedStoreProvider private constructor(
         homeStores.get(scope)
 
     fun selectedServerStore(scope: SlockShellStoreScope): SelectedServerStore =
-        selectedServerStores.getOrPut(scope) { SelectedServerStore(scope) }
+        selectedServerStores.getOrPut(scope) {
+            SelectedServerStore(scope).also { selectionStore ->
+                // Prefetch registered server feature flags whenever this shell selects a server.
+                // StateFlow conflates to distinct values, so this evaluates once per server change.
+                // The collector lives on threadSendScope (not the shell scope), so cancel it when the
+                // store is disposed, or it would outlive an evicted shell selection store.
+                threadSendScope.launch {
+                    val prefetching = launch {
+                        selectionStore.currentServerId.collect { serverId ->
+                            if (!serverId.isNullOrBlank()) {
+                                runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                            }
+                        }
+                    }
+                    selectionStore.disposed.first { it }
+                    prefetching.cancel()
+                }
+            }
+        }
 
     fun scopesForServer(serverId: String): List<SlockShellStoreScope> {
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()

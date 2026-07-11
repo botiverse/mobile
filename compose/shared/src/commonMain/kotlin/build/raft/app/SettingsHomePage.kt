@@ -1995,7 +1995,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
-    var homeListPosition by remember { mutableStateOf(AppShellServerScopedLazyListPosition()) }
+    var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
+    var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
+    var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
@@ -2346,6 +2348,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
+    val diagnosticsChooseChannelToast = stringResource(MR.strings.settings_diagnostics_feedback_choose_channel)
+    val diagnosticsCannotAttachToast = stringResource(MR.strings.settings_diagnostics_feedback_cannot_attach)
+    val diagnosticsPreparingToast = stringResource(MR.strings.settings_diagnostics_feedback_preparing)
+    val diagnosticsUploadEmptyToast = stringResource(MR.strings.settings_diagnostics_feedback_upload_empty)
+    val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
+    val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
+    val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
@@ -2455,7 +2464,29 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = selectedServerId
+    val renderedHomeServerId =
+        (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val latestReadySession by rememberUpdatedState(readySession)
+    LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
+        val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
+        if (renderedHomeServerId != targetServerId) return@LaunchedEffect
+        bridge.performanceMarker(
+            phase = "home_server_switch_state_observed",
+            routeName = "kuikly_home",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "serverId" to targetServerId,
+                    "channels" to
+                        ((homeState.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.channels
+                            ?.size
+                            ?: 0).toString()
+                )
+        )
+        observedHomeServerSwitchId = targetServerId
+    }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
     LaunchedEffect(announcementsClient, readyServerId) {
@@ -2606,7 +2637,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     val shellScope = rememberSlockAppShellScope()
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
-    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val realtimeEventMapper =
+        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
@@ -2659,7 +2691,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         retainedAppShellTabs = setOf("home")
         prewarmedAppShellTabs = emptySet()
         selectedSettingsDestination = SettingsDestinationHome
-        homeListPosition = AppShellServerScopedLazyListPosition()
+        homeListPositions = AppShellServerLazyListPositions()
+        pendingHomeServerSwitchId = null
+        observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
         homeShellStore.reset()
@@ -3021,15 +3055,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     ) {
         val channelId = conversation.channelId?.value?.takeIf { it.isNotBlank() } ?: conversation.threadId.value
         if (conversation.kind != ConversationKind.Channel || channelId.isBlank()) {
-            bridge.toast("Choose a channel for diagnostics")
+            bridge.toast(diagnosticsChooseChannelToast)
             return
         }
         if (!conversation.joined || !conversation.permissions.canSend || !conversation.permissions.canAttach) {
-            bridge.toast("You cannot attach diagnostics in this channel")
+            bridge.toast(diagnosticsCannotAttachToast)
             return
         }
         if (diagnosticsFeedbackUploadChannelId != null) {
-            bridge.toast("Preparing diagnostics attachment...")
+            bridge.toast(diagnosticsPreparingToast)
             return
         }
         bridge.log(
@@ -3037,7 +3071,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "fileName=${draft.fileName} pushCurrent=$pushCurrent"
         )
         diagnosticsFeedbackUploadChannelId = channelId
-        bridge.toast("Preparing diagnostics attachment...")
+        bridge.toast(diagnosticsPreparingToast)
         appShellCoroutineScope.launch {
             val uploadResult =
                 withContext(Dispatchers.Default) {
@@ -3062,7 +3096,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             )
                         }
                     if (uploadedAttachments.isEmpty()) {
-                        bridge.toast("Diagnostics attachment upload returned empty")
+                        bridge.toast(diagnosticsUploadEmptyToast)
                         return@launch
                     }
                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
@@ -3078,26 +3112,27 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onWarn = { bridge.logWarn(it) },
                             threadRowAffordances = threadRowAffordances
                         ).withDiagnosticsFeedbackDraft(
-                            draft = draft
+                            draft = draft,
+                            composerSeedText = diagnosticsComposerSeed
                         )
                     composerDraftPersistSlice.stageUploadedAttachments(
                         draftKey = launchPayload.threadComposerDraftKey(),
                         attachments = uploadedAttachments
                     )
                     pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
-                    bridge.toast("Diagnostics draft ready")
+                    bridge.toast(diagnosticsDraftReadyToast)
                 }
                 is DataResult.Error -> {
                     val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.settingsUserFacingMessage()
-                    bridge.toast("Diagnostics attachment upload failed: $reason")
+                    bridge.toast("$diagnosticsUploadFailedPrefix $reason")
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
                 is DataResult.NoPermission -> {
-                    bridge.toast("You cannot attach diagnostics in this channel")
+                    bridge.toast(diagnosticsCannotAttachToast)
                     bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
                 }
                 is DataResult.Empty -> {
-                    bridge.toast("Diagnostics attachment upload returned empty")
+                    bridge.toast(diagnosticsUploadEmptyToast)
                     bridge.log("diagnostics_feedback_attachment_upload_empty reason=${uploadResult.reason}")
                 }
             }
@@ -3704,12 +3739,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        val homeListServerId = readyServerId
+                        val homeListServerId =
+                            appShellHomeListServerId(
+                                renderedServerId = renderedHomeServerId,
+                                readyServerId = readyServerId
+                            )
+                        val homeListPositionServerId = readyServerId ?: homeListServerId
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
-                        key("home-list-${homeListServerId.orEmpty()}") {
-                            SharedHomeScreen(
+                        SharedHomeScreen(
                                 bridge = bridge,
                                 state = homeState,
                                 active = active,
@@ -3722,13 +3761,40 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 onIntent = { intent ->
                                     if (intent is SharedHomeIntent.SelectServer) {
+                                        pendingHomeServerSwitchId =
+                                            intent.serverId.takeIf { it != homeListServerId }
+                                        observedHomeServerSwitchId = null
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_select",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata =
+                                                mapOf(
+                                                    "from" to homeListServerId.orEmpty(),
+                                                    "to" to intent.serverId
+                                                )
+                                        )
                                         readySession
                                             ?.withAppShellSelectedServer(intent.serverId)
                                             ?.let { session ->
                                                 authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                                                bridge.performanceMarker(
+                                                    phase = "home_server_switch_session_projected",
+                                                    routeName = "kuikly_home",
+                                                    event = "instant",
+                                                    metadata = mapOf("serverId" to intent.serverId)
+                                                )
                                             }
                                     }
                                     homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
+                                    if (intent is SharedHomeIntent.SelectServer) {
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_store_dispatched",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata = mapOf("serverId" to intent.serverId)
+                                        )
+                                    }
                                 },
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
@@ -3790,17 +3856,31 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
                                 bottomContentPadding = appShellBottomContentInset,
+                                listPositionServerId = homeListPositionServerId,
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
-                                        currentServerId = homeListServerId,
-                                        savedPosition = homeListPosition
+                                        currentServerId = homeListPositionServerId,
+                                        savedPositions = homeListPositions
                                     ),
-                                onListPositionSnapshot = { position ->
-                                    homeListPosition =
-                                        appShellServerScopedLazyListPosition(homeListServerId, position)
+                                onListPositionSnapshot = { serverId, position ->
+                                    homeListPositions = homeListPositions.withPosition(serverId, position)
+                                },
+                                onContentComposeCommitted = { serverId ->
+                                    if (
+                                        pendingHomeServerSwitchId == serverId &&
+                                        observedHomeServerSwitchId == serverId
+                                    ) {
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_compose_committed",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata = mapOf("serverId" to serverId)
+                                        )
+                                        pendingHomeServerSwitchId = null
+                                        observedHomeServerSwitchId = null
+                                    }
                                 }
                             )
-                        }
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
@@ -5875,13 +5955,13 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_message_font_size_title)) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
             options =
                 snapshot.messageBodyFontSize.options.map {
-                    SegmentedControlOption(it.key, it.label, SlockLucideIconName.Type)
+                    SegmentedControlOption(it.key, it.label)
                 },
             onValueSelected = onFontSizeDraftChange,
             enabled = snapshot.messageBodyFontSize.available && !busy
@@ -8698,7 +8778,7 @@ private fun SharedSettingsOpenSourceLicensesContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenUrl: (String) -> Unit
 ) {
-    val payload = state.toOpenSourceLicensesPayload()
+    val payload = state.toOpenSourceLicensesPayload(settingsOpenSourceLicensesPayloadCopy())
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "openLicenseUrl", "openSourceUrl" ->
@@ -9043,6 +9123,7 @@ private fun SharedQuiverFeedbackContent(
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
+    val copy = settingsQuiverFeedbackCopy()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
@@ -9063,8 +9144,8 @@ private fun SharedQuiverFeedbackContent(
                 SettingsQuiverFeedbackEntry(
                     id = 0,
                     kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                    title = "Feedback",
-                    body = "请反馈问题。每次发送都会创建一条反馈消息，并自动复制可分享的结果。"
+                    title = copy.title,
+                    body = copy.introduction
                 )
             )
         )
@@ -9093,7 +9174,7 @@ private fun SharedQuiverFeedbackContent(
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "Hands 一次最多上传 $attachmentLimit 个附件。"
+            error = copy.attachmentLimitReached(attachmentLimit)
             return
         }
         busy = true
@@ -9109,14 +9190,14 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Hands 单个附件最大 $attachmentMaxLabel，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Hands 一次最多上传 $attachmentLimit 个附件，已保留前 $attachmentLimit 个。"
+                        rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                        accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
                         else -> null
                     }
                 }
                 is DataResult.Empty -> Unit
-                is DataResult.Error -> error = result.error.code
-                is DataResult.NoPermission -> error = result.blocker.code
+                is DataResult.Error -> error = copy.attachmentPickerFailed
+                is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
             }
             busy = false
         }
@@ -9134,7 +9215,7 @@ private fun SharedQuiverFeedbackContent(
         }
         if (normalizedMessage.isBlank()) {
             settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
-            error = "Message is required."
+            error = copy.messageRequired
             return
         }
         settingsCapabilities.log("settings_quiver_feedback_submit_enter")
@@ -9149,12 +9230,12 @@ private fun SharedQuiverFeedbackContent(
                 SettingsQuiverFeedbackEntry(
                     id = nextConversationEntryId(),
                     kind = SettingsQuiverFeedbackEntryKind.User,
-                    title = "You",
+                    title = copy.you,
                     body = submittedMessage,
                     detail =
                         submittedAttachments
                             .takeIf { it.isNotEmpty() }
-                            ?.joinToString { it.fileName.ifBlank { "Attachment" } }
+                            ?.joinToString { it.fileName.ifBlank { copy.attachment } }
                 )
         scope.launch {
             try {
@@ -9166,49 +9247,54 @@ private fun SharedQuiverFeedbackContent(
                         entries =
                             entries +
                                 result.data.toQuiverFeedbackEntry(
-                                    id = nextConversationEntryId()
+                                    id = nextConversationEntryId(),
+                                    copy = copy
                                 )
                         messageFieldValue = TextFieldValue("")
                         attachments = emptyList()
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
-                        error = "settings_feedback_submit_unavailable"
+                        error = copy.submissionUnavailable
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Feedback",
-                                    body = "settings_feedback_submit_unavailable"
+                                    title = copy.title,
+                                    body = copy.submissionUnavailable
                                 )
                     }
                     is DataResult.Error -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
                         )
-                        error = result.error.code
+                        val failure = copy.submissionFailure(result.error.code)
+                        error = failure.composerStatus
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Feedback failed",
-                                    body = result.error.code
+                                    title = failure.title,
+                                    body = failure.body,
+                                    detail = failure.diagnosticDetail
                                 )
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
                         )
-                        error = result.blocker.code
+                        val failure = copy.submissionPermissionFailure(result.blocker.code)
+                        error = failure.composerStatus
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Permission needed",
-                                    body = result.blocker.code
+                                    title = failure.title,
+                                    body = failure.body,
+                                    detail = failure.diagnosticDetail
                                 )
                     }
                 }
@@ -9217,14 +9303,16 @@ private fun SharedQuiverFeedbackContent(
                         "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
                         "message=${throwable.message.orEmpty()}"
                 )
-                error = "settings_feedback_submit_failed"
+                val failure = copy.submissionFailure()
+                error = failure.composerStatus
                 entries =
                     entries +
                         SettingsQuiverFeedbackEntry(
                             id = nextConversationEntryId(),
                             kind = SettingsQuiverFeedbackEntryKind.Error,
-                            title = "Feedback failed",
-                            body = "settings_feedback_submit_failed"
+                            title = failure.title,
+                            body = failure.body,
+                            detail = failure.diagnosticDetail
                         )
             } finally {
                 settingsCapabilities.log("settings_quiver_feedback_submit_finished")
@@ -9244,6 +9332,7 @@ private fun SharedQuiverFeedbackContent(
                 item(key = entry.id) {
                     SettingsQuiverFeedbackConversationRow(
                         entry = entry,
+                        copy = copy,
                         onCopy = { shareText ->
                             settingsCapabilities.bridgeCopyToClipboard(shareText)
                         }
@@ -9257,9 +9346,10 @@ private fun SharedQuiverFeedbackContent(
                             SettingsQuiverFeedbackEntry(
                                 id = -1,
                                 kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                                title = "Feedback",
-                                body = "Submitting feedback and preparing the copied reference..."
+                                title = copy.title,
+                                body = copy.submitting
                             ),
+                        copy = copy,
                         onCopy = {}
                     )
                 }
@@ -9283,12 +9373,12 @@ private fun SharedQuiverFeedbackContent(
                         instanceId = "settings-quiver-feedback-composer",
                         seedText = message,
                         syncNonce = composerSyncNonce,
-                        placeholder = "Share feedback",
+                        placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
                         statusLabel = error?.takeIf { it.isNotBlank() },
-                        pendingAttachments = attachments.toFeedbackComposerAttachmentItems()
+                        pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 onEvent = { action, value, _, attachmentId ->
@@ -9339,26 +9429,119 @@ private data class SettingsQuiverFeedbackEntry(
     val shareText: String? = null
 )
 
-private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(id: Int): SettingsQuiverFeedbackEntry =
+internal data class SettingsQuiverFeedbackCopy(
+    val title: String = "Send feedback",
+    val introduction: String = "Share a problem or suggestion. Each submission creates a feedback message and copies a shareable reference.",
+    val you: String = "You",
+    val attachment: String = "Attachment",
+    val attachmentLimitReached: (Int) -> String = { limit -> "You can upload up to $limit attachments at a time." },
+    val attachmentTooLarge: (String) -> String = { maxSize -> "Attachments larger than $maxSize were skipped." },
+    val attachmentLimitTrimmed: (Int) -> String = { limit -> "Only the first $limit attachments were kept." },
+    val attachmentPickerFailed: String = "Unable to add the attachment.",
+    val attachmentPickerPermissionNeeded: String = "Permission is needed to add an attachment.",
+    val messageRequired: String = "A message is required.",
+    val submissionUnavailable: String = "Feedback is unavailable right now. Please try again.",
+    val submissionFailedTitle: String = "Feedback failed",
+    val submissionFailedBody: String = "We could not send your feedback. Please try again.",
+    val submissionPermissionTitle: String = "Permission needed",
+    val submissionPermissionBody: String = "You do not have permission to send feedback.",
+    val submissionSucceeded: (String) -> String = { ticket -> "Submitted $ticket." },
+    val referenceCopied: String = "Reference copied automatically.",
+    val submitting: String = "Submitting feedback and preparing the copied reference...",
+    val placeholder: String = "Share feedback",
+    val copyResult: String = "Copy result"
+)
+
+internal data class SettingsQuiverFeedbackFailurePresentation(
+    val composerStatus: String,
+    val title: String,
+    val body: String,
+    val diagnosticDetail: String?
+)
+
+internal fun SettingsQuiverFeedbackCopy.submissionFailure(
+    diagnosticCode: String? = null
+): SettingsQuiverFeedbackFailurePresentation =
+    SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = submissionFailedBody,
+        title = submissionFailedTitle,
+        body = submissionFailedBody,
+        diagnosticDetail = diagnosticCode?.takeIf { it.isNotBlank() }
+    )
+
+internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(
+    diagnosticCode: String
+): SettingsQuiverFeedbackFailurePresentation =
+    SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = submissionPermissionBody,
+        title = submissionPermissionTitle,
+        body = submissionPermissionBody,
+        diagnosticDetail = diagnosticCode.takeIf { it.isNotBlank() }
+    )
+
+@Composable
+private fun settingsQuiverFeedbackCopy(): SettingsQuiverFeedbackCopy {
+    val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
+    val attachmentTooLargeTemplate = stringResource(MR.strings.settings_feedback_attachment_too_large)
+    val attachmentLimitTrimmedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_trimmed)
+    val submissionSucceededTemplate = stringResource(MR.strings.settings_feedback_submission_succeeded)
+    return SettingsQuiverFeedbackCopy(
+        title = stringResource(MR.strings.settings_feedback_title),
+        introduction = stringResource(MR.strings.settings_feedback_introduction),
+        you = stringResource(MR.strings.settings_feedback_you),
+        attachment = stringResource(MR.strings.settings_feedback_attachment),
+        attachmentLimitReached = { limit -> attachmentLimitReachedTemplate.replaceLocalizedFormatArgs(limit) },
+        attachmentTooLarge = { maxSize -> attachmentTooLargeTemplate.replaceLocalizedFormatArgs(maxSize) },
+        attachmentLimitTrimmed = { limit -> attachmentLimitTrimmedTemplate.replaceLocalizedFormatArgs(limit) },
+        attachmentPickerFailed = stringResource(MR.strings.settings_feedback_attachment_picker_failed),
+        attachmentPickerPermissionNeeded = stringResource(MR.strings.settings_feedback_attachment_permission_needed),
+        messageRequired = stringResource(MR.strings.settings_feedback_message_required),
+        submissionUnavailable = stringResource(MR.strings.settings_feedback_submission_unavailable),
+        submissionFailedTitle = stringResource(MR.strings.settings_feedback_submission_failed_title),
+        submissionFailedBody = stringResource(MR.strings.settings_feedback_submission_failed_body),
+        submissionPermissionTitle = stringResource(MR.strings.settings_feedback_submission_permission_title),
+        submissionPermissionBody = stringResource(MR.strings.settings_feedback_submission_permission_body),
+        submissionSucceeded = { ticket -> submissionSucceededTemplate.replaceLocalizedFormatArgs(ticket) },
+        referenceCopied = stringResource(MR.strings.settings_feedback_reference_copied),
+        submitting = stringResource(MR.strings.settings_feedback_submitting),
+        placeholder = stringResource(MR.strings.settings_feedback_placeholder),
+        copyResult = stringResource(MR.strings.settings_feedback_copy_result)
+    )
+}
+
+internal fun String.replaceLocalizedFormatArgs(vararg args: Any): String =
+    args.foldIndexed(this) { index, value, argument ->
+        val placeholderIndex = index + 1
+        value
+            .replace("%${placeholderIndex}${'$'}s", argument.toString())
+            .replace("%${placeholderIndex}${'$'}d", argument.toString())
+    }
+
+private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(
+    id: Int,
+    copy: SettingsQuiverFeedbackCopy
+): SettingsQuiverFeedbackEntry =
     SettingsQuiverFeedbackEntry(
         id = id,
         kind = SettingsQuiverFeedbackEntryKind.Quiver,
-        title = "Feedback",
+        title = copy.title,
         body =
             listOf(
-                "Submitted ${ticketId.take(8).ifBlank { "feedback" }}.",
-                shareText.takeIf { it.isNotBlank() }?.let { "Reference copied automatically." }
+                copy.submissionSucceeded(ticketId.take(8).ifBlank { copy.title }),
+                shareText.takeIf { it.isNotBlank() }?.let { copy.referenceCopied }
             ).filterNotNull().joinToString(" "),
         detail = shareText.takeIf { it.isNotBlank() },
         ticketId = ticketId,
         shareText = shareText
     )
 
-private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(): List<KuiklyPendingAttachmentItem> =
+private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
+    copy: SettingsQuiverFeedbackCopy
+): List<KuiklyPendingAttachmentItem> =
     map { file ->
         KuiklyPendingAttachmentItem(
             id = file.feedbackComposerAttachmentId(),
-            fileName = file.fileName.ifBlank { "Attachment" },
+            fileName = file.fileName.ifBlank { copy.attachment },
             sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
             mimeType = file.mimeType,
             previewUri = file.previewUri,
@@ -9372,6 +9555,7 @@ private fun PlatformFile.feedbackComposerAttachmentId(): String =
 @Composable
 private fun SettingsQuiverFeedbackConversationRow(
     entry: SettingsQuiverFeedbackEntry,
+    copy: SettingsQuiverFeedbackCopy,
     onCopy: (String) -> Unit
 ) {
     val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
@@ -9420,7 +9604,7 @@ private fun SettingsQuiverFeedbackConversationRow(
             }
             entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
                 SlockBrutalActionButton(
-                    label = "Copy result",
+                    label = copy.copyResult,
                     onClick = { onCopy(shareText) },
                     leadingIcon = SlockLucideIconName.Clipboard,
                     modifier = Modifier.fillMaxWidth(),
@@ -9753,8 +9937,11 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         }
     return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
+        totalTitle = stringResource(MR.strings.settings_storage_total_title),
         totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
-        feedback = statusText,
+        refreshLabel = stringResource(MR.strings.settings_storage_refresh),
+        safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
+        feedback = localizedSettingsStorageFeedback(statusText),
         rows =
             storage?.rows?.map { row ->
                 row.toStoragePayloadRow(
@@ -9772,8 +9959,8 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
     KuiklySettingsStorageRow(
         target = target,
         iconName = storageTargetIconName(target),
-        title = title,
-        detail = detail,
+        title = localizedSettingsStorageRowTitle(target, title),
+        detail = localizedSettingsStorageRowDetail(detail),
         size = sizeLabel,
         clearLabel =
             if (clearEnabled) {
@@ -9789,6 +9976,46 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearEnabled = clearEnabled,
         clearInProgress = clearInProgress
     )
+
+@Composable
+private fun localizedSettingsStorageRowTitle(target: String, fallback: String): String =
+    when (target) {
+        "database" -> stringResource(MR.strings.settings_storage_row_database)
+        "imageCache" -> stringResource(MR.strings.settings_storage_row_image_cache)
+        "attachmentDownloads" -> stringResource(MR.strings.settings_storage_row_downloads)
+        "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_row_temporary)
+        else -> fallback
+    }
+
+@Composable
+private fun localizedSettingsStorageRowDetail(detail: String): String =
+    when (detail) {
+        "Messages, task metadata, and server snapshots stored on this device." ->
+            stringResource(MR.strings.settings_storage_row_database_detail)
+        "Downloaded image previews kept for faster viewing." ->
+            stringResource(MR.strings.settings_storage_row_image_cache_detail)
+        "Files downloaded for opening or installing from previews." ->
+            stringResource(MR.strings.settings_storage_row_downloads_detail)
+        "Debug logs and temporary files generated by the app." ->
+            stringResource(MR.strings.settings_storage_row_temporary_detail)
+        "OHOS storage usage is not exposed through the host capability yet." ->
+            stringResource(MR.strings.settings_storage_ohos_database_detail)
+        "Image cache clearing is not available on OHOS yet." ->
+            stringResource(MR.strings.settings_storage_ohos_image_cache_detail)
+        "Use Diagnostics clear logs for the local diagnostics buffer." ->
+            stringResource(MR.strings.settings_storage_ohos_temporary_detail)
+        else -> detail
+    }
+
+@Composable
+private fun localizedSettingsStorageFeedback(feedback: String): String =
+    when (feedback) {
+        "Image cache cleared." -> stringResource(MR.strings.settings_storage_feedback_image_cleared)
+        "Downloaded files cleared." -> stringResource(MR.strings.settings_storage_feedback_downloads_cleared)
+        "Temporary files and diagnostics logs cleared." ->
+            stringResource(MR.strings.settings_storage_feedback_temporary_cleared)
+        else -> feedback
+    }
 
 private fun storageTargetIconName(target: String): SlockLucideIconName =
     when (target) {
@@ -11172,31 +11399,85 @@ private fun SharedSettingsAboutSnapshot.buildSummary(): String =
         packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
     }
 
-internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(): KuiklySharedSettingsPayload {
+internal data class SettingsOpenSourceLicensesPayloadCopy(
+    val title: String = "Open Source Licenses",
+    val detail: (Int, String) -> String = { count, source -> "$count libraries from $source" },
+    val defaultSource: String = "Android release runtime",
+    val sectionLicenses: String = "Licenses",
+    val loading: String = "Loading",
+    val loadingDetail: String = "Loading generated Android package license metadata.",
+    val wait: String = "Wait",
+    val unavailable: String = "Unavailable",
+    val emptyTitle: String = "No licenses found",
+    val emptyDetail: String = "The generated Android package license asset did not include any dependencies.",
+    val empty: String = "Empty",
+    val libraries: String = "Libraries",
+    val numberedLibraries: (Int) -> String = { section -> "Libraries $section" },
+    val licenseUnknown: String = "License unknown",
+    val licenseLink: String = "License link",
+    val sourceLink: String = "Source link",
+    val noLink: String = "No link",
+    val license: String = "License",
+    val source: String = "Source"
+)
+
+@Composable
+private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesPayloadCopy {
+    val detailTemplate = stringResource(MR.strings.settings_open_source_licenses_detail_libraries_from)
+    val numberedLibrariesTemplate = stringResource(MR.strings.settings_open_source_licenses_section_libraries_numbered)
+    return SettingsOpenSourceLicensesPayloadCopy(
+        title = stringResource(MR.strings.settings_open_source_licenses_title),
+        detail = { count, source -> detailTemplate.replaceLocalizedFormatArgs(count, source) },
+        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source),
+        sectionLicenses = stringResource(MR.strings.settings_licenses_title),
+        loading = stringResource(MR.strings.settings_open_source_licenses_state_loading),
+        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail),
+        wait = stringResource(MR.strings.settings_open_source_licenses_state_wait),
+        unavailable = stringResource(MR.strings.settings_open_source_licenses_action_unavailable),
+        emptyTitle = stringResource(MR.strings.settings_open_source_licenses_empty_title),
+        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail),
+        empty = stringResource(MR.strings.settings_open_source_licenses_state_empty),
+        libraries = stringResource(MR.strings.settings_open_source_licenses_section_libraries),
+        numberedLibraries = { section -> numberedLibrariesTemplate.replaceLocalizedFormatArgs(section) },
+        licenseUnknown = stringResource(MR.strings.settings_open_source_licenses_license_unknown),
+        licenseLink = stringResource(MR.strings.settings_open_source_licenses_license_link),
+        sourceLink = stringResource(MR.strings.settings_open_source_licenses_source_link),
+        noLink = stringResource(MR.strings.settings_open_source_licenses_no_link),
+        license = stringResource(MR.strings.settings_open_source_licenses_action_license),
+        source = stringResource(MR.strings.settings_open_source_licenses_action_source)
+    )
+}
+
+internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(
+    copy: SettingsOpenSourceLicensesPayloadCopy = SettingsOpenSourceLicensesPayloadCopy()
+): KuiklySharedSettingsPayload {
     val snapshot = (this as? ScreenLoadState.Content<SharedSettingsOpenSourceLicensesSnapshot>)?.data
     val detail =
         when (this) {
             is ScreenLoadState.Content ->
-                "${snapshot?.items.orEmpty().size} libraries from ${snapshot?.sourceConfiguration.orEmpty().ifBlank { "Android release runtime" }}"
+                copy.detail(
+                    snapshot?.items.orEmpty().size,
+                    snapshot?.sourceConfiguration.orEmpty().ifBlank { copy.defaultSource }
+                )
             is ScreenLoadState.Error -> error.settingsUserFacingMessage()
             is ScreenLoadState.Empty -> reason.settingsUserFacingMessage()
             is ScreenLoadState.NoPermission -> blocker.settingsUserFacingMessage()
-            ScreenLoadState.Loading -> "Loading generated Android package license metadata."
+            ScreenLoadState.Loading -> copy.loadingDetail
         }
     val sections =
         when {
             snapshot == null ->
                 listOf(
                     KuiklySharedSettingsSection(
-                        title = "Licenses",
+                        title = copy.sectionLicenses,
                         rows =
                             listOf(
                                 KuiklySharedSettingsRow(
                                     key = "loading",
                                     iconName = SlockLucideIconName.LoaderCircle,
-                                    title = "Loading",
+                                    title = if (this == ScreenLoadState.Loading) copy.loading else copy.unavailable,
                                     detail = detail,
-                                    status = "Wait"
+                                    status = if (this == ScreenLoadState.Loading) copy.wait else copy.unavailable
                                 )
                             )
                     )
@@ -11204,15 +11485,15 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
             snapshot.items.isEmpty() ->
                 listOf(
                     KuiklySharedSettingsSection(
-                        title = "Licenses",
+                        title = copy.sectionLicenses,
                         rows =
                             listOf(
                                 KuiklySharedSettingsRow(
                                     key = "empty",
                                     iconName = SlockLucideIconName.FileText,
-                                    title = "No licenses found",
-                                    detail = "The generated Android package license asset did not include any dependencies.",
-                                    status = "Empty"
+                                    title = copy.emptyTitle,
+                                    detail = copy.emptyDetail,
+                                    status = copy.empty
                                 )
                             )
                     )
@@ -11223,7 +11504,7 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                     .chunked(32)
                     .mapIndexed { sectionIndex, items ->
                         KuiklySharedSettingsSection(
-                            title = if (sectionIndex == 0) "Libraries" else "Libraries ${sectionIndex + 1}",
+                            title = if (sectionIndex == 0) copy.libraries else copy.numberedLibraries(sectionIndex + 1),
                             rows =
                                 items.map { item ->
                                     val title = item.displayName.ifBlank { item.name.ifBlank { item.id } }
@@ -11234,9 +11515,9 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                                         title = title,
                                         detail = item.settingsLicenseCoordinates(),
                                         value = link,
-                                        status = item.settingsLicenseActionLabel(),
+                                        status = item.settingsLicenseActionLabel(copy),
                                         enabled = link.isNotBlank(),
-                                        supportingDetail = item.settingsLicenseMetaLine()
+                                        supportingDetail = item.settingsLicenseMetaLine(copy)
                                     )
                                 }
                         )
@@ -11244,9 +11525,9 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-open-source-licenses",
-        title = "Open Source Licenses",
+        title = copy.title,
         heroIconName = SlockLucideIconName.FileText,
-        heroLabel = "Open Source Licenses",
+        heroLabel = copy.title,
         detail = detail,
         sections = sections
     )
@@ -11258,21 +11539,21 @@ private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseCoordinates(): St
         .joinToString(":")
         .ifBlank { id }
 
-private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseMetaLine(): String =
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseMetaLine(copy: SettingsOpenSourceLicensesPayloadCopy): String =
     listOf(
-        licenseName.ifBlank { "License unknown" },
+        licenseName.ifBlank { copy.licenseUnknown },
         when {
-            licenseUrl.isNotBlank() -> "License link"
-            sourceUrl.isNotBlank() -> "Source link"
-            else -> "No link"
+            licenseUrl.isNotBlank() -> copy.licenseLink
+            sourceUrl.isNotBlank() -> copy.sourceLink
+            else -> copy.noLink
         }
     ).joinToString(" / ")
 
-private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(): String =
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(copy: SettingsOpenSourceLicensesPayloadCopy): String =
     when {
-        licenseUrl.isNotBlank() -> "License"
-        sourceUrl.isNotBlank() -> "Source"
-        else -> "Unavailable"
+        licenseUrl.isNotBlank() -> copy.license
+        sourceUrl.isNotBlank() -> copy.source
+        else -> copy.unavailable
     }
 
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
@@ -13003,8 +13284,10 @@ private fun SharedHomeScreen(
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+    onContentComposeCommitted: (String) -> Unit = {}
 ) {
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
@@ -13121,6 +13404,9 @@ private fun SharedHomeScreen(
             }
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
+            SideEffect {
+                onContentComposeCommitted(snapshot.server.id.value)
+            }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
                     slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
@@ -13373,6 +13659,7 @@ private fun SharedHomeScreen(
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
+                listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )
@@ -13405,12 +13692,12 @@ private fun SharedDiagnosticsFeedbackChannelPage(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
+                text = stringResource(MR.strings.settings_diagnostics_feedback_channel_guidance),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
             SlockBrutalActionButton(
-                label = "Refresh",
+                label = stringResource(MR.strings.settings_state_refresh),
                 backgroundColor = SlockColor.BrandYellow,
                 onClick = onRefresh
             )
@@ -13456,7 +13743,7 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                 }
             }
             else -> {
-                SlockBrutalSectionLabel(label = "最近使用")
+                SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent))
                 LazyColumn(
                     modifier =
                         Modifier
@@ -13553,13 +13840,17 @@ private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<Conversati
         .toList()
 }
 
+@Composable
 private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
     val latest = lastMessageAt?.takeIf { it.isNotBlank() }
-    val unread = unreadCount.takeIf { it > 0 }?.let { "$it unread" }
+    val unread =
+        unreadCount.takeIf { it > 0 }?.let {
+            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(it)).localized()
+        }
     val sender = lastMessageSenderName?.takeIf { it.isNotBlank() }
     return listOfNotNull(latest, sender, unread)
         .joinToString(" · ")
-        .ifBlank { "Channel" }
+        .ifBlank { stringResource(MR.strings.search_entity_channel) }
 }
 
 private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): PlatformFile =
@@ -13574,14 +13865,16 @@ private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): Platfo
 internal const val DiagnosticsFeedbackComposerSeedText: String =
     "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->"
 
-internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
-    DiagnosticsFeedbackComposerSeedText
+internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(
+    seedText: String = DiagnosticsFeedbackComposerSeedText
+): String = seedText
 
 private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
-    draft: SettingsDiagnosticsFeedbackDraft
+    draft: SettingsDiagnosticsFeedbackDraft,
+    composerSeedText: String
 ): WireThreadLaunchPayload =
     copy(
-        composerSeedText = draft.diagnosticsComposerMessage(),
+        composerSeedText = draft.diagnosticsComposerMessage(composerSeedText),
         composerSyncNonce = composerSyncNonce + 1,
         composerFocusRequestNonce = composerFocusRequestNonce + 1
     )

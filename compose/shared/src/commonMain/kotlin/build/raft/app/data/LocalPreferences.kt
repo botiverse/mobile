@@ -149,12 +149,13 @@ enum class ThreadRowAffordancePreference(val storageKey: String) {
 
     companion object {
         val Default: Set<ThreadRowAffordancePreference> = setOf(Reactions)
+        val Supported: List<ThreadRowAffordancePreference> = listOf(Reactions)
 
         fun fromStorageKey(value: String?): ThreadRowAffordancePreference? =
             entries.firstOrNull { it.storageKey == value }
 
         fun fromStorageKeys(value: Set<String>): Set<ThreadRowAffordancePreference> =
-            value.mapNotNull(::fromStorageKey).toSet()
+            value.mapNotNull(::fromStorageKey).filterTo(mutableSetOf()) { it in Supported }
     }
 }
 
@@ -191,7 +192,7 @@ data class ChatLayoutPreferenceSnapshot(
     val threadRowAffordances: Set<ThreadRowAffordancePreference> =
         ThreadRowAffordancePreference.Default,
     val supportedThreadRowAffordances: List<ThreadRowAffordancePreference> =
-        ThreadRowAffordancePreference.entries
+        ThreadRowAffordancePreference.Supported
 )
 
 interface ChatLayoutPreferenceStore {
@@ -548,7 +549,7 @@ class PersistentChatLayoutPreferenceRepository(
                 current + affordance
             } else {
                 current - affordance
-            }
+            }.filterTo(mutableSetOf()) { it in ThreadRowAffordancePreference.Supported }
         store.saveThreadRowAffordances(next)
         return ChatLayoutPreferenceSnapshot(
             myMessageAlignment = store.readMyMessageAlignment(),

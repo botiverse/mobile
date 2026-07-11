@@ -163,6 +163,7 @@ class SettingsComputersPayloadTest {
         assertEquals("Pi QA Perf Profiler", workspace.name)
         assertEquals("~/.slock/agents/027ca19e-d020-4054-bed5-0f9173ea5891/", workspace.path)
         assertEquals("4.0 KB", workspace.totalSizeLabel)
+        assertEquals(12, workspace.fileCount)
         assertEquals("12 files", workspace.fileCountLabel)
     }
 
@@ -198,6 +199,27 @@ class SettingsComputersPayloadTest {
 
         assertEquals(true, withDecoded.canManageMachines)
         assertEquals(false, withoutDecoded.canManageMachines)
+    }
+
+    @Test
+    fun computerDetailLoadStateCarriesSemanticStatusForLocalizedRendering() {
+        val errorState: ScreenLoadState<SettingsComputerDetailSnapshot> =
+            ScreenLoadState.Error(ScreenError(code = "server_unavailable", retryable = true))
+        val blockedState: ScreenLoadState<SettingsComputerDetailSnapshot> =
+            ScreenLoadState.NoPermission(PermissionBlocker(code = "server_forbidden"))
+        val emptyState: ScreenLoadState<SettingsComputerDetailSnapshot> =
+            ScreenLoadState.Empty(EmptyReason.NoSettingsAvailable)
+        val loadingState: ScreenLoadState<SettingsComputerDetailSnapshot> = ScreenLoadState.Loading
+
+        val error = errorState.toComputerDetailPayload("machine-1", null)
+        val blocked = blockedState.toComputerDetailPayload("machine-1", null)
+        val empty = emptyState.toComputerDetailPayload("machine-1", null)
+        val loading = loadingState.toComputerDetailPayload("machine-1", null)
+
+        assertEquals("error", error.status)
+        assertEquals("blocked", blocked.status)
+        assertEquals("empty", empty.status)
+        assertEquals("loading", loading.status)
     }
 
     @Test

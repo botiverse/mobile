@@ -7,9 +7,8 @@ internal data class AppShellLazyListPosition(
     val firstVisibleItemScrollOffset: Int = 0
 )
 
-internal data class AppShellServerScopedLazyListPosition(
-    val serverId: String? = null,
-    val listPosition: AppShellLazyListPosition = AppShellLazyListPosition()
+internal data class AppShellServerLazyListPositions(
+    val positionsByServerId: Map<String, AppShellLazyListPosition> = emptyMap()
 )
 
 internal fun appShellLazyListPosition(
@@ -24,25 +23,27 @@ internal fun appShellLazyListPosition(
 internal fun LazyListState.toAppShellLazyListPosition(): AppShellLazyListPosition =
     appShellLazyListPosition(firstVisibleItemIndex, firstVisibleItemScrollOffset)
 
-internal fun appShellServerScopedLazyListPosition(
+internal fun AppShellServerLazyListPositions.withPosition(
     serverId: String?,
     listPosition: AppShellLazyListPosition
-): AppShellServerScopedLazyListPosition =
-    AppShellServerScopedLazyListPosition(
-        serverId = serverId?.trim()?.takeIf { it.isNotEmpty() },
-        listPosition = listPosition
-    )
+): AppShellServerLazyListPositions {
+    val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return this
+    return copy(positionsByServerId = positionsByServerId + (normalizedServerId to listPosition))
+}
+
+internal fun appShellHomeListServerId(
+    renderedServerId: String?,
+    readyServerId: String?
+): String? =
+    renderedServerId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: readyServerId?.trim()?.takeIf { it.isNotEmpty() }
 
 internal fun appShellLazyListPositionForServer(
     currentServerId: String?,
-    savedPosition: AppShellServerScopedLazyListPosition
+    savedPositions: AppShellServerLazyListPositions
 ): AppShellLazyListPosition {
     val current = currentServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return AppShellLazyListPosition()
-    return if (savedPosition.serverId == current) {
-        savedPosition.listPosition
-    } else {
-        AppShellLazyListPosition()
-    }
+    return savedPositions.positionsByServerId[current] ?: AppShellLazyListPosition()
 }
 
 internal data class AppShellMembersListState(
