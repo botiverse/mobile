@@ -86,17 +86,37 @@ The concrete SQLite adapter wraps the SqlDelight `transaction { }` once per `app
 at exactly that boundary. A **CommitBoundaryRecorder** test double counts `transaction { }` entries/exits so
 the count invariant is asserted directly.
 
-## 4. Schema (no migration — v4 fresh baseline)
+## 4. Schema + migration/retirement plan (the P1-critical section — 赵 ruling 2026-07-10)
 
-Reuses the #603 foundation already in `SlockDatabase.sq`: `messageEntity` (+ child rows) for facts,
-`syncCursorEntity` (already carries `epoch`) for cursor+epoch, and the `messageEntity_channelSeq*` indexes
-for the timeline. No new table is required for the one-txn increment. Per the pre-release "扬了重来"
-doctrine (unpublished cache = pure server mirror, scrap = zero loss), any schema delta rides the
-`slock_cache_v4.db` fresh baseline (bumped by #706 for `attachmentEntity.sizeBytes`) — no `.sqm` migration
-until the first published release. The generic `localSnapshotEntity` (scope/id/value KV) remains available
-for versioned-value snapshots the projector/retention gates may need.
+This is the most important design decision: a parallel `sync_fact` table living alongside the existing
+`messageEntity`/`syncCursorEntity` (which already run on all three platforms) would be **data-layer dual
+truth** — the exact disease this whole line exists to kill. So:
 
-## 5. RED tests (TDD — written first, fail until the adapter lands)
+- **EXTEND, do not fork.** The T-wrapper writes the fold post-state into the **existing**
+  `messageEntity` (+ child rows) and `syncCursorEntity` (already carries `epoch`), and maintains the
+  existing `messageEntity_channelSeq*` timeline index. There is no new `sync_fact` keyspace. The fold
+  becomes the **single writer** of these rows for synced scopes.
+- **orderKey = sparse server seq + messageId tie-break** (locked; NOT insertion order). Insertion order
+  misplaces out-of-order difference repair and is non-canonical cross-platform (a guaranteed T8 red). The
+  timeline index key is `(serverId, scope, orderKey=server seq, messageId)`; edits keep the original seq, so
+  the window is stable and the ordering is identical on web and KMP for free.
+- **Retirement path.** The existing ad-hoc realtime write paths (RealtimeEventMapper → store) are the
+  incumbent writer. The rollout is: fold **shadow** (already live, `sync_core_messages_v0`) validates the
+  fold produces the same rows → **sole-apply** makes the fold the only writer → the incumbent ad-hoc write
+  paths are then retired. No period where both write the same rows as independent truths.
+- **No migration pre-release.** Any schema delta rides the `slock_cache_v4.db` fresh baseline (#706 bumped
+  it for `attachmentEntity.sizeBytes`); the whole cache is scrapped+rebuilt on schema change until the first
+  published release, then `.sqm` migrations begin. The one-txn increment needs no new column.
+
+## 5. Fail-stop (ruling 3, 2026-07-10): commit-before-complete
+
+`applyFrame` returns success ONLY after the single transaction has committed. A commit failure throws out of
+`applyFrame`, so the caller never marks the ingest complete and never advances its in-memory cursor past a
+fact set that did not durably land. "Cursor ahead of facts" is thus **impossible by construction** — the
+same philosophy as the transaction-count invariant (never rely on a write-ordering discipline anyone can
+silently break). The `FoldPersistTransactionRunner` boundary is where this holds.
+
+## 6. RED tests (TDD — written first, fail until the adapter lands)
 
 Named per §9.9; all kill injection through the deterministic `PersistFaultHook`, never timing:
 
@@ -120,7 +140,7 @@ The count invariant (#1) is the primary assertion; the two kill halves (#2/#3) a
 the rollback disease. v1 is pinned to "exactly one transaction per apply"; any future multi-transaction
 apply must amend §9.9 and cover every adjacent boundary (small-N exhaustive) in the same change.
 
-## 6. Sequencing
+## 7. Sequencing
 
 - First increment = **one-txn** (this note + RED tests + adapter). Branch `hanxin/t-wrapper-persist`.
 - Does not block #706; schema baseline is whoever lands the v4 bump first (coordinated with MingQi).
