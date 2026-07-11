@@ -43,6 +43,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -126,7 +127,10 @@ internal class SlockSharedStoreProvider private constructor(
      * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
      */
     val serverFeatureFlags: SharedServerFeatureFlags =
-        SharedServerFeatureFlags(SlockFeatureFlagsNetworkApi(networkClient))
+        SharedServerFeatureFlags(
+            api = SlockFeatureFlagsNetworkApi(networkClient),
+            diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
 
     init {
         threadSendScope.launch {
@@ -153,12 +157,18 @@ internal class SlockSharedStoreProvider private constructor(
             SlockShellStoreRuntime(scope).also { runtime ->
                 // Prefetch registered server feature flags whenever this shell selects a server.
                 // StateFlow conflates to distinct values, so this evaluates once per server change.
+                // The collector lives on threadSendScope (not the shell scope), so cancel it when the
+                // runtime is disposed — else it would outlive an evicted shell runtime (LiBai obs ①).
                 threadSendScope.launch {
-                    runtime.currentServerId.collect { serverId ->
-                        if (!serverId.isNullOrBlank()) {
-                            runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                    val prefetching = launch {
+                        runtime.currentServerId.collect { serverId ->
+                            if (!serverId.isNullOrBlank()) {
+                                runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                            }
                         }
                     }
+                    runtime.disposed.first { it }
+                    prefetching.cancel()
                 }
             }
         }

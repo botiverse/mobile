@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import kotlin.concurrent.Volatile
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -96,8 +97,13 @@ internal class SlockFeatureFlagsNetworkApi(
 class SharedServerFeatureFlags(
     private val api: SlockFeatureFlagsApi,
     private val keys: List<String> = REGISTERED_SERVER_FEATURE_FLAG_KEYS,
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
 ) {
-    private val snapshots = mutableMapOf<String, ServerFeatureFlagSnapshot>()
+    // Written on the prefetch coroutine (background), read via isEnabled on the UI thread — so the map
+    // itself must publish safely across threads. @Volatile + copy-on-write: writes are rare (once per
+    // server change), reads always see a consistent immutable map (no bare-HashMap resize race). (LiBai)
+    @Volatile
+    private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
@@ -108,10 +114,14 @@ class SharedServerFeatureFlags(
     suspend fun prefetch(serverId: ServerId): ServerFeatureFlagSnapshot {
         val response = api.evaluate(serverId, keys)
         val body = response.bodyText
-        if (!response.isSuccessful || body == null) return snapshotFor(serverId)
+        if (!response.isSuccessful || body == null) {
+            diagnosticsLogger?.invoke("feature_flags evaluate failed server=${serverId.value} code=${response.code}")
+            return snapshotFor(serverId)
+        }
         val decoded = try {
             featureFlagsJson.decodeFromString<FeatureFlagEvaluateResponseBody>(body)
         } catch (_: SerializationException) {
+            diagnosticsLogger?.invoke("feature_flags evaluate malformed body server=${serverId.value}")
             return snapshotFor(serverId)
         }
         val values = keys.associateWith { false }.toMutableMap()
@@ -119,7 +129,7 @@ class SharedServerFeatureFlags(
             if (values.containsKey(evaluation.key)) values[evaluation.key] = evaluation.enabled
         }
         val snapshot = ServerFeatureFlagSnapshot(serverId = serverId, resolved = true, values = values.toMap())
-        snapshots[serverId.value] = snapshot
+        snapshots = snapshots + (serverId.value to snapshot) // copy-on-write publish
         return snapshot
     }
 }
