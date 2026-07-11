@@ -18431,7 +18431,12 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
     val openFilterId =
         initialOpenFilterId ?: pager.pageData.params.optString("openFilterId").takeIf { it.isNotBlank() }
-    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+    // Fill the captured viewport (matched to the react fixture, which renders the search
+    // panel full-frame) instead of a 342x620 sub-region — the smaller box left the crop's
+    // margin painted with the window background (cream), which the react↔android diff
+    // flagged as a spurious "empty beige area" drift. White backing keeps any residual gap
+    // aligned with the react baseline. (visual case components.home.search.*-dropdown)
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState,
             homeState = homeSearchVisualHomeState,
