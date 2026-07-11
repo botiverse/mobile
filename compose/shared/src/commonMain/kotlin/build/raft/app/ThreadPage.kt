@@ -468,6 +468,7 @@ internal const val ThreadReplyEmptyTitle = "No replies yet"
 internal const val ThreadReplyEmptyDetail = ""
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
+private val ThreadComposerKeyboardVisibleGap = 8.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionGroupSpacing = 4.dp
@@ -505,9 +506,10 @@ internal fun threadComposerBottomPadding(
     keyboardInsetExcludesBottomSafeArea: Boolean = false
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
+    val keyboardGap = if (keyboardInsetDp > 0f) ThreadComposerKeyboardVisibleGap else 0.dp
     val safeAreaInset =
         if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) 0.dp else bottomSafeArea
-    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
+    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardGap + keyboardInset + safeAreaInset
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
