@@ -104,6 +104,9 @@ class RealChannelRepository(
         currentContext() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        if (!name.isValidChannelName()) {
+            return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
+        }
         return executeChannel(
             emptyReason = EmptyReason.NoChannels,
             block = { networkClient.createChannel(DataRequestPriority.Foreground, buildCreateChannelBody(request)) },
@@ -420,11 +423,20 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
 private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
     val payload = bodyText ?: errorBodyText ?: return fallback
     return runCatching {
-        channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
-            .code
+        val errorBody = channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
+        errorBody.code
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+            ?: errorBody.error.toChannelValidationErrorCode()
     }.getOrNull() ?: fallback
+}
+
+private fun String?.toChannelValidationErrorCode(): String? {
+    val normalized = this?.trim()?.lowercase().orEmpty()
+    return when {
+        "channel name must start with a letter" in normalized -> "channel_name_invalid"
+        else -> null
+    }
 }
 
 private fun List<String>.cleanCreateChannelIds(): List<String> =

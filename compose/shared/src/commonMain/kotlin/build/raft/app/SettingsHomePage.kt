@@ -187,6 +187,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
+import build.raft.app.data.isValidChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -3234,7 +3235,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         userMemberIds: List<String>
     ) {
         val trimmedName = name.trim()
-        if (trimmedName.isBlank() || createChannelSubmitting) {
+        if (!trimmedName.isValidChannelName() || createChannelSubmitting) {
             return
         }
         createChannelSubmitting = true
@@ -13546,7 +13547,14 @@ private fun SharedCreateChannelDialog(
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
-    val canSubmit = name.isNotBlank() && !submitting
+    val trimmedName = name.trim()
+    val nameError =
+        if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+            stringResource(MR.strings.channel_create_error_name_format)
+        } else {
+            null
+        }
+    val canSubmit = trimmedName.isValidChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     val filteredMembers =
         filterPeopleSuggestions(
@@ -13573,6 +13581,8 @@ private fun SharedCreateChannelDialog(
             onValueChange = { name = it },
             placeholder = stringResource(MR.strings.channel_create_placeholder_name),
             enabled = !submitting,
+            hint = stringResource(MR.strings.channel_create_hint_name_format),
+            error = nameError,
             autoFocus = true
         )
         SlockBrutalTextField(
@@ -13610,8 +13620,14 @@ private fun SharedCreateChannelDialog(
             }
         )
         if (!errorMessage.isNullOrBlank()) {
+            val localizedError =
+                if (errorMessage == "channel_name_invalid") {
+                    stringResource(MR.strings.channel_create_error_name_format)
+                } else {
+                    errorMessage
+                }
             Text(
-                text = MR.strings.channel_create_error.format(listOf(errorMessage)).localized(),
+                text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
                 style = SlockType.Caption,
                 color = SlockColor.AccentRed
             )
