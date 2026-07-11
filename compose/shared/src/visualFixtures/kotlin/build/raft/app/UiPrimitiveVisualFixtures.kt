@@ -312,13 +312,21 @@ internal fun UiSkeletonVisualContent() {
                 .width(342.dp)
                 .height(150.dp)
                 .background(SlockColor.SurfaceWhite)
-                .padding(16.dp)
+                // No bottom padding on purpose: react's fixed 150px canvas lets the
+                // 134px content stack overflow into the bottom padding (CSS keeps
+                // padding out of the child's constraint). A symmetric 16.dp here
+                // caps children at 118dp and Compose COMPRESSES the last row - the
+                // 32dp circle rendered as a 16dp ring (the PR-549 constraint bug
+                // class). start/top/end only -> content max 134dp = exact fit.
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SlockSkeletonRow(avatar = true, avatarSize = 18.dp, lineWidths = listOf(128.dp, 80.dp))
-            SlockSkeleton(modifier = Modifier.width(310.dp).height(46.dp), variant = SlockSkeletonVariant.Block)
+        // Values mirror the react fixture (VisualTestingCases.tsx ui-skeleton case):
+        // avatars size-5/size-8 = 20/32px, outer gap-3 = 12px, block h-12 = 48px.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SlockSkeletonRow(avatar = true, avatarSize = 20.dp, lineWidths = listOf(128.dp, 80.dp))
+            SlockSkeleton(modifier = Modifier.width(310.dp).height(48.dp), variant = SlockSkeletonVariant.Block)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                SlockSkeleton(modifier = Modifier.size(30.dp), variant = SlockSkeletonVariant.Circle)
+                SlockSkeleton(modifier = Modifier.size(32.dp), variant = SlockSkeletonVariant.Circle)
                 SlockSkeleton(modifier = Modifier.width(160.dp).height(12.dp), variant = SlockSkeletonVariant.Line)
             }
         }
