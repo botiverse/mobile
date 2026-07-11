@@ -56,10 +56,14 @@
       // task copyMrResourcesForOhosEntry (compose/build.ohos.gradle.kts) —
       // slock_* string/color/plural keys must reach resources.index or shared
       // stringResource() fails at runtime.
+      // MR binary assets are also mirrored into mr-kuikly-assets/resfile/assets
+      // because Kuikly's assets:// loader resolves against the resfile root,
+      // while KmmResource's native locator remains packaged under rawfile.
       "resource": {
         "directories": [
           "./src/main/resources",
-          "./mr-res"
+          "./mr-res",
+          "./mr-kuikly-assets"
         ]
       }
     },
