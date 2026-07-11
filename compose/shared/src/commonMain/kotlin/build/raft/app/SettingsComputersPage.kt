@@ -87,6 +87,10 @@ import kotlinx.serialization.Serializable
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 const val SETTINGS_COMPUTER_DETAIL_PAGE = "compose_settings_computer_detail"
 
+private const val SettingsCreateAgentErrorEmpty = "settings_computers:create_agent_empty"
+private const val SettingsCreateAgentErrorForbidden = "settings_computers:create_agent_forbidden"
+private const val SettingsCreateAgentErrorFailedPrefix = "settings_computers:create_agent_failed:"
+
 @Page(SETTINGS_COMPUTERS_PAGE, supportInLocal = true)
 internal class ComposeSettingsComputersPage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -119,6 +123,7 @@ internal data class KuiklySettingsComputersPayload(
 @Serializable
 internal data class KuiklySettingsComputerDetailPayload(
     val instanceId: String = "",
+    val status: String = "content",
     val computer: KuiklySettingsComputerItem = KuiklySettingsComputerItem(),
     val workspaces: List<KuiklySettingsWorkspaceItem> = emptyList(),
     val agents: List<KuiklySettingsAgentItem> = emptyList(),
@@ -156,6 +161,7 @@ internal data class KuiklySettingsWorkspaceItem(
     val statusLabel: String? = null,
     val lastActiveLabel: String? = null,
     val totalSizeLabel: String? = null,
+    val fileCount: Int? = null,
     val fileCountLabel: String? = null
 )
 
@@ -349,7 +355,7 @@ private fun SettingsComputerDetailScreen() {
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsComputerDetailRouteShell(
-        title = settingsState.computerDetail.currentComputerTitle(),
+        title = settingsState.computerDetail.localizedCurrentComputerTitle(),
         onBack = { pager.closeSettingsComputerDetailPage() }
     ) {
         SettingsComputerDetailContent(
@@ -377,13 +383,17 @@ private fun SettingsComputerDetailScreen() {
         }
     }
     if (createAgentForComputerOpen) {
+        val localizedCreateAgentError = localizedSettingsCreateAgentError(createAgentError)
         SharedCreateAgentDialog(
             submitting = createAgentSubmitting,
-            errorMessage = createAgentError,
+            errorMessage = localizedCreateAgentError,
             requiredComputer = computerId,
             machines = computersSlice.machines,
             machinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
-            machinesErrorMessage = computersSlice.errorCode?.let { "Failed to load computers: $it" },
+            machinesErrorMessage =
+                computersSlice.errorCode?.let { code ->
+                    MR.strings.settings_computers_create_agent_error_load_computers.format(listOf(code)).localized()
+                },
             runtimeModelsByMachineAndRuntime = createAgentRuntimeModels,
             runtimeModelLoadsInFlight = createAgentRuntimeModelLoadsInFlight,
             onRuntimeModelsRequest = loadCreateAgentRuntimeModels,
@@ -407,13 +417,13 @@ private fun SettingsComputerDetailScreen() {
                             settingsViewModel.dispatch(SharedSettingsIntent.OpenComputer(computerId))
                         }
                         is DataResult.Empty -> {
-                            createAgentError = "Empty response"
+                            createAgentError = SettingsCreateAgentErrorEmpty
                         }
                         is DataResult.Error -> {
-                            createAgentError = "Failed to create agent: ${result.error.code}"
+                            createAgentError = SettingsCreateAgentErrorFailedPrefix + result.error.code
                         }
                         is DataResult.NoPermission -> {
-                            createAgentError = "You do not have permission to create agents."
+                            createAgentError = SettingsCreateAgentErrorForbidden
                         }
                     }
                 }
@@ -444,7 +454,7 @@ private fun SettingsComputersListHeader(
             shadowOffset = 2.dp
         )
         Text(
-            "Computers",
+            stringResource(MR.strings.settings_computers_title),
             style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             maxLines = 1,
@@ -494,7 +504,7 @@ private fun SettingsComputerDetailRouteShell(
     ) {
         SlockTopPageHeader(
             title = title,
-            subtitle = "Machine details",
+            subtitle = stringResource(MR.strings.settings_computers_detail_subtitle),
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
@@ -647,7 +657,12 @@ internal fun SettingsComputersContent(
             }
         }
         payload.addComputerUnavailableReason?.takeIf { it.isNotBlank() }?.let { reason ->
-            item { SettingsInfoStrip("Add computer", reason) }
+            item {
+                SettingsInfoStrip(
+                    stringResource(MR.strings.settings_computers_add_computer),
+                    localizedSettingsComputerErrorCopy(reason)
+                )
+            }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
@@ -747,6 +762,33 @@ private fun KuiklySettingsComputersPayload.localizedStatusPresentation(): Settin
 }
 
 @Composable
+private fun KuiklySettingsComputerDetailPayload.localizedComputerName(): String =
+    when (status) {
+        "loading" -> stringResource(MR.strings.settings_computers_detail_loading)
+        "error" -> stringResource(MR.strings.settings_computers_detail_error_load)
+        "blocked", "noPermission" -> stringResource(MR.strings.settings_computers_detail_no_access)
+        "empty" -> stringResource(MR.strings.settings_computers_detail_unavailable)
+        else ->
+            computer.name.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.settings_computers_detail_computer)
+    }
+
+@Composable
+private fun localizedSettingsCreateAgentError(error: String?): String? =
+    when {
+        error.isNullOrBlank() -> null
+        error == SettingsCreateAgentErrorEmpty ->
+            stringResource(MR.strings.settings_computers_create_agent_error_empty)
+        error == SettingsCreateAgentErrorForbidden ->
+            stringResource(MR.strings.settings_computers_create_agent_error_forbidden)
+        error.startsWith(SettingsCreateAgentErrorFailedPrefix) ->
+            MR.strings.settings_computers_create_agent_error_failed
+                .format(listOf(error.removePrefix(SettingsCreateAgentErrorFailedPrefix)))
+                .localized()
+        else -> error
+    }
+
+@Composable
 internal fun SettingsComputerDetailContent(
     payload: KuiklySettingsComputerDetailPayload,
     actionState: KuiklySettingsComputerActionState? = null,
@@ -756,6 +798,13 @@ internal fun SettingsComputerDetailContent(
 ) {
     val computerId = payload.computer.id
     val computerName = payload.computer.name
+    val localizedComputerName = payload.localizedComputerName()
+    val renderPayload =
+        if (localizedComputerName == computerName) {
+            payload
+        } else {
+            payload.copy(computer = payload.computer.copy(name = localizedComputerName))
+        }
     val renameBusy = actionState?.action == "renameComputer" && actionState.inProgress && actionState.itemId == computerId
     val descriptionBusy = actionState?.action == "updateComputerDescription" && actionState.inProgress && actionState.itemId == computerId
     val deleteBusy = actionState?.action == "deleteComputer" && actionState.inProgress && actionState.itemId == computerId
@@ -797,7 +846,7 @@ internal fun SettingsComputerDetailContent(
     }
 
     SettingsComputerDetailVisualContent(
-        payload = payload,
+        payload = renderPayload,
         actionState = actionState,
         agentStatusResolver = agentStatusResolver,
         productionMode = true,
@@ -890,7 +939,7 @@ private fun SettingsComputerDetailVisualContent(
         item { VisualComputerInfoSection(payload.computer) }
         item { VisualDivider() }
         item { Spacer(Modifier.height(20.dp)) }
-        item { VisualSectionHeader("Agents on this computer", payload.agents.size) }
+        item { VisualSectionHeader(stringResource(MR.strings.settings_computers_section_agents), payload.agents.size) }
         if (payload.canManageMachines) {
             item {
                 Row(
@@ -899,14 +948,14 @@ private fun SettingsComputerDetailVisualContent(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     VisualSmallActionButton(
-                        label = "Select",
+                        label = stringResource(MR.strings.settings_computers_action_select),
                         icon = SlockLucideIconName.Check,
                         onClick = { onEvent("selectAgentsForComputer", computerId) },
                         backgroundColor = SlockColor.SurfaceWhite,
                         faceWidth = 72.dp
                     )
                     VisualSmallActionButton(
-                        label = "Create",
+                        label = stringResource(MR.strings.settings_computers_action_create),
                         icon = SlockLucideIconName.Plus,
                         onClick = { onEvent("createAgentForComputer", computerId) },
                         backgroundColor = SlockColor.AccentPink,
@@ -955,7 +1004,7 @@ private fun SettingsComputerDetailVisualContent(
         if (productionMode) {
             item { VisualDivider() }
             item { Spacer(Modifier.height(16.dp)) }
-            item { VisualSectionHeader("Agent Workspaces", payload.workspaces.size) }
+            item { VisualSectionHeader(stringResource(MR.strings.settings_computers_section_workspaces), payload.workspaces.size) }
             payload.workspacesErrorCode?.let { error ->
                 item {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
@@ -981,25 +1030,35 @@ private fun SettingsComputerDetailVisualContent(
             if (payload.canManageMachines) {
                 item { VisualDivider() }
                 item { Spacer(Modifier.height(16.dp)) }
-                item { VisualSectionHeader("Actions") }
+                item { VisualSectionHeader(stringResource(MR.strings.settings_computers_section_actions)) }
                 item {
                     Column(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         VisualActionPanel(
-                            title = "Rotate API key",
-                            description = "Generate a new key for the daemon to reconnect. The old key stops working immediately.",
-                            label = if (rotateBusy) "Rotating..." else "Rotate key",
+                            title = stringResource(MR.strings.settings_computers_rotate_key_title),
+                            description = stringResource(MR.strings.settings_computers_rotate_key_detail),
+                            label =
+                                if (rotateBusy) {
+                                    stringResource(MR.strings.settings_computers_rotate_key_busy)
+                                } else {
+                                    stringResource(MR.strings.settings_computers_rotate_key_action)
+                                },
                             icon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.BrandYellow,
                             enabled = !anyBusy,
                             onClick = { onEvent("rotateComputerKey", computerId) }
                         )
                         VisualActionPanel(
-                            title = "Delete Computer",
-                            description = "Permanently remove this computer. All agents must be deleted first.",
-                            label = if (deleteBusy) "Deleting..." else "Delete Computer",
+                            title = stringResource(MR.strings.settings_computers_delete_title),
+                            description = stringResource(MR.strings.settings_computers_delete_detail),
+                            label =
+                                if (deleteBusy) {
+                                    stringResource(MR.strings.settings_computers_delete_busy)
+                                } else {
+                                    stringResource(MR.strings.settings_computers_delete_action)
+                                },
                             icon = SlockLucideIconName.Trash2,
                             backgroundColor = SlockColor.AccentRed,
                             enabled = !anyBusy,
@@ -1007,7 +1066,7 @@ private fun SettingsComputerDetailVisualContent(
                         )
                         actionState?.errorCode?.takeIf { it.isNotBlank() && actionState.itemId == computerId }?.let { code ->
                             SettingsInlineError(
-                                title = settingsComputerErrorTitle(code),
+                                title = localizedSettingsComputerErrorTitle(code),
                                 errorCode = code,
                                 retryable = false
                             ) { onEvent("retryComputerAction", actionState.action) }
@@ -1039,7 +1098,11 @@ private fun VisualComputerProfile(item: KuiklySettingsComputerItem) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OnlineDot(item.online)
                 Text(
-                    if (item.online) "Connected" else "Offline",
+                    if (item.online) {
+                        stringResource(MR.strings.settings_computers_status_connected)
+                    } else {
+                        stringResource(MR.strings.settings_computers_status_offline)
+                    },
                     style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -1076,7 +1139,7 @@ private fun VisualComputerNameSection(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "NAME",
+                stringResource(MR.strings.settings_computers_section_name).uppercase(),
                 style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -1095,7 +1158,7 @@ private fun VisualComputerNameSection(
         }
         if (editing && canEdit) {
             SlockBrutalTextField(
-                label = "Computer name",
+                label = stringResource(MR.strings.settings_computers_label_name),
                 value = draft,
                 placeholder = name,
                 onValueChange = onDraftChange,
@@ -1104,7 +1167,12 @@ private fun VisualComputerNameSection(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 VisualSmallActionButton(
-                    label = if (busy) "Saving" else "Save",
+                    label =
+                        if (busy) {
+                            stringResource(MR.strings.settings_computers_action_saving)
+                        } else {
+                            stringResource(MR.strings.common_save)
+                        },
                     icon = SlockLucideIconName.Save,
                     onClick = onSave,
                     backgroundColor = SlockColor.AccentPink,
@@ -1152,7 +1220,7 @@ private fun VisualComputerDescriptionSection(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "DESCRIPTION",
+                stringResource(MR.strings.settings_computers_section_description).uppercase(),
                 style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
@@ -1171,9 +1239,9 @@ private fun VisualComputerDescriptionSection(
         }
         if (editing && canEdit) {
             SlockBrutalTextField(
-                label = "Computer description",
+                label = stringResource(MR.strings.settings_computers_label_description),
                 value = draft,
-                placeholder = "What should this computer be used for?",
+                placeholder = stringResource(MR.strings.settings_computers_placeholder_description),
                 onValueChange = onDraftChange,
                 optional = true,
                 enabled = !busy,
@@ -1182,7 +1250,12 @@ private fun VisualComputerDescriptionSection(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 VisualSmallActionButton(
-                    label = if (busy) "Saving" else "Save",
+                    label =
+                        if (busy) {
+                            stringResource(MR.strings.settings_computers_action_saving)
+                        } else {
+                            stringResource(MR.strings.common_save)
+                        },
                     icon = SlockLucideIconName.Save,
                     onClick = onSave,
                     backgroundColor = SlockColor.AccentPink,
@@ -1200,7 +1273,7 @@ private fun VisualComputerDescriptionSection(
             }
         } else {
             Text(
-                currentDescription ?: "No description",
+                currentDescription ?: stringResource(MR.strings.settings_computers_state_no_description),
                 style =
                     SlockType.Input.copy(
                         fontSize = 14.sp,
@@ -1220,14 +1293,24 @@ private fun VisualComputerInfoSection(item: KuiklySettingsComputerItem) {
         verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
         Text(
-            "INFO",
+            stringResource(MR.strings.settings_computers_section_info).uppercase(),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        VisualInfoValue("OS", item.platform ?: "Unknown")
-        VisualInfoValue("Computer Version", item.daemonVersion.takeIf { it.isNotBlank() }?.let { "v$it" } ?: "Unknown")
+        VisualInfoValue(
+            stringResource(MR.strings.settings_computers_label_os),
+            item.platform ?: stringResource(MR.strings.settings_computers_state_unknown)
+        )
+        VisualInfoValue(
+            stringResource(MR.strings.settings_computers_label_version),
+            item.daemonVersion.takeIf { it.isNotBlank() }?.let { "v$it" }
+                ?: stringResource(MR.strings.settings_computers_state_unknown)
+        )
         VisualRuntimeRows(item.runtimes)
-        VisualInfoValue("Created", item.createdAt ?: "Unknown")
+        VisualInfoValue(
+            stringResource(MR.strings.settings_computers_label_created),
+            item.createdAt ?: stringResource(MR.strings.settings_computers_state_unknown)
+        )
     }
 }
 
@@ -1254,7 +1337,7 @@ private fun VisualRuntimeRows(installedRuntimes: List<String>) {
     val runtimeRows = settingsComputerRuntimePillRows(installedRuntimes)
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         Text(
-            "Detected Runtimes",
+            stringResource(MR.strings.settings_computers_label_runtimes),
             style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
@@ -1264,7 +1347,7 @@ private fun VisualRuntimeRows(installedRuntimes: List<String>) {
                     if (runtime.detected) {
                         VisualInstalledRuntimePill(runtime.label)
                     } else {
-                        MissingRuntimePill(runtime.missingLabel)
+                        MissingRuntimePill(runtime.localizedMissingLabel())
                     }
                 }
             }
@@ -1280,6 +1363,17 @@ internal data class SettingsComputerRuntimePill(
 ) {
     val missingLabel: String = "$label (${if (supported) "not installed" else "coming soon"})"
 }
+
+@Composable
+private fun SettingsComputerRuntimePill.localizedMissingLabel(): String =
+    label +
+        stringResource(
+            if (supported) {
+                MR.strings.agent_create_suffix_not_installed
+            } else {
+                MR.strings.agent_create_suffix_coming_soon
+            }
+        )
 
 internal fun settingsComputerRuntimePills(installedRuntimes: List<String>): List<SettingsComputerRuntimePill> {
     val detectedIds =
@@ -1441,8 +1535,22 @@ private fun VisualAgentRow(
 
 @Composable
 private fun VisualWorkspaceRow(item: KuiklySettingsWorkspaceItem) {
+    val fileCountLabel =
+        item.fileCount?.let { count ->
+            val resource =
+                if (count == 1) {
+                    MR.strings.settings_computers_file_count_one
+                } else {
+                    MR.strings.settings_computers_file_count_many
+                }
+            resource.format(listOf(count)).localized()
+        } ?: item.fileCountLabel
     val metadata =
-        listOf(item.totalSizeLabel, item.fileCountLabel, item.lastActiveLabel?.let { "Modified $it" })
+        listOf(
+            item.totalSizeLabel,
+            fileCountLabel,
+            item.lastActiveLabel?.let { MR.strings.settings_computers_workspace_modified.format(listOf(it)).localized() }
+        )
             .filterNotNull()
             .filter { it.isNotBlank() }
             .joinToString("  ")
@@ -1722,6 +1830,7 @@ internal fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPay
         is ScreenLoadState.Error ->
             loadingComputerDetailPayload(
                 selectedComputerId = selectedComputerId,
+                status = "error",
                 name = "Unable to load computer",
                 workspacesErrorCode = error.code,
                 workspacesRetryable = error.retryable,
@@ -1731,6 +1840,7 @@ internal fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPay
         is ScreenLoadState.NoPermission ->
             loadingComputerDetailPayload(
                 selectedComputerId = selectedComputerId,
+                status = "blocked",
                 name = "No access to computer",
                 workspacesErrorCode = blocker.code,
                 workspacesRetryable = false,
@@ -1740,22 +1850,27 @@ internal fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPay
         is ScreenLoadState.Empty ->
             loadingComputerDetailPayload(
                 selectedComputerId = selectedComputerId,
+                status = "empty",
                 name = "Computer unavailable"
             )
         ScreenLoadState.Loading ->
             loadingComputerDetailPayload(
                 selectedComputerId = selectedComputerId,
+                status = "loading",
                 name = "Loading computer"
             )
     }
 
-private fun ScreenLoadState<SettingsComputerDetailSnapshot>.currentComputerTitle(): String =
+@Composable
+private fun ScreenLoadState<SettingsComputerDetailSnapshot>.localizedCurrentComputerTitle(): String =
     when (this) {
-        is ScreenLoadState.Content -> data.computer.name.takeIf { it.isNotBlank() } ?: "Computer"
-        is ScreenLoadState.Error -> "Unable to load computer"
-        is ScreenLoadState.NoPermission -> "No access to computer"
-        is ScreenLoadState.Empty -> "Computer unavailable"
-        ScreenLoadState.Loading -> "Computer"
+        is ScreenLoadState.Content ->
+            data.computer.name.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.settings_computers_detail_computer)
+        is ScreenLoadState.Error -> stringResource(MR.strings.settings_computers_detail_error_load)
+        is ScreenLoadState.NoPermission -> stringResource(MR.strings.settings_computers_detail_no_access)
+        is ScreenLoadState.Empty -> stringResource(MR.strings.settings_computers_detail_unavailable)
+        ScreenLoadState.Loading -> stringResource(MR.strings.settings_computers_detail_computer)
     }
 
 private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
@@ -1775,6 +1890,7 @@ private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
 
 private fun loadingComputerDetailPayload(
     selectedComputerId: String?,
+    status: String,
     name: String,
     workspacesErrorCode: String? = null,
     workspacesRetryable: Boolean = false,
@@ -1783,6 +1899,7 @@ private fun loadingComputerDetailPayload(
 ): KuiklySettingsComputerDetailPayload =
     KuiklySettingsComputerDetailPayload(
         instanceId = "shared-shell-settings-computer-${selectedComputerId.orEmpty()}",
+        status = status,
         computer = KuiklySettingsComputerItem(id = selectedComputerId.orEmpty(), name = name),
         workspacesErrorCode = workspacesErrorCode,
         workspacesRetryable = workspacesRetryable,
@@ -1828,6 +1945,7 @@ private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
         statusLabel = statusLabel,
         lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext),
         totalSizeLabel = totalSizeBytes?.let(::formatAttachmentSizeLabel),
+        fileCount = fileCount,
         fileCountLabel = fileCount?.let { count -> "$count ${if (count == 1) "file" else "files"}" }
     )
 
@@ -1901,16 +2019,17 @@ private fun Pager.closeSettingsComputersPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
 }
 
-private fun settingsComputerErrorTitle(code: String): String = when (code) {
-    "computer_has_agents" -> "Cannot delete computer"
-    "computer_bad_request" -> "Computer request rejected"
-    "computer_offline_replay" -> "Computer offline"
-    "machine_offline_replay" -> "Computer offline"
-    "machine_offline" -> "Computer offline"
-    "server_forbidden" -> "Permission denied"
-    "auth_required" -> "Session expired"
-    else -> "Action failed"
-}
+@Composable
+private fun localizedSettingsComputerErrorTitle(code: String): String =
+    when (code) {
+        "computer_has_agents" -> stringResource(MR.strings.settings_computers_error_title_cannot_delete)
+        "computer_bad_request" -> stringResource(MR.strings.settings_computers_error_title_request_rejected)
+        "computer_offline_replay", "machine_offline_replay", "machine_offline" ->
+            stringResource(MR.strings.settings_computers_error_title_offline)
+        "server_forbidden" -> stringResource(MR.strings.settings_computers_error_title_permission)
+        "auth_required" -> stringResource(MR.strings.settings_computers_error_title_session)
+        else -> stringResource(MR.strings.settings_computers_error_title_action)
+    }
 
 @Composable
 private fun SettingsComputerCard(
@@ -2004,19 +2123,35 @@ private data class SettingsComputerRunLabel(
     val upgradeText: String? = null
 )
 
+@Composable
 private fun settingsComputerRunLabel(item: KuiklySettingsComputerItem): SettingsComputerRunLabel {
-    val kind = if (item.isComputer) "computer" else "daemon"
+    val kind =
+        if (item.isComputer) {
+            stringResource(MR.strings.settings_computers_kind_computer)
+        } else {
+            stringResource(MR.strings.settings_computers_kind_daemon)
+        }
     val version =
         if (item.isComputer) item.computerVersion?.takeIf { it.isNotBlank() }
         else item.daemonVersion.takeIf { it.isNotBlank() }
     if (!item.online) {
         val upgradeText = version?.let { "-> v$it" }
-        return SettingsComputerRunLabel("$kind offline", isOffline = true, upgradeText = upgradeText)
+        return SettingsComputerRunLabel(
+            MR.strings.settings_computers_run_offline.format(listOf(kind)).localized(),
+            isOffline = true,
+            upgradeText = upgradeText
+        )
     }
     return if (version != null) {
-        SettingsComputerRunLabel("$kind v$version", isOffline = false)
+        SettingsComputerRunLabel(
+            MR.strings.settings_computers_run_version.format(listOf(kind, version)).localized(),
+            isOffline = false
+        )
     } else {
-        SettingsComputerRunLabel("$kind online", isOffline = false)
+        SettingsComputerRunLabel(
+            MR.strings.settings_computers_run_online.format(listOf(kind)).localized(),
+            isOffline = false
+        )
     }
 }
 
@@ -2152,11 +2287,12 @@ internal fun KuiklySettingsAgentItem.settingsAgentFallbackStatusState(): SlockAg
         fallbackPresence = presenceLabel.toSettingsAgentPresenceFallback()
     )
 
+@Composable
 private fun KuiklySettingsAgentItem.displayLabel(): String =
     displayName?.takeIf { it.isNotBlank() }
         ?: name.takeIf { it.isNotBlank() }
         ?: handle?.takeIf { it.isNotBlank() }
-        ?: "Agent"
+        ?: stringResource(MR.strings.thread_member_role_agent)
 
 private fun KuiklySettingsAgentItem.subtitleLabel(): String? =
     runtimeLabel?.takeIf { it.isNotBlank() }
