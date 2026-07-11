@@ -16622,7 +16622,10 @@ private fun ThreadForwardBundleModal(
                     } else {
                         stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
                     },
-                style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
+                // Forward-bundle count is content, not tabular metadata: match the react
+                // ForwardedBundleCard convention (proportional/bold count; Space Mono is
+                // reserved for the per-row timestamp only). See visual case components.thread.forward-bundle.
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
             )
@@ -16703,7 +16706,9 @@ private fun ThreadForwardBundleMessageRow(
             if (item.attachmentCount > 0) {
                 Text(
                     text = item.localizedForwardAttachmentLabel(),
-                    style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 15.sp),
+                    // Attachment label is content (react renders per-file chips, non-mono);
+                    // keep it proportional. Space Mono stays on the timestamp only.
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = SlockColor.TextMutedGray
                 )
             }
@@ -16993,11 +16998,13 @@ internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePa
 
 @Composable
 internal fun ThreadForwardBundleVisualScreen() {
-    // Renders ThreadForwardBundleModal so the forward-bundle metadata that
-    // task #425 switched to Space Mono is pinned by a fixture (task #427):
-    // the "N messages" count, each forwarded message's timestamp, and the
-    // attachment-count label. Seeded with a mixed bundle (with/without body,
-    // with/without attachments) so all three metadata paths render.
+    // Renders ThreadForwardBundleModal so the forward-bundle metadata is pinned
+    // by a fixture (task #427). Space Mono is reserved for the per-row timestamp
+    // only, matching the react ForwardedBundleCard convention; the "N messages"
+    // count and the attachment label are proportional content (react renders the
+    // count in bold and attachments as per-file chips, none of them mono).
+    // Seeded with a mixed bundle (with/without body, with/without attachments) so
+    // the count, timestamp, and attachment-label paths all render.
     val bundle =
         remember {
             ForwardMessageBundle(
