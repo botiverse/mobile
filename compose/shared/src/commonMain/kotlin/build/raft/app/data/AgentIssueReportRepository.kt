@@ -43,6 +43,7 @@ internal data class AgentIssueReportResult(
 
 internal class AgentIssueReportRepository(
     private val sessionStore: SlockAuthSessionStore,
+    private val selectedServerStore: SelectedServerStore,
     private val networkClient: SlockNetworkClient,
     private val sha256Hex: (String) -> String,
     private val feedbackBaseUrl: String = SLOCK_AGENT_FEEDBACK_BASE_URL,
@@ -53,7 +54,7 @@ internal class AgentIssueReportRepository(
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError("agent_issue_report_unauthenticated", retryable = false))
         val serverId = submission.server.id
-        if (session.currentServerId != serverId.value) {
+        if (!selectedServerStore.isSelected(serverId.value)) {
             return DataResult.Error(ScreenError("agent_issue_report_server_mismatch", retryable = false))
         }
 

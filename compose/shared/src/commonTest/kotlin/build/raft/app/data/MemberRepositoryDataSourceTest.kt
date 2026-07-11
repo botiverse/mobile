@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.MemberId
+import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -11,6 +12,38 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 
 class MemberRepositoryDataSourceTest {
+    @Test
+    fun explicitServerMembersLoadDoesNotRequireSelectedServerToAlreadySwitch() = runBlocking {
+        val session =
+            sampleSession().copy(
+                servers =
+                    sampleSession().servers +
+                        StoredAuthServer(
+                            id = "server-2",
+                            name = "Second Server",
+                            slug = "second-server",
+                            ownerId = "user-1",
+                            onboardingAgentId = null,
+                            plan = "team",
+                            planDowngradedAt = null,
+                            role = "member",
+                            createdAt = "2026-07-01T00:00:00Z"
+                        )
+            )
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(session), network)
+
+        val result = repository.getMembers(DataRequestPriority.Visible, ServerId("server-2"))
+
+        assertTrue(result is DataResult.Content)
+        assertEquals("server-2", result.data.server.id.value)
+        assertEquals("Second Server", result.data.server.name)
+        assertTrue(result.data.members.any { it.id.value == "user-2" })
+        assertTrue(network.calls.contains("GET servers/server-2/members server=server-2"))
+        assertTrue(network.calls.contains("GET agents server=server-2"))
+        assertTrue(network.calls.contains("GET servers/server-2/machines server=server-2"))
+    }
+
     @Test
     fun agentDetailIncludesTypedSummaryAndLifecycleActions() = runBlocking {
         val network = FakeMemberNetworkClient()
@@ -280,8 +313,16 @@ class MemberRepositoryDataSourceTest {
                     ok(activityLogBody)
                 }
                 normalized == "agents" && method == "GET" -> {
-                    calls += "GET agents"
+                    calls += serverIdOverride?.let { "GET agents server=${it.value}" } ?: "GET agents"
                     ok("""[{"id":"agent-1","name":"noel","status":"active","activity":"idle","activityDetail":"Ready"}]""")
+                }
+                normalized == "servers/server-2/members" && method == "GET" -> {
+                    calls += "GET servers/server-2/members server=${serverIdOverride?.value}"
+                    ok("""{"members":[{"userId":"user-2","name":"second-user","displayName":"Second User"}]}""")
+                }
+                normalized == "servers/server-2/machines" && method == "GET" -> {
+                    calls += "GET servers/server-2/machines server=${serverIdOverride?.value}"
+                    ok("[]")
                 }
                 normalized == "agents/agent-1/skills" && method == "GET" -> {
                     calls += "GET agents/agent-1/skills"

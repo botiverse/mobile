@@ -112,6 +112,24 @@ class TaskRepositoryDataSourceTest {
         assertEquals(TaskStatus.Todo, snapshot.tasks.single().status)
         assertEquals(1, snapshot.summaryCounts[TaskStatus.Todo])
         assertEquals(listOf("channel-1"), network.channelTaskCalls)
+        assertEquals(listOf("server-1"), network.channelTaskServerIds)
+    }
+
+    @Test
+    fun explicitChannelTasksRouteToRequestedAccessibleServer() = runBlocking {
+        val network = FakeTaskNetworkClient()
+        val repository = RealTaskRepository(sampleStore(), network)
+
+        val result =
+            repository.getChannelTasks(
+                serverId = ServerId("server-2"),
+                channelId = ChannelId("channel-2"),
+                filter = TaskFilter()
+            )
+
+        assertIs<DataResult.Empty>(result)
+        assertEquals(listOf("channel-2"), network.channelTaskCalls)
+        assertEquals(listOf("server-2"), network.channelTaskServerIds)
     }
 
     @Test
@@ -202,6 +220,11 @@ class TaskRepositoryDataSourceTest {
                             id = "server-1",
                             name = "Slock Android",
                             slug = "android"
+                        ),
+                        StoredAuthServer(
+                            id = "server-2",
+                            name = "Slock iOS",
+                            slug = "ios"
                         )
                     )
             )
@@ -216,6 +239,7 @@ class TaskRepositoryDataSourceTest {
         val priorities = mutableListOf<DataRequestPriority>()
         val claimedTaskIds = mutableListOf<String>()
         val channelTaskCalls = mutableListOf<String>()
+        val channelTaskServerIds = mutableListOf<String>()
         val updatedTaskStatusBodies = mutableListOf<String>()
 
         override suspend fun request(
@@ -233,6 +257,7 @@ class TaskRepositoryDataSourceTest {
                     ok(serverTasksJson)
                 normalized.startsWith("tasks/channel/") && method == "GET" -> {
                     channelTaskCalls += normalized.removePrefix("tasks/channel/")
+                    channelTaskServerIds += serverIdOverride?.value.orEmpty()
                     ok(channelTasksJson)
                 }
                 normalized.startsWith("tasks/") && normalized.endsWith("/claim") && method == "PATCH" -> {

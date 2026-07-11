@@ -105,7 +105,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
-    private val shellRuntimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
+    private val selectedServerStores = SlockShellScopedStoreCache<SelectedServerStore>()
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
@@ -140,13 +140,13 @@ internal class SlockSharedStoreProvider private constructor(
     fun sharedHomeStore(scope: SlockShellStoreScope): SharedHomeStore? =
         homeStores.get(scope)
 
-    fun shellRuntime(scope: SlockShellStoreScope): SlockShellStoreRuntime =
-        shellRuntimes.getOrPut(scope) { SlockShellStoreRuntime(scope) }
+    fun selectedServerStore(scope: SlockShellStoreScope): SelectedServerStore =
+        selectedServerStores.getOrPut(scope) { SelectedServerStore(scope) }
 
     fun scopesForServer(serverId: String): List<SlockShellStoreScope> {
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()
-        return shellRuntimes.entries().mapNotNull { (scope, runtime) ->
-            scope.takeIf { runtime.currentServerId.value == normalizedServerId && !runtime.disposed.value }
+        return selectedServerStores.entries().mapNotNull { (scope, selectionStore) ->
+            scope.takeIf { selectionStore.isSelected(normalizedServerId) && !selectionStore.disposed.value }
         }
     }
 
@@ -154,7 +154,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellAuthStores.getOrPut(scope) {
             SlockShellAuthSessionStore(
                 delegate = authStore,
-                runtime = shellRuntime(scope),
+                selectedServerStore = selectedServerStore(scope),
                 onProcessSessionCleared = ::clearActiveShellServerSelections
             )
         }
@@ -371,13 +371,25 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 
-    private fun clearActiveShellServerSelections() {
-        shellRuntimes.clearActiveServerSelections()
+    private suspend fun clearActiveShellServerSelections() {
+        // A queued invalidation can resume after a new login. In that case the
+        // process session is authoritative and the stale logout must not clear
+        // the newly reconciled shell selections.
+        if (authStore.readSession() != null) return
+        selectedServerStores.clearActiveServerSelections()
+        // Close the remaining check/clear race: if login completed while the
+        // fan-out was clearing stores, immediately reconcile every live shell
+        // from the new process session.
+        authStore.readSession()?.let { restoredSession ->
+            selectedServerStores.entries().forEach { (_, selectionStore) ->
+                selectionStore.reconcile(restoredSession)
+            }
+        }
     }
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
         if (scope == SlockShellStoreScope.Legacy) return
-        shellRuntimes.get(scope)?.dispose()
+        selectedServerStores.get(scope)?.dispose()
         homeStores.remove(scope)?.clear()
         homeActivityStores.remove(scope)?.clear()
         homeStoreScopes.remove(scope)?.cancel()
@@ -388,7 +400,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
-        shellRuntimes.remove(scope)
+        selectedServerStores.remove(scope)
     }
 
     fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {

@@ -38,6 +38,7 @@ import build.raft.app.data.SlockAuthSessionStore
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SlockThreadApi
 import build.raft.app.data.SlockThreadApiClient
 import build.raft.app.data.StoredAuthSession
@@ -386,6 +387,7 @@ internal data class MarkdownThreadRefTarget(
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
+    private val selectedServerStore: SelectedServerStore? = null,
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val conversationRepository: ConversationRepository? = null,
@@ -420,6 +422,7 @@ internal class SharedThreadDataSource(
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
+        selectedServerStore: SelectedServerStore? = null,
         memberRepository: MemberRepository? = null,
         serverMembersStore: SharedServerMembersStore? = null,
         conversationRepository: ConversationRepository? = null,
@@ -434,6 +437,7 @@ internal class SharedThreadDataSource(
     ) : this(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
+        selectedServerStore = selectedServerStore,
         memberRepository = memberRepository,
         serverMembersStore = serverMembersStore,
         conversationRepository = conversationRepository,
@@ -1086,7 +1090,9 @@ internal class SharedThreadDataSource(
             return DataResult.Error(ScreenError(code = "thread_prewarm_identity_missing", retryable = false))
         }
         val session = readSession() ?: return authSessionRequiredResult()
-        if (session.currentServerId != key.serverId) {
+        val selection = selectedServerStore
+            ?: return DataResult.Error(ScreenError(code = "thread_prewarm_selection_unavailable", retryable = false))
+        if (!selection.isSelected(key.serverId)) {
             return DataResult.Error(ScreenError(code = "thread_prewarm_server_changed", retryable = false))
         }
         val basePayload =

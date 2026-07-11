@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SelectedServerStore
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.AgentActivitySnapshot
 import build.raft.app.data.AgentDetailSnapshot
@@ -434,6 +436,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-test", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -484,6 +488,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-success", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -535,6 +541,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-marker", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )

@@ -96,9 +96,15 @@ private suspend fun SlockNetworkClient.channelThreads(
 
 private suspend fun SlockNetworkClient.followedThreads(
     priority: DataRequestPriority,
-    limit: Int
+    limit: Int,
+    serverId: ServerId? = null
 ): HomeNetworkResponse =
-    request(priority, "channels/threads/followed", query = listOf("limit" to limit.toString()))
+    request(
+        priority,
+        "channels/threads/followed",
+        query = listOf("limit" to limit.toString()),
+        serverIdOverride = serverId
+    )
 
 private suspend fun SlockNetworkClient.createOrOpenThread(
     priority: DataRequestPriority,
@@ -386,7 +392,7 @@ class RealConversationRepository(
         val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.followedThreads(DataRequestPriority.Visible, limit) },
+            block = { networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id) },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads",
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
@@ -842,9 +848,8 @@ class RealConversationRepository(
 private data class NetworkServerContext(val session: StoredAuthSession, val server: build.raft.app.model.ServerSummary)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): NetworkServerContext? {
-    val selectedId = currentServerId ?: return null
-    if (selectedId != serverId.value) return null
-    val server = servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
     return NetworkServerContext(session = this, server = server)
 }
 

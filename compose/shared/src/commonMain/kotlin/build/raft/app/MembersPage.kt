@@ -1796,13 +1796,15 @@ private fun rememberMemberDetailRouteProvider(
             )
         }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()
     val codecModule = remember(pager.pagerId) { pager.acquireModule<CodecModule>(CodecModule.MODULE_NAME) }
-    val agentIssueReportRepository = remember(networkClient, authStore, codecModule) {
+    val agentIssueReportRepository = remember(networkClient, authStore, selectedServerStore, codecModule) {
         AgentIssueReportRepository(
             sessionStore = authStore,
+            selectedServerStore = selectedServerStore,
             networkClient = networkClient,
             sha256Hex = codecModule::sha256,
             logger = { message -> bridge.log("member_detail_agent_issue $message") }

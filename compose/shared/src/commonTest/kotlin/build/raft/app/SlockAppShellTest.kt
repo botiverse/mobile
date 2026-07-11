@@ -70,10 +70,28 @@ class SlockAppShellTest {
                     )
             )
 
-        assertFalse(notificationLaunchHomeContentReady(null, "server-b"))
-        assertFalse(notificationLaunchHomeContentReady(content("server-a", "server-b"), "server-b"))
-        assertFalse(notificationLaunchHomeContentReady(content("server-b", "server-a"), "server-b"))
-        assertTrue(notificationLaunchHomeContentReady(content("server-b", "server-b"), "server-b"))
+        assertFalse(notificationLaunchHomeContentReady(null, "server-b", selectedServerId = "server-b"))
+        assertFalse(
+            notificationLaunchHomeContentReady(
+                content("server-a", "server-b"),
+                "server-b",
+                selectedServerId = "server-b"
+            )
+        )
+        assertFalse(
+            notificationLaunchHomeContentReady(
+                content("server-b", "server-a"),
+                "server-b",
+                selectedServerId = "server-a"
+            )
+        )
+        assertTrue(
+            notificationLaunchHomeContentReady(
+                content("server-b", "server-b"),
+                "server-b",
+                selectedServerId = "server-b"
+            )
+        )
     }
 
     @Test

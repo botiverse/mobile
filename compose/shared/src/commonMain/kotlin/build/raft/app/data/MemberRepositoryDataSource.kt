@@ -87,8 +87,11 @@ interface SlockNetworkClient {
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/members", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.settingsAgents(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "agents")
+private suspend fun SlockNetworkClient.settingsAgents(
+    priority: DataRequestPriority,
+    serverId: ServerId? = null
+): HomeNetworkResponse =
+    request(priority, "agents", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.settingsMachines(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =
     request(priority, "servers/${serverId.value}/machines", serverIdOverride = serverId)
@@ -201,7 +204,7 @@ class RealMemberRepository(
         val agentResult =
             executeMember(
                 emptyReason = EmptyReason.NoMembers,
-                block = { networkClient.settingsAgents(priority) },
+                block = { networkClient.settingsAgents(priority, serverId) },
                 source = "server_agents",
                 mapper = { bodyText ->
                     parseSharedSettingsAgentsAsMembers(bodyText)
@@ -873,9 +876,8 @@ private fun AddChannelMemberRequest.toBodyText(): String =
 private data class SharedNetworkServerContext(val session: StoredAuthSession, val server: ServerSummary)
 
 private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): SharedNetworkServerContext? {
-    val selectedId = currentServerId ?: return null
-    if (selectedId != serverId.value) return null
-    val server = servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
     return SharedNetworkServerContext(session = this, server = server)
 }
 

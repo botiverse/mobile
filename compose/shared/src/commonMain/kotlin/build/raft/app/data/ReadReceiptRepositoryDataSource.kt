@@ -13,8 +13,11 @@ private val readReceiptRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "channels/unread")
+private suspend fun SlockNetworkClient.channelUnreadCounts(
+    priority: DataRequestPriority,
+    serverId: ServerId
+): HomeNetworkResponse =
+    request(priority, "channels/unread", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.markChannelReadToSeq(
     priority: DataRequestPriority,
@@ -35,8 +38,11 @@ private suspend fun SlockNetworkClient.markChannelUnread(
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/unread", method = "POST")
 
-private suspend fun SlockNetworkClient.markInboxReadAll(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "channels/inbox/read-all", method = "POST")
+private suspend fun SlockNetworkClient.markInboxReadAll(
+    priority: DataRequestPriority,
+    serverId: ServerId
+): HomeNetworkResponse =
+    request(priority, "channels/inbox/read-all", method = "POST", serverIdOverride = serverId)
 
 class RealReadReceiptRepository(
     private val sessionStore: SlockAuthSessionStore,
@@ -48,7 +54,7 @@ class RealReadReceiptRepository(
         val context = serverContext(serverId) ?: return authRequired()
         return executeReadReceipt(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.channelUnreadCounts(DataRequestPriority.Visible) },
+            block = { networkClient.channelUnreadCounts(DataRequestPriority.Visible, serverId) },
             source = "read_unread_counts",
             mapper = { bodyText ->
                 parseChannelUnreadSnapshot(bodyText, context.server)
@@ -113,7 +119,7 @@ class RealReadReceiptRepository(
         serverContext(serverId) ?: return authRequired()
         return executeReadReceipt(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.markInboxReadAll(DataRequestPriority.Visible) },
+            block = { networkClient.markInboxReadAll(DataRequestPriority.Visible, serverId) },
             source = "read_inbox_all",
             mapper = { bodyText ->
                 parseReadReceiptResult(bodyText)
@@ -124,9 +130,8 @@ class RealReadReceiptRepository(
 
     private suspend fun serverContext(serverId: ServerId): ReadReceiptServerContext? {
         val session = sessionStore.readSession() ?: return null
-        val selectedId = session.currentServerId ?: return null
-        if (selectedId != serverId.value) return null
-        val server = session.servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+        val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+        val server = session.servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
         return ReadReceiptServerContext(server)
     }
 
