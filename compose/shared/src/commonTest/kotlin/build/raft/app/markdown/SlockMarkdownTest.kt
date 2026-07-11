@@ -100,7 +100,7 @@ class SlockMarkdownTest {
     fun shortPermalinkChipWidthDoesNotDoubleCountLegacyChrome() {
         val width = slockMessagePermalinkChipWidthSp("#proj", "msg").value
 
-        assertTrue(width in 92f..98f, "unexpected short permalink width: $width")
+        assertTrue(width in 84f..92f, "unexpected short permalink width: $width")
     }
 
     @Test
