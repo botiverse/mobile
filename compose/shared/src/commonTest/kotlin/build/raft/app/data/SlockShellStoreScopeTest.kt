@@ -1,6 +1,18 @@
 package build.raft.app.data
 
+import build.raft.app.model.ServerId
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,6 +36,46 @@ class SlockShellStoreScopeTest {
         assertNotSame(firstA, firstB)
         assertEquals(2, cache.size)
         assertSame(firstA, cache.remove(shellA))
+        assertEquals(1, cache.size)
+    }
+
+    @Test
+    fun cacheCreatesOneValueForConcurrentSameScopeCallers() = runBlocking {
+        val scope = SlockShellStoreScope.create("shell-concurrent", "server-1")
+        val contenderCount = 2
+        val callersEntered = atomic(0)
+        val everyCallerEntered = CompletableDeferred<Unit>()
+        val creationCount = atomic(0)
+        val start = CompletableDeferred<Unit>()
+        val cache =
+            SlockShellScopedStoreCache<Any>(
+                onGetOrPutEntered = {
+                    if (callersEntered.incrementAndGet() == contenderCount) {
+                        everyCallerEntered.complete(Unit)
+                    }
+                }
+            )
+
+        val values =
+            coroutineScope {
+                List(contenderCount) {
+                    async(Dispatchers.Default) {
+                        start.await()
+                        cache.getOrPut(scope) {
+                            // The first creator cannot finish until the other caller has
+                            // crossed the operation boundary. Without an atomic get/create,
+                            // both callers would construct a distinct live candidate here.
+                            runBlocking { everyCallerEntered.await() }
+                            creationCount.incrementAndGet()
+                            Any()
+                        }
+                    }
+                }.also { start.complete(Unit) }.awaitAll()
+            }
+
+        assertTrue(values.all { it === values.first() })
+        assertEquals(contenderCount, callersEntered.value)
+        assertEquals(1, creationCount.value)
         assertEquals(1, cache.size)
     }
 
@@ -160,6 +212,60 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun realInboxRepositoriesRouteRequestsThroughTheirShellSelections() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val shellA = SlockShellAuthSessionStore(processStore, runtimeA)
+        val shellB = SlockShellAuthSessionStore(processStore, runtimeB)
+        val networkA = ShellRecordingNetworkClient(shellA)
+        val networkB = ShellRecordingNetworkClient(shellB)
+        val repositoryA = RealInboxRepository(shellA, networkA)
+        val repositoryB = RealInboxRepository(shellB, networkB)
+
+        shellB.updateSelectedServer("server-2", "two")
+        val resultA = repositoryA.loadInitial(ServerId("server-1"))
+        val resultB = repositoryB.loadInitial(ServerId("server-2"))
+
+        assertTrue(resultA is DataResult.Empty)
+        assertTrue(resultB is DataResult.Empty)
+        assertEquals(listOf("server-1"), networkA.requestServerIds)
+        assertEquals(listOf("server-2"), networkB.requestServerIds)
+        assertEquals("server-2", processStore.readSession()?.selectedServerId)
+    }
+
+    @Test
+    fun processClearFansOutServerLossWithoutDisposingShellIdentity() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val runtimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
+        val runtimeA = runtimes.getOrPut(SlockShellStoreScope.create("shell-a", "server-1")) {
+            SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+        }
+        val runtimeB = runtimes.getOrPut(SlockShellStoreScope.create("shell-b", "server-2")) {
+            SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        }
+        SlockShellAuthSessionStore(processStore, runtimeA).readSession()
+        SlockShellAuthSessionStore(processStore, runtimeB).readSession()
+        val invalidationObserved = CompletableDeferred<Unit>()
+        val observation =
+            launch(start = CoroutineStart.UNDISPATCHED) {
+                processStore.sessionInvalidations.collect {
+                    runtimes.clearActiveServerSelections()
+                    invalidationObserved.complete(Unit)
+                }
+            }
+
+        processStore.clearSession(reason = "logout", source = "test")
+        withTimeout(5_000) { invalidationObserved.await() }
+        observation.cancel()
+
+        assertEquals(null, runtimeA.currentServerId.value)
+        assertEquals(null, runtimeB.currentServerId.value)
+        assertFalse(runtimeA.disposed.value)
+        assertFalse(runtimeB.disposed.value)
+    }
+
+    @Test
     fun disposedRuntimeStopsMatchingActiveServer() {
         val runtime = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
 
@@ -183,7 +289,36 @@ class SlockShellStoreScopeTest {
         val session = shellStore.readSession()
 
         assertEquals(null, session?.selectedServerId)
+        assertEquals(null, session?.currentServerId)
         assertEquals(null, runtime.currentServerId.value)
+
+        val network = ShellRecordingNetworkClient(shellStore)
+        val result = RealInboxRepository(shellStore, network).loadInitial(ServerId("server-1"))
+        assertTrue(result is DataResult.NoPermission)
+        assertTrue(network.requestServerIds.isEmpty())
+    }
+
+    private class ShellRecordingNetworkClient(
+        private val sessionStore: SlockAuthSessionStore
+    ) : SlockNetworkClient {
+        val requestServerIds = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            val serverId = serverIdOverride?.value ?: sessionStore.readSession()?.currentServerId
+            if (serverId.isNullOrBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
+            requestServerIds += serverId
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"items":[],"hasMore":false,"totalCount":0,"totalUnreadCount":0}"""
+            )
+        }
     }
 
     private fun session(): StoredAuthSession =

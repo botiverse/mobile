@@ -117,7 +117,7 @@ internal fun SharedHomeActivityScreen(
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val networkClient = sharedStores.networkClient
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val repository =
         remember(authStore, networkClient) {
             RealInboxRepository(
@@ -190,7 +190,7 @@ internal fun SharedHomeActivityScreen(
     val conversationDirectoryFlow =
         remember(sharedStores, state.snapshot?.server?.id) {
             state.snapshot?.server?.id
-                ?.let { serverId -> sharedStores.conversationIdentityProvider?.observeServer(serverId) }
+                ?.let { serverId -> sharedStores.conversationIdentityProvider(storeScope)?.observeServer(serverId) }
                 ?: flowOf(SharedConversationDirectoryState())
         }
     val conversationDirectory by conversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())

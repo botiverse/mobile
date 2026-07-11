@@ -1728,7 +1728,7 @@ private fun ThreadPageScreen() {
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val threadPageCoroutineScope = rememberCoroutineScope()
     var authLossReportInProgress by remember { mutableStateOf(false) }
-    val networkClient = sharedStores.networkClient
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val agentsApiClient = remember(networkClient) {
         SlockAgentsApiClient(
             transport = SlockAgentsNetworkApi(networkClient),
