@@ -230,7 +230,10 @@ private fun SettingsComputersScreen() {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             SettingsComputersContent(computersPayload) { action, itemId ->
                 when (action) {
-                    "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { pager.openSettingsComputerDetailPage(it, timeContext) }
+                    "openComputer" ->
+                        itemId?.takeIf { it.isNotBlank() }?.let {
+                            pager.openSettingsComputerDetailPage(it, timeContext, environment.storeScope)
+                        }
                     else -> bridge.log("settings_computers_unsupported_action action=$action itemId=${itemId.orEmpty()}")
                 }
             }
@@ -1821,26 +1824,31 @@ internal fun JSONObject.settingsStandaloneTimeContext(): SlockTimeContext? {
 
 internal fun Pager.openSettingsComputerDetailPage(
     computerId: String,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    storeScope: build.raft.app.data.SlockShellStoreScope,
 ) {
     val id = computerId.takeIf { it.isNotBlank() } ?: return
     val pageData =
         settingsComputerDetailPageData(
             computerId = id,
-            timeContext = timeContext
+            timeContext = timeContext,
+            storeScope = storeScope,
         )
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SETTINGS_COMPUTER_DETAIL_PAGE, pageData)
 }
 
 internal fun settingsComputerDetailPageData(
     computerId: String,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    storeScope: build.raft.app.data.SlockShellStoreScope,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_COMPUTER_DETAIL_PAGE)
         put("instanceId", "settings-computer-detail-$computerId")
         put("computerId", computerId)
         put("machineId", computerId)
+        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
         put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
         timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
         timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }

@@ -24,6 +24,7 @@ import build.raft.app.data.SlockAgentsNetworkApi
 import build.raft.app.data.SlockComputersApiClient
 import build.raft.app.data.SlockComputersNetworkApi
 import build.raft.app.data.SlockSharedStoreRegistry
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -40,7 +41,8 @@ internal data class StandaloneSettingsEnvironment(
     val computersStore: SharedComputersStore,
     val createAgentCoordinator: SharedCreateAgentCoordinator,
     val serverMembersStore: SharedServerMembersStore,
-    val settingsCapabilities: BridgeSettingsPlatformCapabilities
+    val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val storeScope: SlockShellStoreScope,
 )
 
 @Composable
@@ -48,10 +50,18 @@ internal fun rememberStandaloneSettingsEnvironment(
     pager: Pager,
     bridge: BridgeModule
 ): StandaloneSettingsEnvironment {
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
-    val networkClient = sharedStores.networkClient
-    val authDataSource = sharedStores.authDataSource
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val authDataSource = remember(sharedStores, storeScope) {
+        sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
+    }
+    val serverMembersStore = remember(sharedStores, storeScope) {
+        sharedStores.serverMembersStore(storeScope)
+    }
     val computersApiClient =
         remember(networkClient) {
             SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
@@ -97,7 +107,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                         warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
                     ),
                 computersSource = computersStore,
-                serverMembersStore = sharedStores.serverMembersStore,
+                serverMembersStore = serverMembersStore,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository =
                     PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
@@ -110,14 +120,23 @@ internal fun rememberStandaloneSettingsEnvironment(
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
             )
         }
-    return remember(dataSource, authDataSource, computersStore, createAgentCoordinator, sharedStores.serverMembersStore, settingsCapabilities) {
+    return remember(
+        dataSource,
+        authDataSource,
+        computersStore,
+        createAgentCoordinator,
+        serverMembersStore,
+        settingsCapabilities,
+        storeScope,
+    ) {
         StandaloneSettingsEnvironment(
             dataSource = dataSource,
             authDataSource = authDataSource,
             computersStore = computersStore,
             createAgentCoordinator = createAgentCoordinator,
-            serverMembersStore = sharedStores.serverMembersStore,
-            settingsCapabilities = settingsCapabilities
+            serverMembersStore = serverMembersStore,
+            settingsCapabilities = settingsCapabilities,
+            storeScope = storeScope,
         )
     }
 }
@@ -150,7 +169,7 @@ internal fun StandaloneSettingsEffectHandler(
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
             }
             is SharedSettingsEffect.OpenComputer -> {
-                pager.openSettingsComputerDetailPage(effect.machineId, null)
+                pager.openSettingsComputerDetailPage(effect.machineId, null, environment.storeScope)
             }
             is SharedSettingsEffect.ClearStorage -> {
                 val result = environment.settingsCapabilities.clearStorage(effect.target)

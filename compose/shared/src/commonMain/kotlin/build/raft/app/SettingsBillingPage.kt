@@ -67,13 +67,15 @@ internal class ComposeSettingsBillingPage : build.raft.app.base.BasePager() {
 // full-height native viewport + clean lifecycle — same reason as Release Notes
 // (task #227): rendering the WebView inside the retained multi-tab child pager
 // caused the header/webview attach-order flash.
-internal fun Pager.openSettingsBillingPage() {
+internal fun Pager.openSettingsBillingPage(storeScope: build.raft.app.data.SlockShellStoreScope) {
     acquireModule<com.tencent.kuikly.core.module.RouterModule>(
         com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
     ).openPage(
         SETTINGS_BILLING_PAGE,
         com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
             put("pageName", SETTINGS_BILLING_PAGE)
+            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
         }
     )
 }
@@ -281,6 +283,9 @@ private fun SettingsBillingScreenBody(pager: Pager) {
             pager.pageData.params.optString("instanceId")
         )
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val billingAuthStore = remember(sharedStores, environment.storeScope) {
+        sharedStores.authStore(environment.storeScope)
+    }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "standalone-settings-billing") {
             SharedSettingsViewModel(environment.dataSource)
@@ -291,8 +296,8 @@ private fun SettingsBillingScreenBody(pager: Pager) {
         bridge.log("settings_billing_open instanceId=${launchPayload.instanceId}")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
     }
-    LaunchedEffect(sharedStores.authStore) {
-        session = runCatching { sharedStores.authStore.readSession() }.getOrNull()
+    LaunchedEffect(billingAuthStore) {
+        session = runCatching { billingAuthStore.readSession() }.getOrNull()
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsBillingWebViewContent(

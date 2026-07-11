@@ -8,6 +8,7 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -2023,6 +2024,66 @@ class SlockAppShellTest {
     fun authChooseServerRouteCarriesShellChromeIntentOnlyWhenRequested() {
         assertEquals(false, authChooseServerPageData().optBoolean("slockChooseServerFromShell", false))
         assertEquals(true, authChooseServerPageData(fromShell = true).optBoolean("slockChooseServerFromShell", false))
+    }
+
+    @Test
+    fun authChooseServerRoutePreservesOriginatingDocumentIdentity() {
+        val pageData =
+            authChooseServerPageData(
+                fromShell = true,
+                storeScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                documentShell = true
+            )
+
+        assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
+        assertEquals("server-a", pageData.optString("serverId"))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
+    }
+
+    @Test
+    fun documentChooserCrossServerSelectionTargetsNewDocumentIdentity() {
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                sourceDocumentShell = true,
+                selectedServerId = "server-b",
+                suppressRestoreLanding = true
+            )
+
+        assertEquals("server-b", pageData.optString("serverId"))
+        assertEquals("", pageData.optString("slockShellInstanceId"))
+        assertEquals(false, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals(true, pageData.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals(
+            true,
+            isDocumentCrossServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                sourceDocumentShell = true,
+                selectedServerId = "server-b"
+            )
+        )
+    }
+
+    @Test
+    fun sameServerDocumentSelectionKeepsOriginalReleaseScope() {
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                sourceDocumentShell = true,
+                selectedServerId = "server-a"
+            )
+
+        assertEquals("server-a", pageData.optString("serverId"))
+        assertEquals("server-shell:server-a", pageData.optString("slockShellInstanceId"))
+        assertEquals(true, pageData.optBoolean("slockDocumentShell", false))
+        assertEquals(
+            false,
+            isDocumentCrossServerSelection(
+                sourceStoreScope = SlockShellStoreScope.create("server-shell:server-a", "server-a"),
+                sourceDocumentShell = true,
+                selectedServerId = "server-a"
+            )
+        )
     }
 
     @Test

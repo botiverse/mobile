@@ -66,6 +66,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
 import build.raft.app.BuildConfig
+import build.raft.app.releaseSlockShellStoreScope
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.GoogleSocialAuthGateway
 import build.raft.app.core.data.auth.GoogleSocialAuthResult
@@ -243,6 +244,7 @@ open class SlockKuiklyActivity :
     private var homeColdStartSplashTimeoutLogged = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val kuiklySystemBackCallback =
             object : OnBackPressedCallback(true) {
@@ -268,6 +270,7 @@ open class SlockKuiklyActivity :
         onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         SlockKuiklyAdapters.init(applicationContext)
         setContentView(R.layout.activity_slock_kuikly)
+        registerAndroidShellWindow(intent)
         setupImmersiveMode()
         setupImeInsetsRelayout()
         suppressVisualKeyboard()
@@ -324,7 +327,9 @@ open class SlockKuiklyActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        androidShellLaunchTarget?.let { AndroidShellWindowRegistry.unregister(it.shellInstanceId) }
         setIntent(intent)
+        registerAndroidShellWindow(intent)
         SlockAppLog.record(
                 "SlockKuiklyActivity",
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
@@ -334,8 +339,26 @@ open class SlockKuiklyActivity :
 
     override fun onDestroy() {
         removeSlockInputFontBridge()
+        if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
+            androidShellLaunchTarget?.let { target ->
+                AndroidShellWindowRegistry.unregister(target.shellInstanceId)
+                releaseSlockShellStoreScope(target.shellInstanceId, target.serverId)
+            }
+        }
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
+    }
+
+    private fun registerAndroidShellWindow(intent: Intent?) {
+        if (resolvedPageName(intent) != PAGE_APP_SHELL) return
+        val target = androidShellLaunchTargetFromPageData(appShellPageDataFromIntent(intent)) ?: return
+        androidShellLaunchTarget = target
+        AndroidShellWindowRegistry.register(target)
+        SlockAppLog.record(
+            "SlockKuiklyActivity",
+            "shell_window_registered shellInstanceId=${target.shellInstanceId} " +
+                "serverId=${target.serverId.orEmpty()} document=${target.documentShell}",
+        )
     }
 
     override fun onPause() {
@@ -559,21 +582,29 @@ open class SlockKuiklyActivity :
         SlockKuiklyPerformanceDiagnostics.recordPerformance("activity", pageName, data)
     }
 
-    override fun useHostDisplayMetrics(): Boolean = true
+    override fun useHostDisplayMetrics(): Boolean =
+        shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)
 
     private fun installSlockInputFontBridge(container: ViewGroup) {
-        SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
+        updateDefaultShellDisplayMetrics(container)
         val listener =
                 ViewTreeObserver.OnGlobalLayoutListener {
                     container.applySlockInputTypeface()
-                    SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
+                    updateDefaultShellDisplayMetrics(container)
                 }
         inputFontLayoutListener = listener
         container.viewTreeObserver.addOnGlobalLayoutListener(listener)
         container.post {
             container.applySlockInputTypeface()
-            SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
+            updateDefaultShellDisplayMetrics(container)
         }
+    }
+
+    private fun updateDefaultShellDisplayMetrics(container: ViewGroup) {
+        // Document windows use their Activity/window resources. They must not overwrite the
+        // singleton adapter metrics retained for the legacy/default app shell.
+        if (!shouldUseGlobalHostDisplayMetrics(androidShellLaunchTarget)) return
+        SlockKuiklyFontAdapter.updateHostDisplayMetrics(container)
     }
 
     private fun removeSlockInputFontBridge() {
@@ -1194,7 +1225,8 @@ open class SlockKuiklyActivity :
             context: Context,
             pageName: String,
             pageData: JSONObject = JSONObject(),
-            clearTask: Boolean = false
+            clearTask: Boolean = false,
+            documentShellId: String? = null,
         ) {
             SlockKuiklyAdapters.init(context.applicationContext)
             val hostPageData = pageData.withAndroidHostPageData(pageName)
@@ -1204,6 +1236,9 @@ open class SlockKuiklyActivity :
                             .putExtra(KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(hostPageData).text)
             if (clearTask) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            } else if (!documentShellId.isNullOrBlank()) {
+                starter.data = Uri.parse("raft-shell://window/${Uri.encode(documentShellId)}")
+                starter.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_RETAIN_IN_RECENTS)
             } else if (context !is Activity) {
                 starter.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
@@ -1213,9 +1248,16 @@ open class SlockKuiklyActivity :
         fun startAppShell(
             context: Context,
             pageData: JSONObject = JSONObject(),
-            clearTask: Boolean = false
+            clearTask: Boolean = false,
+            documentShellId: String? = null,
         ) {
-            start(context, PAGE_APP_SHELL, pageData, clearTask)
+            val target =
+                androidShellLaunchTargetFromPageData(pageData)
+                    ?: resolveAndroidShellLaunchTarget(pageData)
+            val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
+            val resolvedDocumentShellId =
+                documentShellId ?: target.shellInstanceId.takeIf { target.documentShell && !clearTask }
+            start(context, PAGE_APP_SHELL, resolvedPageData, clearTask, resolvedDocumentShellId)
         }
 
         fun startAuthChooseServer(
@@ -1488,7 +1530,11 @@ internal fun safePickedThreadAttachmentFileName(
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {
-        SlockKuiklyActivity.start(context, pageName, pageData)
+        if (pageName == SlockKuiklyPages.APP_SHELL) {
+            SlockKuiklyActivity.startAppShell(context, pageData)
+        } else {
+            SlockKuiklyActivity.start(context, pageName, pageData)
+        }
         if (SlockKuiklyActivity.shouldReplaceCurrentPage(pageData)) {
             (context as? Activity)?.finish()
         }
