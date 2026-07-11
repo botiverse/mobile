@@ -9,7 +9,6 @@ import build.raft.app.SlockModalAnchoredPopover
 import build.raft.app.SlockShadow
 import build.raft.app.SlockStroke
 import build.raft.app.SlockType
-import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -190,7 +189,13 @@ private fun SlockBrutalSelectMenu(
         modifier =
             modifier
                 .height(listHeight + shadowOffset)
-                .slockFloatingContentClickTarget()
+                // This panel contains a LazyColumn. nativeDispatchCapture(),
+                // which slockFloatingContentClickTarget() installs on
+                // Android/OHOS, takes the drag stream before Kuikly's lazy
+                // list can scroll. A plain no-op clickable still keeps taps
+                // on empty menu space from reaching the dismiss barrier while
+                // allowing child rows and the list's scroll handler to win.
+                .clickable(onClick = {})
     ) {
         Box(
             modifier =
