@@ -84,15 +84,20 @@ if (!Array.isArray(pack?.summary?.modules) || pack.summary.modules.length === 0)
 NODE
 
 HAPS=()
-while IFS= read -r -d '' hap; do
-  HAPS+=("$hap")
-done < <(find "$WORK_DIR/app" -type f -name '*.hap' -print0)
+while IFS= read -r -d '' hap; do HAPS+=("$hap"); done \
+  < <(find "$(dirname "$APP_FILE")" -maxdepth 1 -type f -name '*.signed.hap' -print0)
 if [[ ${#HAPS[@]} -eq 0 ]]; then
-  echo "The .app package does not contain a HAP" >&2
+  echo "No separately signed HAP was produced next to the .app" >&2
   exit 1
 fi
 
 mkdir -p "$WORK_DIR/verified"
+java -jar "$SIGN_TOOL" verify-app \
+  -inFile "$APP_FILE" \
+  -outCertChain "$WORK_DIR/verified/app.cer" \
+  -outProfile "$WORK_DIR/verified/app.p7b" >/dev/null
+[[ -s "$WORK_DIR/verified/app.cer" ]]
+[[ -s "$WORK_DIR/verified/app.p7b" ]]
 for hap in "${HAPS[@]}"; do
   name="$(basename "$hap" .hap)"
   java -jar "$SIGN_TOOL" verify-app \
