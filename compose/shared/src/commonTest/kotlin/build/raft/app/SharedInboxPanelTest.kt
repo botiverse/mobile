@@ -31,6 +31,19 @@ import kotlin.test.assertNotEquals
 
 class SharedInboxPanelTest {
     @Test
+    fun activityDoneClickIdentityTracksLazyRowIdentity() {
+        val first = activityItem(key = "channel:first")
+        val second = activityItem(key = "channel:second")
+
+        assertEquals("activity-done:channel:first", first.activityDoneClickIdentity())
+        assertNotEquals(first.activityDoneClickIdentity(), second.activityDoneClickIdentity())
+        assertEquals(
+            first.activityDoneClickIdentity(),
+            first.copy(lastMessagePreview = "display-only update").activityDoneClickIdentity()
+        )
+    }
+
+    @Test
     fun replyPrewarmMarkerRequiresVisiblePlannerEligibleUnreadThreadIdentity() {
         val unreadReply =
             InboxItem(
