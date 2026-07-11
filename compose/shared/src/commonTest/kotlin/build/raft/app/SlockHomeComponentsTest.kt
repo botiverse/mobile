@@ -1084,6 +1084,18 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeChannelSectionsPutJointChannelsBeforeRegularChannels() {
+        assertEquals(
+            listOf(SlockHomeChannelSection.JointChannels, SlockHomeChannelSection.Channels),
+            homeChannelSectionOrder(hasJointChannels = true)
+        )
+        assertEquals(
+            listOf(SlockHomeChannelSection.Channels),
+            homeChannelSectionOrder(hasJointChannels = false)
+        )
+    }
+
+    @Test
     fun sharedListBeyondBoundsPremeasuresShortListsWithoutGrowingUnbounded() {
         assertEquals(3, sharedListBeyondBoundsItemCount(0))
         assertEquals(12, sharedListBeyondBoundsItemCount(12))
