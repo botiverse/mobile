@@ -120,6 +120,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -138,6 +139,7 @@ private data class SharedThreadPayloadCacheKey(
 
 private const val SharedThreadPrewarmMaxConcurrency = 2
 private const val SharedThreadPrewarmStartIntervalMillis = 100L
+private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 
 private data class PendingReactionRealtimeGuard(
     val messageId: String,
@@ -2288,7 +2290,24 @@ internal class SharedThreadDataSource(
             }
         return@coroutineScope when (initialResult) {
             is DataResult.Content -> {
-                val parentMessage = parentContextDeferred.await()
+                val hasReplyContent = initialResult.data.hasRenderableReplyThreadMessages(basePayload)
+                val parentMessage =
+                    if (hasReplyContent) {
+                        parentContextDeferred.await()
+                    } else {
+                        withTimeoutOrNull(SharedThreadZeroReplyOriginHydrationGraceMillis) {
+                            parentContextDeferred.await()
+                        }
+                    }
+                val parentContextTimedOut = !hasReplyContent && !parentContextDeferred.isCompleted
+                if (parentContextTimedOut) {
+                    parentContextDeferred.cancel()
+                    diagnosticsLogger(
+                        "thread_parent_context_grace_expired parentChannelId=$parentChannelId " +
+                            "parentMessageId=$parentMessageId " +
+                            "graceMs=$SharedThreadZeroReplyOriginHydrationGraceMillis"
+                    )
+                }
                 val resolvedThreadId =
                     initialResult.data.conversation.thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }
                         ?: initialResult.data.conversation.channelId?.value?.takeIf { it.isNotBlank() }
@@ -2304,15 +2323,24 @@ internal class SharedThreadDataSource(
                             streamChannelId = resolvedThreadId
                         )
                     }
+                val originResolvedBase =
+                    if (parentMessage == null) {
+                        resolvedBase.copy(
+                            originStatus = "missing",
+                            originErrorCode = null
+                        )
+                    } else {
+                        resolvedBase
+                    }
                 val payload =
                     initialResult.data
                         .withReplyParentMessage(parentChannelId, parentMessageId, parentMessage)
                         .rememberReplyParentMessage(parentChannelId, parentMessageId)
                         .withReplyParentMessageFromContext(
-                            basePayload = resolvedBase,
+                            basePayload = originResolvedBase,
                             allowNetworkHydration = false
                         )
-                        .toKuiklyThreadPayload(resolvedBase, session.user.id)
+                        .toKuiklyThreadPayload(originResolvedBase, session.user.id)
                 DataResult.Content(
                     if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
                         payload.toEmptyReplyThreadPayload()

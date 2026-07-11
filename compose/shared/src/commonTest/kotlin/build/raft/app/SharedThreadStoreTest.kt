@@ -4858,6 +4858,74 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startWithZeroReplyTaskDoesNotWaitIndefinitelyForOriginContext() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val diagnostics = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Empty(EmptyReason.NoMessages),
+                messageContextDelayMillis = 5_000L,
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-task-600"),
+                            changed = true,
+                            parentMessageId = MessageId("task-message-600"),
+                            replyCount = 0
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                diagnosticsLogger = diagnostics::add
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add
+            )
+        val initialPayload =
+            basePayload().replyThreadLoadingPayload(
+                parentMessageId = "task-message-600",
+                parentChannelId = "channel-1",
+                threadChannelId = null
+            ).copy(originStatus = "loading")
+
+        withTimeout(2_000L) {
+            store.accept(SharedThreadIntent.Start(initialPayload))
+        }
+
+        val payload = store.state.value.payload
+        assertEquals("empty", payload.status)
+        assertEquals("thread-task-600", payload.sourceThreadId)
+        assertEquals("thread-task-600", payload.streamChannelId)
+        assertEquals("thread-task-600", payload.resolveThreadComposer().streamChannelId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals(null, payload.originMessage)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("task-message-600")),
+            repository.getReplyThreadRequests
+        )
+        assertEquals(listOf(MessageId("task-message-600")), repository.getMessageContextRequests)
+        assertTrue(diagnostics.any { it.startsWith("thread_parent_context_grace_expired ") })
+        assertTrue(
+            diagnostics.any {
+                it.contains("thread_refresh_result") &&
+                    it.contains("threadId=") &&
+                    it.contains("result=content") &&
+                    it.contains("originStatus=missing")
+            }
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun refreshWithUnchangedSnapshotKeepsTimelineList() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -7873,6 +7941,7 @@ class SharedThreadStoreTest {
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> =
             DataResult.Error(ScreenError(code = "message_context_not_configured", retryable = false)),
+        var messageContextDelayMillis: Long = 0L,
         var createThreadResult: DataResult<ThreadActionResult> =
             DataResult.Content(
                 ThreadActionResult(
@@ -7964,6 +8033,9 @@ class SharedThreadStoreTest {
         override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
             getMessageContextRequests += messageId
             getMessageContextChannelIdRequests += channelId
+            if (messageContextDelayMillis > 0L) {
+                delay(messageContextDelayMillis)
+            }
             return messageContextResult
         }
 
