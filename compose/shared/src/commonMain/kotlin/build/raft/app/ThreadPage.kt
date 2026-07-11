@@ -1731,6 +1731,7 @@ private fun ThreadPageScreen() {
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val threadPageCoroutineScope = rememberCoroutineScope()
     var authLossReportInProgress by remember { mutableStateOf(false) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
@@ -1798,7 +1799,7 @@ private fun ThreadPageScreen() {
             networkClient,
             authStore,
             memberRepository,
-            sharedStores.serverMembersStore,
+            serverMembersStore,
             channelRepository,
             sharedStores.threadMessageStore,
             createAgentCoordinator
@@ -1807,7 +1808,7 @@ private fun ThreadPageScreen() {
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
                 memberRepository = memberRepository,
-                serverMembersStore = sharedStores.serverMembersStore,
+                serverMembersStore = serverMembersStore,
                 conversationRepository =
                     RealConversationRepository(
                         sessionStore = authStore,
@@ -1879,7 +1880,7 @@ private fun ThreadPageScreen() {
         tasksDataStore = sharedStores.tasksDataStore,
         computersStore = computersStore,
         membersStore = membersStore,
-        serverMembersStore = sharedStores.serverMembersStore,
+        serverMembersStore = serverMembersStore,
         conversationIdentityProvider = sharedStores.conversationIdentityProvider(storeScope),
         storeScope = storeScope,
         composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,

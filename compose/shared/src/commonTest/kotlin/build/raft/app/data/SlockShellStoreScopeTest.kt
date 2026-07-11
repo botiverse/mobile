@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import build.raft.app.model.MemberId
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -235,6 +236,53 @@ class SlockShellStoreScopeTest {
     }
 
     @Test
+    fun scopedMembersStoreKeepsRefreshAndAgentMutationOnItsShellServer() = runBlocking {
+        val processStore = InMemorySlockAuthSessionStore(session())
+        val shellA =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+            )
+        val shellB =
+            SlockShellAuthSessionStore(
+                processStore,
+                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+            )
+        val networkA = MemberStoreRecordingNetworkClient(shellA)
+        val membersStore =
+            SharedServerMembersStore(
+                memberRepository = RealMemberRepository(sessionStore = shellA, networkClient = networkA)
+            )
+
+        shellB.updateSelectedServer("server-2", "two")
+        val refresh = membersStore.refreshMembers(ServerId("server-1"), force = true)
+        val mutation =
+            membersStore.updateAgentProfile(
+                serverId = ServerId("server-1"),
+                request =
+                    AgentProfileUpdateRequest(
+                        agentId = MemberId("agent-1"),
+                        displayName = "Builder",
+                        description = null
+                    ),
+                priority = DataRequestPriority.Foreground
+            )
+
+        assertTrue(refresh is DataResult.Content)
+        assertTrue(mutation is DataResult.Content)
+        assertEquals("server-2", processStore.readSession()?.selectedServerId)
+        assertEquals(
+            listOf(
+                "server-1:servers/server-1/members:GET",
+                "server-1:agents:GET",
+                "server-1:servers/server-1/machines:GET",
+                "server-1:agents/agent-1:PATCH"
+            ),
+            networkA.requests
+        )
+    }
+
+    @Test
     fun processClearFansOutServerLossWithoutDisposingShellIdentity() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(session())
         val runtimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
@@ -319,6 +367,37 @@ class SlockShellStoreScopeTest {
                 bodyText = """{"items":[],"hasMore":false,"totalCount":0,"totalUnreadCount":0}"""
             )
         }
+    }
+
+    private class MemberStoreRecordingNetworkClient(
+        private val sessionStore: SlockAuthSessionStore
+    ) : SlockNetworkClient {
+        val requests = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            val serverId = serverIdOverride?.value ?: sessionStore.readSession()?.currentServerId
+            if (serverId.isNullOrBlank()) return HomeNetworkResponse(code = 401, bodyText = null)
+            requests += "$serverId:$path:$method"
+            return HomeNetworkResponse(code = 200, bodyText = responseBody(path))
+        }
+
+        private fun responseBody(path: String): String =
+            when (path) {
+                "servers/server-1/members" ->
+                    """{"members":[{"userId":"user-1","name":"artin","displayName":"Artin"}]}"""
+                "agents" -> "[]"
+                "servers/server-1/machines" -> "[]"
+                "agents/agent-1" ->
+                    """{"id":"agent-1","name":"builder","displayName":"Builder","status":"online"}"""
+                else -> "{}"
+            }
     }
 
     private fun session(): StoredAuthSession =

@@ -829,6 +829,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -858,7 +859,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         authStore,
         networkClient,
         settingsCapabilities,
-        sharedStores.serverMembersStore,
+        serverMembersStore,
         sharedStores.composerDraftPersistSlice,
         sharedStores.homeSavedStateCache,
         timeContext,
@@ -875,7 +876,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             bridge = bridge,
             authStore = authStore,
             networkClient = networkClient,
-            serverMembersStore = sharedStores.serverMembersStore,
+            serverMembersStore = serverMembersStore,
             composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
             settingsCapabilities = settingsCapabilities,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
@@ -3624,7 +3625,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
                                 },
-                                serverMembersStore = sharedStores.serverMembersStore,
+                                serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
                                 bottomContentPadding = appShellBottomContentInset,
                                 initialListPosition =
@@ -3649,7 +3650,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             computersStore = appShellComputersStore,
                             agentDetailStore = sharedStores.agentDetailStore,
                             agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore,
-                            serverMembersStore = sharedStores.serverMembersStore,
+                            serverMembersStore = appShellServerMembersStore,
                             membersRefreshKey = membersListRefreshKey,
                             initialContent =
                                 sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
@@ -3881,7 +3882,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         SlockForegroundBannerHost(
             banner = foregroundMessageBanner,
             topSafeArea = shellScope.topSafeArea,
-            serverMembersStore = sharedStores.serverMembersStore,
+            serverMembersStore = appShellServerMembersStore,
             currentServerStore = sharedStores.localDataStore,
             onBannerClick = { target ->
                 foregroundMessageBanner = null

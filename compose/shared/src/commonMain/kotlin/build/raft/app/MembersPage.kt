@@ -942,6 +942,7 @@ internal fun MembersPageContent() {
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -975,7 +976,7 @@ internal fun MembersPageContent() {
             logger = { message -> bridge.log("members_settings_repository $message") }
         )
     }
-    val membersDataSource = remember(networkClient, authStore, settingsRepository) {
+    val membersDataSource = remember(networkClient, authStore, settingsRepository, serverMembersStore) {
         build.raft.app.data.SharedMembersDataSource(
             memberRepository = build.raft.app.data.RealMemberRepository(
                 sessionStore = authStore,
@@ -983,7 +984,7 @@ internal fun MembersPageContent() {
                 logger = { message -> bridge.log("members_member_repository $message") }
             ),
             settingsRepository = settingsRepository,
-            serverMembersStore = sharedStores.serverMembersStore
+            serverMembersStore = serverMembersStore
         )
     }
     var maxAgents by remember { mutableStateOf(-1) }
@@ -1037,12 +1038,12 @@ internal fun MembersPageContent() {
             )
         }
     }
-    val serverMembersEntry by remember(sharedStores.serverMembersStore, serverId) {
+    val serverMembersEntry by remember(serverMembersStore, serverId) {
         val cleanServerId = serverId.trim()
         if (cleanServerId.isBlank()) {
             flowOf(SharedServerMembersEntry(serverId = ""))
         } else {
-            sharedStores.serverMembersStore.serverMembersEntryFlow(ServerId(cleanServerId))
+            serverMembersStore.serverMembersEntryFlow(ServerId(cleanServerId))
         }
     }.collectAsState(SharedServerMembersEntry(serverId = serverId))
     val localMembers =
@@ -1061,20 +1062,20 @@ internal fun MembersPageContent() {
         optimisticMembers = emptyList()
     }
     val agentStatusResolver =
-        remember(sharedStores.serverMembersStore, serverId) {
-            slockAgentStatusResolver(sharedStores.serverMembersStore, serverId)
+        remember(serverMembersStore, serverId) {
+            slockAgentStatusResolver(serverMembersStore, serverId)
         }
     val memberAvatarResolver =
-        remember(sharedStores.serverMembersStore, serverId) {
-            slockMemberAvatarResolver(sharedStores.serverMembersStore, serverId)
+        remember(serverMembersStore, serverId) {
+            slockMemberAvatarResolver(serverMembersStore, serverId)
         }
     val membersRefreshing = serverMembersEntry.status == build.raft.app.data.SharedServerMembersLoadStatus.InFlight
-    val refreshMembers: () -> Unit = remember(sharedStores.serverMembersStore, serverId) {
+    val refreshMembers: () -> Unit = remember(serverMembersStore, serverId) {
         {
             val cleanServerId = serverId.trim()
             if (cleanServerId.isNotBlank()) {
                 scope.launch {
-                    sharedStores.serverMembersStore.refreshMembers(
+                    serverMembersStore.refreshMembers(
                         ServerId(cleanServerId),
                         DataRequestPriority.Foreground,
                         force = true
@@ -1083,9 +1084,9 @@ internal fun MembersPageContent() {
             }
         }
     }
-    LaunchedEffect(sharedStores.serverMembersStore, serverId) {
+    LaunchedEffect(serverMembersStore, serverId) {
         val cleanServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        sharedStores.serverMembersStore.refreshMembers(ServerId(cleanServerId), DataRequestPriority.Background)
+        serverMembersStore.refreshMembers(ServerId(cleanServerId), DataRequestPriority.Background)
     }
     val computersSlice by computersStore
         .computerPickerSliceFlow(serverId)
@@ -1123,7 +1124,7 @@ internal fun MembersPageContent() {
                     )
                     optimisticMembers = optimisticMembers + profile
                     serverId.trim().takeIf { it.isNotBlank() }?.let { cleanServerId ->
-                        sharedStores.serverMembersStore.refreshMembers(
+                        serverMembersStore.refreshMembers(
                             ServerId(cleanServerId),
                             DataRequestPriority.Background,
                             force = true
@@ -1661,7 +1662,7 @@ private fun rememberMemberDetailRouteProvider(
         }
     val agentDetailStore = sharedStores.agentDetailStore
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
-    val serverMembersStore = sharedStores.serverMembersStore
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()
     val settingsCapabilities =
         remember(bridge, scope) {
