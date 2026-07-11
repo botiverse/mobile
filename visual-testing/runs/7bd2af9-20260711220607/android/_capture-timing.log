@@ -1,0 +1,44 @@
+34037 START captureAuthLoginSigning
+42570 OK captureAuthLoginSigning durationMs=8533
+42652 START captureUiButtonStates
+46057 OK captureUiButtonStates durationMs=3422
+46285 START captureThreadMessageRowRichContent
+50185 OK captureThreadMessageRowRichContent durationMs=3921
+50208 START captureChannelSettingsPanel
+55161 OK captureChannelSettingsPanel durationMs=4953
+55236 START captureHomeTitlebarStates
+58055 OK captureHomeTitlebarStates durationMs=2820
+58223 START captureUiTextareaStates
+61460 OK captureUiTextareaStates durationMs=3237
+61671 START captureNavigationTabbarStates
+64416 OK captureNavigationTabbarStates durationMs=2745
+64544 START captureTokenPalette
+67331 OK captureTokenPalette durationMs=2785
+67475 START captureChannelMembersPanel
+71081 OK captureChannelMembersPanel durationMs=3611
+71114 START captureThreadMessageSharePreview
+73517 OK captureThreadMessageSharePreview durationMs=2403
+73675 START captureMembersCreateAgentClaudeCustomProviderDialog
+77484 OK captureMembersCreateAgentClaudeCustomProviderDialog durationMs=3809
+77570 START captureMembersHumanDetailProfileScreen
+81122 OK captureMembersHumanDetailProfileScreen durationMs=3553
+81190 START captureMembersAgentDetailRemindersScreen
+84698 OK captureMembersAgentDetailRemindersScreen durationMs=3508
+84764 START captureHomeSearchScopeDropdown
+90538 OK captureHomeSearchScopeDropdown durationMs=5774
+90728 START captureSettingsAdministrationOnboarding
+93147 OK captureSettingsAdministrationOnboarding durationMs=2419
+93344 START captureRaftUiWipOverlayShellsStates
+95841 OK captureRaftUiWipOverlayShellsStates durationMs=2497
+95909 START captureAuthForgotPasswordScreen
+109147 OK captureAuthForgotPasswordScreen durationMs=13238
+109358 START captureMembersAgentDetailProfile
+113707 OK captureMembersAgentDetailProfile durationMs=4349
+113823 START captureHomeSavedResults
+119568 OK captureHomeSavedResults durationMs=5746
+119792 START captureRaftUiControlledOpenOverlays
+122316 OK captureRaftUiControlledOpenOverlays durationMs=2524
+122458 START captureSettingsConnectedAppsFullHeight
+127071 OK captureSettingsConnectedAppsFullHeight durationMs=4612
+127224 START captureAuthChooseServerScreen
+132925 OK captureAuthChooseServerScreen durationMs=5700

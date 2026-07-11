@@ -12,9 +12,9 @@
                 "rect": { "x": 0, "y": 0, "width": 390, "height": 844 }
               },
               "validation": {
-                "uniqueColors": 130,
-                "dominantRatio": 0.9937599,
-                "errors": ["bitmap is 99.38% one color"]
+                "uniqueColors": 131,
+                "dominantRatio": 0.99372643,
+                "errors": ["bitmap is 99.37% one color"]
               },
               "diagnostics": {
     "displayWidthPx": 1440,
@@ -27,5 +27,5 @@
     "laidOutViews": 29,
     "visibleContentLeafViews": 0
 },
-              "capturedAt": "1783747252754"
+              "capturedAt": "1783806837581"
             }

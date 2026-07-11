@@ -1,19 +1,19 @@
 # Raft Visual Testing
 
-Generated: 2026-07-11 05:34:37 UTC
-Latest run: ea5a365-20260711052840
-Latest commit: ea5a365-20260711052840
-Commit subject: fix(home): show joint channels before channels (#601)
+Generated: 2026-07-11 22:08:11 UTC
+Latest run: 7bd2af9-20260711220607
+Latest commit: 7bd2af9-20260711220607
+Commit subject: feature-flags: send platform=mobile in evaluate request (slock #186) (#705)
 Providers: react vs android, react vs ios, android vs ios
-Summary: total 90, same 0, pass 0, basic-pass 4, different 82, missing 4
-AI analysis: ready 86 / total 90, pending 4
+Summary: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
+AI analysis: ready 45 / total 90, pending 45
 Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 90, same 0, pass 0, basic-pass 4, different 82, missing 4
-- react__ios: total 90, same 0, pass 12, basic-pass 9, different 58, missing 11
+- react__android: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
+- react__ios: total 90, same 0, pass 11, basic-pass 9, different 59, missing 11
 - android__ios: total 90, same 0, pass 13, basic-pass 12, different 57, missing 8
 
 ## Capture Type Coverage
@@ -118,6 +118,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 7bd2af9-20260711220607: react vs android, total 90, pass 0, basic-pass 1, different 85, matrix runs/7bd2af9-20260711220607/component-matrix.json, page runs/7bd2af9-20260711220607/
 - ea5a365-20260711052840: react vs android, total 90, pass 0, basic-pass 4, different 82, matrix runs/ea5a365-20260711052840/component-matrix.json, page runs/ea5a365-20260711052840/
 - f845b2d-20260710220551: react vs android, total 89, pass 0, basic-pass 2, different 83, matrix runs/f845b2d-20260710220551/component-matrix.json, page runs/f845b2d-20260710220551/
 - 6df430f-20260710131759: react vs android, total 89, pass 0, basic-pass 6, different 79, matrix runs/6df430f-20260710131759/component-matrix.json, page runs/6df430f-20260710131759/

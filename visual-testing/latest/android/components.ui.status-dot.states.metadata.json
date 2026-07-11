@@ -16,13 +16,13 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 300,
+                  "uniqueColors": 305,
                   "dominantRatio": 0.9576306
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2460,
+    "displayHeightPx": 2342,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
@@ -32,5 +32,5 @@
     "visibleContentLeafViews": 5
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783747172086"
+              "capturedAt": "1783806715699"
             }

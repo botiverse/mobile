@@ -16,21 +16,21 @@
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 400,
-                  "dominantRatio": 0.7305019
+                  "uniqueColors": 423,
+                  "dominantRatio": 0.73050493
                 }
               },
               "diagnostics": {
     "displayWidthPx": 1170,
-    "displayHeightPx": 2342,
+    "displayHeightPx": 2460,
     "densityDpi": 480,
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 129,
-    "laidOutViews": 126,
+    "totalViews": 130,
+    "laidOutViews": 127,
     "visibleContentLeafViews": 2
 },
               "clampedToShortWindow": false,
-              "capturedAt": "1783747234810"
+              "capturedAt": "1783806829853"
             }
