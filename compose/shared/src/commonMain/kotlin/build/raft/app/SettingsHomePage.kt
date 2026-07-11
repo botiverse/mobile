@@ -828,7 +828,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
         }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val networkClient = sharedStores.networkClient
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val sharedPreferenceStore = remember { slockSharedPreferenceStore() }
     val chatLayoutPreferenceRepository =
         remember(sharedPreferenceStore) {
@@ -1926,6 +1926,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val shellRuntime = remember(sharedStores, storeScope) { sharedStores.shellRuntime(storeScope) }
+    val appShellServerMembersStore =
+        remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val runtimeServerId by shellRuntime.currentServerId.collectAsState()
     val navigationStoreScope = remember(storeScope.shellInstanceId, runtimeServerId) {
         SlockShellStoreScope.create(
@@ -1936,22 +1938,22 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val authDataSource = remember(sharedStores, storeScope) {
         sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
     }
-    val appShellNetworkClient = sharedStores.networkClient
+    val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val appShellCoroutineScope = rememberCoroutineScope()
     val settingsCapabilities =
         remember(bridge, appShellCoroutineScope) {
             BridgeSettingsPlatformCapabilities(bridge, appShellCoroutineScope.kuiklyBridgeCallContext())
         }
     val memberRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealMemberRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 logger = slockLogger("SlockAppShell", "app_shell_member_repository")
             )
         }
     val homeDataSource =
-        remember(memberRepository, sharedStores.serverMembersStore, settingsCapabilities) {
+        remember(memberRepository, appShellServerMembersStore, settingsCapabilities) {
             SharedHomeDataSource(
                 sessionStore = shellAuthStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
@@ -1959,7 +1961,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 computersApi = SlockComputersNetworkApi(appShellNetworkClient),
                 appUpdateStatusProvider = { settingsCapabilities.checkQuiverUpdateStatus() },
                 memberRepository = memberRepository,
-                serverMembersStore = sharedStores.serverMembersStore,
+                serverMembersStore = appShellServerMembersStore,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session, slockLogger("SlockHomeParse"))
                 },
@@ -1967,25 +1969,25 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
         }
     val channelRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealChannelRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = slockLogger("SlockChannelRepository", "shared_channel_repository", SlockLogLevel.Warn)
             )
         }
     val homeReadReceiptRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealReadReceiptRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = slockLogger("SlockReadReceipt", "shared_home_read_receipt", SlockLogLevel.Warn)
             )
         }
     val conversationRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealConversationRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = slockLogger("SlockConversationRepository", "shared_conversation_repository", SlockLogLevel.Warn)
             )
@@ -2010,17 +2012,17 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
         }
     val savedRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealSavedRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = slockLogger("SlockSavedRepository", "shared_saved_repository", SlockLogLevel.Warn)
             )
         }
     val searchRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealSearchRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = slockLogger("SlockSearchRepository", "shared_search_repository", SlockLogLevel.Warn)
             )
@@ -2107,18 +2109,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     }
     val homeActivityRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealInboxRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 logger = slockLogger("SlockHomeActivity", "shared_home_activity"),
                 warningLogger = slockLogger("SlockHomeActivity", "shared_home_activity_warning", SlockLogLevel.Warn)
             )
         }
     val homeSidebarOrderRepository =
-        remember {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 logger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order"),
                 warningLogger = slockLogger("SlockHomeSidebarOrder", "shared_home_sidebar_order_warning", SlockLogLevel.Warn)
@@ -2151,7 +2153,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     val homeActivityReplyThreadPrewarmDataSource =
         remember(
-            authStore,
+            shellAuthStore,
             appShellNetworkClient,
             conversationRepository,
             sharedStores.threadMessageStore,
@@ -2159,7 +2161,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
@@ -2169,12 +2171,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeActivityStore =
         remember(
             storeScope,
-            authStore,
+            shellAuthStore,
             homeActivityRepository,
             homeReadReceiptRepository,
             conversationRepository,
             memberRepository,
-            sharedStores.serverMembersStore,
+            appShellServerMembersStore,
             homeStore,
             homeActivityReplyThreadPrewarmDataSource
         ) {
@@ -2201,9 +2203,9 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
     }
     val settingsRepository =
-        remember(appShellNetworkClient) {
+        remember(shellAuthStore, appShellNetworkClient) {
             RealSettingsRepository(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 logger = slockLogger("SlockSettingsRepository", "shared_settings_repository"),
                 warningLogger = slockLogger("SlockSettingsRepository", "shared_settings_repository_warning", SlockLogLevel.Warn),
@@ -2211,12 +2213,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             )
         }
     val settingsDataSource =
-        remember(appShellComputersStore) {
+        remember(shellAuthStore, appShellComputersStore) {
             SharedSettingsDataSource(
-                sessionStore = authStore,
+                sessionStore = shellAuthStore,
                 settingsRepository = settingsRepository,
                 computersSource = appShellComputersStore,
-                serverMembersStore = sharedStores.serverMembersStore,
+                serverMembersStore = appShellServerMembersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
@@ -2287,11 +2289,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
         viewModel(key = "shared-home-search-saved") {
             SharedHomeSearchSavedViewModel(
-                authStore = authStore,
+                authStore = shellAuthStore,
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
-                serverMembersStore = sharedStores.serverMembersStore,
+                serverMembersStore = appShellServerMembersStore,
                 savedStateCache = sharedStores.homeSavedStateCache,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) },
                 diagnosticsLogger = slockLogger("SlockHomeSearchSaved", "shared_home_search_saved")
@@ -2341,7 +2343,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val tasksViewModel: SharedTasksViewModel =
         viewModel(key = "shared-tasks") {
             SharedTasksViewModel(
-                authStore = authStore,
+                authStore = shellAuthStore,
                 dataSource = tasksDataSource,
                 sharedTasksDataStore = sharedStores.tasksDataStore,
                 diagnosticsLogger = slockLogger("SlockTasks", "shared_tasks")
@@ -2398,10 +2400,10 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             homeStoreSelectedConversationId = homeState.selectedConversationId
         )
     )
-    LaunchedEffect(sharedStores.serverMembersStore, readyServerId, foregroundMessageBannersEnabled) {
+    LaunchedEffect(appShellServerMembersStore, readyServerId, foregroundMessageBannersEnabled) {
         val serverId = readyServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         if (!foregroundMessageBannersEnabled) return@LaunchedEffect
-        sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
+        appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
     }
     LaunchedEffect(authGateState, suppressRestoreLanding, selectedTab, readyServerId) {
         bridge.log(
@@ -3133,8 +3135,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     return@launch
                 }
                 createChannelMembers =
-                    when (val result = sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Visible)) {
-                        is DataResult.Content -> sharedStores.serverMembersStore.currentServerMembers(ServerId(serverId))
+                    when (val result = appShellServerMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Visible)) {
+                        is DataResult.Content -> appShellServerMembersStore.currentServerMembers(ServerId(serverId))
                         is DataResult.Empty,
                         is DataResult.Error,
                         is DataResult.NoPermission -> emptyList()
@@ -3292,7 +3294,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         val agentId = event.subjectId?.takeIf { it.isNotBlank() }
                             ?: event.memberId?.value?.takeIf { it.isNotBlank() }
                         if (agentId != null) {
-                            sharedStores.serverMembersStore.markAgentDeleted(
+                            appShellServerMembersStore.markAgentDeleted(
                                 serverId = build.raft.app.model.ServerId(serverId),
                                 agentId = build.raft.app.model.MemberId(agentId)
                             )
@@ -3303,7 +3305,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     sharedStores.agentDetailStore.dispatch(
                         SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
                     )
-                    sharedStores.serverMembersStore.applyPresence(event)
+                    appShellServerMembersStore.applyPresence(event)
                 },
                 requestMemberDetailRefresh = {
                     membersAgentDetailRefreshKey += 1

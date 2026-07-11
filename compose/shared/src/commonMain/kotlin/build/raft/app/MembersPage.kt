@@ -59,6 +59,7 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentPanelTabOrderStore
 import build.raft.app.data.SlockAuthSessionStore
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealMemberRepository
@@ -900,6 +901,9 @@ private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMod
 internal fun MembersPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
     var payloadText by remember { mutableStateOf(pager.pageData.params.optString("payload")) }
     var instanceId by remember { mutableStateOf(pager.pageData.params.optString("instanceId")) }
     DisposableEffect(pager) {
@@ -936,8 +940,8 @@ internal fun MembersPageContent() {
     // Use the shared provider network client so request scheduling and transport swaps
     // stay centralized instead of being recreated per page.
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
-    val networkClient = sharedStores.networkClient
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.SlockAgentsApiClient(
             transport = build.raft.app.data.SlockAgentsNetworkApi(networkClient),
@@ -1626,8 +1630,11 @@ private fun rememberMemberDetailRouteProvider(
     bridge: BridgeModule
 ): MemberDetailRouteProvider {
     val sharedStores = remember { build.raft.app.data.SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
-    val networkClient = sharedStores.networkClient
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val memberRepository: MemberRepository =
         remember(networkClient, authStore) {
             RealMemberRepository(

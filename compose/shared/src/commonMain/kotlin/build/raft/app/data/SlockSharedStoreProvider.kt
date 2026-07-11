@@ -34,11 +34,14 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.network.SlockRequestScheduler
+import build.raft.app.network.createPlatformSlockHttpExecutor
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -75,6 +78,7 @@ internal class SlockSharedStoreProvider private constructor(
     val authDataSource: SharedAuthDataSource,
     val authLossFunnel: SharedAuthLossFunnel,
     val networkClient: SlockNetworkClient,
+    private val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val agentPanelTabOrderStore: SharedAgentPanelTabOrderStore,
@@ -97,6 +101,8 @@ internal class SlockSharedStoreProvider private constructor(
 ) {
     private val shellRuntimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
+    private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
+    private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
     private val homeStores = SlockShellScopedStoreCache<SharedHomeStore>()
     private val homeActivityStores = SlockShellScopedStoreCache<SharedActivityStore>()
     private val homeStoreScopes = SlockShellScopedStoreCache<CoroutineScope>()
@@ -104,6 +110,14 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
+
+    init {
+        threadSendScope.launch {
+            authStore.sessionInvalidations.collect {
+                clearActiveShellServerSelections()
+            }
+        }
+    }
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
         get() = conversationIdentityProvider(SlockShellStoreScope.Legacy)
@@ -131,8 +145,41 @@ internal class SlockSharedStoreProvider private constructor(
         shellAuthStores.getOrPut(scope) {
             SlockShellAuthSessionStore(
                 delegate = authStore,
-                runtime = shellRuntime(scope)
+                runtime = shellRuntime(scope),
+                onProcessSessionCleared = ::clearActiveShellServerSelections
             )
+        }
+
+    fun networkClient(scope: SlockShellStoreScope): SlockNetworkClient =
+        if (scope == SlockShellStoreScope.Legacy) {
+            networkClient
+        } else {
+            shellNetworkClients.getOrPut(scope) {
+                scopedNetworkClientFactory(authStore(scope))
+            }
+        }
+
+    /**
+     * The roster's cached projection is server keyed, but mutations such as an
+     * agent update do not carry a server override. AppShell therefore must use
+     * a repository bound to its own shell session instead of the process
+     * last-used selection.
+     */
+    fun serverMembersStore(scope: SlockShellStoreScope): SharedServerMembersStore =
+        if (scope == SlockShellStoreScope.Legacy) {
+            serverMembersStore
+        } else {
+            shellServerMembersStores.getOrPut(scope) {
+                SharedServerMembersStore(
+                    memberRepository =
+                        RealMemberRepository(
+                            sessionStore = authStore(scope),
+                            networkClient = networkClient(scope),
+                            logger = sharedInfoLogger("SlockServerMembers", "shell_server_members_repository")
+                        ),
+                    logger = sharedInfoLogger("SlockServerMembers")
+                )
+            }
         }
 
     fun createAuthDataSourceForCurrentEnvironment(): SharedAuthDataSource =
@@ -213,26 +260,28 @@ internal class SlockSharedStoreProvider private constructor(
             )
             return store
         }
-        return SharedHomeStore(
-            authStore = authStore(scope),
-            dataSource = dataSource,
-            scope =
-                homeStoreScopes.getOrPut(scope) {
-                    if (scope == SlockShellStoreScope.Legacy) homeStoreScope else CoroutineScope(SupervisorJob())
-                },
-            diagnosticsLogger = diagnosticsLogger,
-            loadSidebarOrder = loadSidebarOrder,
-            updateSidebarOrder = updateSidebarOrder,
-            loadServerOrder = loadServerOrder,
-            updateServerOrder = updateServerOrder,
-            markChannelReadAll = markChannelReadAll,
-            markChannelUnread = markChannelUnread,
-            archiveChannel = archiveChannel,
-            setChannelActivityMuted = setChannelActivityMuted,
-            perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
-            pinUpdateFailureCallback = pinUpdateFailureCallback,
-            persistSlices = listOf(homeIdentityPersistSlice)
-        ).also { homeStores.getOrPut(scope) { it } }
+        return homeStores.getOrPut(scope) {
+            SharedHomeStore(
+                authStore = authStore(scope),
+                dataSource = dataSource,
+                scope =
+                    homeStoreScopes.getOrPut(scope) {
+                        if (scope == SlockShellStoreScope.Legacy) homeStoreScope else CoroutineScope(SupervisorJob())
+                    },
+                diagnosticsLogger = diagnosticsLogger,
+                loadSidebarOrder = loadSidebarOrder,
+                updateSidebarOrder = updateSidebarOrder,
+                loadServerOrder = loadServerOrder,
+                updateServerOrder = updateServerOrder,
+                markChannelReadAll = markChannelReadAll,
+                markChannelUnread = markChannelUnread,
+                archiveChannel = archiveChannel,
+                setChannelActivityMuted = setChannelActivityMuted,
+                perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
+                pinUpdateFailureCallback = pinUpdateFailureCallback,
+                persistSlices = listOf(homeIdentityPersistSlice)
+            )
+        }
     }
 
     fun getOrCreateHomeActivityStore(
@@ -262,25 +311,29 @@ internal class SlockSharedStoreProvider private constructor(
                 )
                 return store
             }
-        return SharedActivityStore(
-            authStore = authStore(scope),
-            inboxRepository = inboxRepository,
-            readReceiptRepository = readReceiptRepository,
-            conversationRepository = conversationRepository,
-            memberRepository = memberRepository,
-            serverMembersStore = serverMembersStore,
-            tasksDataStore = tasksDataStore,
-            persistSlices = listOf(activityPersistSlice),
-            prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
-            onUnreadCountsChanged = onUnreadCountsChanged ?: {},
-            scope =
-                homeActivityStoreScopes.getOrPut(scope) {
-                    if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
-                },
-            diagnosticsLogger = diagnosticsLogger ?: {}
-        ).also {
-            homeActivityStores.getOrPut(scope) { it }
+        return homeActivityStores.getOrPut(scope) {
+            SharedActivityStore(
+                authStore = authStore(scope),
+                inboxRepository = inboxRepository,
+                readReceiptRepository = readReceiptRepository,
+                conversationRepository = conversationRepository,
+                memberRepository = memberRepository,
+                serverMembersStore = serverMembersStore(scope),
+                tasksDataStore = tasksDataStore,
+                persistSlices = listOf(activityPersistSlice),
+                prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
+                onUnreadCountsChanged = onUnreadCountsChanged ?: {},
+                scope =
+                    homeActivityStoreScopes.getOrPut(scope) {
+                        if (scope == SlockShellStoreScope.Legacy) homeActivityStoreScope else CoroutineScope(SupervisorJob())
+                    },
+                diagnosticsLogger = diagnosticsLogger ?: {}
+            )
         }
+    }
+
+    private fun clearActiveShellServerSelections() {
+        shellRuntimes.clearActiveServerSelections()
     }
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
@@ -290,7 +343,9 @@ internal class SlockSharedStoreProvider private constructor(
         homeActivityStores.remove(scope)?.clear()
         homeStoreScopes.remove(scope)?.cancel()
         homeActivityStoreScopes.remove(scope)?.cancel()
+        shellNetworkClients.remove(scope)
         shellAuthStores.remove(scope)
+        shellServerMembersStores.remove(scope)
         shellRuntimes.remove(scope)
     }
 
@@ -402,13 +457,20 @@ internal class SlockSharedStoreProvider private constructor(
                     scope = CoroutineScope(SupervisorJob()),
                     diagnosticsLogger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "auth_loss_funnel")
                 )
-            val networkClient =
+            val networkWarningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network")
+            val networkRequestScheduler = SlockRequestScheduler()
+            val networkExecutor = createPlatformSlockHttpExecutor(networkWarningLogger)
+            val scopedNetworkClientFactory: (SlockAuthSessionStore) -> SlockNetworkClient = { sessionStore ->
                 SharedSlockNetworkClient(
-                    sessionStore = authStore,
+                    sessionStore = sessionStore,
                     baseUrlProvider = { apiEnvironmentStore.current().apiBaseUrl },
-                    warningLogger = sharedWarnLogger("SlockSharedNetwork", "shared_network"),
-                    platformFileResolver = platformFileResolver
+                    warningLogger = networkWarningLogger,
+                    requestScheduler = networkRequestScheduler,
+                    platformFileResolver = platformFileResolver,
+                    executor = networkExecutor
                 )
+            }
+            val networkClient = scopedNetworkClientFactory(authStore)
             // Pixel-avatar runtime table (task #352): apply the MMKV-cached document
             // synchronously (before first render), then fire-and-forget a refresh from the
             // deployed WEB app origin (webUrl, not the API base URL) — the same canonical
@@ -448,6 +510,7 @@ internal class SlockSharedStoreProvider private constructor(
                 authDataSource = authDataSource,
                 authLossFunnel = authLossFunnel,
                 networkClient = networkClient,
+                scopedNetworkClientFactory = scopedNetworkClientFactory,
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")

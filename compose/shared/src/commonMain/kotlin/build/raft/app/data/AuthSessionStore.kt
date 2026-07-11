@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 
 const val SLOCK_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
@@ -168,10 +169,11 @@ data class StoredAuthSession(
     val refreshToken: String,
     val selectedServerId: String? = null,
     val selectedServerSlug: String? = null,
-    val servers: List<StoredAuthServer> = emptyList()
+    val servers: List<StoredAuthServer> = emptyList(),
+    @Transient val allowImplicitServerFallback: Boolean = true
 ) {
     val currentServerId: String?
-        get() = selectedServerId ?: servers.firstOrNull()?.id
+        get() = selectedServerId ?: if (allowImplicitServerFallback) servers.firstOrNull()?.id else null
 
     fun toAuthTokens(): StoredAuthTokens? {
         val token = accessToken.takeIf { it.isNotBlank() } ?: return null

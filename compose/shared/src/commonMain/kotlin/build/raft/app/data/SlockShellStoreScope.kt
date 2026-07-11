@@ -3,6 +3,8 @@ package build.raft.app.data
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -36,23 +38,31 @@ internal class SlockShellStoreScope private constructor(
         "SlockShellStoreScope(shellInstanceId=$shellInstanceId, initialServerId=$initialServerId)"
 }
 
-internal class SlockShellScopedStoreCache<Value> {
+internal class SlockShellScopedStoreCache<Value>(
+    private val onGetOrPutEntered: (() -> Unit)? = null
+) {
+    private val lock = SynchronizedObject()
     private val values = linkedMapOf<SlockShellStoreScope, Value>()
 
-    fun get(scope: SlockShellStoreScope): Value? = values[scope]
+    fun get(scope: SlockShellStoreScope): Value? = synchronized(lock) { values[scope] }
 
-    fun getOrPut(scope: SlockShellStoreScope, create: () -> Value): Value =
-        values.getOrPut(scope, create)
+    fun getOrPut(scope: SlockShellStoreScope, create: () -> Value): Value {
+        // The test seam lets the concurrency regression prove every contender reached
+        // this operation before the creator is allowed to complete.
+        onGetOrPutEntered?.invoke()
+        return synchronized(lock) { values.getOrPut(scope, create) }
+    }
 
-    fun remove(scope: SlockShellStoreScope): Value? = values.remove(scope)
+    fun remove(scope: SlockShellStoreScope): Value? = synchronized(lock) { values.remove(scope) }
 
-    fun clear(): List<Value> = values.values.toList().also { values.clear() }
+    fun clear(): List<Value> =
+        synchronized(lock) { values.values.toList().also { values.clear() } }
 
     fun entries(): List<Pair<SlockShellStoreScope, Value>> =
-        values.map { (scope, value) -> scope to value }
+        synchronized(lock) { values.map { (scope, value) -> scope to value } }
 
     val size: Int
-        get() = values.size
+        get() = synchronized(lock) { values.size }
 }
 
 internal class SlockShellStoreRuntime internal constructor(
@@ -73,6 +83,10 @@ internal class SlockShellStoreRuntime internal constructor(
     }
 }
 
+internal fun SlockShellScopedStoreCache<SlockShellStoreRuntime>.clearActiveServerSelections() {
+    entries().forEach { (_, runtime) -> runtime.updateServer(null) }
+}
+
 /**
  * Per-shell view over the process-owned authenticated session.
  *
@@ -82,7 +96,8 @@ internal class SlockShellStoreRuntime internal constructor(
  */
 internal class SlockShellAuthSessionStore(
     private val delegate: SlockAuthSessionStore,
-    private val runtime: SlockShellStoreRuntime
+    private val runtime: SlockShellStoreRuntime,
+    private val onProcessSessionCleared: () -> Unit = {}
 ) : SlockAuthSessionStore {
     private val mutex = Mutex()
     private val requestedInitialServerId = runtime.scope.initialServerId
@@ -96,11 +111,15 @@ internal class SlockShellAuthSessionStore(
         val selection = resolveSelection(session)
         return session.copy(
             selectedServerId = selection.serverId,
-            selectedServerSlug = selection.serverSlug
+            selectedServerSlug = selection.serverSlug,
+            allowImplicitServerFallback = false
         )
     }
 
     override suspend fun saveSession(session: StoredAuthSession) {
+        // Keep the current main atomic full-replace primitive. Restoring the old
+        // delegate.saveSession path here would reintroduce stale whole-session
+        // writes that can overwrite a concurrent token rotation.
         replaceAuthenticatedSession(session)
     }
 
@@ -155,7 +174,11 @@ internal class SlockShellAuthSessionStore(
 
     private suspend fun StoredAuthSession.withShellSelection(): StoredAuthSession {
         val selection = resolveSelection(this)
-        return copy(selectedServerId = selection.serverId, selectedServerSlug = selection.serverSlug)
+        return copy(
+            selectedServerId = selection.serverId,
+            selectedServerSlug = selection.serverSlug,
+            allowImplicitServerFallback = false
+        )
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
@@ -179,6 +202,7 @@ internal class SlockShellAuthSessionStore(
         }
         runtime.updateServer(null)
         delegate.clearSession(reason, source)
+        onProcessSessionCleared()
     }
 
     private suspend fun resolveSelection(session: StoredAuthSession): ShellServerSelection =
@@ -198,8 +222,11 @@ internal class SlockShellAuthSessionStore(
                 selectedServerSlug = session.selectedServerSlug
                 selectionInitialized = true
             } else if (selectedServerId != null && session.servers.none { it.id == selectedServerId }) {
-                selectedServerId = session.selectedServerId?.takeIf { selected -> session.servers.any { it.id == selected } }
-                selectedServerSlug = session.selectedServerSlug
+                // Losing the currently selected membership/server is not a request to
+                // inherit another shell's process last-used server. The shell has no
+                // selection until its own navigation selects one explicitly.
+                selectedServerId = null
+                selectedServerSlug = null
             } else if (selectedServerSlug == null) {
                 selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId }?.slug
             }

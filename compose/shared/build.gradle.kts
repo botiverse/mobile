@@ -89,6 +89,8 @@ kotlin {
                 implementation("org.jetbrains:markdown:0.7.5")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+                // Common platform-safe monitor used by the synchronous shell-store cache.
+                implementation("org.jetbrains.kotlinx:atomicfu:0.25.0")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.3")
                 // Unified network infra (task #12): all platforms' HTTP goes
