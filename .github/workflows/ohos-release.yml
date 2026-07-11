@@ -621,14 +621,25 @@ jobs:
         run: |
           set -euo pipefail
           list="$RUNNER_TEMP/ohos-symbol-files.txt"
+          native_symbol="compose/ohosBridge/build/bin/ohosArm64/releaseShared/libshared.so"
+          packaged_library="compose/ohosApp/entry/libs/arm64-v8a/libshared.so"
+          test -s "$native_symbol"
+          test -s "$packaged_library"
+          READELF="$(find "$DEVECO_SDK_HOME" -path '*/openharmony/native/llvm/bin/llvm-readelf' -print -quit)"
+          test -n "$READELF"
+          symbol_build_id="$($READELF -n "$native_symbol" | awk '/Build ID:/{print $3; exit}')"
+          packaged_build_id="$($READELF -n "$packaged_library" | awk '/Build ID:/{print $3; exit}')"
+          test -n "$symbol_build_id"
+          if [[ "$symbol_build_id" != "$packaged_build_id" ]]; then
+            echo "::error::Native symbol build-id does not match packaged libshared.so"
+            exit 1
+          fi
+          printf '%s\n' "$native_symbol" > "$list"
           find compose/ohosApp compose/shared/build -type f \
             \( -name '*.sym' -o -name '*.map' -o -name '*.so.dbg' -o -name '*.d.ts.map' \) \
-            -print > "$list" || true
-          if [[ -s "$list" ]]; then
-            tar -czf "$RUNNER_TEMP/ohos-release/ohos-symbols-${SLOCK_OHOS_VERSION_NAME}-${SLOCK_OHOS_VERSION_CODE}.tar.gz" -T "$list"
-          else
-            echo "No separate OHOS symbol/source-map files were generated"
-          fi
+            -print >> "$list" || true
+          tar -czf "$RUNNER_TEMP/ohos-release/ohos-symbols-${SLOCK_OHOS_VERSION_NAME}-${SLOCK_OHOS_VERSION_CODE}.tar.gz" -T "$list"
+          echo "Packaged OHOS native symbols for build-id $symbol_build_id"
 
       - name: Upload signed OHOS release artifact
         uses: actions/upload-artifact@v4
