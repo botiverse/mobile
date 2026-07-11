@@ -121,7 +121,7 @@ internal fun SlockSelectionPopover(
                     )
                     if (showClear) {
                         Text(
-                            text = "Clear",
+                            text = stringResource(MR.strings.common_clear),
                             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.5.sp).withSlockFontWeight(FontWeight.Bold),
                             color = SlockColor.TextBlack.copy(alpha = 0.50f),
                             maxLines = 1,

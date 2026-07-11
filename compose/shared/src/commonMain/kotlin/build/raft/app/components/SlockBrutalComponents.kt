@@ -15,6 +15,7 @@ import build.raft.app.TextField
 import build.raft.app.slockFloatingContentClickTarget
 import build.raft.app.slockSquareCorners
 import build.raft.app.withSlockFontWeight
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +66,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class SlockModalShellModel(
     val title: String,
@@ -242,7 +244,7 @@ internal fun SlockBrutalSectionLabel(
         }
         if (optional) {
             Text(
-                text = "(optional)",
+                text = stringResource(MR.strings.common_optional_suffix),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1

@@ -40,6 +40,7 @@
     <string name="common_empty">暂无内容</string>
     <string name="common_no_matches">无匹配项</string>
     <string name="common_success">成功</string>
+    <string name="common_optional_suffix">（可选）</string>
     <string name="settings_title">设置</string>
     <string name="settings_navigation_section_personal">个人</string>
     <string name="settings_navigation_section_workspace">工作区</string>
