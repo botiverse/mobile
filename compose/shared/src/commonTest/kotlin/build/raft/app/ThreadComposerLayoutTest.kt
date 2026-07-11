@@ -676,5 +676,9 @@ class ThreadComposerLayoutTest {
             "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->",
             draft.diagnosticsComposerMessage()
         )
+        assertEquals(
+            "已附加诊断压缩包。\n\n<!-- 请在这里描述发生了什么。 -->",
+            draft.diagnosticsComposerMessage("已附加诊断压缩包。\n\n<!-- 请在这里描述发生了什么。 -->")
+        )
     }
 }
