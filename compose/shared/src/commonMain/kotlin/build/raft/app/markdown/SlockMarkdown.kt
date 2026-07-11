@@ -1138,6 +1138,7 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
 internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
+private val SlockMessagePermalinkChipBackground = Color(0xFFFCEFBD)
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
 // whose native renderer doesn't draw the chip chrome (it was hardcoded true
@@ -1231,7 +1232,8 @@ internal fun AnnotatedString.withSlockMessagePermalinkChips(
         ) {
             append("⛓︎ ")
             append(target.slockMessagePermalinkChipTargetLabel(resolveLabel(target)))
-            append("  msg")
+            append("  ")
+            append(target.slockMessagePermalinkChipKindLabel())
         }
         cursor = range.end
     }
@@ -1252,6 +1254,9 @@ private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipTargetLabel(
             ?: return "linked message"
     return "$prefix$name"
 }
+
+private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipKindLabel(): String =
+    if (threadParentMessageId == null) "msg" else "thread"
 
 /** Markdown parsers may retain autolink annotations inside code spans. */
 private fun AnnotatedString.withoutLinksInsideSlockInlineCode(): AnnotatedString {
@@ -1302,7 +1307,7 @@ private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
             background = Color.Unspecified,
             inlineBoxStyle =
                 InlineBoxSpanStyle(
-                    backgroundColor = SlockColor.BrandYellow.copy(alpha = 0.4f),
+                    backgroundColor = SlockMessagePermalinkChipBackground,
                     borderColor = SlockColor.BorderBlack,
                     borderWidth = 1.dp,
                     paddingStart = 4.dp,

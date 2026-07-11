@@ -64,7 +64,7 @@ class SlockMarkdownTest {
 
         assertEquals("See ⛓︎ #proj-server-management  msg now", resolved.text)
         assertEquals(url, link.url)
-        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), link.styles?.style?.inlineBoxStyle?.backgroundColor)
+        assertEquals(Color(0xFFFCEFBD), link.styles?.style?.inlineBoxStyle?.backgroundColor)
         assertEquals(SlockColor.BorderBlack, link.styles?.style?.inlineBoxStyle?.borderColor)
         assertEquals(1.dp, link.styles?.style?.inlineBoxStyle?.borderWidth)
         assertEquals(null, link.styles?.style?.textDecoration)
@@ -93,6 +93,21 @@ class SlockMarkdownTest {
             }
 
         assertEquals("⛓︎ linked message  msg", source.withSlockMessagePermalinkChips().text)
+    }
+
+    @Test
+    fun threadPermalinkUsesTypedThreadSuffix() {
+        val url =
+            "https://app.raft.build/s/mobile/channel/channel-1" +
+                "?thread=channel-1%3Aparent-1&msg=message-1"
+        val source =
+            buildAnnotatedString {
+                withLink(LinkAnnotation.Url(url)) { append(url) }
+            }
+
+        val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
+
+        assertEquals("⛓︎ #proj-server-management  thread", resolved.text)
     }
 
     @Test
