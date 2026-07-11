@@ -363,6 +363,37 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun settingsAccountStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_account_profile_section,
+            MR.strings.settings_account_display_name,
+            MR.strings.settings_account_verified,
+            MR.strings.settings_account_save_profile,
+            MR.strings.settings_account_connected_accounts,
+            MR.strings.settings_account_change_password,
+            MR.strings.settings_account_password_mismatch,
+            MR.strings.settings_account_session,
+            MR.strings.settings_account_logout_confirm
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Account copy must use KMM Resource strings"
+            )
+        }
+
+        listOf(
+            MR.strings.settings_account_connected_as.format(listOf("artin@example.com")),
+            MR.strings.settings_account_provider_fallback.format(listOf(2)),
+            MR.strings.settings_account_provider_link_failed.format(listOf("oauth_failed")),
+            MR.strings.settings_account_avatar_upload_failed.format(listOf("upload_failed")),
+            MR.strings.settings_account_profile_save_failed.format(listOf("server_unavailable")),
+            MR.strings.settings_account_password_update_failed.format(listOf("invalid_password"))
+        ).forEach { desc ->
+            assertTrue(desc is ResourceFormattedStringDesc)
+        }
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.

@@ -11470,7 +11470,7 @@ private fun settingsDestinationTitle(destination: String): String =
 @Composable
 private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_subtitle)
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_destination_subtitle)
         SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_subtitle)
         SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_subtitle)
         SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_subtitle)
