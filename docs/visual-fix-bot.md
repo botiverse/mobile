@@ -173,6 +173,35 @@ geometry residuals that are accepted practice elsewhere (e.g. the android 42dp
 border-box vs react 44px, shared with the #549 form-field family) are logged
 **report-only**, not treated as blockers.
 
+### 7.1 Scripted verification (`scripts/visual_verify.py`)
+
+The mechanical part of §7 is scripted so **clean blades self-verify without a
+human agent** (M3 / CI can run it); the judgment stays with the reviewer.
+
+```bash
+python3 scripts/visual_verify.py --spec spec.json   # or spec on stdin
+```
+
+The spec asserts explicit targets against a case:
+
+```json
+{ "case": "components.ui.slug-input.states",
+  "after":  {"run": 29143252272},          // run-id auto-downloads the android artifact (or {"img": path})
+  "before": "gh-pages", "react": "gh-pages", // pull latest/android + latest/react
+  "density": 3.0, "region": "bottom-half",
+  "colors": [{"name":"tile","hex":"FFF7DD","tol":6,"min_count":500}, ...],
+  "diff": true,
+  "glyph_center": {"container":"cream-tile-left"} }
+```
+
+It emits per-check `pass/fail`, the diff bbox + top `#before→#after` transitions,
+geometry in dp, and glyph-vs-container centering — a `PASS`/`FAIL`/`REVIEW`
+verdict. **The agent still owns:** authoring the target spec (which values to
+assert), interpreting a `REVIEW`/anomaly, root-cause, and — critically —
+**provenance**: the script prints a reminder to confirm the measured build is
+the PR's pinned gitlink sha, not an ambient artifact (§9-adjacent; see the #568
+double-correction it prevents). Escalate any non-`PASS` to the reviewing agent.
+
 ## 8. Three-column evidence
 
 Evidence is a per-case triptych **`react target | before | after`**:
