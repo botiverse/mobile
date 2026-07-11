@@ -18,6 +18,18 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
+    fun threadComposerBottomPaddingRestoresSafeAreaExcludedByAndroidKeyboardWatcher() {
+        assertEquals(
+            158.dp,
+            threadComposerBottomPadding(
+                keyboardInsetDp = 120f,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = true
+            )
+        )
+    }
+
+    @Test
     fun threadComposerBottomPaddingKeepsSmallLiftWithoutSafeArea() {
         assertEquals(14.dp, threadComposerBottomPadding(keyboardInsetDp = -1f, bottomSafeArea = 0.dp))
     }

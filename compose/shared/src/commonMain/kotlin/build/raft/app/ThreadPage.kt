@@ -499,9 +499,14 @@ private object ThreadReactionGlyphDiagnostics {
     }
 }
 
-internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
+internal fun threadComposerBottomPadding(
+    keyboardInsetDp: Float,
+    bottomSafeArea: Dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean = false
+): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
-    val safeAreaInset = if (keyboardInsetDp > 0f) 0.dp else bottomSafeArea
+    val safeAreaInset =
+        if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) 0.dp else bottomSafeArea
     return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
 }
 
@@ -8333,6 +8338,7 @@ private fun ThreadPageContent(
     }
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
+    val composerKeyboardInsetExcludesBottomSafeArea = slockKeyboardInsetExcludesBottomSafeArea()
     val showComposerForSelectedTab =
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
@@ -8697,7 +8703,13 @@ private fun ThreadPageContent(
                                 start = SlockSpacing.Sm,
                                 top = 12.dp,
                                 end = SlockSpacing.Sm,
-                                bottom = threadComposerBottomPadding(composerKeyboardInsetDp, composerBottomSafeArea)
+                                bottom =
+                                    threadComposerBottomPadding(
+                                        keyboardInsetDp = composerKeyboardInsetDp,
+                                        bottomSafeArea = composerBottomSafeArea,
+                                        keyboardInsetExcludesBottomSafeArea =
+                                            composerKeyboardInsetExcludesBottomSafeArea
+                                    )
                             )
                     ) {
                         ThreadComposerRoute(
