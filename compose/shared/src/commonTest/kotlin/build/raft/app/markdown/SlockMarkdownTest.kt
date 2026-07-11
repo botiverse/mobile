@@ -111,6 +111,18 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownAutolinkPreservesEncodedThreadPermalinkTarget() {
+        val url =
+            "https://app.raft.build/s/mobile/channel/channel-1" +
+                "?thread=channel-1%3Aparent-1&msg=message-1"
+        val source = buildSlockMarkdownParagraphAnnotatedString("Thread reply: $url")
+
+        val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
+
+        assertEquals("Thread reply: ⛓︎ #proj-server-management  thread", resolved.text)
+    }
+
+    @Test
     fun raftPermalinkInsideInlineCodeRemainsLiteral() {
         val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
         val externalUrl = "https://example.com/visual"
