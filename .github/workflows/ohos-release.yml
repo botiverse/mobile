@@ -567,7 +567,7 @@ jobs:
             -p requiredDeviceType=phone \
             assembleApp --analyze=normal --no-daemon
 
-      - name: Sign release HAPs
+      - name: Sign release App Pack
         shell: bash
         env:
           SIGNING_CERT: ${{ steps.signing.outputs.cert }}
