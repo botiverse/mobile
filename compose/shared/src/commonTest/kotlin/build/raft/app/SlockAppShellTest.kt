@@ -391,24 +391,27 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellLazyListPositionForServerIgnoresOtherServerSnapshot() {
+    fun appShellLazyListPositionsKeepServersIndependent() {
+        val serverAPosition =
+            AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)
+        val serverBPosition =
+            AppShellLazyListPosition(firstVisibleItemIndex = 11, firstVisibleItemScrollOffset = 7)
         val saved =
-            appShellServerScopedLazyListPosition(
-                serverId = "server-a",
-                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)
-            )
+            AppShellServerLazyListPositions()
+                .withPosition(serverId = "server-a", listPosition = serverAPosition)
+                .withPosition(serverId = "server-b", listPosition = serverBPosition)
 
         assertEquals(
-            AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24),
-            appShellLazyListPositionForServer(currentServerId = "server-a", savedPosition = saved)
+            serverAPosition,
+            appShellLazyListPositionForServer(currentServerId = "server-a", savedPositions = saved)
+        )
+        assertEquals(
+            serverBPosition,
+            appShellLazyListPositionForServer(currentServerId = "server-b", savedPositions = saved)
         )
         assertEquals(
             AppShellLazyListPosition(),
-            appShellLazyListPositionForServer(currentServerId = "server-b", savedPosition = saved)
-        )
-        assertEquals(
-            AppShellLazyListPosition(),
-            appShellLazyListPositionForServer(currentServerId = "", savedPosition = saved)
+            appShellLazyListPositionForServer(currentServerId = "", savedPositions = saved)
         )
     }
 
@@ -439,19 +442,41 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun homeSidebarSlotKeysStayStableWhenServerContentChanges() {
-        assertEquals("home-channel-slot-4", homeSidebarSlotKey("channel", 4))
-        assertNotEquals(homeSidebarSlotKey("channel", 4), homeSidebarSlotKey("dm", 4))
+    fun homeSidebarLazyKeysReuseSlotsAcrossServersAndFollowIdentityWithinServer() {
+        val registry = HomeSidebarLazyKeyRegistry()
+
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-slot-1"),
+            registry.keysFor("server-a", "channel", listOf("a", "b"))
+        )
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-slot-1"),
+            registry.keysFor("server-b", "channel", listOf("x", "y"))
+        )
+        assertEquals(
+            listOf("home-channel-identity-z", "home-channel-slot-1", "home-channel-slot-0"),
+            registry.keysFor("server-b", "channel", listOf("z", "y", "x"))
+        )
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-identity-z"),
+            registry.keysFor("server-b", "channel", listOf("x", "z"))
+        )
+        assertNotEquals(homeSidebarSlotKey("channel", 0), homeSidebarSlotKey("dm", 0))
     }
 
     @Test
-    fun appShellServerScopedLazyListPositionNormalizesBlankServerId() {
+    fun homeListStateSnapshotOnlyPersistsForCurrentOwner() {
+        assertTrue(homeListStateOwnerMatches("server-a", "server-a"))
+        assertFalse(homeListStateOwnerMatches("server-a", "server-b"))
+        assertFalse(homeListStateOwnerMatches("server-a", null))
+    }
+
+    @Test
+    fun appShellServerLazyListPositionsIgnoreBlankServerId() {
+        val positions = AppShellServerLazyListPositions()
         assertEquals(
-            AppShellServerScopedLazyListPosition(
-                serverId = null,
-                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
-            ),
-            appShellServerScopedLazyListPosition(
+            positions,
+            positions.withPosition(
                 serverId = "  ",
                 listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
             )
