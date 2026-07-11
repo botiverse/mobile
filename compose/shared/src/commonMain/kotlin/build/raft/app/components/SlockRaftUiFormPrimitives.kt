@@ -13,6 +13,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -260,7 +261,11 @@ internal fun SlockSlugInput(
     placeholder: String = "",
     placeholderColor: Color = SlockColor.TextMutedGray,
     enabled: Boolean = true,
-    fieldHeight: Dp = 42.dp
+    // react .input-brutal outer height: 24px line + 16px py-2 + 4px border-2 =
+    // 44px. Kuikly draws the Row border as a FOREGROUND over children, so with
+    // 44dp outer the visible tile inside the 2dp border = 40dp = react's
+    // items-stretch span (120px @3x).
+    fieldHeight: Dp = 44.dp
 ) {
     val shadowOffset = SlockShadow.BrutalSmall
     // react's disabled look is CSS group opacity-60: each part flattens against
@@ -296,13 +301,25 @@ internal fun SlockSlugInput(
                 modifier =
                     Modifier
                         .width(32.dp)
-                        .height(fieldHeight)
+                        // structural mirror of react's items-stretch span
+                        .fillMaxHeight()
                         .background(if (enabled) SlockSlugInputPrefixBackground else SlockSlugInputDisabledPrefixBackground)
-                        .border(SlockStroke.Thin, borderColor),
+                        // Only the right divider is visible (the other 3 sides sit
+                        // under the Row's foreground border); react divider is
+                        // border-r-2 = 2px, so Default, not Thin.
+                        .border(SlockStroke.Default, borderColor),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "/",
+                    // CSS centers the LINE BOX, so react's slash ink sits
+                    // (asc-desc)/2 - inkCenter("/") = 5.54 - 4.0 = ~1.5px BELOW the
+                    // tile center (Space Grotesk Bold metrics, deep slash
+                    // descender). The fork's HRLineHeightSpan (kuikly-open
+                    // 2.21.0-2.1.21 glyphVisualCenter patch) ink-centers instead,
+                    // so re-add the offset here. Font-metric-derived, not a magic
+                    // pixel; DELETE if the fork ever reverts to metrics centering.
+                    modifier = Modifier.offset(y = 1.5.dp),
                     style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
                     // react slash = text-black/70. Disabled must match react's GROUP
                     // flatten (glyph over tile first, then x0.6 over white) = opaque
