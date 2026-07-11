@@ -9,7 +9,6 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -853,12 +852,6 @@ class SharedSettingsDataSource(
                 ?: return DataResult.Error(ScreenError("settings_locale_unknown", retryable = false))
         repository.selectLocale(locale)
         KmmResourceLocaleRuntime.publish(locale)
-        // #85 follow-up: keep the KmmResource `StringDesc.localeType` in
-        // sync with the user's selected `AppLocale` so any
-        // shared `StringDesc` lookup renders the correct locale. This is a
-        // one-way set: the source of truth for the user's preference remains
-        // the `LocaleRepository`; the resource global just consumes it.
-        StringDesc.localeType = locale.stringDescLocaleType
         return loadMobilePreferences()
     }
 

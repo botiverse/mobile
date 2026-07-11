@@ -32,6 +32,11 @@ internal object KmmResourceLocaleRuntime {
         mutableLocale.value = locale
     }
 
+    fun seedIfEmpty(locale: AppLocale): AppLocale {
+        mutableLocale.compareAndSet(expect = null, update = locale)
+        return requireNotNull(mutableLocale.value)
+    }
+
     internal fun replaceForTest(locale: AppLocale?) {
         mutableLocale.value = locale
     }
@@ -66,8 +71,7 @@ internal fun rememberKmmResourceLocaleSeed(pager: Pager, refreshTick: Int = 0) {
                     // Missing or unreadable state falls back to the app default.
                     AppLocale.Default
                 }
-            KmmResourceLocaleRuntime.publish(locale)
-            locale
+            KmmResourceLocaleRuntime.seedIfEmpty(locale)
         }
     val runtimeLocale by KmmResourceLocaleRuntime.locale.collectAsState()
     StringDesc.localeType = (runtimeLocale ?: persisted).stringDescLocaleType
