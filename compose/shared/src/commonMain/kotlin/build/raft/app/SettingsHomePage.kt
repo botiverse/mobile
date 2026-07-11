@@ -363,6 +363,7 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
@@ -518,9 +519,6 @@ private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
 private val EmptyConversationDirectoryProjectionFlow =
     MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
-private const val AppShellLifecycleAction = "appLifecycle"
-private const val AppShellLifecycleResume = "resume"
-private const val AppShellLifecycleShow = "show"
 private const val HomeDestinationSearch = SharedHomeShellDestinationSearch
 private const val HomeDestinationActivity = SharedHomeShellDestinationActivity
 private const val HomeDestinationSaved = SharedHomeShellDestinationSaved
@@ -3488,11 +3486,24 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 val eventDataSnapshot = rawEventData.toString()
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
-                    if (eventData.optString("action") == AppShellLifecycleAction) {
-                        val event = eventData.optString("event")
+                    if (
+                        eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
+                        SlockRealtimeNotifyContract.ActionAppLifecycle
+                    ) {
+                        val event = eventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        if (!appLifecycleEventTargetsShell(
+                                eventShellInstanceId = eventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                                routeShellInstanceId = storeScope.shellInstanceId
+                            )
+                        ) {
+                            return@launch
+                        }
                         if (
-                            eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
-                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                            eventData.optString(SlockRealtimeNotifyContract.KeyPageName) == SLOCK_APP_SHELL_PAGE &&
+                            (
+                                event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                                    event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                                ) &&
                             latestReadySession != null
                         ) {
                             refreshVisibleAppShellRoute("app_lifecycle_$event")

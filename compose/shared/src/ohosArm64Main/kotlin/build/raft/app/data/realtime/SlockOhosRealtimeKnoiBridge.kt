@@ -1,5 +1,7 @@
 package build.raft.app.data.realtime
 
+import build.raft.app.data.SlockShellStoreScope
+import build.raft.app.data.updateSlockHostVisibility
 import com.tencent.tmm.knoi.annotation.KNExport
 
 private val slockOhosRealtimeKnoiEngine = SlockRealtimeAppScopeEngine()
@@ -57,10 +59,18 @@ fun slockRealtimeKnoiRawDecision(eventName: String, rawPayload: String): Map<Str
 @KNExport
 fun slockRealtimeKnoiOnAppShown() {
     slockOhosRealtimeKnoiEngine.onAppShown()
+    updateSlockHostVisibility(
+        shellInstanceId = SlockShellStoreScope.Legacy.shellInstanceId,
+        visible = true
+    )
 }
 
 @KNExport
 fun slockRealtimeKnoiOnAppHidden() {
+    updateSlockHostVisibility(
+        shellInstanceId = SlockShellStoreScope.Legacy.shellInstanceId,
+        visible = false
+    )
     slockOhosRealtimeKnoiEngine.onAppHidden()
 }
 

@@ -54,7 +54,9 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.isSlockHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
@@ -256,9 +258,6 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
-private const val ThreadLifecycleAction = "appLifecycle"
-private const val ThreadLifecycleResume = "resume"
-private const val ThreadLifecycleShow = "show"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 4
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -3006,6 +3005,9 @@ internal fun SharedThreadRouteContent(
             ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
     var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
+    var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
+        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    }
     DisposableEffect(
         realtimeEvents,
         currentSession?.currentServerId,
@@ -3549,12 +3551,26 @@ internal fun SharedThreadRouteContent(
                 val eventDataSnapshot = eventData.toString()
                 coroutineScope.launch {
                     val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString("action") != ThreadLifecycleAction) {
+                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
                         return@launch
                     }
-                    val event = lifecycleData.optString("event")
-                    val pageName = lifecycleData.optString("pageName")
-                    if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
+                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    if (!threadLifecycleEventTargetsThread(pageName)) {
+                        return@launch
+                    }
+                    if (!appLifecycleEventTargetsShell(
+                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            routeShellInstanceId = storeScope.shellInstanceId
+                        )
+                    ) {
+                        return@launch
+                    }
+                    threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
+                    if (
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                    ) {
                         if (threadLifecycleSeen && active) {
                             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
                             // Foreground reconciliation: local joined-room state may
@@ -4145,7 +4161,7 @@ internal fun SharedThreadRouteContent(
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
-    val visibleReadAllMarkerKey =
+    val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
             renderedTimelineSlice.status,
@@ -4153,11 +4169,17 @@ internal fun SharedThreadRouteContent(
             renderedTimelineSlice.messages.lastOrNull()?.id,
             renderedTimelineSlice.messages.lastOrNull()?.seq
         ) {
-            renderedTimelineSlice.visibleReadAllMarkerKey(renderedThread.sourceThreadId)
-        }
-    LaunchedEffect(visibleReadAllMarkerKey) {
-        if (visibleReadAllMarkerKey != null) {
-            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+            renderedTimelineSlice.visibleReadMarkerKey(renderedThread.sourceThreadId)
+    }
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground) {
+        if (shouldMarkThreadVisibleRead(
+                routeActive = active,
+                observedHostForeground = threadHostForeground,
+                currentHostVisibility = isSlockHostVisible(storeScope.shellInstanceId),
+                markerKey = visibleReadMarkerKey
+            )
+        ) {
+            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead)
         }
     }
     fun sendPendingLocalMessage(
@@ -12179,9 +12201,20 @@ internal fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
             "${reaction.emoji}:${reaction.count}:${reaction.selected}"
         }
 
-internal fun KuiklyThreadScreenPayload.visibleReadAllMarkerKey(): String? {
-    return toThreadTimelineSlice().visibleReadAllMarkerKey(sourceThreadId)
+internal fun KuiklyThreadScreenPayload.visibleReadMarkerKey(): String? {
+    return toThreadTimelineSlice().visibleReadMarkerKey(sourceThreadId)
 }
+
+internal fun shouldMarkThreadVisibleRead(
+    routeActive: Boolean,
+    observedHostForeground: Boolean,
+    currentHostVisibility: Boolean,
+    markerKey: String?
+): Boolean =
+    routeActive && observedHostForeground && currentHostVisibility && markerKey != null
+
+internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
+    pageName == THREAD_PAGE || pageName == SLOCK_APP_SHELL_PAGE
 
 internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
     SlockTimeContext(

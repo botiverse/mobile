@@ -237,7 +237,7 @@ internal fun ThreadTimelineSlice.hasSendingLocalSendAnchor(anchorKey: String?): 
     }
 }
 
-internal fun ThreadTimelineSlice.visibleReadAllMarkerKey(sourceThreadId: String?): String? {
+internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): String? {
     val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
     if (status != "content") return null
     val latest = messages.lastOrNull() ?: return null

@@ -362,6 +362,7 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl("att-1", disposition = "inline"))
         assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.sendAttachmentComment("att-1", "looks good"))
+        assertIs<ThreadApiResult.Success<Unit>>(api.markChannelReadToSeq("channel-1", 42L))
         assertIs<ThreadApiResult.Success<Unit>>(api.markChannelReadAll("channel-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.saveMessage("msg-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.unsaveMessage("msg-1"))
@@ -387,6 +388,7 @@ class ThreadApiTest {
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
                 "GET attachments/att-1/comments priority=Visible query= server= body=",
                 """POST attachments/att-1/comments priority=Foreground query= server= body={"content":"looks good"}""",
+                """POST channels/channel-1/read priority=Foreground query= server= body={"seq":42}""",
                 "POST channels/channel-1/read-all priority=Foreground query= server= body=",
                 """POST channels/saved priority=Foreground query= server= body={"messageId":"msg-1"}""",
                 "DELETE channels/saved/msg-1 priority=Foreground query= server= body=",
@@ -425,6 +427,7 @@ class ThreadApiTest {
     ) : SharedThreadNetworkApi {
         val unsavedMessageIds = mutableListOf<String>()
         var lastMentionActionBody: String? = null
+        var lastReadToSeqRequest: Pair<String, Long>? = null
         override suspend fun channelMessages(
             threadId: String,
             limit: Int,
@@ -461,6 +464,11 @@ class ThreadApiTest {
 
         override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+
+        override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse {
+            lastReadToSeqRequest = channelId to seq
+            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true,"seq":$seq}""")
+        }
 
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
@@ -511,7 +519,7 @@ class ThreadApiTest {
                 normalizedPath.startsWith("attachments/") && normalizedPath.endsWith("/comments") -> ok("""{"comments":[],"threadChannelId":"thread-comments"}""")
                 normalizedPath == "messages/mention-actions/execute" && method == "POST" -> ok(mentionActionBody)
                 normalizedPath.startsWith("attachments/") -> ok(attachmentUrlBody)
-                normalizedPath.endsWith("/read-all") -> ok("""{"ok":true}""")
+                normalizedPath.endsWith("/read") || normalizedPath.endsWith("/read-all") -> ok("""{"ok":true}""")
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")
                 normalizedPath.startsWith("channels/saved/") && method == "DELETE" -> ok("""{"ok":true}""")
                 normalizedPath.endsWith("/reactions") -> ok(reactionBody)

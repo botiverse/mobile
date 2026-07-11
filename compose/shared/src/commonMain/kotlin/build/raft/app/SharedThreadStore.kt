@@ -1967,21 +1967,30 @@ internal class SharedThreadDataSource(
         }
     }
 
-    suspend fun markChannelReadAll(channelId: String): DataResult<ReadReceiptResult> {
+    suspend fun markVisibleChannelRead(channelId: String, latestSeq: Long?): DataResult<ReadReceiptResult> {
         if (channelId.isBlank()) {
             return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         }
         val response =
             try {
-                api.markChannelReadAll(channelId)
+                if (latestSeq != null && latestSeq > 0L) {
+                    api.markChannelReadToSeq(channelId, latestSeq)
+                } else {
+                    api.markChannelReadAll(channelId)
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true))
-        }
+            }
         return if (response is ThreadApiResult.Success) {
-            val id = ChannelId(channelId)
-            DataResult.Content(ReadReceiptResult(channelId = id, changed = true))
+            DataResult.Content(
+                ReadReceiptResult(
+                    channelId = ChannelId(channelId),
+                    seq = latestSeq?.takeIf { it > 0L },
+                    changed = true
+                )
+            )
         } else {
             (response as ThreadApiResult.Failure).toThreadDataError("thread_read_receipt_network")
         }
@@ -2670,7 +2679,7 @@ internal object SharedThreadPaging {
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
-private const val ThreadReadAllCoalesceWindowMillis = 2_000L
+private const val ThreadVisibleReadCoalesceWindowMillis = 2_000L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -2708,7 +2717,7 @@ private fun SharedThreadState.withSynchronizedTimelineSlice(): SharedThreadState
     }
 }
 
-private data class ThreadReadAllMarker(
+private data class ThreadVisibleReadMarker(
     val channelId: String,
     val latestMessageId: String,
     val latestSeq: Long?
@@ -2781,7 +2790,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
-    data object MarkVisibleReadAll : SharedThreadIntent
+    data object MarkVisibleRead : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
     data object LoadNewer : SharedThreadIntent
@@ -2821,10 +2830,10 @@ internal class SharedThreadStore(
     private var secondaryTimelineRefreshJob: Job? = null
     private var homeContextHydrationJob: Job? = null
     private var backgroundMembersHydrationJob: Job? = null
-    private var readAllInFlightMarker: ThreadReadAllMarker? = null
-    private var pendingReadAllMarker: ThreadReadAllMarker? = null
-    private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
-    private var lastCompletedReadAllAt: TimeMark? = null
+    private var readInFlightMarker: ThreadVisibleReadMarker? = null
+    private var pendingReadMarker: ThreadVisibleReadMarker? = null
+    private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
+    private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: KuiklyThreadScreenPayload? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
@@ -2879,8 +2888,8 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            SharedThreadIntent.MarkVisibleReadAll -> {
-                scope.launch { markVisibleReadAll() }
+            SharedThreadIntent.MarkVisibleRead -> {
+                scope.launch { markVisibleRead() }
             }
             SharedThreadIntent.LoadMembers -> {
                 scope.launch { loadMembers() }
@@ -2940,7 +2949,7 @@ internal class SharedThreadStore(
                     event = intent.event,
                     activeReplyParentMessageId = intent.activeReplyParentMessageId
                 )
-            SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
+            SharedThreadIntent.MarkVisibleRead -> markVisibleRead()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
@@ -2960,10 +2969,10 @@ internal class SharedThreadStore(
         backgroundMembersHydrationJob = null
         lastRoutePayload = null
         advanceRouteStaleToken()
-        readAllInFlightMarker = null
-        pendingReadAllMarker = null
-        lastCompletedReadAllMarker = null
-        lastCompletedReadAllAt = null
+        readInFlightMarker = null
+        pendingReadMarker = null
+        lastCompletedReadMarker = null
+        lastCompletedReadAt = null
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
@@ -3536,62 +3545,64 @@ internal class SharedThreadStore(
             .maxOrNull()
     }
 
-    private suspend fun markVisibleReadAll() {
-        val marker = _state.value.payload.readAllMarker() ?: return
+    private suspend fun markVisibleRead() {
+        val marker = _state.value.payload.visibleReadMarker() ?: return
         if (marker.wasRecentlyMarkedRead()) {
             diagnosticsLogger?.invoke(
-                "thread_read_all_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
+                "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
             )
             return
         }
-        if (readAllInFlightMarker != null) {
-            pendingReadAllMarker = marker
+        if (readInFlightMarker != null) {
+            pendingReadMarker = marker
             diagnosticsLogger?.invoke(
-                "thread_read_all_skip channelId=${marker.channelId} reason=in_flight latest=${marker.latestMessageId}"
+                "thread_read_skip channelId=${marker.channelId} reason=in_flight latest=${marker.latestMessageId}"
             )
             return
         }
 
-        var nextMarker: ThreadReadAllMarker? = marker
+        var nextMarker: ThreadVisibleReadMarker? = marker
         while (nextMarker != null) {
             val current = nextMarker
-            pendingReadAllMarker = null
-            readAllInFlightMarker = current
+            pendingReadMarker = null
+            readInFlightMarker = current
             val startedAt = TimeSource.Monotonic.markNow()
             diagnosticsLogger?.invoke(
-                "thread_read_all_start channelId=${current.channelId} latest=${current.latestMessageId}"
+                "thread_read_start channelId=${current.channelId} latest=${current.latestMessageId}"
             )
             try {
-                val result = dataSource.markChannelReadAll(current.channelId)
+                val result = dataSource.markVisibleChannelRead(current.channelId, current.latestSeq)
                 if (result is DataResult.Content) {
-                    lastCompletedReadAllMarker = current
-                    lastCompletedReadAllAt = TimeSource.Monotonic.markNow()
+                    lastCompletedReadMarker = current
+                    lastCompletedReadAt = TimeSource.Monotonic.markNow()
                 }
                 diagnosticsLogger?.invoke(
-                    "thread_read_all_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
-                        "latest=${current.latestMessageId} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    "thread_read_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
+                        "mode=${if (current.latestSeq != null && current.latestSeq > 0L) "seq" else "all"} " +
+                        "seq=${current.latestSeq ?: -1} latest=${current.latestMessageId} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
             } finally {
-                readAllInFlightMarker = null
+                readInFlightMarker = null
             }
-            val pending = pendingReadAllMarker
+            val pending = pendingReadMarker
             nextMarker =
-                if (pending != null && pending != current && pending != lastCompletedReadAllMarker) {
+                if (pending != null && pending != current && pending != lastCompletedReadMarker) {
                     pending
                 } else {
-                    pendingReadAllMarker = null
+                    pendingReadMarker = null
                     null
                 }
         }
     }
 
-    private fun ThreadReadAllMarker.wasRecentlyMarkedRead(): Boolean {
-        val completed = lastCompletedReadAllMarker ?: return false
+    private fun ThreadVisibleReadMarker.wasRecentlyMarkedRead(): Boolean {
+        val completed = lastCompletedReadMarker ?: return false
         if (completed.channelId != channelId) return false
         if (completed == this) return true
-        val completedAt = lastCompletedReadAllAt ?: return false
+        val completedAt = lastCompletedReadAt ?: return false
         val ageMs = completedAt.elapsedNow().inWholeMilliseconds
-        return ageMs in 0L until ThreadReadAllCoalesceWindowMillis
+        return ageMs in 0L until ThreadVisibleReadCoalesceWindowMillis
     }
 
     private suspend fun loadOlder() {
@@ -5123,10 +5134,10 @@ private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null
     }
 }
 
-private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {
+private fun KuiklyThreadScreenPayload.visibleReadMarker(): ThreadVisibleReadMarker? {
     val channelId = cacheThreadId() ?: return null
     val latest = messages.lastOrNull() ?: return null
-    return ThreadReadAllMarker(
+    return ThreadVisibleReadMarker(
         channelId = channelId,
         latestMessageId = latest.id,
         latestSeq = latest.seq

@@ -1212,7 +1212,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun visibleReadAllMarkerKey_tracksLatestMessageOnly() {
+    fun visibleReadMarkerKey_tracksLatestMessageOnly() {
         val a =
             payload(
                 messages = listOf(message("m1")),
@@ -1232,8 +1232,65 @@ class ThreadBottomAnchorSignatureTest {
             payload(messages = listOf(message("m1"), message("m2")))
                 .copy(status = "content", sourceThreadId = "channel-1")
 
-        assertEquals(a.visibleReadAllMarkerKey(), b.visibleReadAllMarkerKey())
-        assertNotEquals(a.visibleReadAllMarkerKey(), c.visibleReadAllMarkerKey())
+        assertEquals(a.visibleReadMarkerKey(), b.visibleReadMarkerKey())
+        assertNotEquals(a.visibleReadMarkerKey(), c.visibleReadMarkerKey())
+    }
+
+    @Test
+    fun visibleRead_requiresActiveForegroundThread() {
+        val marker = "channel-1:11:m2"
+
+        assertTrue(
+            shouldMarkThreadVisibleRead(
+                routeActive = true,
+                observedHostForeground = true,
+                currentHostVisibility = true,
+                markerKey = marker
+            )
+        )
+        assertFalse(
+            shouldMarkThreadVisibleRead(
+                routeActive = true,
+                observedHostForeground = false,
+                currentHostVisibility = true,
+                markerKey = marker
+            )
+        )
+        assertFalse(
+            shouldMarkThreadVisibleRead(
+                routeActive = false,
+                observedHostForeground = true,
+                currentHostVisibility = true,
+                markerKey = marker
+            )
+        )
+        assertFalse(
+            shouldMarkThreadVisibleRead(
+                routeActive = true,
+                observedHostForeground = true,
+                currentHostVisibility = true,
+                markerKey = null
+            )
+        )
+        assertFalse(
+            shouldMarkThreadVisibleRead(
+                routeActive = true,
+                observedHostForeground = true,
+                currentHostVisibility = false,
+                markerKey = marker
+            )
+        )
+    }
+
+    @Test
+    fun threadLifecycle_tracksAndroidAndSharedHostVisibility() {
+        assertTrue(threadLifecycleEventTargetsThread(THREAD_PAGE))
+        assertTrue(threadLifecycleEventTargetsThread(SLOCK_APP_SHELL_PAGE))
+        assertFalse(threadLifecycleEventTargetsThread("compose_slock_settings_home"))
+        assertTrue(appLifecycleEventTargetsShell("", "legacy-app-shell"))
+        assertFalse(appLifecycleEventTargetsShell("", "shell-a"))
+        assertTrue(appLifecycleEventTargetsShell("shell-a", "shell-a"))
+        assertFalse(appLifecycleEventTargetsShell("shell-b", "shell-a"))
     }
 
     @Test

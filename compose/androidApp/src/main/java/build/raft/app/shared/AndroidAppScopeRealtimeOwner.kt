@@ -16,9 +16,11 @@ import build.raft.app.data.SharedAuthTokenProvider
 import build.raft.app.data.SharedSlockAuthTransport
 import build.raft.app.data.SlockAuthApiClient
 import build.raft.app.data.SlockHostNetworkNotifyContract
+import build.raft.app.data.updateSlockHostVisibility
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
 import build.raft.app.data.realtime.RealtimeConnectionState
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.realtime.SlockRealtimeAppScopePolicy
 import build.raft.app.data.realtime.SlockRealtimeAppScopeRuntime
 import build.raft.app.data.realtime.bootstrapRealtime
@@ -50,6 +52,24 @@ internal object AndroidAppScopeRealtimeOwner {
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
     private var hostNetworkOnline: Boolean? = null
+
+    fun onHostVisibilityChanged(
+        context: Context,
+        visibility: AndroidHostVisibility,
+        shellInstanceId: String = "",
+        source: String = "unknown"
+    ) {
+        applyAndroidHostVisibilityTransition(
+            visibility = visibility,
+            publishVisibility = { publishHostVisibility(visibility, shellInstanceId) },
+            applyRuntimeVisibility = {
+                when (visibility) {
+                    AndroidHostVisibility.Visible -> onAppShown(context, shellInstanceId, source)
+                    AndroidHostVisibility.Hidden -> onAppHidden(shellInstanceId, source)
+                }
+            }
+        )
+    }
 
     fun install(context: Context) {
         val appContext = context.applicationContext
@@ -90,7 +110,7 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
-    fun onAppShown(
+    private fun onAppShown(
         context: Context,
         shellInstanceId: String = "",
         source: String = "unknown"
@@ -147,7 +167,7 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    fun onAppHidden(
+    private fun onAppHidden(
         shellInstanceId: String = "",
         source: String = "unknown"
     ) {
@@ -172,6 +192,22 @@ internal object AndroidAppScopeRealtimeOwner {
             "app_scope_lifecycle event=hidden source=$source joined_rooms=${joinedChannelCount()}"
         )
         AndroidNetworkPrewarmController.cancel(reason = source)
+    }
+
+    private fun publishHostVisibility(visibility: AndroidHostVisibility, shellInstanceId: String) {
+        updateSlockHostVisibility(
+            shellInstanceId = shellInstanceId,
+            visible = visibility == AndroidHostVisibility.Visible
+        )
+        postAndroidAppScopeEvent(
+            eventName = SlockRealtimeNotifyContract.EventName,
+            eventData =
+                JSONObject()
+                    .put(SlockRealtimeNotifyContract.KeyAction, SlockRealtimeNotifyContract.ActionAppLifecycle)
+                    .put(SlockRealtimeNotifyContract.KeyLifecycleEvent, visibility.wireValue)
+                    .put(SlockRealtimeNotifyContract.KeyPageName, SlockKuiklyActivity.PAGE_APP_SHELL)
+                    .put(SlockRealtimeNotifyContract.KeyShellInstanceId, shellInstanceId)
+        )
     }
 
     fun enableBackgroundKeepAlive(
@@ -796,5 +832,27 @@ internal object AndroidAppScopeRealtimeOwner {
             logger = { message -> SlockAppLog.d(LOG_TAG, message) },
             warningLogger = { message -> SlockAppLog.w(LOG_TAG, message) }
         )
+    }
+}
+
+internal enum class AndroidHostVisibility(val wireValue: String) {
+    Visible("resume"),
+    Hidden("pause")
+}
+
+internal fun applyAndroidHostVisibilityTransition(
+    visibility: AndroidHostVisibility,
+    publishVisibility: () -> Unit,
+    applyRuntimeVisibility: () -> Unit
+) {
+    when (visibility) {
+        AndroidHostVisibility.Visible -> {
+            applyRuntimeVisibility()
+            publishVisibility()
+        }
+        AndroidHostVisibility.Hidden -> {
+            publishVisibility()
+            applyRuntimeVisibility()
+        }
     }
 }

@@ -19,6 +19,15 @@ object SlockRealtimeNotifyContract {
     const val KeyServerId = GeneratedRealtimeContract.PayloadKey.ServerId
     const val KeyEventName = GeneratedRealtimeContract.PayloadKey.EventName
     const val KeyRawPayload = GeneratedRealtimeContract.PayloadKey.RawPayload
+    const val ActionAppLifecycle = "appLifecycle"
+    const val LifecycleVisibleResume = "resume"
+    const val LifecycleVisibleShow = "show"
+    const val LifecycleHiddenPause = "pause"
+    const val LifecycleHidden = "hide"
+    const val LifecycleHiddenKeepAlive = "hide_keep_alive"
+    const val KeyLifecycleEvent = "event"
+    const val KeyPageName = "pageName"
+    const val KeyShellInstanceId = "shellInstanceId"
 }
 
 object SlockRealtimeRoomJoinedChannelAction {

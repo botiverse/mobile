@@ -44,6 +44,7 @@ internal class SlockKuiklyPageData private constructor(
 ) {
     val text: String = json.toString()
     val instanceId: String get() = json.optString("instanceId")
+    val shellInstanceId: String get() = json.optString("slockShellInstanceId")
     val payloadBytes: Int get() = json.optString("payload").length
 
     fun withInstanceId(instanceId: String): SlockKuiklyPageData {
