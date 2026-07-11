@@ -5521,6 +5521,76 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageUpdatedCannotReplaceCanonicalAuthorIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "u2"),
+                        timestampLabel = "",
+                        body = "edited body"
+                    )
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals("edited body", message.body)
+        assertEquals("u1", message.authorId)
+        assertEquals("Artin", message.authorName)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMessageUpdatedCanHydrateUnknownAuthorIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource = canonicalThreadDataSource()
+        val cachedPayload = contentPayload("cached body")
+        dataSource.cachePayload(
+            cachedPayload.copy(
+                messages =
+                    listOf(
+                        cachedPayload.messages.single().copy(
+                            authorId = "unknown",
+                            authorName = "Unknown"
+                        )
+                    )
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Aiden"),
+                        timestampLabel = "",
+                        body = "edited body"
+                    )
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals("u2", message.authorId)
+        assertEquals("Aiden", message.authorName)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource = canonicalThreadDataSource()

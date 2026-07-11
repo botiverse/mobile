@@ -5803,13 +5803,26 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
     update: KuiklyThreadMessageItem,
     reactionUpdate: List<KuiklyThreadReactionItem>? = null,
     preserveExistingReactions: Boolean = false
-): KuiklyThreadMessageItem =
-    copy(
-        authorId = update.authorId.ifBlank { authorId },
-        authorName = update.authorName.takeUnless { it.isBlank() || it == update.authorId } ?: authorName,
-        isOwn = update.isOwn,
-        avatarLabel = update.avatarLabel.ifBlank { avatarLabel },
-        avatarWireValue = update.avatarWireValue ?: avatarWireValue,
+): KuiklyThreadMessageItem {
+    val currentAuthorId = authorId.resolvedRealtimeThreadAuthorIdOrNull()
+    val incomingAuthorId = update.authorId.resolvedRealtimeThreadAuthorIdOrNull()
+    // A message author is immutable. Sparse realtime patches have historically
+    // carried an event actor id without matching author presentation fields;
+    // accepting that id would leave the old name/avatar clickable as another
+    // member. Only hydrate an unresolved author or refresh the same identity.
+    val acceptsIncomingAuthor =
+        incomingAuthorId != null && (currentAuthorId == null || currentAuthorId == incomingAuthorId)
+    return copy(
+        authorId = if (acceptsIncomingAuthor) update.authorId else authorId,
+        authorName =
+            if (acceptsIncomingAuthor) {
+                update.authorName.takeUnless { it.isBlank() || it == update.authorId } ?: authorName
+            } else {
+                authorName
+            },
+        isOwn = if (acceptsIncomingAuthor) update.isOwn else isOwn,
+        avatarLabel = if (acceptsIncomingAuthor) update.avatarLabel.ifBlank { avatarLabel } else avatarLabel,
+        avatarWireValue = if (acceptsIncomingAuthor) update.avatarWireValue ?: avatarWireValue else avatarWireValue,
         timestampLabel = update.timestampLabel.ifBlank { timestampLabel },
         seq = update.seq ?: seq,
         messageType = update.messageType.ifBlank { messageType },
@@ -5836,6 +5849,10 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         attachments = mergeAttachmentCommentMetadata(update.attachments),
         commentRef = update.commentRef ?: commentRef
     )
+}
+
+private fun String.resolvedRealtimeThreadAuthorIdOrNull(): String? =
+    trim().takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
 
 private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
     updates: List<KuiklyThreadAttachmentItem>
