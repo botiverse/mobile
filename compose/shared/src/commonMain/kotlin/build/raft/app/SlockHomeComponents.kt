@@ -188,6 +188,7 @@ private const val HomeListMinBeyondBoundsItemCount = 6
 private const val HomeListMaxBeyondBoundsItemCount = 24
 private const val HomeListOverscanViewportFraction = 2f / 3f
 private const val HomeListRepresentativeRowStepDp = 34f
+private const val HomeListServerSwitchRampStep = 3
 private const val HomeServerSwitcherMaxBeyondBoundsItemCount = 6
 
 internal enum class HomeSidebarBadgeTone {
@@ -885,8 +886,9 @@ internal fun SlockStructuralHomeShell(
     pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
+    listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
@@ -1054,10 +1056,19 @@ internal fun SlockStructuralHomeShell(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
             initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
         )
+    var listStateServerId by remember { mutableStateOf(listPositionServerId) }
+    var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
+    var listPremeasureLimit by remember { mutableStateOf(Int.MAX_VALUE) }
     val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
-    DisposableEffect(listState) {
-        onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
+    DisposableEffect(listState, currentServerId) {
+        val snapshotServerId = currentServerId
+        onDispose {
+            latestOnListPositionSnapshot(
+                snapshotServerId,
+                listState.toAppShellLazyListPosition()
+            )
+        }
     }
     val listScope = rememberCoroutineScope()
     var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }
@@ -1160,11 +1171,46 @@ internal fun SlockStructuralHomeShell(
                     )
                 }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    val homeBeyondBoundsItemCount =
+                    val targetHomeBeyondBoundsItemCount =
                         homeListBeyondBoundsItemCount(
                             itemCount = lazyItemCount,
                             viewportHeightDp = maxHeight.value
                         )
+                    val homeBeyondBoundsItemCount =
+                        if (listPremeasureServerId == currentServerId) {
+                            listPremeasureLimit.coerceAtMost(targetHomeBeyondBoundsItemCount)
+                        } else {
+                            HomeListMinBeyondBoundsItemCount.coerceAtMost(targetHomeBeyondBoundsItemCount)
+                        }
+                    LaunchedEffect(
+                        currentServerId,
+                        listPositionServerId,
+                        initialListPosition.firstVisibleItemIndex,
+                        initialListPosition.firstVisibleItemScrollOffset,
+                        targetHomeBeyondBoundsItemCount
+                    ) {
+                        if (listStateServerId != listPositionServerId) {
+                            listState.scrollToItem(
+                                initialListPosition.firstVisibleItemIndex,
+                                initialListPosition.firstVisibleItemScrollOffset
+                            )
+                            listStateServerId = listPositionServerId
+                        }
+                        if (listPremeasureServerId != currentServerId) {
+                            listPremeasureLimit = HomeListMinBeyondBoundsItemCount
+                            listPremeasureServerId = currentServerId
+                            while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
+                                withFrameNanos { }
+                                listPremeasureLimit =
+                                    homeListNextServerSwitchBeyondBoundsItemCount(
+                                        current = listPremeasureLimit,
+                                        target = targetHomeBeyondBoundsItemCount
+                                    )
+                            }
+                        } else if (listPremeasureLimit != Int.MAX_VALUE) {
+                            listPremeasureLimit = targetHomeBeyondBoundsItemCount
+                        }
+                    }
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
                         LazyColumn(
                             state = listState,
@@ -1244,7 +1290,7 @@ internal fun SlockStructuralHomeShell(
                                     )
                                 }
                                 if (pinnedExpanded) {
-                                    items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].key}" }) { index ->
+                                    items(displayedPinned.size, key = { index -> homeSidebarSlotKey("pinned", index) }) { index ->
                                         val pinnedRow = displayedPinned[index]
                                         val pinned = pinnedRow.conversation
                                         val pinnedMember = pinnedRow.member
@@ -1356,7 +1402,7 @@ internal fun SlockStructuralHomeShell(
                                         )
                                     }
                                     if (jointChannelsExpanded) {
-                                        items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
+                                        items(displayedJointChannels.size, key = { index -> homeSidebarSlotKey("joint", index) }) { index ->
                                             val channel = displayedJointChannels[index]
                                             val badgeProjection = channel.homeConversationBadgeProjection()
                                             val jointInteractionState = when {
@@ -1412,7 +1458,7 @@ internal fun SlockStructuralHomeShell(
                                         }
                                     }
                                     if (channelsExpanded) {
-                                        items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
+                                        items(displayedChannels.size, key = { index -> homeSidebarSlotKey("channel", index) }) { index ->
                                             val channel = displayedChannels[index]
                                             val badgeProjection = channel.homeConversationBadgeProjection()
                                             // #211 review (Cindy): selected wins over pressed.
@@ -1473,7 +1519,7 @@ internal fun SlockStructuralHomeShell(
                             )
                         }
                         if (directMessagesExpanded) {
-                            items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
+                            items(displayedDirectMessages.size, key = { index -> homeSidebarSlotKey("dm", index) }) { index ->
                                 val dm = displayedDirectMessages[index]
                                 val badgeProjection = dm.homeConversationBadgeProjection()
                                 val dmInteractionState = when {
@@ -1804,6 +1850,16 @@ internal fun homeListBeyondBoundsItemCount(
         maximumValue = boundedTarget
     )
 }
+
+internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
+    (current.coerceAtLeast(HomeListMinBeyondBoundsItemCount) + HomeListServerSwitchRampStep)
+        .coerceAtMost(target.coerceAtLeast(HomeListMinBeyondBoundsItemCount))
+
+internal fun homeSidebarSlotKey(section: String, index: Int): String =
+    // Row interaction state lives outside each lazy item and is keyed by conversation id.
+    // Stable section slots therefore preserve native row/icon views across server replacement
+    // without coupling selection, press, or menu ownership to the previous row payload.
+    "home-$section-slot-$index"
 
 internal fun homeServerSwitcherBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceIn(
