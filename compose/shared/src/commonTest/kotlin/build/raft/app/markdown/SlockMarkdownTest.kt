@@ -13,6 +13,7 @@ import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
+import com.tencent.kuikly.compose.ui.text.withLink
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -44,6 +45,41 @@ class SlockMarkdownTest {
     private val slockInlineCodeAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG
     private val slockInlineCodeTrailingMarginAnnotationTag = SLOCK_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
     private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
+
+    @Test
+    fun raftMessagePermalinkUsesGenericInlineBoxChip() {
+        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val source =
+            buildAnnotatedString {
+                append("See ")
+                withLink(LinkAnnotation.Url(url)) { append(url) }
+                append(" now")
+            }
+
+        val resolved = source.withSlockMessagePermalinkChips()
+        val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
+
+        assertEquals("See linked message  msg now", resolved.text)
+        assertEquals(url, link.url)
+        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), link.styles?.style?.inlineBoxStyle?.backgroundColor)
+        assertEquals(SlockColor.BorderBlack, link.styles?.style?.inlineBoxStyle?.borderColor)
+        assertEquals(1.dp, link.styles?.style?.inlineBoxStyle?.borderWidth)
+        assertEquals(null, link.styles?.style?.textDecoration)
+    }
+
+    @Test
+    fun externalAndContentlessRaftLinksRemainOrdinaryLinks() {
+        val external = "https://example.com/page"
+        val contentless = "https://app.raft.build/s/mobile/channel/channel-1"
+        val source =
+            buildAnnotatedString {
+                withLink(LinkAnnotation.Url(external)) { append("external") }
+                append(" ")
+                withLink(LinkAnnotation.Url(contentless)) { append("channel") }
+            }
+
+        assertSame(source, source.withSlockMessagePermalinkChips())
+    }
 
     @Test
     fun markdownPreparseOnlyWarmsFullRendererBodies() = runBlocking {
@@ -451,6 +487,15 @@ class SlockMarkdownTest {
 
         assertEquals(SlockColor.SoftSignal, selfMentionStyle.background)
         assertEquals(SlockColor.BrandYellow, selfMentionStyle.background)
+        assertEquals(SlockColor.BrandYellow, selfMentionStyle.inlineBoxStyle?.backgroundColor)
+        assertEquals(SlockColor.BorderBlack, selfMentionStyle.inlineBoxStyle?.borderColor)
+        assertEquals(1.dp, selfMentionStyle.inlineBoxStyle?.borderWidth)
+        assertEquals(4.dp, selfMentionStyle.inlineBoxStyle?.paddingStart)
+        assertEquals(4.dp, selfMentionStyle.inlineBoxStyle?.paddingEnd)
+        assertEquals(2.dp, selfMentionStyle.inlineBoxStyle?.paddingTop)
+        assertEquals(2.dp, selfMentionStyle.inlineBoxStyle?.paddingBottom)
+        assertEquals(2.dp, selfMentionStyle.inlineBoxStyle?.marginStart)
+        assertEquals(2.dp, selfMentionStyle.inlineBoxStyle?.marginEnd)
         assertEquals(null, selfMentionStyle.textDecoration)
         assertEquals(SlockMarkdownTagFontSize, selfMentionStyle.fontSize)
         assertEquals(TextDecoration.Underline, ordinaryMentionStyle.textDecoration)
@@ -458,6 +503,7 @@ class SlockMarkdownTest {
         assertEquals(2.sp, ordinaryMentionStyle.textDecorationThickness)
         assertEquals(2.sp, ordinaryMentionStyle.textDecorationOffset)
         assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
+        assertEquals(null, ordinaryMentionStyle.inlineBoxStyle)
         assertEquals(SlockMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
 
         val activeMentionStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, active = true)

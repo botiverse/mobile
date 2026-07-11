@@ -6387,6 +6387,22 @@ private suspend fun openSharedThreadAttachment(
 }
 
 internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
+    toSlockMessagePermalinkTarget()?.let { target ->
+        return SlockThreadWebLinkTarget(
+            channelId = target.channelId.value,
+            messageId = target.messageId.value,
+            routeKind =
+                if (target.routeKind == build.raft.app.model.ConversationKind.DirectMessage) {
+                    KuiklyThreadSurfaceKind.DirectMessage
+                } else {
+                    KuiklyThreadSurfaceKind.Channel
+                },
+            threadParentMessageId = target.threadParentMessageId?.value
+        )
+    }
+
+    // Compatibility for pre-workspace and channel-only links. New message-chip
+    // and preview callers use the canonical typed parser above.
     val trimmed = trim()
     val schemeEnd = trimmed.indexOf("://")
     if (schemeEnd <= 0) return null
@@ -6400,6 +6416,7 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     val path = pathAndQuery.substringBefore('?')
     val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")
     val segments = path.split('/').filter { it.isNotBlank() }
+    if (segments.firstOrNull() == "s") return null
     val routeIndex = segments.indexOfFirst {
         val segment = it.lowercase()
         segment == KuiklyThreadSurfaceKind.Channel || segment == KuiklyThreadSurfaceKind.DirectMessage
