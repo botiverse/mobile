@@ -89,6 +89,7 @@ import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
+import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.core.views.VideoView
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
@@ -265,6 +266,18 @@ private fun SlockFilePreviewStandalonePageContent() {
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
     var activeDownloadId by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<String?>(null) }
     var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
+    val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
+    val unableToResolveComment = stringResource(MR.strings.file_preview_error_resolve_comment)
+    val downloadStopped = stringResource(MR.strings.file_preview_download_stopped)
+    val downloadFailed = stringResource(MR.strings.file_preview_download_failed)
+    val unableToDownloadAttachment = stringResource(MR.strings.file_preview_error_download_attachment)
+    val noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app)
+    val storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable)
+    val unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
+    val downloadedFileDeleted = stringResource(MR.strings.file_preview_download_deleted)
+    val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
+    val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
+    val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -342,7 +355,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         attachmentCommentsState
                             ?.takeIf { it.attachment.id == current.attachment.id }
                             ?.copy(sending = false, errorCode = result.contractCode ?: "http_${result.code}")
-                    bridge.toast("Unable to send comment")
+                    bridge.toast(unableToSendComment)
                 }
             }
         }
@@ -374,7 +387,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                                     errorCode = result.contractCode ?: "http_${result.code}"
                                 )
                             }
-                    bridge.toast("Unable to resolve comment")
+                    bridge.toast(unableToResolveComment)
                 }
             }
         }
@@ -391,12 +404,12 @@ private fun SlockFilePreviewStandalonePageContent() {
                     "progress", "resumed" -> downloadStatus = "downloading"
                     "cancelled" -> {
                         downloadStatus = "idle"
-                        downloadMessage = "Download stopped"
+                        downloadMessage = downloadStopped
                         activeDownloadId = null
                     }
                     "failed" -> {
                         downloadStatus = "failed"
-                        downloadMessage = "Download failed"
+                        downloadMessage = downloadFailed
                         activeDownloadId = null
                     }
                 }
@@ -449,7 +462,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                 ?: currentPayload.threadAttachmentExternalUrl(threadApi)
-                ?: return "Unable to download attachment"
+                ?: return unableToDownloadAttachment
         val downloadId =
             if (trackProgress) {
                 activeDownloadId ?: currentPayload.filePreviewDownloadId()
@@ -485,11 +498,11 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
             "cancelled" -> {
                 activeDownloadId = null
-                "Download stopped"
+                downloadStopped
             }
-            "no_app" -> result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
-            "storage_failed" -> result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
-            else -> result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
+            "no_app" -> result?.optString("message").orEmpty().ifBlank { noAppCanOpenFile }
+            "storage_failed" -> result?.optString("message").orEmpty().ifBlank { storageUnavailable }
+            else -> result?.optString("message").orEmpty().ifBlank { unableToOpenAttachment }
         }
     }
     fun requestExternalOpen() {
@@ -513,7 +526,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 downloadProgress = null
                 activeDownloadId = null
             } else {
-                downloadStatus = if (error == "Download stopped") "idle" else "failed"
+                downloadStatus = if (error == downloadStopped) "idle" else "failed"
                 downloadMessage = error
                 downloadProgress = null
                 activeDownloadId = null
@@ -528,7 +541,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             "resume" -> downloadStatus = "downloading"
             "stop" -> {
                 downloadStatus = "idle"
-                downloadMessage = "Download stopped"
+                downloadMessage = downloadStopped
             }
         }
         coroutineScope.launch {
@@ -550,9 +563,9 @@ private fun SlockFilePreviewStandalonePageContent() {
                 downloadStatus = "idle"
                 downloadMessage = ""
                 downloadProgress = null
-                bridge.toast("Downloaded file deleted")
+                bridge.toast(downloadedFileDeleted)
             } else {
-                val error = result?.optString("message").orEmpty().ifBlank { "Unable to delete downloaded file" }
+                val error = result?.optString("message").orEmpty().ifBlank { unableToDeleteDownload }
                 bridge.toast(error)
             }
         }
@@ -589,7 +602,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (composerImageEditSaving) return
         val captureView = composerImageEditCaptureRef?.view
         if (captureView == null) {
-            bridge.toast("Image editor is still loading")
+            bridge.toast(imageEditorLoading)
             return
         }
         composerImageEditSaving = true
@@ -600,7 +613,7 @@ private fun SlockFilePreviewStandalonePageContent() {
             if (code == 0 && fileRef.isNotBlank()) {
                 postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
             } else {
-                bridge.toast(result?.optString("message").orEmpty().ifBlank { "Image edit export failed" })
+                bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
             }
         }
     }
@@ -1649,16 +1662,16 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
             copy(
                 kind = "error",
                 titleDesc = MR.strings.file_preview_unavailable.desc(),
-                message = "Failed to load: ${result.error.code}",
-                messageDesc = null,
+                message = "",
+                messageDesc = MR.strings.file_preview_error_load.format(listOf(result.error.code)),
                 error = result.error.code
             )
         is DataResult.NoPermission ->
             copy(
                 kind = "error",
                 titleDesc = MR.strings.file_preview_hidden.desc(),
-                message = "File hidden: ${result.blocker.code}",
-                messageDesc = null,
+                message = "",
+                messageDesc = MR.strings.file_preview_error_hidden.format(listOf(result.blocker.code)),
                 error = result.blocker.code
             )
     }
@@ -2172,7 +2185,7 @@ private fun SlockFilePreviewVideoPanel(
             if (!canPlay) {
                 SlockFilePreviewVideoOverlayText(
                     iconName = SlockLucideIconName.TriangleAlert,
-                    title = fallbackMessage.ifBlank { "Video preview is unavailable." },
+                    title = fallbackMessage.ifBlank { stringResource(MR.strings.file_preview_error_load_media) },
                     detail = name.ifBlank { meta }
                 )
             } else if (audioOnly && !nativeController) {

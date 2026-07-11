@@ -78,6 +78,8 @@ import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.compose.localized
+import com.tencent.tmm.kmmresource.resource.format
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -614,7 +616,7 @@ internal fun SettingsComputersContent(
     onEvent: (String, String?) -> Unit
 ) {
     if (payload.isPageLevelLoading()) {
-        SettingsComputersPageLoadingMessage(payload.pageLevelLoadingMessage())
+        SettingsComputersPageLoadingMessage(payload.localizedPageLevelLoadingMessage())
         return
     }
     LazyColumn(
@@ -623,7 +625,7 @@ internal fun SettingsComputersContent(
     ) {
         if (payload.computers.isEmpty()) {
             item {
-                val presentation = payload.statusPresentation()
+                val presentation = payload.localizedStatusPresentation()
                 SettingsComputerStatusMessage(
                     iconName = presentation.iconName,
                     title = presentation.title,
@@ -710,6 +712,36 @@ internal fun KuiklySettingsComputersPayload.statusPresentation(): SettingsComput
                 accentColor = SlockColor.TextMutedGrayArgb
             )
     }
+
+@Composable
+private fun KuiklySettingsComputersPayload.localizedPageLevelLoadingMessage(): String =
+    if (emptyTitle.isBlank() || emptyTitle == "Loading computers") {
+        stringResource(MR.strings.settings_computers_loading)
+    } else {
+        emptyTitle
+    }
+
+@Composable
+private fun KuiklySettingsComputersPayload.localizedStatusPresentation(): SettingsComputersStatusPresentation {
+    val canonical = statusPresentation()
+    val title =
+        when (status) {
+            "loading" -> stringResource(MR.strings.settings_computers_loading)
+            "error" -> stringResource(MR.strings.settings_computers_error_load)
+            "blocked", "noPermission" -> stringResource(MR.strings.settings_computers_no_access)
+            else -> stringResource(MR.strings.settings_computers_empty)
+        }
+    val detail =
+        when (emptyDetail) {
+            "Fetching connected machines from this server." -> stringResource(MR.strings.settings_computers_loading_detail)
+            "Pull to refresh or try again." -> stringResource(MR.strings.settings_computers_error_retry_detail)
+            "Settings cannot load connected machines right now." -> stringResource(MR.strings.settings_computers_error_unavailable_detail)
+            "You do not have permission to view connected machines." -> stringResource(MR.strings.settings_computers_no_access_detail)
+            "Connect a desktop daemon to see it here." -> stringResource(MR.strings.settings_computers_empty_detail)
+            else -> canonical.detail
+        }
+    return canonical.copy(title = title, detail = detail)
+}
 
 @Composable
 internal fun SettingsComputerDetailContent(
@@ -883,13 +915,16 @@ private fun SettingsComputerDetailVisualContent(
         payload.agentsErrorCode?.let { error ->
             item {
                 Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    SettingsInlineError("Unable to load agents", error, payload.agentsRetryable) { onEvent("retryAgents", null) }
+                    SettingsInlineError(stringResource(MR.strings.settings_computers_error_load_agents), error, payload.agentsRetryable) { onEvent("retryAgents", null) }
                 }
             }
         } ?: if (payload.agents.isEmpty()) {
             item {
                 Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    SettingsEmptyMessage("No agents", "Agents running on this computer will show up here.")
+                    SettingsEmptyMessage(
+                        stringResource(MR.strings.settings_computers_empty_agents),
+                        stringResource(MR.strings.settings_computers_empty_agents_detail)
+                    )
                 }
             }
         } else {
@@ -921,13 +956,16 @@ private fun SettingsComputerDetailVisualContent(
             payload.workspacesErrorCode?.let { error ->
                 item {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                        SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) }
+                        SettingsInlineError(stringResource(MR.strings.settings_computers_error_load_workspaces), error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) }
                     }
                 }
             } ?: if (payload.workspaces.isEmpty()) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                        SettingsEmptyMessage("No workspaces", "Workspaces opened by this computer will show up here.")
+                        SettingsEmptyMessage(
+                            stringResource(MR.strings.settings_computers_empty_workspaces),
+                            stringResource(MR.strings.settings_computers_empty_workspaces_detail)
+                        )
                     }
                 }
             } else {
@@ -1984,9 +2022,9 @@ private fun SettingsInlineError(title: String, errorCode: String, retryable: Boo
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        Text(settingsComputerErrorCopy(errorCode), style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(localizedSettingsComputerErrorCopy(errorCode), style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
         if (retryable) {
-            SettingsPrimaryButton("Retry", onRetry)
+            SettingsPrimaryButton(stringResource(MR.strings.common_retry), onRetry)
         }
     }
 }
@@ -2001,6 +2039,19 @@ private fun settingsComputerErrorCopy(code: String): String = when (code) {
     "server_unavailable" -> "The server is temporarily unavailable. Try again in a moment."
     else -> "Error: $code"
 }
+
+@Composable
+private fun localizedSettingsComputerErrorCopy(code: String): String =
+    when (code) {
+        "machine_offline" -> stringResource(MR.strings.settings_computers_error_offline)
+        "machine_offline_replay" -> stringResource(MR.strings.settings_computers_error_replica)
+        "computer_has_agents" -> stringResource(MR.strings.settings_computers_error_has_agents)
+        "computer_bad_request" -> stringResource(MR.strings.settings_computers_error_bad_request)
+        "server_forbidden" -> stringResource(MR.strings.settings_computers_error_forbidden)
+        "auth_required" -> stringResource(MR.strings.settings_computers_error_auth)
+        "server_unavailable" -> stringResource(MR.strings.settings_computers_error_server_unavailable)
+        else -> MR.strings.settings_computers_error_code.format(listOf(code)).localized()
+    }
 
 @Composable
 private fun SettingsEmptyMessage(title: String, detail: String?) {

@@ -375,6 +375,41 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun productionEmptyAndErrorStateResourcesAreGenerated() {
+        listOf(
+            MR.strings.common_no_matches,
+            MR.strings.home_error_load,
+            MR.strings.search_empty_title,
+            MR.strings.saved_empty_title,
+            MR.strings.inbox_error_load_more,
+            MR.strings.tasks_empty_filtered_detail,
+            MR.strings.settings_computers_error_load,
+            MR.strings.file_preview_error_download_attachment,
+            MR.strings.member_error_load_member,
+            MR.strings.member_state_no_creator_assigned,
+            MR.strings.member_state_no_files,
+            MR.strings.thread_files_error_load
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "production empty/error copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.search_empty_results_query.format(listOf("query")),
+            MR.strings.settings_computers_error_code.format(listOf("code")),
+            MR.strings.file_preview_error_hidden.format(listOf("code")),
+            MR.strings.member_error_reset_agent.format(listOf("code"))
+        ).forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "formatted production empty/error copy must produce ResourceFormattedStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API

@@ -955,6 +955,9 @@ internal fun MembersPageContent() {
         )
     }
     val scope = rememberCoroutineScope()
+    val manageInvitesForbidden = stringResource(MR.strings.member_error_manage_invites_forbidden)
+    val loadJoinLinkFailed = stringResource(MR.strings.member_error_load_join_link)
+    val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
     val computersStore = remember(computersApiClient, scope) {
         SharedComputersStore(
             computersApiClient = computersApiClient,
@@ -1209,9 +1212,9 @@ internal fun MembersPageContent() {
                     inviteJoinLinkUrl = normalizeInviteHumanJoinUrl(result.data.url, webBaseUrl)
                 }
                 is DataResult.NoPermission ->
-                    bridge.toast("You do not have permission to manage invites.")
+                    bridge.toast(manageInvitesForbidden)
                 is DataResult.Error ->
-                    bridge.toast("Failed to load join link: ${result.error.userFacingMessage()}")
+                    bridge.toast("$loadJoinLinkFailed: ${result.error.userFacingMessage()}")
                 is DataResult.Empty -> Unit
             }
         }
@@ -1282,7 +1285,7 @@ internal fun MembersPageContent() {
                     }
                 val pageData = launchPayload.toMemberDetailPageData(member.id.value, member.kind)
                 if (pageData == null) {
-                    bridge.toast("Unable to open profile")
+                    bridge.toast(openProfileFailed)
                     bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
                 } else {
                     sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
@@ -1883,7 +1886,7 @@ private fun MemberDetailPageContent() {
             MemberDetailLoadingPageShell(onBack = { provider.bridge.closePage() })
         is MemberDetailRouteState.Error ->
             MemberDetailErrorPageShell(
-                title = "Could not load member",
+                title = stringResource(MR.strings.member_error_load_member),
                 detail = current.code,
                 onBack = { provider.bridge.closePage() }
             )
@@ -2709,6 +2712,11 @@ internal fun MembersListContent(
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
     var inviteHumanSubmitting by remember { mutableStateOf(false) }
     var inviteHumanError by remember { mutableStateOf<String?>(null) }
+    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
+    val createAgentFailed = stringResource(MR.strings.member_error_create_agent)
+    val createAgentForbidden = stringResource(MR.strings.member_error_create_agent_forbidden)
+    val sendInvitesFailed = stringResource(MR.strings.member_error_send_invites)
+    val sendInvitesForbidden = stringResource(MR.strings.member_error_send_invites_forbidden)
     val canInviteHumans = payload.canInviteHumans && inviteHumanSubmit != null
     LaunchedEffect(canInviteHumans) {
         if (!canInviteHumans) {
@@ -2894,13 +2902,13 @@ internal fun MembersListContent(
                             createAgentError = null
                         }
                         is DataResult.Empty -> {
-                            createAgentError = "Empty response"
+                            createAgentError = emptyResponseMessage
                         }
                         is DataResult.Error -> {
-                            createAgentError = "Failed to create agent: ${result.error.code}"
+                            createAgentError = "$createAgentFailed: ${result.error.code}"
                         }
                         is DataResult.NoPermission -> {
-                            createAgentError = "You do not have permission to create agents."
+                            createAgentError = createAgentForbidden
                         }
                     }
                 }
@@ -2943,13 +2951,13 @@ internal fun MembersListContent(
                             inviteHumanError = null
                         }
                         is DataResult.Empty -> {
-                            inviteHumanError = "Empty response"
+                            inviteHumanError = emptyResponseMessage
                         }
                         is DataResult.Error -> {
-                            inviteHumanError = "Failed to send invites: ${result.error.code}"
+                            inviteHumanError = "$sendInvitesFailed: ${result.error.code}"
                         }
                         is DataResult.NoPermission -> {
-                            inviteHumanError = "You do not have permission to send invites."
+                            inviteHumanError = sendInvitesForbidden
                         }
                     }
                 }
@@ -4058,7 +4066,7 @@ private fun MembersRestartResetDialog(
     ) {
         errorCode?.takeIf { it.isNotBlank() }?.let {
             MembersRestartResetNotice(
-                text = "Failed to reset agent: $it",
+                text = stringResource(MR.strings.member_error_reset_agent, it),
                 color = SlockColor.AccentOrange
             )
         }
@@ -4365,13 +4373,13 @@ private fun MembersAgentDetailStateNotice(
 ) {
     val message =
         when (state) {
-            MembersAgentDetailLoadState.Loading -> "Loading agent profile..."
-            MembersAgentDetailLoadState.Empty -> "Agent profile metadata is unavailable."
-            is MembersAgentDetailLoadState.Error -> "Could not load agent profile: ${state.code}"
-            is MembersAgentDetailLoadState.NoPermission -> "Private agent surfaces are hidden: ${state.code}"
+            MembersAgentDetailLoadState.Loading -> stringResource(MR.strings.member_state_loading_agent_profile)
+            MembersAgentDetailLoadState.Empty -> stringResource(MR.strings.member_state_agent_profile_unavailable)
+            is MembersAgentDetailLoadState.Error -> "${stringResource(MR.strings.member_error_load_agent_profile)}: ${state.code}"
+            is MembersAgentDetailLoadState.NoPermission -> "${stringResource(MR.strings.member_error_private_surfaces_hidden)}: ${state.code}"
             MembersAgentDetailLoadState.Idle -> null
             is MembersAgentDetailLoadState.Content ->
-                if (state.refreshing) "Refreshing agent profile..." else null
+                if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
         }
     val privateMessage =
         if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
@@ -4793,7 +4801,7 @@ private fun MembersHumanCreatedAgentsSection(
         }
         if (createdAgents.isEmpty()) {
             Text(
-                text = "No created agents",
+                text = stringResource(MR.strings.member_state_no_created_agents),
                 style = SlockType.Body.copy(
                     fontSize = 15.sp,
                     lineHeight = 22.sp,
@@ -5976,7 +5984,7 @@ private fun MembersAgentProfileTab(
                     }
                 } else {
                     Text(
-                        text = "No creator assigned",
+                        text = stringResource(MR.strings.member_state_no_creator_assigned),
                         style = SlockType.Body.copy(
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
@@ -6265,7 +6273,7 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         )
         if (envVarNames.isEmpty()) {
             Text(
-                text = "No environment variables configured",
+                text = stringResource(MR.strings.member_state_no_environment_variables),
                 style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 fontStyle = FontStyle.Italic
@@ -6749,7 +6757,7 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
         MembersDetailSectionTitle("SKILLS ($totalSkills)")
         if (groups.isEmpty()) {
             Text(
-                text = "No skills installed",
+                text = stringResource(MR.strings.member_state_no_skills),
                 style = SlockType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -6799,9 +6807,9 @@ private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
         if (group.paths.isEmpty()) {
             Text(
                 text = if (group.title.equals("workspace", ignoreCase = true)) {
-                    "No skills in this agent's workspace"
+                    stringResource(MR.strings.member_state_no_workspace_skills)
                 } else {
-                    "No global skills installed on this computer"
+                    stringResource(MR.strings.member_state_no_global_skills)
                 },
                 style = SlockType.Caption.copy(
                     fontSize = 11.sp,
@@ -6915,7 +6923,7 @@ private fun MembersAgentCreatedAgentsSection(
         }
         if (createdAgents.isEmpty()) {
             Text(
-                text = "No created agents",
+                text = stringResource(MR.strings.member_state_no_created_agents),
                 style = SlockType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -7011,7 +7019,7 @@ private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier
         val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
         if (channels.isEmpty()) {
             Text(
-                text = "No active channel memberships.",
+                text = stringResource(MR.strings.member_state_no_active_channels),
                 style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextMutedGray
             )
@@ -7046,7 +7054,7 @@ private fun MembersAgentChatTab(detail: AgentDetailSnapshot?, modifier: Modifier
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
             Text(
-                text = "No agent-to-agent DMs yet.",
+                text = stringResource(MR.strings.member_state_no_agent_dms),
                 style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextMutedGray
             )
@@ -7374,13 +7382,13 @@ private fun MembersAgentWorkspaceTab(
         when (treeState) {
             MembersAgentWorkspaceTreeState.Idle,
             MembersAgentWorkspaceTreeState.Loading ->
-                MembersDetailField("State", "Loading workspace files...")
+                MembersDetailField("State", stringResource(MR.strings.member_state_loading_workspace))
             MembersAgentWorkspaceTreeState.Empty ->
-                MembersWorkspaceEmptyState("No files yet.", onRefresh)
+                MembersWorkspaceEmptyState(stringResource(MR.strings.member_state_no_files), onRefresh)
             is MembersAgentWorkspaceTreeState.Error ->
-                MembersWorkspaceErrorState("Failed to load files: ${treeState.code}", onRefresh)
+                MembersWorkspaceErrorState("${stringResource(MR.strings.member_error_load_files)}: ${treeState.code}", onRefresh)
             is MembersAgentWorkspaceTreeState.NoPermission ->
-                MembersWorkspaceErrorState("Workspace hidden: ${treeState.code}", onRefresh)
+                MembersWorkspaceErrorState("${stringResource(MR.strings.member_error_workspace_hidden)}: ${treeState.code}", onRefresh)
             is MembersAgentWorkspaceTreeState.Content ->
                 MembersWorkspaceTreeView(
                     root = treeState.snapshot.root,
@@ -7409,7 +7417,7 @@ private fun MembersWorkspaceTreeView(
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
     }
     if (rows.isEmpty()) {
-        MembersDetailField("Files", "No files yet.")
+        MembersDetailField("Files", stringResource(MR.strings.member_state_no_files))
         return
     }
     LazyColumn(
@@ -7498,7 +7506,7 @@ private fun MembersWorkspaceNodeRow(
             }
             if (loading) {
                 Text(
-                    text = "Loading",
+                    text = stringResource(MR.strings.common_loading),
                     style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1
@@ -7507,7 +7515,7 @@ private fun MembersWorkspaceNodeRow(
         }
         errorCode?.let {
             Text(
-                text = "Failed to load: $it",
+                text = "${stringResource(MR.strings.member_error_load_files)}: $it",
                 style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                 color = SlockColor.AccentOrange,
                 modifier = Modifier.padding(start = ((row.depth + 1) * 14).dp)
@@ -7564,13 +7572,13 @@ private fun MembersAgentAppsTab(
             AgentAppLoginLoadState.Error ->
                 MembersDetailField(
                     "Apps",
-                    "Failed to load connected apps: ${appLogins.errorCode ?: "unknown_error"}"
+                    "${stringResource(MR.strings.member_error_load_connected_apps)}: ${appLogins.errorCode ?: "unknown_error"}"
                 )
             else -> {
                 val activeItems = appLogins?.items.orEmpty()
                     .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
                 if (activeItems.isEmpty()) {
-                    MembersDetailField("Apps", "No connected apps yet.")
+                    MembersDetailField("Apps", stringResource(MR.strings.member_state_no_connected_apps))
                 } else {
                     activeItems.forEach { item ->
                         MembersAgentAppLoginCard(
@@ -8008,10 +8016,19 @@ private fun MembersAgentPermissionsTab(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val agentApiUnavailable = stringResource(MR.strings.member_error_agent_api_unavailable)
+    val loadPermissionsFailed = stringResource(MR.strings.member_error_load_permissions)
+    val noPermissionsData = stringResource(MR.strings.member_state_no_permissions_data)
+    val viewPermissionsForbidden = stringResource(MR.strings.member_error_view_permissions)
+    val savePermissionsFailed = stringResource(MR.strings.member_error_save_permissions)
+    val emptyResponse = stringResource(MR.strings.member_error_empty_response)
+    val savePermissionsForbidden = stringResource(MR.strings.member_error_save_permissions_forbidden)
+    val resetPermissionsFailed = stringResource(MR.strings.member_error_reset_permissions)
+    val resetPermissionsForbidden = stringResource(MR.strings.member_error_reset_permissions_forbidden)
 
     suspend fun loadScopes() {
         if (agentsApiClient == null) {
-            error = "Agent API not available"
+            error = agentApiUnavailable
             loading = false
             return
         }
@@ -8022,10 +8039,10 @@ private fun MembersAgentPermissionsTab(
                 error = null
             }
             is DataResult.Error -> {
-                error = "Failed to load agent permissions: ${result.error.code}"
+                error = "$loadPermissionsFailed: ${result.error.code}"
             }
-            is DataResult.Empty -> error = "No permissions data"
-            is DataResult.NoPermission -> error = "No permission to view permissions."
+            is DataResult.Empty -> error = noPermissionsData
+            is DataResult.NoPermission -> error = viewPermissionsForbidden
         }
         loading = false
     }
@@ -8053,9 +8070,9 @@ private fun MembersAgentPermissionsTab(
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "Failed to save: ${result.error.code}"
-            is DataResult.Empty -> error = "Empty response"
-            is DataResult.NoPermission -> error = "No permission to save permissions."
+            is DataResult.Error -> error = "$savePermissionsFailed: ${result.error.code}"
+            is DataResult.Empty -> error = emptyResponse
+            is DataResult.NoPermission -> error = savePermissionsForbidden
         }
         saving = false
     }
@@ -8069,9 +8086,9 @@ private fun MembersAgentPermissionsTab(
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "Failed to reset: ${result.error.code}"
-            is DataResult.Empty -> error = "Empty response"
-            is DataResult.NoPermission -> error = "No permission to reset permissions."
+            is DataResult.Error -> error = "$resetPermissionsFailed: ${result.error.code}"
+            is DataResult.Empty -> error = emptyResponse
+            is DataResult.NoPermission -> error = resetPermissionsForbidden
         }
         saving = false
     }
@@ -8092,7 +8109,7 @@ private fun MembersAgentPermissionsTab(
             // over the error.
             ErrorBanner(
                 text = error ?: "",
-                action = "Retry",
+                action = stringResource(MR.strings.common_retry),
                 onAction = { scope.launch { loadScopes() } }
             )
             return
@@ -8100,7 +8117,7 @@ private fun MembersAgentPermissionsTab(
         if (loading || currentServer == null || currentDraft == null) {
             // Loading state: text "Loading permissions…"
             Text(
-                text = "Loading permissions…",
+                text = stringResource(MR.strings.member_state_loading_permissions),
                 style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 modifier = Modifier.padding(SlockSpacing.Sm)

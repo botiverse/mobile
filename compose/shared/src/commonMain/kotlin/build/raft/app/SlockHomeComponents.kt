@@ -357,7 +357,8 @@ data class SlockHomeShellLabels(
             markAsRead = stringResource(MR.strings.home_action_mark_as_read),
             markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
             mute = stringResource(MR.strings.home_action_mute),
-            unmute = stringResource(MR.strings.home_action_unmute)
+            unmute = stringResource(MR.strings.home_action_unmute),
+            noServersAvailable = stringResource(MR.strings.home_state_no_servers)
         )
     }
 }
@@ -499,6 +500,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
             )
         }
     val standaloneScope = rememberCoroutineScope()
+    val unableToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message)
+    val failedToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message_failed)
+    val noDirectMessagePermission = stringResource(MR.strings.home_error_open_direct_message_permission)
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         sharedStores.serverMembersStore.refreshMembers(ServerId(serverId), DataRequestPriority.Background)
@@ -561,9 +565,9 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
                         standaloneHomeStore.dispatch(SharedHomeIntent.Refresh)
                         pager.openThreadPageFromConversation(result.data.conversation, "${payload.instanceId}:$kind:$memberId")
                     }
-                    is DataResult.Empty -> bridge.toast("Unable to open direct message")
-                    is DataResult.Error -> bridge.toast("Failed to open direct message: ${result.error.code}")
-                    is DataResult.NoPermission -> bridge.toast("You do not have permission to open this direct message.")
+                    is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
+                    is DataResult.Error -> bridge.toast("$failedToOpenDirectMessage: ${result.error.code}")
+                    is DataResult.NoPermission -> bridge.toast(noDirectMessagePermission)
                 }
             }
         },

@@ -138,6 +138,23 @@ internal fun ThreadMessageTranslationIndicator(
 ) {
     val tint = if (indicator.failed) SlockColor.AccentOrange else SlockColor.TextMutedGray
     val tintArgb = if (indicator.failed) SlockColor.AccentOrangeArgb else SlockColor.TextMutedGrayArgb
+    val localizedMessage =
+        when {
+            indicator.pending -> stringResource(MR.strings.translation_state_in_progress)
+            indicator.failed -> stringResource(MR.strings.translation_state_unavailable)
+            else -> indicator.message
+        }
+    val localizedActionLabel =
+        when (indicator.action) {
+            ThreadMessageTranslationIndicatorAction.Retry -> stringResource(MR.strings.common_retry)
+            ThreadMessageTranslationIndicatorAction.ToggleOriginal ->
+                if (indicator.actionLabel == "Show translation") {
+                    stringResource(MR.strings.translation_state_show_translation)
+                } else {
+                    stringResource(MR.strings.translation_state_show_original)
+                }
+            ThreadMessageTranslationIndicatorAction.None -> indicator.actionLabel
+        }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -148,14 +165,14 @@ internal fun ThreadMessageTranslationIndicator(
             color = tintArgb,
             spinning = indicator.pending
         )
-        if (indicator.message.isNotBlank()) {
+        if (localizedMessage.isNotBlank()) {
             Text(
-                text = indicator.message,
+                text = localizedMessage,
                 style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint
             )
         }
-        if (indicator.actionLabel.isNotBlank()) {
+        if (localizedActionLabel.isNotBlank()) {
             val onAction =
                 when (indicator.action) {
                     ThreadMessageTranslationIndicatorAction.Retry -> onRetry
@@ -163,7 +180,7 @@ internal fun ThreadMessageTranslationIndicator(
                     ThreadMessageTranslationIndicatorAction.None -> null
                 }
             Text(
-                text = indicator.actionLabel,
+                text = localizedActionLabel,
                 style = SlockType.Caption.copy(fontSize = 11.sp, color = tint),
                 color = tint,
                 modifier =
