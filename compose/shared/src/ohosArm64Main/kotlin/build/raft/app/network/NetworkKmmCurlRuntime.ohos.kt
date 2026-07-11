@@ -19,6 +19,12 @@ interface SlockOhosCurlRuntimeConfig {
 @Volatile
 private var curlRuntimeInstallAttempted = false
 
+// Cold-start bursts serialize here: one installer, everyone else waits and
+// observes VBTransportCurl.configured (task #252 review P1).
+private val curlRuntimeInstallGate = CurlRuntimeInstallGate(
+    isInstalled = { VBTransportCurl.configured }
+)
+
 /**
  * task #252: the OHOS transport runs on libcurl, which refuses every request
  * until the app installs a verified CA bundle and an explicit proxy decision.
@@ -36,8 +42,10 @@ private var curlRuntimeInstallAttempted = false
  * reason and retries on the next request while NetworkKMM keeps failing
  * closed.
  */
-internal actual fun ensurePlatformCurlRuntimeInstalled(warningLogger: (String) -> Unit): Boolean {
-    if (VBTransportCurl.configured) return true
+internal actual fun ensurePlatformCurlRuntimeInstalled(warningLogger: (String) -> Unit): Boolean =
+    curlRuntimeInstallGate.ensure { installCurlRuntime(warningLogger) }
+
+private fun installCurlRuntime(warningLogger: (String) -> Unit): Boolean {
     val mode = if (curlRuntimeInstallAttempted) "retry" else "initial"
     curlRuntimeInstallAttempted = true
     val path =

@@ -37,11 +37,18 @@ private var networkKmmInitialized = false
  * Installs the platform's curl runtime configuration (app-owned CA bundle +
  * explicit proxy decision) before a request is built (task #252). Only the
  * OHOS transport runs on libcurl — Android/iOS use the library's pooled ktor
- * engines — so those actuals are no-ops. The OHOS actual is idempotent and
- * cheap once configured; on failure it retries on the next request and logs
- * a structured reason, while NetworkKMM itself keeps failing closed.
+ * engines — so those actuals are no-ops. The OHOS actual is single-flight
+ * and idempotent once configured; on failure it logs a structured reason and
+ * the next request retries.
+ *
+ * Callers must treat `false` as fail-closed: return
+ * [CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL] without constructing a request, so
+ * a bootstrap failure is typed and never reaches the transport.
  */
 internal expect fun ensurePlatformCurlRuntimeInstalled(warningLogger: (String) -> Unit): Boolean
+
+/** Typed error body for requests refused before construction (task #252). */
+internal const val CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL = "curl_runtime_bootstrap_failed"
 
 internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
     if (networkKmmInitialized) return
@@ -75,7 +82,9 @@ internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
 }
 
 internal class NetworkKmmSlockHttpExecutor(
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    // Injectable for tests; production always uses the platform gate.
+    private val curlRuntimeGate: ((String) -> Unit) -> Boolean = ::ensurePlatformCurlRuntimeInstalled
 ) : SlockHttpExecutor {
 
     private val client: NetworkClient by lazy {
@@ -95,7 +104,17 @@ internal class NetworkKmmSlockHttpExecutor(
         bodyText: String?,
         jsonBody: Boolean
     ): SlockHttpExecutorResponse {
-        ensurePlatformCurlRuntimeInstalled(warningLogger)
+        if (!curlRuntimeGate(warningLogger)) {
+            warningLogger(
+                "slock_networkkmm_execute_blocked path=${url.substringBefore('?')} " +
+                    "reason=$CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL"
+            )
+            return SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL
+            )
+        }
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
         val traceHeaders = networkKmmTraceHeaders(headers)
@@ -154,7 +173,17 @@ internal class NetworkKmmSlockHttpExecutor(
         files: List<MultipartFile>,
         headers: Map<String, String>
     ): SlockHttpExecutorResponse {
-        ensurePlatformCurlRuntimeInstalled(warningLogger)
+        if (!curlRuntimeGate(warningLogger)) {
+            warningLogger(
+                "slock_networkkmm_multipart_blocked path=${url.substringBefore('?')} " +
+                    "reason=$CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL"
+            )
+            return SlockHttpExecutorResponse(
+                code = 0,
+                bodyText = null,
+                errorBodyText = CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL
+            )
+        }
         val startedAt = TimeSource.Monotonic.markNow()
         val path = url.substringBefore('?')
         val traceHeaders = networkKmmTraceHeaders(headers)

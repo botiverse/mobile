@@ -93,8 +93,15 @@ object SharedBinaryDownloader {
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
     ): String? {
-        ensurePlatformCurlRuntimeInstalled { warning ->
-            recordDiagnostics("operation=curl_runtime status=warning message=${warning.toSafeDiagnosticsToken()}")
+        val curlRuntimeReady =
+            ensurePlatformCurlRuntimeInstalled { warning ->
+                recordDiagnostics("operation=curl_runtime status=warning message=${warning.toSafeDiagnosticsToken()}")
+            }
+        if (!curlRuntimeReady) {
+            // Fail closed and typed before the request exists (task #252):
+            // the transport is never invoked and the next call retries.
+            recordDiagnostics("operation=$operation status=blocked reason=$CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL")
+            throw IllegalStateException("$failurePrefix: $CURL_RUNTIME_BOOTSTRAP_FAILED_DETAIL")
         }
         // Chunks are delivered straight off the transport without buffering the
         // whole payload; total comes from the response Content-Length at stream
