@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -692,6 +693,7 @@ class SharedSettingsStoreTest {
         // after the test so we don't leak the global to other tests
         // in the same JVM.
         val originalLocaleType = com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
+        val originalRuntimeLocale = KmmResourceLocaleRuntime.locale.value
         try {
             val store =
                 SharedSettingsStore(
@@ -706,6 +708,7 @@ class SharedSettingsStoreTest {
                 com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.System,
                 com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
             )
+            assertEquals(AppLocale.System, KmmResourceLocaleRuntime.locale.value)
 
             // Step 2: switch to Simplified Chinese. KmmResource should now
             // hold a `Custom` locale type for the selected language.
@@ -714,6 +717,7 @@ class SharedSettingsStoreTest {
             assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
                 com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
             )
+            assertEquals(AppLocale.SimplifiedChinese, KmmResourceLocaleRuntime.locale.value)
 
             // Step 3: switch back to English. KmmResource should remain
             // explicitly pinned to the selected app locale instead of OS locale.
@@ -722,8 +726,10 @@ class SharedSettingsStoreTest {
             assertIs<com.tencent.tmm.kmmresource.resource.desc.StringDesc.LocaleType.Custom>(
                 com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
             )
+            assertEquals(AppLocale.English, KmmResourceLocaleRuntime.locale.value)
         } finally {
             com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType = originalLocaleType
+            KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
         }
         scope.cancel()
     }

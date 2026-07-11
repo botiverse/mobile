@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.SlockLucideIconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.RealtimeEvent
@@ -851,6 +852,7 @@ class SharedSettingsDataSource(
             AppLocale.entries.firstOrNull { it.languageTag == localeTag || it.storageKey == localeTag }
                 ?: return DataResult.Error(ScreenError("settings_locale_unknown", retryable = false))
         repository.selectLocale(locale)
+        KmmResourceLocaleRuntime.publish(locale)
         // #85 follow-up: keep the KmmResource `StringDesc.localeType` in
         // sync with the user's selected `AppLocale` so any
         // shared `StringDesc` lookup renders the correct locale. This is a
