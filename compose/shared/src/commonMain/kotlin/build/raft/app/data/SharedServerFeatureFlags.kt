@@ -12,9 +12,11 @@ import kotlinx.serialization.json.Json
  * Server feature-flag evaluation — the KMP mirror of web `packages/web/src/store/serverFeatureFlags.ts`.
  * Both ends consume the SAME batch endpoint and registry so a flag is gated identically cross-platform.
  *
- * Wire contract (web-verified): POST `feature-flags/evaluate` with `{serverId, keys}` (batch, per-server;
- * userId is derived server-side from auth, NOT in the body), returning `{evaluations:[{key, enabled}]}`.
- * A `platform` field will be added to the body once the server accepts it (slock #186) — see [PLATFORM_TODO].
+ * Wire contract (server-verified): POST `feature-flags/evaluate` with `{serverId, keys, platform}` (batch,
+ * per-server; userId is derived server-side from auth, NOT in the body), returning `{evaluations:[{key,
+ * enabled}]}`. `platform` (slock #186, landed) is a `"web" | "mobile"` rule stage — evaluated between the
+ * user and server stages — so a rollout like `sync_core_messages_v0` can target mobile-only. This client
+ * always sends `"mobile"` ([FEATURE_FLAG_PLATFORM_MOBILE]); the server treats every KMP surface as mobile.
  */
 const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v0"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
@@ -29,9 +31,11 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     READ_RECEIPTS_FEATURE_FLAG_KEY,
 )
 
-// PLATFORM_TODO (slock #186 / Cody): once the server evaluate accepts `platform`, add it to
-// [FeatureFlagEvaluateRequestBody] so the sync-core rollout can be gated mobile-only. Until then the
-// body omits it (old contract = all-platform hit) and mobile-only targeting uses user/server rules.
+/**
+ * The `platform` value this client reports to feature-flag evaluation. The server's `FeatureFlagPlatform`
+ * is coarse (`"web" | "mobile"`), so every KMP surface (Android / iOS / OHOS) reports `"mobile"`.
+ */
+const val FEATURE_FLAG_PLATFORM_MOBILE: String = "mobile"
 
 private val featureFlagsJson = Json {
     ignoreUnknownKeys = true
@@ -43,6 +47,10 @@ private val featureFlagsJson = Json {
 private data class FeatureFlagEvaluateRequestBody(
     val serverId: String,
     val keys: List<String>,
+    // Sent so the server can apply platform-scoped rules (slock #186). `featureFlagsJson` has
+    // encodeDefaults=true, so the default is emitted on the wire; the server treats an omitted platform as
+    // all-platform, so sending "mobile" is what makes a mobile-only rollout target this client.
+    val platform: String = FEATURE_FLAG_PLATFORM_MOBILE,
 )
 
 @Serializable
