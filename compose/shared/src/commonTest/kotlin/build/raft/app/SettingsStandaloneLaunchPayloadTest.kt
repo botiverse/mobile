@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.model.SlockTimeContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -377,12 +378,15 @@ class SettingsStandaloneLaunchPayloadTest {
         val pageData =
             settingsComputerDetailPageData(
                 computerId = "machine-1",
-                timeContext = SlockTimeContext(localOffsetMinutes = 480, todayEpochDay = 20628, nowEpochMillis = 1_782_222_000_000)
+                timeContext = SlockTimeContext(localOffsetMinutes = 480, todayEpochDay = 20628, nowEpochMillis = 1_782_222_000_000),
+                storeScope = SlockShellStoreScope.create("shell-a", "server-a"),
             )
 
         assertEquals(SETTINGS_COMPUTER_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("machine-1", pageData.optString("computerId"))
         assertEquals("machine-1", pageData.optString("machineId"))
+        assertEquals("shell-a", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("server-a", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20628", pageData.optString("todayEpochDay"))
         assertEquals("1782222000000", pageData.optString("nowEpochMillis"))

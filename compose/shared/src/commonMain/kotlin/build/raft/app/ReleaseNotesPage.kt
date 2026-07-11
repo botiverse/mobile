@@ -55,13 +55,18 @@ internal class ComposeReleaseNotesPage : build.raft.app.base.BasePager() {
 // code is local app build identity, not product content. Passing it lets the
 // WebView start without rebuilding the standalone Settings store; direct/deep
 // opens still fall back to loading About locally when the value is absent.
-internal fun Pager.openReleaseNotesPage(versionCode: String = "") {
+internal fun Pager.openReleaseNotesPage(
+    versionCode: String = "",
+    storeScope: build.raft.app.data.SlockShellStoreScope,
+) {
     acquireModule<com.tencent.kuikly.core.module.RouterModule>(
         com.tencent.kuikly.core.module.RouterModule.MODULE_NAME
     ).openPage(
         RELEASE_NOTES_PAGE,
         com.tencent.kuikly.core.nvi.serialization.json.JSONObject().apply {
             put("pageName", RELEASE_NOTES_PAGE)
+            put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+            storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
             releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
                 put("versionCode", it)
             }
