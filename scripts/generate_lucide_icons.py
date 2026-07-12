@@ -29,6 +29,7 @@ from xml.etree import ElementTree as ET
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 DEFAULT_VERSION = "1.14.0"
+DEFAULT_TARGETS = "android,ohos,ios,shared,brand-assets"
 DEFAULT_LUCIDE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "slock-lucide")
 LUCIDE_REPO_URL = "https://github.com/lucide-icons/lucide.git"
 LUCIDE_RAW_URL = "https://raw.githubusercontent.com/lucide-icons/lucide"
@@ -1038,7 +1039,12 @@ def read_brand_asset_svg(asset_name):
     )
 
 
-def ios_imageset_contents(filename):
+def ios_imageset_contents(filename, template=False):
+    properties = {
+        "preserves-vector-representation": True,
+    }
+    if template:
+        properties["template-rendering-intent"] = "template"
     return json.dumps(
         {
             "images": [
@@ -1051,9 +1057,7 @@ def ios_imageset_contents(filename):
                 "author": "xcode",
                 "version": 1,
             },
-            "properties": {
-                "preserves-vector-representation": True,
-            },
+            "properties": properties,
         },
         indent=2,
     ) + "\n"
@@ -1093,12 +1097,42 @@ def generate_ios(icons, version, ios_asset_catalog, lucide_source_dir):
             version,
             fallback_dir=None,
             lucide_source_dir=lucide_source_dir,
-        ).strip() + "\n"
+        ).strip().replace('stroke="currentColor"', 'stroke="#000000"')
         filename = f"{asset_name}.svg"
         imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
         write_text(os.path.join(imageset_dir, filename), svg_text)
-        write_text(os.path.join(imageset_dir, "Contents.json"), ios_imageset_contents(filename))
+        write_text(
+            os.path.join(imageset_dir, "Contents.json"),
+            ios_imageset_contents(filename, template=True),
+        )
+    validate_ios_assets(icons, ios_asset_catalog)
     print(f"Generated {len(icons)} iOS Lucide SVG assets -> {ios_asset_catalog}")
+
+
+def validate_ios_assets(icons, ios_asset_catalog):
+    missing = []
+    for icon in icons:
+        asset_name = normalize_icon_name(icon)
+        filename = f"{asset_name}.svg"
+        imageset_dir = os.path.join(ios_asset_catalog, f"lucide-{asset_name}.imageset")
+        contents_path = os.path.join(imageset_dir, "Contents.json")
+        svg_path = os.path.join(imageset_dir, filename)
+        if not os.path.isfile(contents_path) or not os.path.isfile(svg_path):
+            missing.append(asset_name)
+            continue
+        with open(contents_path, encoding="utf-8") as file:
+            contents = json.load(file)
+        filenames = {
+            image.get("filename")
+            for image in contents.get("images", [])
+            if isinstance(image, dict)
+        }
+        if filename not in filenames:
+            missing.append(asset_name)
+    if missing:
+        raise RuntimeError(
+            "iOS Lucide asset catalog is incomplete for: " + ", ".join(sorted(missing))
+        )
 
 
 def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
@@ -1238,7 +1272,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("icons", nargs="*", help="Lucide icon names. Defaults to the Slock manifest in this file.")
     parser.add_argument("--version", default=DEFAULT_VERSION)
-    parser.add_argument("--targets", type=parse_targets, default=parse_targets("android,ohos,shared,brand-assets"))
+    parser.add_argument("--targets", type=parse_targets, default=parse_targets(DEFAULT_TARGETS))
     parser.add_argument("--android-output", default=DEFAULT_ANDROID_OUTPUT)
     parser.add_argument("--ohos-output", default=DEFAULT_OHOS_PATH_OUTPUT)
     parser.add_argument("--ohos-resfile-output", default=DEFAULT_OHOS_RESFILE_OUTPUT)
