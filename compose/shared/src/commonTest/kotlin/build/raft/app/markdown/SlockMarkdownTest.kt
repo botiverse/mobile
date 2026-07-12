@@ -894,6 +894,24 @@ class SlockMarkdownTest {
         )
     }
 
+    @Test
+    fun referenceChipsUseReactBoldFontFamily() {
+        val channelStyle = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
+        val richChannelStyle =
+            requireNotNull(slockMarkdownRichTextTagLinkStyles(SlockRichTextChromeKind.Channel).style)
+
+        assertEquals(SlockType.ButtonBold.fontFamily, channelStyle.fontFamily)
+        assertEquals(FontWeight.Normal, channelStyle.fontWeight)
+        assertEquals(SlockType.ButtonBold.fontFamily, richChannelStyle.fontFamily)
+        assertEquals(FontWeight.Normal, richChannelStyle.fontWeight)
+        assertEquals(null, richChannelStyle.textDecoration)
+        assertEquals(SlockRichTextFontWeightToken.Bold, SlockRichTextChromeKind.Channel.styleToken.fontWeight)
+
+        val ordinaryMention = slockMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention)
+        assertEquals(TextDecoration.Underline, ordinaryMention.textDecoration)
+        assertEquals(2.sp, ordinaryMention.textDecorationThickness)
+    }
+
     // react parity (task #407): web inline code renders in Space Mono
     // (`--font-mono`) at the inherited body size. The previous pin
     // ("keep the Slock body font") predated the Space Mono wiring (#130), when

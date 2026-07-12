@@ -67,7 +67,7 @@ data class SlockRichTextChromeStyleToken(
     val background: SlockRichTextColorToken? = null,
     val chipFill: SlockRichTextColorToken? = background,
     val fontFamily: SlockRichTextFontFamilyToken = SlockRichTextFontFamilyToken.SlockUi,
-    val fontWeight: SlockRichTextFontWeightToken = SlockRichTextFontWeightToken.SemiBold,
+    val fontWeight: SlockRichTextFontWeightToken = SlockRichTextFontWeightToken.Bold,
     val fontSizeSp: Float? = 14f,
     val textDecoration: SlockRichTextTextDecorationToken? = null,
     val textDecorationColor: SlockRichTextColorToken? = null,
@@ -93,7 +93,8 @@ enum class SlockRichTextFontFamilyToken(val wireValue: String) {
 
 enum class SlockRichTextFontWeightToken(val wireValue: String) {
     Normal("normal"),
-    SemiBold("semiBold")
+    SemiBold("semiBold"),
+    Bold("bold")
 }
 
 enum class SlockRichTextTextDecorationToken(val wireValue: String) {

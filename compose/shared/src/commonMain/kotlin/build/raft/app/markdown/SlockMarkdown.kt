@@ -1978,7 +1978,7 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
 
 private fun slockMarkdownTagBaseSpanStyle(): SpanStyle =
     SlockType.ButtonBold
-        .withSlockFontWeight(FontWeight.SemiBold)
+        .withSlockFontWeight(FontWeight.Bold)
         .toSpanStyle()
         .copy(fontSize = SlockMarkdownTagFontSize)
 
@@ -2065,17 +2065,25 @@ private fun SlockRichTextChromeStyleToken.applyToTextStyle(base: TextStyle): Tex
         fontWeight = fontWeight.toSlockFontWeight()
     )
 
-private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle =
-    slockMarkdownTagBaseSpanStyle()
+private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
+    val inlineBoxStyle = toInlineBoxSpanStyle()
+    return slockMarkdownTagBaseSpanStyle()
         .copy(
             color = foreground.toSlockMarkdownColor(),
-            textDecoration = textDecoration.toComposeTextDecoration(),
-            textDecorationColor = textDecorationColor.toSlockMarkdownColorOrUnspecified(),
-            textDecorationThickness = textDecorationThicknessSp.toSpOrUnspecified(),
-            textDecorationOffset = textDecorationOffsetSp.toSpOrUnspecified(),
+            textDecoration = if (inlineBoxStyle == null) textDecoration.toComposeTextDecoration() else null,
+            textDecorationColor =
+                if (inlineBoxStyle == null) textDecorationColor.toSlockMarkdownColorOrUnspecified()
+                else Color.Unspecified,
+            textDecorationThickness =
+                if (inlineBoxStyle == null) textDecorationThicknessSp.toSpOrUnspecified()
+                else TextUnit.Unspecified,
+            textDecorationOffset =
+                if (inlineBoxStyle == null) textDecorationOffsetSp.toSpOrUnspecified()
+                else TextUnit.Unspecified,
             background = background.toSlockMarkdownColorOrUnspecified(),
-            inlineBoxStyle = toInlineBoxSpanStyle()
+            inlineBoxStyle = inlineBoxStyle
         )
+}
 
 /**
  * Compatibility lowering for the original Slock semantic chrome tokens.
@@ -2127,6 +2135,7 @@ private fun SlockRichTextFontWeightToken.toSlockFontWeight(): FontWeight =
     when (this) {
         SlockRichTextFontWeightToken.Normal -> FontWeight.Normal
         SlockRichTextFontWeightToken.SemiBold -> FontWeight.SemiBold
+        SlockRichTextFontWeightToken.Bold -> FontWeight.Bold
     }
 
 private fun SlockRichTextTextDecorationToken?.toComposeTextDecoration(): TextDecoration? =
