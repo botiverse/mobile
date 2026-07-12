@@ -65,6 +65,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -o pipefail   # `| tee` must not swallow a non-zero exit from the node script
           node scripts/visual_patrol.mjs \
             --analysis gh-pages \
             --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
@@ -112,9 +113,14 @@ jobs:
           fi
       - name: Verify drift issues (3x M3 adversarial panel)
         env:
+          # verify_issues.mjs lists/labels/closes drift issues via `gh` — needs a token,
+          # same as the patrol job. Without it `gh issue list` 404s, the script exits
+          # non-zero, and (before pipefail) `| tee` masked that as a green no-op.
+          GH_TOKEN: ${{ github.token }}
           PI_API_KEY: ${{ secrets.PI_API_KEY }}
           SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
         run: |
+          set -o pipefail   # `| tee` must not swallow a non-zero exit from the node script
           if [ -z "$PI_API_KEY" ]; then echo "no PI_API_KEY; skipping verify stage"; exit 0; fi
           export MINIMAX_API_KEY="$PI_API_KEY"
           node scripts/patrol/verify_issues.mjs \
