@@ -100,9 +100,21 @@ non-zero = not ready → legacy keeps its fallback role → no flip. The metric 
 **Denominator discipline (or the gate lies).** rate = `fallbacks / messages-the-owner-actually-attempted`.
 A scope whose breaker is **paused** (§3) is attempting nothing, so its messages must be **excluded from the
 denominator** — otherwise a paused (i.e. known-bad) scope silently deflates the rate toward 0 and the gate
-reads green on a scope that never applied. Equivalently: the go-condition is `attempted > 0 AND fallbacks ≈ 0`
-across the live (non-paused) scopes, held over a window — never `fallbacks ≈ 0` alone (which a fully-paused
-canary trivially satisfies).
+reads green on a scope that never applied.
+
+**But excluding paused scopes only moves the false-green from rate to COVERAGE (赵).** With no bound on *how
+many* are paused, the gate passes on a slice of healthy scopes while most are parked: 100 scopes, 60 breaker-
+tripped, 40 live all Parity → `0/40 = 0` → flip + retire legacy → **the 60 paused scopes now have no fallback
+target and no working path.** This is the empty-skip false-green (a CI matrix that "passes" by skipping most
+of its cells) moved onto scope coverage. So the go-condition needs **three** clauses, all held over a window:
+
+> **`attempted > 0` AND `fallbacks ≈ 0` AND `paused-fraction ≈ 0`** (equivalently: a bounded, near-zero count
+> of paused scopes). Legacy may be retired only when nearly every scope is *live and applying cleanly* — not
+> when the few that still run happen to be clean.
+
+**Tag the fallback rate by outcome, not one scalar (赵 refine).** Break it out `Divergent / DecodeFailed /
+Envelope*` (aligns with Rainsky's gate outcome-grouping): a non-zero `Divergent` rate is projection-parity
+work, a non-zero `DecodeFailed` rate is decode/producer work — a single scalar can't route the fix.
 
 ## 6. Acceptance battery (RED-first)
 
@@ -115,6 +127,9 @@ canary trivially satisfies).
 - **Circuit breaker**: a burst of same-scope fallbacks trips the breaker (bounded rebaselines, no storm).
 - **Rate gate**: the go-condition reads the real fallback-rate metric, not a constant — AND a paused scope's
   messages are excluded from the denominator (§5): assert a fully-paused canary does NOT read green.
+- **Coverage gate (paused-fraction)**: construct a canary where the live scopes are all Parity but a large
+  fraction of scopes are breaker-paused; assert the go-condition does NOT read green (`paused-fraction ≈ 0`
+  is a required clause, so a "clean on the 40% still running" canary must fail the gate).
 - **Independent (non-tautological) oracle**: the "server canonical" the acceptance asserts against must be an
   **independent fixture** — a hand-authored expected row / a second decode implementation — NOT the same
   `decodeCanonicalMessageWire` output the owner just applied. Deep-equal against your own decode proves the
