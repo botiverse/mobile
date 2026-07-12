@@ -289,7 +289,7 @@
 				D4C7A0112E15000100C0DE01 /* Generate Raft Build Metadata */,
 				7555FF77242A565900829871 /* Sources */,
 				7555FF79242A565900829871 /* Resources */,
-				D4C7A0122E15000100C0DE01 /* Stamp Quiver Build Metadata */,
+				D4C7A0122E15000100C0DE01 /* Stamp Hands Build Metadata */,
 				412082966DD7AFE0B53032CB /* Frameworks */,
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				70E4183CF2B3FF25AA2B7C8F /* [CP] Copy Pods Resources */,
@@ -473,7 +473,7 @@
 			shellScript = "\"${SRCROOT}/scripts/generate_slock_build_metadata.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		D4C7A0122E15000100C0DE01 /* Stamp Quiver Build Metadata */ = {
+		D4C7A0122E15000100C0DE01 /* Stamp Hands Build Metadata */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -482,14 +482,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Stamp Quiver Build Metadata";
+			name = "Stamp Hands Build Metadata";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/scripts/stamp_quiver_build_metadata.sh\"\n";
+			shellScript = "\"${SRCROOT}/scripts/stamp_hands_build_metadata.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
