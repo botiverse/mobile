@@ -59,7 +59,7 @@ class SyncPersistenceSchemaTest {
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)
         val restored = SlockDatabase(driver).slockDatabaseQueries
-            .selectServerBackedMessagesForChannel(serverId = "s1", channelId = "c1")
+            .selectServerBackedMessagesForChannel(serverId = "s1", scopeKind = "channel", channelId = "c1")
             .executeAsList()
             .map { it.id }
         assertEquals(listOf("m1", "m2"), restored)

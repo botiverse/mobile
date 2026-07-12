@@ -435,8 +435,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 
 updateCanonicalFact:
 UPDATE messageEntity
-SET scopeKind = ?, seq = ?, createdAt = ?, canonicalFactJson = ?
-WHERE id = ? AND serverId = ? AND channelId = ?;
+SET seq = ?, createdAt = ?, canonicalFactJson = ?
+WHERE id = ? AND serverId = ? AND scopeKind = ? AND channelId = ?;
+
+-- Count matching rows for the fail-stop guard: after insert-or-ignore + scoped update, the store asserts
+-- exactly this row exists in THIS full scope. 0 = a cross-scope same-id collision (contract violation).
+countCanonicalFactInScope:
+SELECT COUNT(*) FROM messageEntity
+WHERE id = ? AND serverId = ? AND scopeKind = ? AND channelId = ?;
 
 -- Clear a scope's canonical server facts (snapshot rebaseline), EXCLUDING saved-referenced ids (saved is an
 -- independent receiver domain; a message snapshot must never adjudicate it — savedMessageEntity ON DELETE
@@ -444,6 +450,7 @@ WHERE id = ? AND serverId = ? AND channelId = ?;
 clearCanonicalFactsForScope:
 DELETE FROM messageEntity
 WHERE serverId = ?
+  AND scopeKind = ?
   AND channelId = ?
   AND id NOT IN (SELECT messageId FROM savedMessageEntity WHERE serverId = ?);
 
@@ -685,6 +692,7 @@ selectServerBackedMessagesForChannel:
 SELECT *
 FROM messageEntity
 WHERE serverId = ?
+  AND scopeKind = ?
   AND channelId = ?
 ORDER BY seq, id;
 
