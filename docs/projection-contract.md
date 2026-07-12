@@ -126,3 +126,42 @@ fabricated field a compile/gate failure; the reverse-closure gate with a real-pa
 dropped/mis-sourced field a red gate on the actual callsite. When task #518's sweep has every existing
 projection classified `has-gate / gate-added / retired`, and this red-line blocks every new one, the class
 is closed — the same death as the identity class (#123) and the persistence class (#709).
+
+## 6. Precedent rulings (task #518 sweep — binding examples of the rules above)
+
+These are decided cases. Cite them when a reviewer or author hits the same shape.
+
+### Ruling 1 — unknown kind/type/status is FAIL-CLOSED, not a default (Rule 2)
+
+A projection that maps an unknown/other enum to a specific value (unknown sender kind → `Human`, unknown
+message type → `Chat`, non-Agent → `Human`, unknown task status → `Todo`) is **creating** a fact the wire
+did not carry. Terminal class is **add-gate + repair**, never "fossilize current behavior".
+
+- Route every kind/status/type parse through **one shared strict parser** (the sole entry, e.g.
+  `parsedMemberKindOrNull`); duplicated per-mapper parsing (canonical-row / REST / realtime / home / task /
+  thread) drifts — gate parity across all paths.
+- **Unknown fails closed** with a bounded diagnostic. It is NOT silently defaulted.
+- A "documented default" is allowed **only with production-face evidence** that the value cannot be unknown
+  — e.g. G6 mechanically proves the `message:*` `senderType` is the closed set `{human, agent, system}`, so
+  the only real victim of `else → Human` there is `system` (root of #122). The default's comment MUST cite
+  *which production face* proves the closed set. Wire with **no manifest coverage** (task assignee, home
+  peer, `TaskStatus`, `MessageType` outside the proven face) has no such evidence → **fail closed**.
+
+### Ruling 2 — never gate a wrong assumption; repair the fact (Rule 2)
+
+When a projection hardcodes a value because the wire lacks it, and the assumption is **factually false**, the
+fix is a **typed fact**, not a gate around the guess. Adding a gate to a wrong assumption fossilizes a bug.
+
+- Case: `TaskSummary → TaskThreadLaunchTarget` hardcoded `Channel` as the task's parent kind because the task
+  wire carries no parent kind. But tasks can be created from a **DM** top-level message — DM-parented tasks
+  exist — so inventing `Channel` is a latent #122-shape bug.
+- Fix: add a **typed `parentKind`** to the server task wire (producer / manifest flow), and **fail closed**
+  on the mobile side when it is absent. Do not gate the `Channel` guess.
+
+### Note — presentation derivation is NOT invention
+
+A *view choice derived from a fact* is allowed under Rule 2 and is not one of the above. `sizeLabel` (a format
+of the raw `sizeBytes` fact, #706) and `senderName`-empty → `senderId` display fallback are **derived
+presentation**, not fabricated facts — declare them as presentation derivations / registered known-deltas.
+The product decides the *format / fallback choice*; there is no fail-closed here. Only unknown-enum →
+concrete-value (Ruling 1) and wrong-assumption hardcodes (Ruling 2) are invention.
