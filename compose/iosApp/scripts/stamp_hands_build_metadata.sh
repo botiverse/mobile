@@ -3,7 +3,7 @@ set -eu
 
 plist_path="${TARGET_BUILD_DIR:-}/${INFOPLIST_PATH:-}"
 if [ -z "${TARGET_BUILD_DIR:-}" ] || [ -z "${INFOPLIST_PATH:-}" ] || [ ! -f "${plist_path}" ]; then
-  echo "warning: processed Info.plist not found; skipping Quiver build metadata stamp"
+  echo "warning: processed Info.plist not found; skipping Hands build metadata stamp"
   exit 0
 fi
 
@@ -16,8 +16,11 @@ if [ -z "${git_commit}" ]; then
 fi
 
 plist_buddy="/usr/libexec/PlistBuddy"
-"${plist_buddy}" -c "Set :QuiverBuildCommit ${git_commit}" "${plist_path}" 2>/dev/null \
-  || "${plist_buddy}" -c "Add :QuiverBuildCommit string ${git_commit}" "${plist_path}"
+# HandsBuildCommit is what the Hands iOS SDK (HandsFeedbackClient) reads to
+# attribute feedback/crash reports to a build commit. (Renamed from the legacy
+# QuiverBuildCommit, which nothing read after the SDK moved to HandsBuildCommit.)
+"${plist_buddy}" -c "Set :HandsBuildCommit ${git_commit}" "${plist_path}" 2>/dev/null \
+  || "${plist_buddy}" -c "Add :HandsBuildCommit string ${git_commit}" "${plist_path}"
 
 if [ -n "${SLOCK_IOS_VERSION_NAME:-}" ]; then
   "${plist_buddy}" -c "Set :CFBundleShortVersionString ${SLOCK_IOS_VERSION_NAME}" "${plist_path}"

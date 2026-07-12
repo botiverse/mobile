@@ -43,11 +43,12 @@ SLOCK_IOS_VERSION_NAME=<versionName>
 SLOCK_IOS_VERSION_CODE=<versionCode>
 ```
 
-`compose/iosApp/scripts/stamp_quiver_build_metadata.sh` is a legacy-named build
-phase that stamps the processed `Info.plist` with the source commit and, when
-the env vars are present, overrides `CFBundleShortVersionString` and
-`CFBundleVersion`. This prevents release artifacts from falling back to the
-project defaults `MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`.
+`compose/iosApp/scripts/stamp_hands_build_metadata.sh` is the build phase that
+stamps the processed `Info.plist` with the source commit under the
+`HandsBuildCommit` key (what the Hands iOS SDK reads) and, when the env vars are
+present, overrides `CFBundleShortVersionString` and `CFBundleVersion`. This
+prevents release artifacts from falling back to the project defaults
+`MARKETING_VERSION=1.0` / `CURRENT_PROJECT_VERSION=1`.
 
 ## GitHub Actions
 
