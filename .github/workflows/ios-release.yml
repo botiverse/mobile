@@ -139,9 +139,9 @@ jobs:
       dsym_sha256: ${{ steps.validate.outputs.dsym_sha256 }}
       dsym_size: ${{ steps.validate.outputs.dsym_size }}
     env:
-      SLOCK_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
-      SLOCK_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
-      SLOCK_GIT_COMMIT: ${{ github.sha }}
+      RAFT_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+      RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+      RAFT_GIT_COMMIT: ${{ github.sha }}
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.SLOCK_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       SLOCK_IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.SLOCK_IOS_PROVISIONING_PROFILE_BASE64 }}
@@ -267,11 +267,11 @@ jobs:
           PROFILE_SPECIFIER="${SLOCK_IOS_PROVISIONING_PROFILE_SPECIFIER:-${PROFILE_NAME}}"
           CODE_SIGN_IDENTITY="${SLOCK_IOS_CODE_SIGN_IDENTITY:-Apple Distribution}"
           BUILD_SETTINGS=(
-            "MARKETING_VERSION=${SLOCK_IOS_VERSION_NAME}"
-            "CURRENT_PROJECT_VERSION=${SLOCK_IOS_VERSION_CODE}"
-            "SLOCK_IOS_VERSION_NAME=${SLOCK_IOS_VERSION_NAME}"
-            "SLOCK_IOS_VERSION_CODE=${SLOCK_IOS_VERSION_CODE}"
-            "SLOCK_GIT_COMMIT=${GITHUB_SHA}"
+            "MARKETING_VERSION=${RAFT_IOS_VERSION_NAME}"
+            "CURRENT_PROJECT_VERSION=${RAFT_IOS_VERSION_CODE}"
+            "RAFT_IOS_VERSION_NAME=${RAFT_IOS_VERSION_NAME}"
+            "RAFT_IOS_VERSION_CODE=${RAFT_IOS_VERSION_CODE}"
+            "RAFT_GIT_COMMIT=${GITHUB_SHA}"
             "CODE_SIGN_STYLE=Manual"
             "DEVELOPMENT_TEAM=${TEAM_ID}"
             "CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
@@ -323,11 +323,11 @@ jobs:
           mkdir -p "${DIST_DIR}"
           IPA="$(find "${EXPORT_DIR}" -maxdepth 1 -type f -name '*.ipa' | sort | head -n 1)"
           [ -n "${IPA}" ] || { echo "No IPA exported under ${EXPORT_DIR}" >&2; exit 1; }
-          cp "${IPA}" "${DIST_DIR}/Raft-${SLOCK_IOS_VERSION_NAME}-${SLOCK_IOS_VERSION_CODE}.ipa"
-          ditto -c -k --keepParent "${ARCHIVE_PATH}/dSYMs" "${DIST_DIR}/Raft-${SLOCK_IOS_VERSION_NAME}-${SLOCK_IOS_VERSION_CODE}.dSYM.zip"
+          cp "${IPA}" "${DIST_DIR}/Raft-${RAFT_IOS_VERSION_NAME}-${RAFT_IOS_VERSION_CODE}.ipa"
+          ditto -c -k --keepParent "${ARCHIVE_PATH}/dSYMs" "${DIST_DIR}/Raft-${RAFT_IOS_VERSION_NAME}-${RAFT_IOS_VERSION_CODE}.dSYM.zip"
           cp "${EXPORT_OPTIONS}" "${DIST_DIR}/ExportOptions.plist"
-          echo "IPA_PATH=${DIST_DIR}/Raft-${SLOCK_IOS_VERSION_NAME}-${SLOCK_IOS_VERSION_CODE}.ipa" >> "$GITHUB_ENV"
-          echo "DSYM_PATH=${DIST_DIR}/Raft-${SLOCK_IOS_VERSION_NAME}-${SLOCK_IOS_VERSION_CODE}.dSYM.zip" >> "$GITHUB_ENV"
+          echo "IPA_PATH=${DIST_DIR}/Raft-${RAFT_IOS_VERSION_NAME}-${RAFT_IOS_VERSION_CODE}.ipa" >> "$GITHUB_ENV"
+          echo "DSYM_PATH=${DIST_DIR}/Raft-${RAFT_IOS_VERSION_NAME}-${RAFT_IOS_VERSION_CODE}.dSYM.zip" >> "$GITHUB_ENV"
 
       - name: Validate IPA + dSYM boundary
         id: validate
@@ -345,8 +345,8 @@ jobs:
           VERSION_CODE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${INFO_PLIST}")"
           EXECUTABLE="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "${INFO_PLIST}")"
           [ "${BUNDLE_ID}" = "build.raft.app" ] || { echo "Unexpected bundle id: ${BUNDLE_ID}" >&2; exit 1; }
-          [ "${VERSION_NAME}" = "${SLOCK_IOS_VERSION_NAME}" ] || { echo "Unexpected version name: ${VERSION_NAME}" >&2; exit 1; }
-          [ "${VERSION_CODE}" = "${SLOCK_IOS_VERSION_CODE}" ] || { echo "Unexpected version code: ${VERSION_CODE}" >&2; exit 1; }
+          [ "${VERSION_NAME}" = "${RAFT_IOS_VERSION_NAME}" ] || { echo "Unexpected version name: ${VERSION_NAME}" >&2; exit 1; }
+          [ "${VERSION_CODE}" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Unexpected version code: ${VERSION_CODE}" >&2; exit 1; }
           [ "${VERSION_CODE}" != "1" ] || { echo "CFBundleVersion must not be the project default 1" >&2; exit 1; }
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
           [ -d "${APP_PATH}/build.raft.app.resources.MR.bundle" ] || { echo "MR bundle missing from app" >&2; exit 1; }
@@ -449,8 +449,8 @@ jobs:
       QUIVER_BEARER_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
       QUIVER_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
       QUIVER_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
-      SLOCK_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
-      SLOCK_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+      RAFT_IOS_VERSION_NAME: ${{ needs.resolve.outputs.version_name }}
+      RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
       SLOCK_IOS_EXPORT_METHOD: ${{ needs.resolve.outputs.export_method }}
       SLOCK_HANDS_RELEASE_TYPE: stable
       SLOCK_HANDS_DRAFT: ${{ needs.resolve.outputs.release_mode == 'publish' && '0' || '1' }}
