@@ -105,7 +105,15 @@ class SqlDelightFoldPersistStore(
             .mapNotNull { row ->
                 // Per-row fail-closed: a payload that will not decode is a poison-gate input, counted and
                 // dropped — never silently reshaped into a partial row.
-                decodeCanonicalFact(row.canonicalFactJson) ?: run { onDecodeFailure(scope, row.id); null }
+                val decoded = decodeCanonicalFact(row.canonicalFactJson)
+                    ?: return@mapNotNull run { onDecodeFailure(scope, row.id); null }
+                // Scalar/payload consistency: the scalar columns are a deterministic PROJECTION of the
+                // payload (the restore source). If they disagree, the row is corrupt — treat it as a
+                // poison-gate input, not a trusted partial. Restore still yields only the decoded payload.
+                if (row.seq != decoded.seq || row.createdAt != decoded.createdAt) {
+                    return@mapNotNull run { onDecodeFailure(scope, row.id); null }
+                }
+                decoded
             }
 
     override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? =
