@@ -6,6 +6,8 @@ internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
 internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = false
 
+internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = null
+
 // Media3 PlayerView ships the mature controller (task #556 phase 2).
 internal actual fun slockPlatformUsesNativeVideoController(): Boolean = true
 

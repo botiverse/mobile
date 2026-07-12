@@ -6,6 +6,8 @@ internal actual fun slockPlatformUsesNativeLucideIconRotation(): Boolean = false
 
 internal actual fun slockPlatformPrewarmsAppShellChildPages(): Boolean = false
 
+internal actual fun slockPlatformDefaultAppTabBarRenderer(): String? = "iosLiquidGlass"
+
 // task #11: the iOS video host embeds AVPlayerViewController — the system's
 // mature controller (scrub, ±15s, fullscreen) owns the surface, so the
 // shared minimal controls stay out of its way (same switch as Android's

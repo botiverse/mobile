@@ -9,6 +9,14 @@ internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 // Android/iOS keep demand mounting until their own device evidence needs it.
 internal expect fun slockPlatformPrewarmsAppShellChildPages(): Boolean
 
+// The iOS app shell always has the native UITabBar renderer available. Route
+// launches created after auth/server changes do not pass the SwiftUI root's
+// pageData, so shared needs a platform default when the host did not provide an
+// explicit renderer. OHOS keeps returning null because its HDS renderer is
+// capability-gated by the ArkTS host; Android also keeps its explicit/default
+// shared renderer behavior.
+internal expect fun slockPlatformDefaultAppTabBarRenderer(): String?
+
 // task #556 phase 2: Android's video host renders Media3 PlayerView's
 // built-in controller (tap-to-show play/pause, drag seek, ±10s, fullscreen),
 // so the shared minimal controls must stay out of its way there. iOS/OHOS

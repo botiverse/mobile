@@ -40,6 +40,35 @@ import kotlin.test.assertTrue
 
 class SlockAppShellTest {
     @Test
+    fun appTabRendererUsesIosPlatformDefaultWhenRoutePageDataOmitsRenderer() {
+        assertEquals(
+            SlockAppTabBarRenderer.IosLiquidGlass,
+            resolveSlockAppTabBarRenderer(
+                explicitRenderer = null,
+                platformDefaultRenderer = "iosLiquidGlass"
+            )
+        )
+    }
+
+    @Test
+    fun appTabRendererKeepsExplicitHostCapabilityAheadOfPlatformDefault() {
+        assertEquals(
+            SlockAppTabBarRenderer.SharedCompose,
+            resolveSlockAppTabBarRenderer(
+                explicitRenderer = "sharedCompose",
+                platformDefaultRenderer = "iosLiquidGlass"
+            )
+        )
+        assertEquals(
+            SlockAppTabBarRenderer.OhosHdsImmersive,
+            resolveSlockAppTabBarRenderer(
+                explicitRenderer = "ohosHdsImmersive",
+                platformDefaultRenderer = "iosLiquidGlass"
+            )
+        )
+    }
+
+    @Test
     fun notificationLaunchWaitsForTargetServerHomeContentAfterServerSwitch() {
         fun content(snapshotServerId: String, sessionServerId: String): SharedHomeContentState.Content =
             SharedHomeContentState.Content(

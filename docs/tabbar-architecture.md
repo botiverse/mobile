@@ -28,7 +28,11 @@ concepts and must not be conflated:
 ## Renderer selection
 
 `SlockTabBar.kt` reads the page-data param `slockNativeTabBarRenderer` (legacy
-alias `nativeTabBarRenderer`) and maps it to `SlockAppTabBarRenderer`:
+alias `nativeTabBarRenderer`) and maps it to `SlockAppTabBarRenderer`. An
+explicit page-data value always wins. When the value is absent, the platform
+capability supplies the default: iOS returns `iosLiquidGlass`, while Android
+and OHOS return no default and keep the shared fallback unless their host
+explicitly opts into a native renderer.
 
 | param value                         | renderer            | who renders the bar                    |
 | ----------------------------------- | ------------------- | -------------------------------------- |
@@ -43,8 +47,11 @@ Each host decides its own param:
   `ohosHdsImmersive` only when API ≥ `HDS_MIN_API_VERSION` **and**
   `canIUse('SystemCapability.UIDesign.HDSComponent.Core')`; otherwise
   `sharedCompose` with a `slockNativeTabBarFallbackReason`.
-- **iOS** (`compose/iosApp/iosApp/ContentView.swift`): always sets
-  `iosLiquidGlass`.
+- **iOS** (`compose/iosApp/iosApp/ContentView.swift`): sets `iosLiquidGlass` on
+  the SwiftUI root. The iOS shared platform capability also defaults missing
+  renderer values to `iosLiquidGlass`, because post-auth/server-selection
+  Router launches create a new app-shell page without inheriting root
+  pageData.
 - **Android**: default (`sharedCompose`) unless the floating variant is
   configured.
 
