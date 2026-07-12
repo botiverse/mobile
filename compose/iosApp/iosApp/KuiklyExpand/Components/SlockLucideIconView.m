@@ -6,6 +6,7 @@ static NSString *const SlockLucideIconNameProp = @"name";
 static NSString *const SlockLucideIconColorProp = @"color";
 static NSString *const SlockLucideIconFillProp = @"fill";
 static NSString *const SlockLucideIconStrokeWidthProp = @"strokeWidth";
+static NSString *const SlockLucideIconVerticalOffsetDpProp = @"verticalOffsetDp";
 
 @interface SlockLucideIconView ()
 
@@ -13,6 +14,7 @@ static NSString *const SlockLucideIconStrokeWidthProp = @"strokeWidth";
 @property (nonatomic, strong) UIColor *iconColor;
 @property (nonatomic, strong, nullable) UIColor *fillColor;
 @property (nonatomic, strong) UIImageView *imageView;
+@property (nonatomic, assign) CGFloat verticalOffset;
 
 @end
 
@@ -52,12 +54,15 @@ static NSString *const SlockLucideIconStrokeWidthProp = @"strokeWidth";
     } else if ([propKey isEqualToString:SlockLucideIconStrokeWidthProp]) {
         // iOS renders the same generated Lucide SVG assets as OHOS. SVG stroke width is
         // baked into the asset; dynamic stroke width remains Android/OHOS-only for now.
+    } else if ([propKey isEqualToString:SlockLucideIconVerticalOffsetDpProp]) {
+        self.verticalOffset = [propValue respondsToSelector:@selector(doubleValue)] ? [propValue doubleValue] : 0;
+        [self setNeedsLayout];
     }
 }
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.imageView.frame = self.bounds;
+    self.imageView.frame = CGRectOffset(self.bounds, 0, self.verticalOffset);
 }
 
 #pragma mark - Private

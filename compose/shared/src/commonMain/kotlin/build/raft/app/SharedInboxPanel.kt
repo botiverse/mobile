@@ -869,7 +869,12 @@ private fun SharedActivityRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (item.kind == InboxItemKind.Thread) {
-                        SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                        SlockLucideIcon(
+                            SlockLucideIconName.MessageSquare,
+                            modifier = Modifier.size(13.dp),
+                            color = "#FFFF4B9B",
+                            verticalOffsetDp = 2f
+                        )
                     }
                     val primaryPreview = item.primaryActivityPreviewText(
                         senderProfiles = senderProfiles,
