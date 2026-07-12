@@ -9,10 +9,15 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -24,6 +29,7 @@ internal data class SharedThreadComposerDraftState(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    val persistBoundaryNonce: Int = 0,
     val focusRequestNonce: Int = 0,
     val sending: Boolean = false,
     val failureLabel: String? = null,
@@ -122,22 +128,24 @@ internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore,
     private val diagnosticsLogger: ((String) -> Unit)? = null
 ) {
-    fun read(key: String): SharedThreadComposerPersistedDraft? {
+    private val lock = SynchronizedObject()
+
+    fun read(key: String): SharedThreadComposerPersistedDraft? = synchronized(lock) {
         val text = store.getString(textKey(key)) ?: return null
-        return SharedThreadComposerPersistedDraft(
+        SharedThreadComposerPersistedDraft(
             text = text,
             asTask = store.getString(asTaskKey(key)) == "true",
             uploadedAttachments = readUploadedAttachments(key)
         )
     }
 
-    fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? {
-        read(key)?.let { draft -> return key to draft }
+    fun readWithReplyFallback(key: String): Pair<String, SharedThreadComposerPersistedDraft>? = synchronized(lock) {
+        readUnlocked(key)?.let { draft -> return key to draft }
         val currentRecord = key.toSharedThreadComposerDraftRecord()?.takeUnless { it.isRootComposer } ?: return null
-        return activeDraftRecords()
+        activeDraftRecordsUnlocked()
             .filter { record -> record.key != key && record.matchesReplyThreadIdentity(currentRecord) }
             .sortedBy { record -> record.key }
-            .mapNotNull { record -> read(record.key)?.let { draft -> record.key to draft } }
+            .mapNotNull { record -> readUnlocked(record.key)?.let { draft -> record.key to draft } }
             .firstOrNull()
     }
 
@@ -147,31 +155,53 @@ internal class SharedThreadComposerDraftPersistence(
         asTask: Boolean,
         uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
     ) {
-        val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
-        diagnosticsLogger?.invoke(
-            "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
-                "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
-                "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
-        )
-        if (text.isBlank() && !asTask && persistedAttachments.isEmpty()) {
-            clear(key)
-            return
+        synchronized(lock) {
+            val persistedAttachments = uploadedAttachments.persistableThreadComposerDraftAttachments()
+            diagnosticsLogger?.invoke(
+                "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
+                    "textBlank=${text.isBlank()} asTask=$asTask attachments=${persistedAttachments.size} " +
+                    "activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+            )
+            if (text.isBlank() && !asTask && persistedAttachments.isEmpty()) {
+                clearUnlocked(key)
+                return@synchronized
+            }
+            store.putString(textKey(key), text)
+            store.putString(asTaskKey(key), asTask.toString())
+            store.putString(
+                attachmentsKey(key),
+                persistedAttachments
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
+            )
+            addActiveKey(key)
+            diagnosticsLogger?.invoke(
+                "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+            )
         }
-        store.putString(textKey(key), text)
-        store.putString(asTaskKey(key), asTask.toString())
-        store.putString(
-            attachmentsKey(key),
-            persistedAttachments
-                .takeIf { it.isNotEmpty() }
-                ?.let { attachments -> ComposerDraftJson.encodeToString(attachments) }
-        )
-        addActiveKey(key)
-        diagnosticsLogger?.invoke(
-            "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+    }
+
+    fun clear(key: String) = synchronized(lock) {
+        clearUnlocked(key)
+    }
+
+    fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> = synchronized(lock) {
+        activeDraftRecordsUnlocked()
+    }
+
+    internal fun recordForKey(key: String): SharedThreadComposerDraftRecord? =
+        key.toSharedThreadComposerDraftRecord()
+
+    private fun readUnlocked(key: String): SharedThreadComposerPersistedDraft? {
+        val text = store.getString(textKey(key)) ?: return null
+        return SharedThreadComposerPersistedDraft(
+            text = text,
+            asTask = store.getString(asTaskKey(key)) == "true",
+            uploadedAttachments = readUploadedAttachments(key)
         )
     }
 
-    fun clear(key: String) {
+    private fun clearUnlocked(key: String) {
         diagnosticsLogger?.invoke(
             "thread_composer_draft_persist_clear key=$key activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
         )
@@ -184,7 +214,7 @@ internal class SharedThreadComposerDraftPersistence(
         )
     }
 
-    fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> =
+    private fun activeDraftRecordsUnlocked(): Set<SharedThreadComposerDraftRecord> =
         activeKeys()
             .mapNotNull { key -> key.toSharedThreadComposerDraftRecord() }
             .toSet()
@@ -255,15 +285,60 @@ internal class SharedThreadComposerDraftPersistence(
     }
 }
 
+internal fun interface SharedThreadComposerDraftPersistenceCancellation {
+    fun cancel()
+}
+
+internal fun interface SharedThreadComposerDraftPersistenceScheduler {
+    fun schedule(delayMillis: Long, block: () -> Unit): SharedThreadComposerDraftPersistenceCancellation
+}
+
+internal class CoroutineThreadComposerDraftPersistenceScheduler(
+    private val scope: CoroutineScope
+) : SharedThreadComposerDraftPersistenceScheduler {
+    override fun schedule(
+        delayMillis: Long,
+        block: () -> Unit
+    ): SharedThreadComposerDraftPersistenceCancellation {
+        val job: Job = scope.launch {
+            delay(delayMillis)
+            block()
+        }
+        return SharedThreadComposerDraftPersistenceCancellation(job::cancel)
+    }
+}
+
+private object ImmediateThreadComposerDraftPersistenceScheduler : SharedThreadComposerDraftPersistenceScheduler {
+    override fun schedule(
+        delayMillis: Long,
+        block: () -> Unit
+    ): SharedThreadComposerDraftPersistenceCancellation {
+        block()
+        return SharedThreadComposerDraftPersistenceCancellation {}
+    }
+}
+
+private data class PendingThreadComposerDraftWrite(
+    val generation: Long,
+    val state: SharedThreadComposerDraftState,
+    var cancellation: SharedThreadComposerDraftPersistenceCancellation? = null
+)
+
 internal class SharedThreadComposerDraftPersistSlice(
     private val persistence: SharedThreadComposerDraftPersistence,
-    private val diagnosticsLogger: ((String) -> Unit)? = null
+    private val diagnosticsLogger: ((String) -> Unit)? = null,
+    private val scheduler: SharedThreadComposerDraftPersistenceScheduler = ImmediateThreadComposerDraftPersistenceScheduler,
+    private val changeDebounceMillis: Long = DefaultChangeDebounceMillis
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
     private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()
+    private val pendingWritesLock = SynchronizedObject()
+    private val persistenceWriteLock = SynchronizedObject()
+    private val pendingWritesByDraftKey = mutableMapOf<String, PendingThreadComposerDraftWrite>()
+    private val writeGenerationByDraftKey = mutableMapOf<String, Long>()
 
     init {
         refreshActiveDraftRecords(reason = "init")
@@ -277,6 +352,8 @@ internal class SharedThreadComposerDraftPersistSlice(
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
                 val draftKey = intent.draftKey?.takeIf { it.isNotBlank() }
+                previous.draftKey?.takeIf { it != draftKey }?.let(::flushPendingWrite)
+                draftKey?.let(::flushPendingWrite)
                 val sameDraftKey = draftKey != null && previous.draftKey == draftKey
                 val stagedUploadedAttachments = consumeStagedUploadedAttachments(draftKey)
                 val sessionAttachments =
@@ -339,56 +416,161 @@ internal class SharedThreadComposerDraftPersistSlice(
                 next.draftKey?.let { key ->
                     val fallbackSourceKey = fallbackDraftSourceKeyByCurrentKey.remove(key)
                     if (fallbackSourceKey != null && fallbackSourceKey != key) {
-                        persistence.save(
-                            key = key,
-                            text = next.seedText,
-                            asTask = next.seedAsTask,
-                            uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
-                        )
-                        persistence.clear(fallbackSourceKey)
-                        refreshActiveDraftRecords(reason = "StartFallbackRestore")
+                        synchronized(persistenceWriteLock) {
+                            persistence.save(
+                                key = key,
+                                text = next.seedText,
+                                asTask = next.seedAsTask,
+                                uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
+                            )
+                            persistence.clear(fallbackSourceKey)
+                            refreshActiveDraftRecords(reason = "StartFallbackRestore")
+                        }
                     }
                 }
-            is SharedThreadComposerDraftIntent.Change,
-            is SharedThreadComposerDraftIntent.InsertMention,
-            is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
+            is SharedThreadComposerDraftIntent.Change ->
                 next.draftKey?.let { key ->
-                    persistence.save(
-                        key = key,
-                        text = next.seedText,
-                        asTask = next.seedAsTask,
-                        uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
-                    )
-                    refreshActiveDraftRecords(reason = intent.toThreadComposerDraftIntentDiagnosticsLabel())
+                    schedulePendingWrite(key, next)
                 }
+            is SharedThreadComposerDraftIntent.InsertMention,
+            is SharedThreadComposerDraftIntent.RestoreAfterFailure,
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
             is SharedThreadComposerDraftIntent.RemoveAttachment ->
                 next.draftKey?.let { key ->
-                    persistence.save(
-                        key = key,
-                        text = next.seedText,
-                        asTask = next.seedAsTask,
-                        uploadedAttachments = next.visiblePersistableThreadComposerDraftAttachments()
-                    )
-                    refreshActiveDraftRecords(reason = intent.toThreadComposerDraftIntentDiagnosticsLabel())
+                    cancelPendingWrite(key)
+                    persistState(key, next, intent.toThreadComposerDraftIntentDiagnosticsLabel())
+                }
+            SharedThreadComposerDraftIntent.Flush ->
+                next.draftKey?.let(::flushPendingWrite)
+            SharedThreadComposerDraftIntent.BeginSend ->
+                previous.draftKey?.let { key ->
+                    cancelPendingWrite(key)
+                    persistState(key, previous, "BeginSend")
                 }
             is SharedThreadComposerDraftIntent.CompleteSend ->
                 if (previous.sending) {
                     next.draftKey?.let { key ->
-                        persistence.clear(key)
-                        refreshActiveDraftRecords(reason = "CompleteSend")
+                        cancelPendingWrite(key)
+                        synchronized(persistenceWriteLock) {
+                            persistence.clear(key)
+                            refreshActiveDraftRecords(reason = "CompleteSend")
+                        }
                     }
                 }
             else -> Unit
         }
     }
 
+    private fun schedulePendingWrite(
+        key: String,
+        state: SharedThreadComposerDraftState
+    ) {
+        val (pending, previous) = synchronized(pendingWritesLock) {
+            val next =
+                PendingThreadComposerDraftWrite(
+                    generation = advanceWriteGenerationLocked(key),
+                    state = state
+                )
+            next to pendingWritesByDraftKey.put(key, next)
+        }
+        previous?.cancellation?.cancel()
+        refreshActiveDraftRecords(reason = "ChangeProjected")
+        pending.cancellation =
+            scheduler.schedule(changeDebounceMillis) {
+                val claimed = synchronized(pendingWritesLock) {
+                    if (pendingWritesByDraftKey[key] === pending) {
+                        pendingWritesByDraftKey.remove(key)
+                    } else {
+                        null
+                    }
+                }
+                if (claimed != null) {
+                    persistStateIfGenerationCurrent(
+                        key = key,
+                        generation = claimed.generation,
+                        state = claimed.state
+                    )
+                }
+            }
+    }
+
+    private fun flushPendingWrite(key: String) {
+        val pending = synchronized(pendingWritesLock) {
+            pendingWritesByDraftKey.remove(key).also {
+                advanceWriteGenerationLocked(key)
+            }
+        } ?: return
+        pending.cancellation?.cancel()
+        persistState(key, pending.state, "ChangeFlush")
+    }
+
+    private fun cancelPendingWrite(key: String) {
+        synchronized(pendingWritesLock) {
+            pendingWritesByDraftKey.remove(key).also {
+                advanceWriteGenerationLocked(key)
+            }
+        }?.cancellation?.cancel()
+    }
+
+    private fun advanceWriteGenerationLocked(key: String): Long {
+        val next = (writeGenerationByDraftKey[key] ?: 0L) + 1L
+        writeGenerationByDraftKey[key] = next
+        return next
+    }
+
+    private fun persistState(
+        key: String,
+        state: SharedThreadComposerDraftState,
+        reason: String
+    ) {
+        synchronized(persistenceWriteLock) {
+            persistence.save(
+                key = key,
+                text = state.seedText,
+                asTask = state.seedAsTask,
+                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments()
+            )
+            refreshActiveDraftRecords(reason = reason)
+        }
+    }
+
+    private fun persistStateIfGenerationCurrent(
+        key: String,
+        generation: Long,
+        state: SharedThreadComposerDraftState
+    ) {
+        synchronized(persistenceWriteLock) {
+            val isCurrent = synchronized(pendingWritesLock) {
+                writeGenerationByDraftKey[key] == generation
+            }
+            if (!isCurrent) return@synchronized
+            persistence.save(
+                key = key,
+                text = state.seedText,
+                asTask = state.seedAsTask,
+                uploadedAttachments = state.visiblePersistableThreadComposerDraftAttachments()
+            )
+            refreshActiveDraftRecords(reason = "ChangeDebounced")
+        }
+    }
+
     private fun refreshActiveDraftRecords(reason: String) {
-        val records = persistence.activeDraftRecords()
-        SharedActiveDraftRecordsState.value = records
+        val projected = persistence.activeDraftRecords().associateBy { it.key }.toMutableMap()
+        val pendingSnapshot = synchronized(pendingWritesLock) {
+            pendingWritesByDraftKey.mapValues { (_, pending) -> pending.state }
+        }
+        pendingSnapshot.forEach { (key, state) ->
+            val record = persistence.recordForKey(key)
+            if (state.hasPersistableThreadComposerDraft() && record != null) {
+                projected[key] = record
+            } else {
+                projected.remove(key)
+            }
+        }
+        SharedActiveDraftRecordsState.value = projected.values.toSet()
         diagnosticsLogger?.invoke(
-            "thread_composer_draft_active_records reason=$reason count=${records.size} " +
-                "records=${records.toThreadComposerDraftDiagnosticsSummary()}"
+            "thread_composer_draft_active_records reason=$reason count=${SharedActiveDraftRecordsState.value.size} " +
+                "records=${SharedActiveDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
         )
     }
 
@@ -409,9 +591,15 @@ internal class SharedThreadComposerDraftPersistSlice(
     }
 
     private companion object {
+        const val DefaultChangeDebounceMillis = 250L
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
+
+private fun SharedThreadComposerDraftState.hasPersistableThreadComposerDraft(): Boolean =
+    seedText.isNotBlank() ||
+        seedAsTask ||
+        visiblePersistableThreadComposerDraftAttachments().isNotEmpty()
 
 private fun SharedThreadComposerDraftState.requiresComposerHostSync(
     previous: SharedThreadComposerDraftState
@@ -431,6 +619,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.Start -> "Start"
         is SharedThreadComposerDraftIntent.Change -> "Change"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
+        SharedThreadComposerDraftIntent.Flush -> "Flush"
         is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
         is SharedThreadComposerDraftIntent.RestoreAfterFailure -> "RestoreAfterFailure"
         is SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> "CompleteInlineSendFailure"
@@ -466,6 +655,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
     ) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
+    data object Flush : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
         val seedText: String,
@@ -555,6 +745,8 @@ internal class SharedThreadComposerDraftStore(
                     sending = false,
                     failureLabel = null
                 )
+            SharedThreadComposerDraftIntent.Flush ->
+                current.copy(persistBoundaryNonce = current.persistBoundaryNonce + 1)
             SharedThreadComposerDraftIntent.BeginSend ->
                 current.copy(
                     seedText = "",

@@ -1041,9 +1041,6 @@ internal fun ThreadComposerContent(
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val suggestionTrigger = remember(text, selectionStart) { detectKuiklyComposerSuggestionTrigger(text, selectionStart) }
-    if (text.isNotBlank()) {
-        println("[composer] trigger t=" + text.take(30) + " trigger=" + suggestionTrigger.toString())
-    }
     val memberSuggestionSearchEntries =
         remember(state.memberSuggestions) {
             state.memberSuggestions.toThreadComposerMemberSuggestionSearchEntries()
@@ -1085,9 +1082,6 @@ internal fun ThreadComposerContent(
             channelCount = filteredChannelSuggestions.size,
             channelStatus = state.channelSuggestionsStatus
         )
-    if (suggestionTrigger !is KuiklyComposerSuggestionTrigger.None) {
-        println("[composer] suggestions focused=" + focused + " memberCount=" + filteredMemberSuggestions.size + " channelCount=" + filteredChannelSuggestions.size + " panel=" + suggestionPanelState)
-    }
     var memberSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
     var channelSuggestionSelectedIndex by remember(state.instanceId) { mutableStateOf(0) }
     LaunchedEffect(suggestionTrigger, suggestionPanelState, filteredMemberSuggestions) {
@@ -1338,10 +1332,12 @@ internal fun ThreadComposerContent(
                         placeholder = localizedThreadComposerPlaceholder(state.placeholder),
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
+                            val textChanged = next.text != fieldValue.text
                             fieldValue = next
                             focused = true
-                            println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
-                            emitChange(nextText = next.text)
+                            if (textChanged) {
+                                emitChange(nextText = next.text)
+                            }
                         },
                         onFocus = {
                             focused = true

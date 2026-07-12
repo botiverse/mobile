@@ -6011,6 +6011,7 @@ internal fun SharedThreadRouteContent(
                     attachmentId?.takeIf { it.isNotBlank() }?.let(::openComposerAttachmentPreview)
                 }
                 "blur" -> {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
                     bridge.log(
                         "thread_composer_blur instanceId=$composerInstanceId"
                     )

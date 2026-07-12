@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.base.BridgeModule
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftPersistence
+import build.raft.app.CoroutineThreadComposerDraftPersistenceScheduler
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
@@ -615,7 +616,11 @@ internal class SlockSharedStoreProvider private constructor(
                             sharedPreferenceStore,
                             diagnosticsLogger = sharedInfoLogger("SlockComposerDraft")
                         ),
-                        diagnosticsLogger = sharedInfoLogger("SlockComposerDraft")
+                        diagnosticsLogger = sharedInfoLogger("SlockComposerDraft"),
+                        scheduler =
+                            CoroutineThreadComposerDraftPersistenceScheduler(
+                                CoroutineScope(SupervisorJob())
+                            )
                     ),
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
