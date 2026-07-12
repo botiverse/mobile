@@ -116,6 +116,10 @@ If a reviewer cannot check off all six from the PR, it is not ready.
 - **#123** — `MemberDetailIdentity` non-decomposable identity value type (id+kind paired).
 - **#706** — raw value threaded whole (`sizeBytes`), formatting deferred to the view boundary.
 - **#517** — mutation granularity: seq-bounded clear (`removeThrough(maxReadSeq)`), unresolved-seq fail-closed.
+- **Task #518 registry** — `ProjectionBoundaryRegistryTest` is the one mobile handwritten-projection
+  registry/meta-closure. Extend its P03-P27 family row and stable projector/consumer/test anchors; do not
+  create a parallel registry. Discovery scans shared common, Android, iOS, JS, native, and OHOS production
+  source sets for projector factories, boundary constructors, and enum/status/type default tokens.
 
 ## 5. Why this kills the class (not just today's bugs)
 
