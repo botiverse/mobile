@@ -3141,7 +3141,7 @@ internal class SharedThreadStore(
                     // (permission/visibility change) — drop it. Transient
                     // network errors deliberately keep the warm cache.
                     dataSource.invalidateCachedPayload(basePayload)
-                    latest.asRefreshFailed(result.blocker.code)
+                    latest.asRefreshNoPermission(basePayload, result.blocker.code)
                 }
             }.copy(backgroundRefreshing = false)
         val emitted =
@@ -4263,6 +4263,20 @@ private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThrea
     } else {
         copy(status = "error", backgroundRefreshing = false, errorCode = code)
     }
+
+private fun KuiklyThreadScreenPayload.asRefreshNoPermission(
+    base: KuiklyThreadScreenPayload,
+    code: String
+): KuiklyThreadScreenPayload =
+    withRouteContext(base)
+        .withoutThreadTimelineContent()
+        .copy(
+            status = "no_permission",
+            backgroundRefreshing = false,
+            errorCode = code,
+            focusedMessageId = base.focusedMessageId,
+            focusedMessageRequestNonce = base.focusedMessageRequestNonce
+        )
 
 private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     withRouteContext(base).copy(

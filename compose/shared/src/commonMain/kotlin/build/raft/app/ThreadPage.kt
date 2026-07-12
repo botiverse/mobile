@@ -9795,8 +9795,7 @@ private fun ThreadChatTab(
         "no_permission" ->
             ThreadStateMessage(
                 stringResource(MR.strings.thread_state_no_permission),
-                threadUserFacingErrorCodeLabel(renderConfig.errorCode)
-                    ?: stringResource(MR.strings.thread_error_no_permission)
+                stringResource(MR.strings.thread_error_no_permission)
             )
         "empty" ->
             if (timelineSlice.originStatus != "none") {
