@@ -3323,39 +3323,47 @@ private fun ServerSwitcherRow(
 
 @Composable
 private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
-    val avatarWireValue = server.avatarUrl?.takeIf { it.isNotBlank() }
-    if (avatarWireValue != null) {
-        SlockAvatar(
-            avatarWireValue = avatarWireValue,
-            label = server.name.take(1).uppercase(),
-            avatarSize = 32.dp,
-            borderWidth = SlockStroke.Default
+    val presentation = server.toServerSwitcherAvatarPresentation()
+    Box(
+        modifier =
+            Modifier
+                .size(32.dp)
+                .background(SlockColor.TextBlack)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            presentation.fallbackLabel,
+            style =
+                SlockType.Button.copy(
+                    fontFamily = SlockMonoFamily,
+                    fontSize = 17.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Bold
+                ),
+            color = SlockColor.BrandYellow,
+            maxLines = 1,
+            textAlign = TextAlign.Center
         )
-    } else {
-        Box(
-            modifier =
-                Modifier
-                    .size(32.dp)
-                    .background(SlockColor.TextBlack)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                server.name.take(1).uppercase(),
-                style =
-                    SlockType.Button.copy(
-                        fontFamily = SlockMonoFamily,
-                        fontSize = 17.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                color = SlockColor.BrandYellow,
-                maxLines = 1,
-                textAlign = TextAlign.Center
+        presentation.avatarWireValue?.let { avatarUrl ->
+            SlockAvatarHttpImage(
+                source = avatarUrl,
+                modifier = Modifier.fillMaxSize()
             )
         }
     }
 }
+
+internal data class ServerSwitcherAvatarPresentation(
+    val avatarWireValue: String?,
+    val fallbackLabel: String
+)
+
+internal fun SlockServerSwitcherItem.toServerSwitcherAvatarPresentation(): ServerSwitcherAvatarPresentation =
+    ServerSwitcherAvatarPresentation(
+        avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() },
+        fallbackLabel = name.take(1).uppercase()
+    )
 
 @Composable
 private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
