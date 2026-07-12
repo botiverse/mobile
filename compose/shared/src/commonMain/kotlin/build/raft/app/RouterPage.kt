@@ -105,7 +105,7 @@ private val DeveloperRouteGroups =
                     DeveloperRouteItem("Login", LOGIN_PAGE, "Sign-in page"),
                     DeveloperRouteItem("Register", REGISTER_PAGE, "Registration page"),
                     DeveloperRouteItem("Forgot Password", FORGOT_PASSWORD_PAGE, "Password recovery page"),
-                    DeveloperRouteItem("Auth Diagnostics", AUTH_DIAGNOSTICS_PAGE, "Auth runtime diagnostic page"),
+                    DeveloperRouteItem("About", AUTH_ABOUT_PAGE, "Shared About, environment, and diagnostics page"),
                     DeveloperRouteItem("Choose Server", AUTH_CHOOSE_SERVER_PAGE, "Server picker page")
                 )
         ),

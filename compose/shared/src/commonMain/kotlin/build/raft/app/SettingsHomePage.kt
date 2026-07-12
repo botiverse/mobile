@@ -4967,6 +4967,7 @@ private fun SettingsAppShellContent(
                 SharedSettingsAboutContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
+                    developerState = settingsState.developer,
                     updateCheck = settingsState.developer.currentContent()?.updateCheck,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
@@ -4982,7 +4983,9 @@ private fun SettingsAppShellContent(
                         settingsCapabilities.prefetchReleaseNotes(url)
                     },
                     onOpenSourceLicenses = { onDestinationChange(SettingsDestinationOpenSourceLicenses) },
-                    onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) }
+                    onCopyEnvironmentInfo = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
+                    onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
+                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) }
                 )
             SettingsDestinationOpenSourceLicenses ->
                 SharedSettingsOpenSourceLicensesContent(
@@ -8783,9 +8786,10 @@ private fun SharedSettingsRow(
 }
 
 @Composable
-private fun SharedSettingsAboutContent(
+internal fun SharedSettingsAboutContent(
     state: ScreenLoadState<SharedSettingsAboutSnapshot>,
     fallback: SharedSettingsAboutSnapshot,
+    developerState: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
     updateCheck: SharedSettingsUpdateCheckSnapshot?,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -8795,7 +8799,9 @@ private fun SharedSettingsAboutContent(
     onCheckQuiverUpdate: () -> Unit,
     onPrefetchReleaseNotes: suspend (String) -> Unit = {},
     onOpenSourceLicenses: () -> Unit,
-    onCopyEnvironmentInfo: () -> Unit
+    onCopyEnvironmentInfo: () -> Unit,
+    onOpenApiEnvironment: () -> Unit,
+    onOpenDiagnostics: () -> Unit
 ) {
     val snapshot =
         when (state) {
@@ -8810,7 +8816,45 @@ private fun SharedSettingsAboutContent(
     LaunchedEffect(releaseNotesUrl) {
         releaseNotesUrl.takeIf { it.isNotBlank() }?.let { onPrefetchReleaseNotes(it) }
     }
-    val payload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
+    val aboutPayload = snapshot.toAboutPayload(webUrl, updateCheck, actionState, settingsAboutPayloadCopy(sharedSettingsResolvedWebBaseUrl(webUrl)))
+    val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val environmentStatus =
+        when (developerState) {
+            ScreenLoadState.Loading -> stringResource(MR.strings.settings_state_loading)
+            is ScreenLoadState.Content -> developer?.environmentLabel.orEmpty().ifBlank { stringResource(MR.strings.settings_developer_state_current) }
+            else -> stringResource(MR.strings.settings_state_unavailable)
+        }
+    val environmentDetail =
+        developer?.apiBaseUrl.orEmpty().ifBlank {
+            stringResource(MR.strings.settings_developer_environment_detail)
+        }
+    val payload =
+        aboutPayload.copy(
+            sections =
+                aboutPayload.sections +
+                    KuiklySharedSettingsSection(
+                        title = stringResource(MR.strings.settings_developer_section_api_server),
+                        rows =
+                            listOf(
+                                KuiklySharedSettingsRow(
+                                    key = DEVELOPER_ACTION_API_ENVIRONMENT,
+                                    iconName = SlockLucideIconName.Server,
+                                    title = stringResource(MR.strings.settings_developer_api_environment),
+                                    detail = environmentDetail,
+                                    status = environmentStatus,
+                                    enabled = developerState is ScreenLoadState.Content
+                                ),
+                                KuiklySharedSettingsRow(
+                                    key = "diagnostics",
+                                    iconName = SlockLucideIconName.ClipboardList,
+                                    title = stringResource(MR.strings.settings_diagnostics_title),
+                                    detail = stringResource(MR.strings.settings_developer_diagnostics_detail),
+                                    status = stringResource(MR.strings.settings_state_open),
+                                    enabled = true
+                                )
+                            )
+                    )
+        )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
@@ -8818,6 +8862,8 @@ private fun SharedSettingsAboutContent(
             DEVELOPER_ACTION_QUIVER_UPDATE_CHECK -> onCheckQuiverUpdate()
             "openSourceLicenses" -> onOpenSourceLicenses()
             "copyEnvironmentInfo" -> onCopyEnvironmentInfo()
+            DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
+            "diagnostics" -> onOpenDiagnostics()
         }
     }
 }
@@ -8953,7 +8999,7 @@ internal fun SharedSettingsDeveloperContent(
 }
 
 @Composable
-private fun SharedSettingsApiEnvironmentContent(
+internal fun SharedSettingsApiEnvironmentContent(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -9137,7 +9183,7 @@ private fun SettingsApiEnvironmentPresetRow(
 }
 
 @Composable
-private fun SharedSettingsDiagnosticsContent(
+internal fun SharedSettingsDiagnosticsContent(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: build.raft.app.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -12136,8 +12182,8 @@ private class AuthChooseServerVisualApi(
 private fun Pager.openAppShellDeveloper() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(
-            AUTH_DEVELOPER_PAGE,
-            JSONObject().put("pageName", AUTH_DEVELOPER_PAGE)
+            AUTH_ABOUT_PAGE,
+            JSONObject().put("pageName", AUTH_ABOUT_PAGE)
         )
 }
 
