@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.memberDetailIdentity
+import build.raft.app.parsedMemberKindOrNull
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.toWireChannelKindOrNull
@@ -40,8 +43,7 @@ internal data class SharedConversationDirectoryProjection(
     val senderMemberId: String? = null,
     val senderAvatarWireValue: String? = null,
     val senderAvatarLabel: String? = null,
-    val peerMemberId: String? = null,
-    val peerMemberKind: MemberKind? = null,
+    val peerIdentity: MemberDetailIdentity? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val joined: Boolean = true,
@@ -205,13 +207,12 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
-        peerMemberId = presenceMemberId?.value?.takeIf { it.isNotBlank() },
-        peerMemberKind =
-            when (directMessagePeerType?.trim()?.lowercase()) {
-                "agent" -> MemberKind.Agent
-                "human", "user" -> MemberKind.Human
-                else -> null
-            },
+        peerIdentity =
+            memberDetailIdentity(
+                memberId = presenceMemberId?.value,
+                kind = directMessagePeerType.parsedMemberKindOrNull(),
+                sourceServerId = serverId.value
+            ),
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,
@@ -334,7 +335,7 @@ internal fun InboxItem.toSharedConversationDirectoryProjection(
         senderMemberId = sender.memberId,
         senderAvatarWireValue = sender.avatarWireValue,
         senderAvatarLabel = sender.label,
-        peerMemberId = null,
+        peerIdentity = null,
         parentChannelId = parentId,
         parentMessageId = parentMessage
     )

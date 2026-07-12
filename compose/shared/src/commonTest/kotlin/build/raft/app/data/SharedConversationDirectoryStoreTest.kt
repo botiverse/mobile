@@ -86,7 +86,9 @@ class SharedConversationDirectoryStoreTest {
                 presenceMemberId = MemberId("member-1")
             ).toSharedConversationDirectoryProjection(ServerId("server-1"))
 
-        assertEquals(MemberKind.Human, projection?.peerMemberKind)
+        assertEquals(MemberId("member-1"), projection?.peerIdentity?.memberId)
+        assertEquals(MemberKind.Human, projection?.peerIdentity?.kind)
+        assertEquals(ServerId("server-1"), projection?.peerIdentity?.sourceServerId)
     }
 
     @Test

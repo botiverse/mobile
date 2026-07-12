@@ -612,11 +612,9 @@ data class KuiklyMembersPayload(
     val canInviteHumans: Boolean = true
 )
 
-data class KuiklyMemberDetailPayload(
+internal data class KuiklyMemberDetailPayload(
     val instanceId: String = "",
-    val memberId: String = "",
-    val memberKind: String = "",
-    val sourceServerId: String = "",
+    val identity: MemberDetailIdentity? = null,
     val initialAgentTab: String? = null,
     val visualMode: String? = null,
     val localOffsetMinutes: Int = 0,
@@ -1396,7 +1394,10 @@ internal fun MembersPageContent() {
                     } else {
                         membersPayload
                     }
-                val pageData = launchPayload.toMemberDetailPageData(member.id.value, member.kind)
+                val pageData =
+                    launchPayload.toMemberDetailPageData(
+                        MemberDetailIdentity(member.id, member.kind, member.serverId)
+                    )
                 if (pageData == null) {
                     bridge.toast(openProfileFailed)
                     bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
@@ -1469,13 +1470,10 @@ private class MemberDetailRouteProvider(
     val agentsApiClient: build.raft.app.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
-        memberId: String,
-        expectedKind: MemberKind?
+        identity: MemberDetailIdentity
     ): MemberDetailRouteState.Agent? {
-        if (expectedKind != null && expectedKind != MemberKind.Agent) return null
-        val selectedMemberId = memberId.trim()
-        if (selectedMemberId.isBlank()) return null
-        val selectedId = MemberId(selectedMemberId)
+        if (identity.kind != MemberKind.Agent) return null
+        val selectedId = identity.memberId
         val state = agentDetailStore.state.value
         val detail = state.detail
         if (state.agentId != selectedId || detail == null || detail.agentId != selectedId) {
@@ -1491,28 +1489,33 @@ private class MemberDetailRouteProvider(
     }
 
     suspend fun loadMember(
-        memberId: String,
-        expectedKind: MemberKind?,
-        sourceServerId: String? = null
+        identity: MemberDetailIdentity
     ): MemberDetailRouteState {
-        val selectedMemberId = memberId.trim()
-        if (selectedMemberId.isBlank()) return MemberDetailRouteState.Error("member_id_missing")
         val session = authStore.readSession()
         val serverId = session?.currentServerId
         val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
         if (session == null || serverId.isNullOrBlank() || server == null) {
             return MemberDetailRouteState.Error("server_required")
         }
-        val selectedId = MemberId(selectedMemberId)
-        val profileServerId =
-            sourceServerId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ServerId)
-                ?: ServerId(serverId)
-        if (expectedKind == MemberKind.Human) {
-            return loadHumanMember(selectedId, profileServerId, server, session.user.id)
-        }
+        return identity.dispatchMemberDetailLookup(
+            loadHuman = { selectedId, sourceServerId ->
+                loadHumanMember(
+                    selectedId = selectedId,
+                    profileServerId = sourceServerId ?: ServerId(serverId),
+                    server = server,
+                    currentUserId = session.user.id
+                )
+            },
+            loadAgent = { selectedId -> loadAgentMember(selectedId, server, session.user.id) },
+            unsupported = { _, _ -> MemberDetailRouteState.Error("member_kind_unsupported") }
+        )
+    }
+
+    private suspend fun loadAgentMember(
+        selectedId: MemberId,
+        server: ServerSummary,
+        currentUserId: String?
+    ): MemberDetailRouteState {
         val state = agentDetailStore.state.value
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
         if (!hasMatchingDetail) {
@@ -1526,16 +1529,12 @@ private class MemberDetailRouteProvider(
                 serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
                 return MemberDetailRouteState.Agent(
                     server = server,
-                    currentUserId = session.user.id
+                    currentUserId = currentUserId
                 )
             }
             is DataResult.Empty -> {
-                return if (expectedKind == null) {
-                    loadHumanMember(selectedId, profileServerId, server, session.user.id)
-                } else {
-                    agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
-                    MemberDetailRouteState.Error("member_not_found")
-                }
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
+                return MemberDetailRouteState.Error("member_not_found")
             }
             is DataResult.Error -> {
                 agentDetailStore.dispatch(
@@ -1890,15 +1889,14 @@ private fun MemberDetailPageContent() {
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge)
     val routeScope = rememberCoroutineScope()
-    var routeState by remember(payload.memberId) {
+    val memberIdentity = payload.identity
+    var routeState by remember(memberIdentity) {
         mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
     val agentPanelTabOrderState by provider.agentPanelTabOrderStore.state.collectAsState()
-    val selectedMemberId = remember(payload.memberId) {
-        payload.memberId.trim().takeIf { it.isNotBlank() }?.let(::MemberId)
-    }
+    val selectedMemberId = memberIdentity?.memberId
     val selectedAgentDetailStoreStateMatches = selectedMemberId != null && agentDetailStoreState.agentId == selectedMemberId
     val selectedAgentDetail = agentDetailStoreState.detail?.takeIf {
         selectedAgentDetailStoreStateMatches && it.agentId == selectedMemberId
@@ -1911,7 +1909,7 @@ private fun MemberDetailPageContent() {
         }
     val timeContext = payload.toSlockTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
-    val expectedKind = remember(payload.memberKind) { payload.memberKind.toMemberDetailExpectedKind() }
+    val expectedKind = memberIdentity?.kind
     val statusLookupServerId =
         when (val current = routeState) {
             is MemberDetailRouteState.Agent -> current.server.id.value
@@ -1920,15 +1918,15 @@ private fun MemberDetailPageContent() {
     val agentPanelTabOrderServerId =
         memberDetailAgentPanelTabOrderServerId(
             routeServerId = statusLookupServerId,
-            payloadSourceServerId = payload.sourceServerId
+            payloadSourceServerId = memberIdentity?.sourceServerId?.value.orEmpty()
         )
     val computerPickerSlice by provider.computersStore.computerPickerSliceFlow(statusLookupServerId).collectAsState(
         SharedComputersPickerSlice()
     )
-    var agentRuntimeModelCatalogs by remember(payload.memberId, statusLookupServerId) {
+    var agentRuntimeModelCatalogs by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Map<Pair<String, String>, SharedCreateAgentRuntimeModelCatalog>>(emptyMap())
     }
-    var agentRuntimeModelLoadsInFlight by remember(payload.memberId, statusLookupServerId) {
+    var agentRuntimeModelLoadsInFlight by remember(memberIdentity, statusLookupServerId) {
         mutableStateOf<Set<Pair<String, String>>>(emptySet())
     }
     LaunchedEffect(provider.computersStore, statusLookupServerId) {
@@ -1967,15 +1965,19 @@ private fun MemberDetailPageContent() {
             slockMemberAvatarResolver(provider.serverMembersStore, statusLookupServerId)
         }
 
-    LaunchedEffect(payload.memberId, expectedKind, payload.sourceServerId, localAgentDetailRefreshKey) {
-        val cached = provider.cachedContext(payload.memberId, expectedKind)
+    LaunchedEffect(memberIdentity, localAgentDetailRefreshKey) {
+        if (memberIdentity == null) {
+            routeState = MemberDetailRouteState.Error("member_identity_missing")
+            return@LaunchedEffect
+        }
+        val cached = provider.cachedContext(memberIdentity)
         routeState = cached ?: MemberDetailRouteState.Loading
-        if (cached != null && selectedMemberId != null && expectedKind != MemberKind.Human) {
+        if (cached != null && selectedMemberId != null) {
             launch {
                 provider.refreshAgentActivity(selectedMemberId)
             }
         }
-        routeState = provider.loadMember(payload.memberId, expectedKind, payload.sourceServerId)
+        routeState = provider.loadMember(memberIdentity)
     }
     LaunchedEffect(provider.serverMembersStore, statusLookupServerId) {
         val serverId = statusLookupServerId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -1983,7 +1985,7 @@ private fun MemberDetailPageContent() {
     }
     LaunchedEffect(
         provider,
-        payload.memberId,
+        memberIdentity,
         statusLookupServerId,
         expectedKind,
         agentPanelTabOrderState.serverId,
@@ -2356,7 +2358,7 @@ private fun MemberDetailPageContent() {
 
 private fun KuiklyMemberDetailPayload.toMemberDetailVisualSeedOrNull(): MemberDetailVisualSeed? {
     if (!instanceId.startsWith("visual-")) return null
-    return when (memberId) {
+    return when (identity?.memberId?.value) {
         membersAgentDetailVisualMember.id.value ->
             MemberDetailVisualSeed(
                 member = membersAgentDetailVisualMember,
@@ -2634,26 +2636,22 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
 }
 
 internal fun KuiklyMembersPayload.toMemberDetailPageData(
-    memberId: String,
-    selectedMemberKind: MemberKind? = null
+    identity: MemberDetailIdentity
 ): JSONObject? {
-    val selected = memberId.trim().takeIf { it.isNotBlank() } ?: return null
+    val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
     val selectedMember = members.firstOrNull { it.id.value == selected }
-    val memberKind = selectedMemberKind ?: selectedMember?.kind
     val launchInitialAgentTab =
         membersInitialAgentDetailTabForLaunch(
             explicitInitialTab = initialAgentTab,
             agentPanelTabOrder = agentPanelTabOrder,
-            selectedMemberKind = memberKind
+            selectedMemberKind = identity.kind
         )
     return JSONObject().apply {
         put("pageName", MEMBER_DETAIL_PAGE)
         put("instanceId", "members-detail-${instanceId.ifBlank { "members" }}-$selected")
         put("memberId", selected)
-        memberKind?.let {
-            put("memberKind", it.toMemberDetailKindWireValue())
-        }
-        selectedMember?.serverId?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
+        put("memberKind", identity.kind.memberKindWireValue())
+        (identity.sourceServerId ?: selectedMember?.serverId)?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
             put("sourceServerId", it)
         }
         launchInitialAgentTab?.let { put("initialAgentTab", it.serverOrderKey) }
@@ -2674,11 +2672,16 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
     val payload = if (payloadText.isNotBlank()) JSONObject(payloadText) else this
     return KuiklyMemberDetailPayload(
         instanceId = payload.optString("instanceId").ifBlank { optString("instanceId") },
-        memberId = payload.optString("memberId").ifBlank { payload.optString("selectedMemberId") },
-        memberKind = payload.optString("memberKind")
-            .ifBlank { payload.optString("selectedMemberKind") }
-            .ifBlank { payload.optString("kind") },
-        sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") },
+        identity =
+            memberDetailIdentity(
+                memberId = payload.optString("memberId").ifBlank { payload.optString("selectedMemberId") },
+                kind =
+                    payload.optString("memberKind")
+                        .ifBlank { payload.optString("selectedMemberKind") }
+                        .ifBlank { payload.optString("kind") }
+                        .parsedMemberKindOrNull(),
+                sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") }
+            ),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         visualMode = payload.optNullableString("visualMode") ?: optNullableString("visualMode"),
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
@@ -2688,20 +2691,6 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
         agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder")
     )
 }
-
-private fun MemberKind.toMemberDetailKindWireValue(): String =
-    when (this) {
-        MemberKind.Agent -> "agent"
-        MemberKind.Human -> "human"
-        MemberKind.System -> "system"
-    }
-
-private fun String.toMemberDetailExpectedKind(): MemberKind? =
-    when (trim().lowercase()) {
-        "agent" -> MemberKind.Agent
-        "human", "user" -> MemberKind.Human
-        else -> null
-    }
 
 private fun JSONObject?.toMemberProfile(): MemberProfile {
     if (this == null) return KuiklyMembersPayload().members.firstOrNull() ?: MemberProfile(

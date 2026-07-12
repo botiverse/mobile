@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
-import build.raft.app.model.MemberKind
 import build.raft.app.model.isGenericDisplayName
 import build.raft.app.model.safeDisplayNameOrNull
 
@@ -30,13 +29,11 @@ internal fun ConversationSummary.toConversationHeaderEntry(): SharedConversation
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = null,
         avatarLabel = displayName.take(2).uppercase(),
-        dmPeerMemberId = presenceMemberId?.value,
-        dmPeerMemberKind =
-            when (directMessagePeerType?.trim()?.lowercase()) {
-                "agent" -> MemberKind.Agent
-                "human", "user" -> MemberKind.Human
-                else -> null
-            }
+        dmPeerIdentity =
+            memberDetailIdentity(
+                memberId = presenceMemberId?.value,
+                kind = directMessagePeerType.parsedMemberKindOrNull()
+            )
     )
 }
 

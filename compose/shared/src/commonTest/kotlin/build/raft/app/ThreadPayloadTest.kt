@@ -2257,7 +2257,12 @@ class ThreadPayloadTest {
                 title = "artin",
                 avatarWireValue = "pixel:crown",
                 avatarLabel = "AR",
-                peerMemberId = "member-artin"
+                peerIdentity =
+                    MemberDetailIdentity(
+                        memberId = MemberId("member-artin"),
+                        kind = MemberKind.Human,
+                        sourceServerId = ServerId("server-1")
+                    )
             )
 
         val stableProjection = input.stableProjection(current = null, previous = acceptedProjection)
@@ -2267,7 +2272,8 @@ class ThreadPayloadTest {
         assertEquals("artin", headerDisplay.title)
         assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals("member-artin", headerDisplay.dmPeerMemberId)
+        assertEquals("member-artin", headerDisplay.dmPeerIdentity?.memberId?.value)
+        assertEquals(MemberKind.Human, headerDisplay.dmPeerIdentity?.kind)
     }
 
     @Test
@@ -2338,7 +2344,11 @@ class ThreadPayloadTest {
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
                 surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
-                dmPeerMemberId = "agent-1",
+                dmPeerIdentity =
+                    MemberDetailIdentity(
+                        memberId = MemberId("agent-1"),
+                        kind = MemberKind.Agent
+                    ),
                 dmPeerName = null,
                 dmPeerAvatarUrl = null,
             )
@@ -2353,8 +2363,12 @@ class ThreadPayloadTest {
                 title = "Product-UX-Designer",
                 avatarWireValue = "pixel:robot",
                 avatarLabel = "PR",
-                peerMemberId = "agent-1",
-                peerMemberKind = MemberKind.Agent
+                peerIdentity =
+                    MemberDetailIdentity(
+                        memberId = MemberId("agent-1"),
+                        kind = MemberKind.Agent,
+                        sourceServerId = ServerId("server-1")
+                    )
             )
 
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
@@ -2362,8 +2376,8 @@ class ThreadPayloadTest {
         assertEquals("Product-UX-Designer", headerDisplay.title)
         assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals("agent-1", headerDisplay.dmPeerMemberId)
-        assertEquals(MemberKind.Agent, headerDisplay.dmPeerMemberKind)
+        assertEquals("agent-1", headerDisplay.dmPeerIdentity?.memberId?.value)
+        assertEquals(MemberKind.Agent, headerDisplay.dmPeerIdentity?.kind)
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)
@@ -6210,7 +6224,10 @@ class ThreadPayloadTest {
                 timeFormat = SlockTimeFormat12Hour
             )
 
-        val pageData = payload.toThreadMemberDetailPageData("human-artin", MemberKind.Human)!!
+        val pageData =
+            payload.toThreadMemberDetailPageData(
+                MemberDetailIdentity(MemberId("human-artin"), MemberKind.Human)
+            )!!
 
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("human-artin", pageData.optString("memberId"))
@@ -6235,9 +6252,11 @@ class ThreadPayloadTest {
 
         val pageData =
             payload.toThreadMemberDetailPageData(
-                selectedMemberId = "remote-human",
-                selectedMemberKind = MemberKind.Human,
-                sourceServerId = "server-remote"
+                MemberDetailIdentity(
+                    memberId = MemberId("remote-human"),
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server-remote")
+                )
             )!!
 
         assertEquals("remote-human", pageData.optString("memberId"))

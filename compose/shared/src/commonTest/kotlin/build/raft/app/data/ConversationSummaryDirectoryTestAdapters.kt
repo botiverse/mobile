@@ -1,11 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.memberDetailIdentity
+import build.raft.app.parsedMemberKindOrNull
 import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
-import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.isGenericDisplayName
 import build.raft.app.model.messageStreamChannelId
@@ -49,13 +50,12 @@ internal fun ConversationSummary.toSharedConversationDirectoryProjection(
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
-        peerMemberId = presenceMemberId?.value?.takeIf { it.isNotBlank() },
-        peerMemberKind =
-            when (directMessagePeerType?.trim()?.lowercase()) {
-                "agent" -> MemberKind.Agent
-                "human", "user" -> MemberKind.Human
-                else -> null
-            },
+        peerIdentity =
+            memberDetailIdentity(
+                memberId = presenceMemberId?.value,
+                kind = directMessagePeerType.parsedMemberKindOrNull(),
+                sourceServerId = serverId.value
+            ),
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,

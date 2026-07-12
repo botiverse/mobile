@@ -210,7 +210,10 @@ class SharedMembersParserTest {
                 timeFormat = SlockTimeFormat12Hour
             )
 
-        val pageData = payload.toMemberDetailPageData("human-artin", MemberKind.Human)!!
+        val pageData =
+            payload.toMemberDetailPageData(
+                MemberDetailIdentity(MemberId("human-artin"), MemberKind.Human)
+            )!!
 
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
         assertEquals("members-detail-members-server-1-human-artin", pageData.optString("instanceId"))
@@ -244,7 +247,10 @@ class SharedMembersParserTest {
                 agentPanelTabOrder = listOf("activity", "profile")
             )
 
-        val pageData = payload.toMemberDetailPageData("agent-cindy", MemberKind.Agent)!!
+        val pageData =
+            payload.toMemberDetailPageData(
+                MemberDetailIdentity(MemberId("agent-cindy"), MemberKind.Agent)
+            )!!
 
         assertEquals("agent", pageData.optString("memberKind"))
         assertEquals("activity", pageData.optString("initialAgentTab"))
@@ -356,7 +362,14 @@ class SharedMembersParserTest {
                 )
             )
 
-        val pageData = payload.toMemberDetailPageData("remote-human", MemberKind.Human)!!
+        val pageData =
+            payload.toMemberDetailPageData(
+                MemberDetailIdentity(
+                    memberId = MemberId("remote-human"),
+                    kind = MemberKind.Human,
+                    sourceServerId = ServerId("server-remote")
+                )
+            )!!
 
         assertEquals("remote-human", pageData.optString("memberId"))
         assertEquals("human", pageData.optString("memberKind"))
@@ -380,8 +393,8 @@ class SharedMembersParserTest {
             ).toKuiklyMemberDetailPayload()
 
         assertEquals("detail-human-artin", payload.instanceId)
-        assertEquals("human-artin", payload.memberId)
-        assertEquals("human", payload.memberKind)
+        assertEquals("human-artin", payload.identity?.memberId?.value)
+        assertEquals(MemberKind.Human, payload.identity?.kind)
     }
 
     @Test
@@ -398,7 +411,7 @@ class SharedMembersParserTest {
                 """.trimIndent()
             ).toKuiklyMemberDetailPayload()
 
-        assertEquals("server-remote", payload.sourceServerId)
+        assertEquals("server-remote", payload.identity?.sourceServerId?.value)
     }
 
     @Test

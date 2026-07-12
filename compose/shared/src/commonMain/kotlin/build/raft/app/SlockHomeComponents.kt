@@ -565,12 +565,15 @@ private fun SlockHomePageContent(routeVisibleTick: Int = 0) {
         onDmSortModeChange = { unsupportedStandaloneHomeAction("setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { unsupportedStandaloneHomeAction("setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
-        onPinnedMemberClick = { kind, memberId ->
+        onPinnedMemberClick = { identity ->
             standaloneScope.launch {
-                when (val result = standaloneChannelRepository.openPinnedMemberDirectMessage(kind, memberId)) {
+                when (val result = standaloneChannelRepository.openPinnedMemberDirectMessage(identity)) {
                     is DataResult.Content -> {
                         standaloneHomeStore.dispatch(SharedHomeIntent.Refresh)
-                        pager.openThreadPageFromConversation(result.data.conversation, "${payload.instanceId}:$kind:$memberId")
+                        pager.openThreadPageFromConversation(
+                            result.data.conversation,
+                            "${payload.instanceId}:${identity.kind.memberKindWireValue()}:${identity.memberId.value}"
+                        )
                     }
                     is DataResult.Empty -> bridge.toast(unableToOpenDirectMessage)
                     is DataResult.Error -> bridge.toast("$failedToOpenDirectMessage: ${result.error.code}")
@@ -637,13 +640,12 @@ private fun Pager.openThreadPageFromConversation(
 }
 
 internal suspend fun ChannelRepository.openPinnedMemberDirectMessage(
-    kind: String,
-    memberId: String
+    identity: MemberDetailIdentity
 ): DataResult<OpenDirectMessageResult> =
-    when (kind.trim().lowercase()) {
-        "agent" -> openAgentDirectMessage(MemberId(memberId))
-        "human" -> openUserDirectMessage(MemberId(memberId))
-        else -> DataResult.Empty(EmptyReason.NoChannels)
+    when (identity.kind) {
+        MemberKind.Agent -> openAgentDirectMessage(identity.memberId)
+        MemberKind.Human -> openUserDirectMessage(identity.memberId)
+        MemberKind.System -> DataResult.Empty(EmptyReason.NoChannels)
     }
 
 internal class HomeConversationOpenBarrier(
@@ -874,7 +876,7 @@ internal fun SlockStructuralHomeShell(
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
-    onPinnedMemberClick: (kind: String, memberId: String) -> Unit = { _, _ -> },
+    onPinnedMemberClick: (MemberDetailIdentity) -> Unit = {},
     onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
@@ -1369,8 +1371,12 @@ internal fun SlockStructuralHomeShell(
                                                 name = pinned?.name ?: pinnedMember?.name.orEmpty(),
                                                 description = pinned?.description ?: pinnedMember?.description,
                                                 avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
-                                                peerType = pinned?.peerType ?: pinnedMember?.peerType,
-                                                memberId = pinned?.presenceMemberId ?: pinnedMember?.memberId,
+                                                peerType =
+                                                    pinned?.peerType
+                                                        ?: pinnedMember?.identity?.kind?.memberKindWireValue(),
+                                                memberId =
+                                                    pinned?.presenceMemberId
+                                                        ?: pinnedMember?.identity?.memberId?.value,
                                                 agentStatusResolver = agentStatusResolver,
                                                 memberAvatarResolver = memberAvatarResolver,
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1387,7 +1393,7 @@ internal fun SlockStructuralHomeShell(
                                                                 onChannelClickWithDismiss(pinned.id)
                                                             } else if (pinnedMember != null) {
                                                                 dismissNotificationCenterForFocusLoss()
-                                                                onPinnedMemberClick(pinnedMember.peerType, pinnedMember.memberId)
+                                                                onPinnedMemberClick(pinnedMember.identity)
                                                             }
                                                         }
                                                     } else {
@@ -2450,26 +2456,19 @@ private suspend fun runSlockSortAutoScrollLoop(
  * `presenceMemberId`, matching React's `pinnedAgentIds -> agentDmById` path.
  */
 internal data class SlockHomePinnedMemberItem(
-    val memberId: String,
+    val identity: MemberDetailIdentity,
     val name: String,
     val description: String? = null,
-    val avatarLabel: String,
-    val peerType: String
+    val avatarLabel: String
 )
 
 internal fun MemberProfile.toSlockHomePinnedMemberItem(): SlockHomePinnedMemberItem? {
-    val peerType =
-        when (kind) {
-            MemberKind.Agent -> "agent"
-            MemberKind.Human -> "human"
-            MemberKind.System -> return null
-        }
+    if (kind == MemberKind.System) return null
     return SlockHomePinnedMemberItem(
-        memberId = id.value,
+        identity = MemberDetailIdentity(id, kind, serverId),
         name = displayName.ifBlank { handle.ifBlank { id.value } },
         description = handle.takeIf { it.isNotBlank() }?.let { "@$it" },
-        avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "?" } },
-        peerType = peerType
+        avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "?" } }
     )
 }
 
@@ -2487,14 +2486,14 @@ internal fun SlockHomePinnedRow.supportsLongPress(): Boolean = conversation != n
 internal fun SlockHomePinnedRow.toSidebarSortItem(): SlockHomeConversationItem? =
     conversation ?: member?.let { pinnedMember ->
         SlockHomeConversationItem(
-            id = pinnedMember.memberId,
+            id = pinnedMember.identity.memberId.value,
             name = pinnedMember.name,
             kind = KuiklyThreadSurfaceKind.DirectMessage,
             channelType = "dm",
             description = pinnedMember.description,
             avatarLabel = pinnedMember.avatarLabel,
-            peerType = pinnedMember.peerType,
-            presenceMemberId = pinnedMember.memberId
+            peerType = pinnedMember.identity.kind.memberKindWireValue(),
+            presenceMemberId = pinnedMember.identity.memberId.value
         )
     }
 
@@ -2550,13 +2549,13 @@ internal fun pinnedRowsForSidebar(
                         SlockHomePinnedRow(key = "$kind:$id", conversation = conversation)
                     } else {
                         pinnedMemberProfileResolver(id)
-                            ?.takeIf { it.peerType == kind }
+                            ?.takeIf { it.identity.kind.memberKindWireValue() == kind }
                             ?.let { member -> SlockHomePinnedRow(key = "$kind:$id", member = member) }
                     }
                 }
                 else -> null
             }
-        }.distinctBy { row -> row.conversation?.id ?: row.member?.memberId ?: row.key }
+        }.distinctBy { row -> row.conversation?.id ?: row.member?.identity?.memberId?.value ?: row.key }
     if (typedRows.isNotEmpty()) {
         return typedRows.sortedPinnedRows(mode)
     }
