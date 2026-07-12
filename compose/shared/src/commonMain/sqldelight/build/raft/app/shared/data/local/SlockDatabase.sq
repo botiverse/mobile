@@ -100,7 +100,7 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 -- of truth; the remaining columns are ONLY the minimal query/sort scalars a SQL read needs. No presentation
 -- state is persisted (author display / body / timestamp label / delivery are projected at read time via
 -- CanonicalMessageRow.toAppMessage). Pending/optimistic/outbox rows NEVER enter this table — `seq NOT NULL`
--- makes that structural, so `clearScope` only ever handles committed server facts (saved-referenced excepted).
+-- makes that structural, so `clearScope` is a plain full-scope delete (no exceptions).
 CREATE TABLE messageEntity (
   id TEXT NOT NULL PRIMARY KEY,
   serverId TEXT NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE messageEntity (
 );
 
 -- Canonical (seq, id) tie-break order for server-backed restore/timeline reads (#491 P1).
-CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, seq, id);
+CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, scopeKind, channelId, seq, id);
 
 -- attachmentEntity / messageReactionEntity / savedMessageEntity were removed with the canonical-native
 -- rebuild: all three had zero live consumers, and the canonical fact (attachments, reactions) is stored
@@ -175,7 +175,9 @@ CREATE TABLE syncCursorEntity (
   hasLoadedNewest INTEGER NOT NULL DEFAULT 1,
   updatedAtMs INTEGER NOT NULL,
   epoch TEXT,
-  PRIMARY KEY (serverId, scopeId)
+  -- Full 3-part scope key: a channel and a thread (etc.) that happen to share serverId + scopeId must not
+  -- collide on the cursor. scopeKind is part of the identity, so it is in the PK.
+  PRIMARY KEY (serverId, scopeKind, scopeId)
 );
 
 CREATE TABLE outboxMessageEntity (
@@ -387,12 +389,12 @@ WHERE serverId = ?
   AND followerId = ?;
 
 
--- T-wrapper canonical parent upsert (form A), done as INSERT-OR-IGNORE + scoped UPDATE because the
--- SqlDelight SQLite dialect does not parse `ON CONFLICT ... DO UPDATE`. The pair (run in this order, in one
--- transaction) is a CASCADE-safe in-place upsert: OR IGNORE creates the row when absent (an id conflict is
--- ignored, NOT replaced — so child rows are never CASCADE-wiped), and the UPDATE sets the canonical facts
--- for both the new and the pre-existing row. The UPDATE is SCOPED to serverId+channelId, so a
--- (contractually impossible) cross-scope id collision updates 0 rows rather than another scope's fact.
+-- T-wrapper canonical fact upsert, done as INSERT-OR-IGNORE + scoped UPDATE because the SqlDelight SQLite
+-- dialect does not parse `ON CONFLICT ... DO UPDATE`. The pair (run in this order, in one transaction) is an
+-- in-place upsert: OR IGNORE creates the row when absent (an id conflict is ignored, NOT replaced), and the
+-- UPDATE sets the canonical facts for both the new and the pre-existing row. The UPDATE is SCOPED to the full
+-- serverId+scopeKind+channelId, so a (contractually impossible) cross-scope id collision updates 0 rows
+-- rather than another scope's fact — the store then fail-stops on that 0-row result.
 insertCanonicalFactIfAbsent:
 INSERT OR IGNORE INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson)
 VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -564,6 +566,7 @@ selectSyncCursor:
 SELECT *
 FROM syncCursorEntity
 WHERE serverId = ?
+  AND scopeKind = ?
   AND scopeId = ?;
 
 -- #491 P1 warm-start restore: canonical server-backed timeline read. Only server-backed rows

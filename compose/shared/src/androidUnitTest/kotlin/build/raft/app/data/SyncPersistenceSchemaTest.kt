@@ -9,13 +9,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * #491 P1 schema gate — FRESH baseline, no migration. Per the pre-release DB reset (filename bumped
- * to `slock_cache_v3.db`, schema/migration history reset to zero), the sync-core persistence ships as
- * a brand-new schema version 1 with the per-scope epoch cursor column + the canonical
- * (serverId, channelId, seq, id) restore index built in — there is no v1->v2 migration.
+ * #491 P1 schema gate — FRESH baseline, no migration (pre-release DB reset, `slock_cache_v4.db`). The
+ * sync-core persistence ships as a canonical-native schema version 1: messageEntity holds the lossless
+ * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full 3-part-scope
+ * `(serverId, scopeKind, channelId, seq, id)` restore index and the per-scope epoch cursor column.
  *
- * A fresh `Schema.create` must produce: the nullable epoch column, the tie-break index with the exact
- * column order, live FK enforcement, and the canonical server-backed `(seq, id)` restore ordering.
+ * A fresh `Schema.create` must produce: the nullable epoch column, that tie-break index with the exact
+ * column order, `seq NOT NULL` (pending never enters), and the canonical `(seq, id)` restore ordering.
  * JDBC drives this schema gate; Android/Native open-path is covered by the driver audit (task #494).
  */
 class SyncPersistenceSchemaTest {
@@ -42,7 +42,7 @@ class SyncPersistenceSchemaTest {
 
         // 2) canonical tie-break index exists with the EXACT column order.
         assertEquals(
-            listOf("serverId", "channelId", "seq", "id"),
+            listOf("serverId", "scopeKind", "channelId", "seq", "id"),
             driver.indexColumns("messageEntity_channelSeqId"),
         )
 

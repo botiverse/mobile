@@ -15,7 +15,7 @@ import build.raft.app.model.MessageId
  * [SlockSqlDatabase.transaction] (real BEGIN/COMMIT), giving the §9.9 transaction-count invariant on a real
  * backend. All of this store's mutations run inside that single transaction.
  */
-class SqlDelightFoldPersistStore(
+internal class SqlDelightFoldPersistStore(
     private val database: SlockSqlDatabase,
     private val now: () -> Long,
     private val onDecodeFailure: (scope: SyncScopeKey, factId: String) -> Unit = { _, _ -> },
@@ -75,7 +75,7 @@ class SqlDelightFoldPersistStore(
         )
     }
 
-    /** No-op: the `(serverId, channelId, seq, id)` timeline index is maintained by SQLite from the rows. */
+    /** No-op: the `(serverId, scopeKind, channelId, seq, id)` timeline index is maintained by SQLite. */
     override suspend fun maintainTimelineIndex(scope: SyncScopeKey, facts: List<CanonicalMessageRow>) = Unit
 
     override suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>) {
@@ -103,21 +103,25 @@ class SqlDelightFoldPersistStore(
             .selectServerBackedMessagesForChannel(scope.serverId, scope.scopeKind, scope.scopeId)
             .executeAsList()
             .mapNotNull { row ->
-                // Per-row fail-closed: a payload that will not decode is a poison-gate input, counted and
-                // dropped — never silently reshaped into a partial row.
+                // The restored row's CONTENT is the decoded payload only (restore-purity — no scalar column
+                // is ever read into the result). But a row whose scalar projection has drifted from its
+                // payload, or whose decoded channel is not the scope we queried, is corrupt: poison it (drop
+                // + count), never return a scalar-tampered / mis-scoped row. A payload that will not decode
+                // is likewise a poison-gate input. The forward gate proves write-time scalars == payload; the
+                // projection-tamper negative proves this read-time poison of a tampered scalar.
                 val decoded = decodeCanonicalFact(row.canonicalFactJson)
                     ?: return@mapNotNull run { onDecodeFailure(scope, row.id); null }
-                // Scalar/payload consistency: the scalar columns are a deterministic PROJECTION of the
-                // payload (the restore source). If they disagree, the row is corrupt — treat it as a
-                // poison-gate input, not a trusted partial. Restore still yields only the decoded payload.
-                if (row.seq != decoded.seq || row.createdAt != decoded.createdAt) {
-                    return@mapNotNull run { onDecodeFailure(scope, row.id); null }
-                }
+                val consistent = row.id == decoded.id.value &&
+                    row.channelId == decoded.channelId.value &&
+                    row.seq == decoded.seq &&
+                    row.createdAt == decoded.createdAt &&
+                    decoded.channelId.value == scope.scopeId
+                if (!consistent) return@mapNotNull run { onDecodeFailure(scope, row.id); null }
                 decoded
             }
 
     override suspend fun readCursor(scope: SyncScopeKey): PersistedCursor? =
-        database.queries.selectSyncCursor(scope.serverId, scope.scopeId).executeAsOneOrNull()?.let { c ->
+        database.queries.selectSyncCursor(scope.serverId, scope.scopeKind, scope.scopeId).executeAsOneOrNull()?.let { c ->
             PersistedCursor(
                 latestSeq = c.latestSeq,
                 oldestLoadedSeq = c.oldestLoadedSeq,
@@ -130,11 +134,11 @@ class SqlDelightFoldPersistStore(
 }
 
 /** A fact whose globally-unique id already exists in a different scope — a hard contract violation. */
-class FoldPersistScopeConflict(scope: SyncScopeKey, factId: String) :
+internal class FoldPersistScopeConflict(scope: SyncScopeKey, factId: String) :
     RuntimeException("canonical fact $factId did not land in scope ${scope.serverId}/${scope.scopeKind}/${scope.scopeId} (id exists in another scope)")
 
 /** Binds the fold transaction runner to the real SQLite BEGIN/COMMIT boundary. */
-class SqlDelightFoldPersistTransactionRunner(
+internal class SqlDelightFoldPersistTransactionRunner(
     private val database: SlockSqlDatabase,
 ) : FoldPersistTransactionRunner {
     override suspend fun run(block: suspend () -> Unit) {
