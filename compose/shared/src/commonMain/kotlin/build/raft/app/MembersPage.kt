@@ -9081,8 +9081,7 @@ private fun MembersListRow(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
-    val subtitle = member.description?.trim()?.takeIf { it.isNotEmpty() }
-        ?: member.handle.trim().takeIf { it.isNotEmpty() }
+    val subtitle = membersListRowSubtitle(member)
     val agentStatusDisplayState =
         if (member.kind == MemberKind.Agent) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
@@ -9139,6 +9138,9 @@ private fun MembersListRow(
         }
     }
 }
+
+internal fun membersListRowSubtitle(member: MemberProfile): String? =
+    member.description?.trim()?.takeIf { it.isNotEmpty() }
 
 @Composable
 private fun MembersAvatar(
