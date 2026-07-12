@@ -7,8 +7,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * DoD ⑤ gate (甲) — MECHANICAL manifest→envelope reverse-closure for the T-wrapper canonical fact BLOB.
@@ -45,6 +45,18 @@ class CanonicalFactEnvelopeManifestGateTest {
             .filterNot { it == "Companion" || it == "serialVersionUID" }
             .toSet()
 
+    /**
+     * THE gate comparison — EXACT bidirectional equality; null = closed, else the divergence message.
+     * Both the real gates and the RED specimen route through this one function, so a weakening (e.g. to a
+     * subset check that ignores extra fields) is caught by the specimen, not just by hand-set arithmetic.
+     */
+    private fun closureError(label: String, actual: Set<String>, expected: Set<String>): String? {
+        val missing = expected - actual
+        val extra = actual - expected
+        return if (missing.isEmpty() && extra.isEmpty()) null
+        else "$label closure failed. Missing (expected-has/actual-no): $missing. Extra (actual-has/expected-no): $extra."
+    }
+
     @Test
     fun manifestSnapshotShaMatchesG6PinnedHead() {
         // Same reviewed manifest head as G6 (#4589 @252dfebf); if it drifts, re-review both gates.
@@ -53,28 +65,22 @@ class CanonicalFactEnvelopeManifestGateTest {
     }
 
     @Test
-    fun gateIsNonVacuousExactEquality_redSpecimen() {
-        // Mandatory RED specimen (赵): prove the reverse-closure gate can actually go red, and is not a
-        // false-green when the manifest fails to load. (1) the canonical set is the pinned 19 — an empty
-        // set (resource missing / parse error) would false-green an equality against an also-empty side.
+    fun gateRedSpecimen_exercisesTheActualClosureCheck() {
+        // Mandatory RED specimen (赵/AD2): drive the SAME [closureError] the gates use with tampered inputs,
+        // so a future weakening of that function (e.g. subset instead of exact equality) is caught HERE —
+        // NOT via bare Set arithmetic, which would stay green even if the gate itself were made vacuous.
         val canonical = canonicalFieldNames()
+        // manifest-load guard: an empty set (resource missing / parse error) would false-green the gate.
         assertEquals(19, canonical.size, "manifest canonical set must be the pinned 19 (10 required + 9 aggregate)")
-        // (2) exact equality, not subset: a field MISSING from one side OR an EXTRA field both diverge —
-        // so the gate cannot pass on a partial match (the drift (甲) exists to catch).
-        assertNotEquals(canonical, canonical - canonical.first(), "a missing canonical field must diverge")
-        assertNotEquals(canonical, canonical + "phantomCanonicalField", "an extra field must diverge")
+        assertNull(closureError("positive-control", canonical, canonical), "identical sets must be closed")
+        assertNotNull(closureError("missing", canonical - canonical.first(), canonical), "a missing field must fail closure")
+        assertNotNull(closureError("extra", canonical + "phantomCanonicalField", canonical), "an extra field must fail closure")
     }
 
     @Test
     fun envelopeFieldsEqualManifestCanonicalSet() {
         val envelope = declaredFieldNames(CanonicalMessagePersistedV1::class.java) - "version" // version = codec meta
-        val canonical = canonicalFieldNames()
-        assertEquals(
-            canonical, envelope,
-            "CanonicalMessagePersistedV1 (minus version) must EQUAL the manifest canonical set (19). " +
-                "Missing from envelope (manifest-has/envelope-no): ${canonical - envelope}. " +
-                "Extra on envelope (envelope-has/manifest-no): ${envelope - canonical}.",
-        )
+        assertNull(closureError("CanonicalMessagePersistedV1 (minus version) vs manifest canonical(19)", envelope, canonicalFieldNames()))
     }
 
     @Test
@@ -90,10 +96,7 @@ class CanonicalFactEnvelopeManifestGateTest {
         )
         dtoToShape.forEach { (dto, shapeKey) ->
             val manifestFields = nested[shapeKey]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
-            assertEquals(
-                manifestFields, declaredFieldNames(dto),
-                "$shapeKey V1 DTO field set must EQUAL manifest nestedWireShapes.$shapeKey.",
-            )
+            assertNull(closureError("$shapeKey V1 DTO vs manifest nestedWireShapes.$shapeKey", declaredFieldNames(dto), manifestFields))
         }
     }
 }
