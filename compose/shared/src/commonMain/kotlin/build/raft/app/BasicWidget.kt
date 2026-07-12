@@ -594,6 +594,8 @@ internal fun Modifier.border(border: Border) =
 internal fun slockTextFieldResolvedTextStyle(textStyle: TextStyle): TextStyle =
     textStyle.withResolvedSlockFontFamily()
 
+internal fun slockTextFieldSingleLine(maxLines: Int): Boolean = maxLines == 1
+
 @Composable
 internal fun TextField(
     modifier: Modifier = Modifier,
@@ -654,6 +656,7 @@ internal fun TextField(
         value = value,
         onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
+        singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,
@@ -740,6 +743,7 @@ internal fun TextField(
         value = value,
         onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
+        singleLine = slockTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = keyboardOptions,

@@ -435,6 +435,7 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.platform.LocalFocusManager
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -9006,6 +9007,7 @@ internal fun SharedSettingsApiEnvironmentContent(
     onSaveApiEnvironment: (SharedSettingsApiEnvironmentRequest) -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val focusManager = LocalFocusManager.current
     var selectedPresetKey by remember(snapshot?.environmentKey, snapshot?.options) {
         mutableStateOf(snapshot?.environmentKey?.takeIf { key -> snapshot.options.any { it.key == key } }.orEmpty())
     }
@@ -9050,6 +9052,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                         selected = selectedPresetKey == option.key,
                         enabled = !busy,
                         onSelect = {
+                            focusManager.clearFocus()
                             selectedPresetKey = option.key
                             label = option.label
                             apiBaseUrl = option.apiBaseUrl
