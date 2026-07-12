@@ -423,20 +423,20 @@ WHERE serverId = ?
   AND followerId = ?;
 
 
--- T-wrapper canonical parent upsert (form A): in-place UPDATE keyed by id, SCOPED to serverId+channelId so
--- a (contractually impossible) cross-scope id collision can never update another scope's row. Writes ONLY
--- canonical facts (scalars + the JSON envelope); never touches saved/local state. Replaces the old
--- INSERT OR REPLACE (whose parent replace CASCADE-wiped child rows) — child rows are reconciled explicitly.
-upsertCanonicalFact:
-INSERT INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  scopeKind = excluded.scopeKind,
-  seq = excluded.seq,
-  createdAt = excluded.createdAt,
-  canonicalFactJson = excluded.canonicalFactJson
-WHERE messageEntity.serverId = excluded.serverId
-  AND messageEntity.channelId = excluded.channelId;
+-- T-wrapper canonical parent upsert (form A), done as INSERT-OR-IGNORE + scoped UPDATE because the
+-- SqlDelight SQLite dialect does not parse `ON CONFLICT ... DO UPDATE`. The pair (run in this order, in one
+-- transaction) is a CASCADE-safe in-place upsert: OR IGNORE creates the row when absent (an id conflict is
+-- ignored, NOT replaced — so child rows are never CASCADE-wiped), and the UPDATE sets the canonical facts
+-- for both the new and the pre-existing row. The UPDATE is SCOPED to serverId+channelId, so a
+-- (contractually impossible) cross-scope id collision updates 0 rows rather than another scope's fact.
+insertCanonicalFactIfAbsent:
+INSERT OR IGNORE INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateCanonicalFact:
+UPDATE messageEntity
+SET scopeKind = ?, seq = ?, createdAt = ?, canonicalFactJson = ?
+WHERE id = ? AND serverId = ? AND channelId = ?;
 
 -- Clear a scope's canonical server facts (snapshot rebaseline), EXCLUDING saved-referenced ids (saved is an
 -- independent receiver domain; a message snapshot must never adjudicate it — savedMessageEntity ON DELETE
