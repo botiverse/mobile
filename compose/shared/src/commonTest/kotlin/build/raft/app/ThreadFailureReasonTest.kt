@@ -1,8 +1,10 @@
 package build.raft.app
 
 import build.raft.app.network.SlockRequestTimeoutException
+import com.tencent.tmm.kmmresource.resource.desc.ResourceStringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ThreadFailureReasonTest {
@@ -44,19 +46,31 @@ class ThreadFailureReasonTest {
     }
 
     @Test
-    fun userFacingErrorCodeMapsRawThreadCodes() {
-        assertEquals(
-            "The server could not be reached. Check your connection and try again.",
-            threadUserFacingErrorCodeLabel("dns_lookup_failed")
-        )
-        assertEquals(
-            "The network connection failed. Check your connection and try again.",
-            threadUserFacingErrorCodeLabel("thread_network")
-        )
-        assertEquals(
-            "request timed out",
-            threadUserFacingErrorCodeLabel("thread_send_timeout")
-        )
+    fun userFacingErrorCodeMapsRawThreadCodesToTypedReasons() {
+        mapOf(
+            "auth_required" to ThreadUserFacingErrorReason.AuthenticationRequired,
+            "thread_forbidden" to ThreadUserFacingErrorReason.PermissionDenied,
+            "dns_lookup_failed" to ThreadUserFacingErrorReason.ServerUnreachable,
+            "thread_send_timeout" to ThreadUserFacingErrorReason.RequestTimedOut,
+            "thread_network" to ThreadUserFacingErrorReason.NetworkFailed,
+            "http_503" to ThreadUserFacingErrorReason.ServerUnavailable,
+            "message_not_found" to ThreadUserFacingErrorReason.ItemNotFound,
+            "attachment_too_large" to ThreadUserFacingErrorReason.AttachmentTooLarge,
+            "rate_limited" to ThreadUserFacingErrorReason.RateLimited,
+            "response_parse_failed" to ThreadUserFacingErrorReason.ResponseUnreadable,
+            "thread_send_cancelled" to ThreadUserFacingErrorReason.RequestCancelled,
+            "server detail must not be presented" to ThreadUserFacingErrorReason.Generic
+        ).forEach { (code, expected) ->
+            assertEquals(expected, threadUserFacingErrorCodeReason(code), code)
+        }
+        assertEquals(null, threadUserFacingErrorCodeReason("  "))
+    }
+
+    @Test
+    fun userFacingErrorReasonUsesResourceBackedCopy() {
+        ThreadUserFacingErrorReason.entries.forEach { reason ->
+            assertIs<ResourceStringDesc>(reason.stringDesc())
+        }
     }
 
     @Test

@@ -3132,6 +3132,7 @@ internal fun SharedThreadRouteContent(
     val unableToOpenTaskNumberTemplate =
         stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
     val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
     val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
     val copiedLabel = stringResource(MR.strings.thread_feedback_copied)
@@ -4466,7 +4467,7 @@ internal fun SharedThreadRouteContent(
             }
             bridge.toast(
             localizedAttachmentUploadFailedDetail(
-                threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+                userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
             )
             )
         }
@@ -5946,7 +5947,7 @@ internal fun SharedThreadRouteContent(
                                 errorCode != null ->
                                     bridge.toast(
                                         localizedAttachmentUploadFailedDetail(
-                                            threadUserFacingErrorCodeLabel(errorCode) ?: genericThreadErrorLabel
+                                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
                                         )
                                     )
                                 response == null ->
@@ -9709,6 +9710,7 @@ private fun ThreadChatTab(
     translationStore: SharedMessageTranslationStore? = null,
     onThreadContentReady: () -> Unit = {}
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val activeReplyDraftParentMessageIds =
         remember(activeDraftRecords) {
@@ -9788,7 +9790,7 @@ private fun ThreadChatTab(
             ThreadStateActionMessage(
                 title = stringResource(MR.strings.thread_error_load),
                 detail =
-                    threadUserFacingErrorCodeLabel(renderConfig.errorCode)
+                    userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
                         ?: stringResource(MR.strings.common_error),
                 actionLabel = stringResource(MR.strings.common_retry),
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
@@ -15474,6 +15476,7 @@ private fun ThreadOriginCard(
     longMessageExpanded: Boolean = false,
     onToggleLongMessage: (String) -> Unit = {}
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     Column(
         modifier = modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
@@ -15503,7 +15506,7 @@ private fun ThreadOriginCard(
                         Text(
                             text = stringResource(
                                 MR.strings.thread_error_refresh_original,
-                                threadUserFacingErrorCodeLabel(it) ?: stringResource(MR.strings.common_error)
+                                userFacingErrorLabels.forErrorCode(it) ?: stringResource(MR.strings.common_error)
                             ),
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray
@@ -16300,6 +16303,7 @@ internal fun ThreadAttachmentCommentsContent(
     containerTapRequestsFocus: Boolean = false,
     compact: Boolean = false
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     val page = state.page
     val comments =
         remember(state.filter, page?.comments) {
@@ -16345,7 +16349,7 @@ internal fun ThreadAttachmentCommentsContent(
             "error" ->
                 ThreadStateActionMessage(
                     title = stringResource(MR.strings.thread_comments_load_failed),
-                    detail = threadUserFacingErrorCodeLabel(state.errorCode) ?: stringResource(MR.strings.common_error),
+                    detail = userFacingErrorLabels.forErrorCode(state.errorCode) ?: stringResource(MR.strings.common_error),
                     actionLabel = stringResource(MR.strings.common_retry),
                     onClick = onRetry
                 )
@@ -16378,7 +16382,7 @@ internal fun ThreadAttachmentCommentsContent(
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
             Text(
-                text = threadUserFacingErrorCodeLabel(code)?.uppercase() ?: stringResource(MR.strings.common_error),
+                text = userFacingErrorLabels.forErrorCode(code)?.uppercase() ?: stringResource(MR.strings.common_error),
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                 color = SlockColor.AccentRed,
                 maxLines = 1,
@@ -17306,6 +17310,7 @@ private fun ThreadForwardTargetModal(
     onSelectTarget: (ThreadForwardTargetItem) -> Unit,
     onSend: () -> Unit
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     SlockUnifiedDialog(
         title = stringResource(MR.strings.thread_action_forward),
         onDismiss = onDismiss,
@@ -17385,7 +17390,7 @@ private fun ThreadForwardTargetModal(
                             when {
                                 loading -> stringResource(MR.strings.thread_forward_fetching_targets)
                                 errorCode != null ->
-                                    threadUserFacingErrorCodeLabel(errorCode)?.uppercase()
+                                    userFacingErrorLabels.forErrorCode(errorCode)?.uppercase()
                                         ?: stringResource(MR.strings.common_error)
                                 query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
                                 else -> stringResource(MR.strings.thread_add_member_try_different_search)
@@ -17731,6 +17736,7 @@ private fun ThreadMembersModal(
     onOpenMember: (KuiklyThreadMemberItem) -> Unit,
     onRemoveMember: (String) -> Unit
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     // Memoize the agents/humans partition so recomposition that does
     // not change the members list does not re-run the filter. This
     // pairs with the loadMembers idempotency in SharedThreadStore:
@@ -17748,7 +17754,7 @@ private fun ThreadMembersModal(
         when (removeMemberStatus) {
             "failed" ->
                 "$removeFailedLabel: " +
-                    (threadUserFacingErrorCodeLabel(removeMemberErrorCode ?: "member_remove_failed")
+                    (userFacingErrorLabels.forErrorCode(removeMemberErrorCode ?: "member_remove_failed")
                         ?: genericErrorLabel).uppercase()
             "no_permission" -> stringResource(MR.strings.thread_members_remove_no_permission)
             else -> null
@@ -17855,6 +17861,7 @@ private fun ThreadAddMemberModal(
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit
 ) {
+    val userFacingErrorLabels = threadUserFacingErrorLabels()
     var query by remember { mutableStateOf("") }
     var selectedId by remember(candidates, initialSelectedId) { mutableStateOf(initialSelectedId) }
     var localError by remember { mutableStateOf(false) }
@@ -17882,7 +17889,7 @@ private fun ThreadAddMemberModal(
             localError -> stringResource(MR.strings.thread_add_member_select_before_adding)
             addMemberStatus == "failed" ->
                 "$addFailedLabel: " +
-                    (threadUserFacingErrorCodeLabel(addMemberErrorCode ?: "member_add_failed")
+                    (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
                         ?: genericErrorLabel).uppercase()
             else -> null
         }
