@@ -800,6 +800,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowPermalinkChips() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.permalink-chips",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-permalink-chips")
+                    .put("visualFixture", "permalink_chips"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowPermalinkChipsNarrow() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.permalink-chips-narrow",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-permalink-chips-narrow")
+                    .put("visualFixture", "permalink_chips_narrow"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadActionCardCatalog() {
         captureKmpComponentCase(
             caseId = "components.thread.action-card.catalog",

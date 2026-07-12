@@ -1,8 +1,12 @@
 package build.raft.app.markdown
 
 import build.raft.app.SlockColor
+import build.raft.app.SlockLucideIcon
+import build.raft.app.SlockLucideIconName
+import build.raft.app.SlockMessagePermalinkTarget
 import build.raft.app.SlockSpacing
 import build.raft.app.SlockType
+import build.raft.app.toSlockMessagePermalinkTarget
 import build.raft.app.slockFontFamilyForWeight
 import build.raft.app.slockMonoFamilyForWeight
 import build.raft.app.withResolvedSlockFontFamily
@@ -10,27 +14,39 @@ import build.raft.app.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
+import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
+import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
+import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
+import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.InlineBoxSpanStyle
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
+import com.tencent.kuikly.compose.ui.text.Placeholder
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
@@ -43,6 +59,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.withLink
+import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
@@ -65,6 +82,7 @@ import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -77,6 +95,19 @@ data class ThreadMarkdownTag(
     val channelName: String? = null,
     val threadShortId: String? = null
 )
+
+internal typealias SlockMessagePermalinkLabelResolver =
+    (SlockMessagePermalinkTarget) -> String?
+
+internal val LocalSlockMessagePermalinkLabelResolver =
+    compositionLocalOf<SlockMessagePermalinkLabelResolver> { { null } }
+
+internal data class SlockMarkdownRenderConfig(
+    val renderMessagePermalinksAsTag: Boolean = false,
+)
+
+internal val LocalSlockMarkdownRenderConfig =
+    compositionLocalOf { SlockMarkdownRenderConfig() }
 
 enum class ThreadMarkdownTagKind {
     ChannelThread,
@@ -1014,10 +1045,35 @@ private object SlockMarkdownTextProvider : TextProvider {
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
         val markdownOverflow = slockMarkdownContentOverflow(overflow)
-        val resolvedText = remember(text, resolvedStyle) {
-            text.withSlockMarkdownSpanFonts(resolvedStyle)
+        val permalinkLabelResolver = LocalSlockMessagePermalinkLabelResolver.current
+        val renderMessagePermalinksAsTag =
+            LocalSlockMarkdownRenderConfig.current.renderMessagePermalinksAsTag
+        val permalinkUriHandler = LocalUriHandler.current
+        val permalinkCoroutineScope = rememberCoroutineScope()
+        val permalinkContent =
+            remember(
+                text,
+                permalinkLabelResolver,
+                permalinkUriHandler,
+                renderMessagePermalinksAsTag,
+            ) {
+                text.withSlockMessagePermalinkRenderConfig(
+                    config =
+                        SlockMarkdownRenderConfig(
+                            renderMessagePermalinksAsTag = renderMessagePermalinksAsTag,
+                        ),
+                    resolveLabel = permalinkLabelResolver,
+                ) { url ->
+                    permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
+                }
+            }
+        val resolvedText = remember(permalinkContent.text, resolvedStyle) {
+            permalinkContent.text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
-        val resolvedInlineContent = resolvedText.filteredSlockMarkdownInlineContent(inlineContent)
+        val resolvedInlineContent =
+            resolvedText.filteredSlockMarkdownInlineContent(
+                inlineContent + permalinkContent.inlineContent
+            )
         logMarkdownSpike(
             phase = "markdown.diagnostics.rich_text",
             durationUs = 0L,
@@ -1125,6 +1181,7 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
 internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
+private val SlockMessagePermalinkChipBackground = Color(0xFFFCEFBD)
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
 // whose native renderer doesn't draw the chip chrome (it was hardcoded true
@@ -1183,6 +1240,217 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
         }
     }
     return builder.toAnnotatedString()
+}
+
+/**
+ * Rewrites canonical Raft message-link annotations into one generic boxed
+ * text span. The URL remains the click identity; renderer input contains only
+ * ordinary text/link data plus [InlineBoxSpanStyle].
+ */
+internal fun AnnotatedString.withSlockMessagePermalinkChips(
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null }
+): AnnotatedString = withSlockMessagePermalinkChipContent(resolveLabel).text
+
+internal data class SlockMessagePermalinkChipContent(
+    val text: AnnotatedString,
+    val inlineContent: Map<String, InlineTextContent>
+)
+
+internal fun AnnotatedString.withSlockMessagePermalinkRenderConfig(
+    config: SlockMarkdownRenderConfig = SlockMarkdownRenderConfig(),
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null },
+    openUri: (String) -> Unit = {},
+): SlockMessagePermalinkChipContent =
+    if (config.renderMessagePermalinksAsTag) {
+        withSlockMessagePermalinkChipContent(resolveLabel, openUri)
+    } else {
+        SlockMessagePermalinkChipContent(
+            text = withoutLinksInsideSlockInlineCode(),
+            inlineContent = emptyMap(),
+        )
+    }
+
+private fun AnnotatedString.withSlockMessagePermalinkChipContent(
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null },
+    openUri: (String) -> Unit = {},
+): SlockMessagePermalinkChipContent {
+    val source = withoutLinksInsideSlockInlineCode()
+    val permalinkLinks =
+        source.getLinkAnnotations(0, source.length)
+            .mapNotNull { range ->
+                val link = range.item as? LinkAnnotation.Url ?: return@mapNotNull null
+                val target = link.url.toSlockMessagePermalinkTarget() ?: return@mapNotNull null
+                Triple(range, link, target)
+            }
+            .sortedBy { (range, _, _) -> range.start }
+    if (permalinkLinks.isEmpty()) {
+        return SlockMessagePermalinkChipContent(source, emptyMap())
+    }
+
+    val builder = AnnotatedString.Builder(source.length)
+    val inlineContent = linkedMapOf<String, InlineTextContent>()
+    var cursor = 0
+    permalinkLinks.forEach { (range, link, target) ->
+        if (range.start < cursor || range.end <= range.start) return@forEach
+        builder.append(source, cursor, range.start)
+        val targetLabel = target.slockMessagePermalinkChipTargetLabel(resolveLabel(target))
+        val kindLabel = target.slockMessagePermalinkChipKindLabel()
+        val inlinePrefix = "slock-message-permalink-${range.start}-${range.end}"
+        val iconId = "$inlinePrefix-icon"
+        val iconGapId = "$inlinePrefix-icon-gap"
+        val suffixGapId = "$inlinePrefix-suffix-gap"
+        builder.withLink(
+            LinkAnnotation.Url(
+                url = link.url,
+                styles = slockMessagePermalinkChipLinkStyles(),
+                linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
+                    val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
+                    link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
+                }
+            )
+        ) {
+            appendInlineContent(iconId, "\uFFFC")
+            appendInlineContent(iconGapId, "\uFFFC")
+            withStyle(
+                SpanStyle(
+                    color = SlockColor.TextBlack,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = slockFontFamilyForWeight(FontWeight.Bold),
+                )
+            ) {
+                append(targetLabel)
+            }
+            appendInlineContent(suffixGapId, " ")
+            withStyle(
+                SpanStyle(
+                    color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal,
+                    fontFamily = slockFontFamilyForWeight(FontWeight.Normal),
+                )
+            ) {
+                append(kindLabel)
+            }
+        }
+        inlineContent[iconId] = slockMessagePermalinkIconInlineContent()
+        inlineContent[iconGapId] = slockMessagePermalinkSpacerInlineContent(4.sp)
+        inlineContent[suffixGapId] = slockMessagePermalinkSpacerInlineContent(6.sp)
+        cursor = range.end
+    }
+    builder.append(source, cursor, source.length)
+    return SlockMessagePermalinkChipContent(
+        text = builder.toAnnotatedString(),
+        inlineContent = inlineContent
+    )
+}
+
+private fun slockMessagePermalinkIconInlineContent(): InlineTextContent {
+    return InlineTextContent(
+        placeholder =
+            Placeholder(
+                width = 12.sp,
+                height = 12.sp,
+            )
+    ) {
+        SlockLucideIcon(
+            name = SlockLucideIconName.Link,
+            modifier = Modifier.size(12.dp),
+            color = SlockColor.TextBlackArgb,
+            strokeWidth = 2f,
+        )
+    }
+}
+
+private fun slockMessagePermalinkSpacerInlineContent(width: TextUnit): InlineTextContent =
+    InlineTextContent(
+        placeholder = Placeholder(width = width, height = 1.sp),
+    ) {}
+
+private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipTargetLabel(
+    resolvedLabel: String?
+): String {
+    val prefix = if (routeKind == build.raft.app.model.ConversationKind.DirectMessage) "@" else "#"
+    val name =
+        resolvedLabel
+            ?.trim()
+            ?.removePrefix("#")
+            ?.removePrefix("@")
+            ?.takeIf(String::isNotBlank)
+            ?: return "linked message"
+    return "$prefix$name"
+}
+
+private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipKindLabel(): String =
+    if (threadParentMessageId == null) "msg" else "thread"
+
+/** Markdown parsers may retain autolink annotations inside code spans. */
+private fun AnnotatedString.withoutLinksInsideSlockInlineCode(): AnnotatedString {
+    val links = getLinkAnnotations(0, length)
+    if (links.none { range ->
+            getStringAnnotations(
+                SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                range.start,
+                range.end
+            ).isNotEmpty()
+        }
+    ) {
+        return this
+    }
+
+    return AnnotatedString.Builder(length)
+        .apply {
+            append(text)
+            spanStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            paragraphStyles.forEach { range -> addStyle(range.item, range.start, range.end) }
+            getStringAnnotations(0, length).forEach { range ->
+                addStringAnnotation(range.tag, range.item, range.start, range.end)
+            }
+            links.forEach { range ->
+                val isInlineCode =
+                    getStringAnnotations(
+                        SLOCK_RICHTEXT_INLINE_CODE_ANNOTATION_TAG,
+                        range.start,
+                        range.end
+                    ).isNotEmpty()
+                if (!isInlineCode) {
+                    when (val link = range.item) {
+                        is LinkAnnotation.Url -> addLink(link, range.start, range.end)
+                        is LinkAnnotation.Clickable -> addLink(link, range.start, range.end)
+                    }
+                }
+            }
+        }
+        .toAnnotatedString()
+}
+
+private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
+    val base =
+        slockMarkdownTagBaseSpanStyle().copy(
+            color = SlockColor.TextBlack,
+            fontWeight = FontWeight.Bold,
+            textDecoration = null,
+            background = Color.Unspecified,
+            inlineBoxStyle =
+                InlineBoxSpanStyle(
+                    backgroundColor = SlockMessagePermalinkChipBackground,
+                    borderColor = SlockColor.BorderBlack,
+                    borderWidth = 1.dp,
+                    paddingStart = 4.dp,
+                    paddingEnd = 4.dp,
+                    paddingTop = 1.dp,
+                    paddingBottom = 1.dp,
+                    marginStart = 2.dp,
+                    marginEnd = 2.dp
+                )
+        )
+    return TextLinkStyles(
+        style = base,
+        pressedStyle =
+            base.copy(
+                inlineBoxStyle = base.inlineBoxStyle?.copy(backgroundColor = SlockColor.BrandYellow)
+            )
+    )
 }
 
 private object SlockMarkdownPreparedBodyCache {
@@ -1805,8 +2073,33 @@ private fun SlockRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle =
             textDecorationColor = textDecorationColor.toSlockMarkdownColorOrUnspecified(),
             textDecorationThickness = textDecorationThicknessSp.toSpOrUnspecified(),
             textDecorationOffset = textDecorationOffsetSp.toSpOrUnspecified(),
-            background = background.toSlockMarkdownColorOrUnspecified()
+            background = background.toSlockMarkdownColorOrUnspecified(),
+            inlineBoxStyle = toInlineBoxSpanStyle()
         )
+
+/**
+ * Compatibility lowering for the original Slock semantic chrome tokens.
+ *
+ * New consumers should construct [InlineBoxSpanStyle] directly. Existing
+ * channel/thread/task/self-mention/inline-code tokens keep their current
+ * pixels while render backends migrate away from understanding Slock kinds.
+ */
+private fun SlockRichTextChromeStyleToken.toInlineBoxSpanStyle(): InlineBoxSpanStyle? {
+    if (id == SlockRichTextChromeStyleTokens.OrdinaryMention.id) return null
+    val fill = chipFill ?: return null
+    return InlineBoxSpanStyle(
+        backgroundColor = fill.toSlockMarkdownColor(),
+        borderColor = SlockColor.BorderBlack,
+        borderWidth = 1.dp,
+        paddingStart = 4.dp,
+        paddingEnd = 4.dp,
+        paddingTop = 2.dp,
+        paddingBottom = 2.dp,
+        marginStart = 2.dp,
+        marginEnd = 2.dp,
+        cornerRadius = 0.dp
+    )
+}
 
 private fun SlockRichTextColorToken?.toSlockMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
