@@ -64,28 +64,9 @@ class SyncPersistenceSchemaTest {
             .map { it.id }
         assertEquals(listOf("m1", "m2"), restored)
 
-        // 4) FK enforcement live on the message content children that SHOULD cascade — attachment /
-        //    reaction (the projector rebuilds these in the same txn on rebaseline, §4.4). NOTE:
-        //    savedMessageEntity is deliberately excluded here — its ON DELETE CASCADE is a schema
-        //    hazard the wrapper must work AROUND (saved is an independent receiver domain the messages
-        //    snapshot never adjudicates: prune skips saved-referenced facts / snapshot preserves the
-        //    saved marker). Asserting a message-delete cascading saved as "success" would codify the
-        //    wrong contract, so it is proven at the wrapper layer, not here.
-        driver.execute(
-            null,
-            "INSERT INTO attachmentEntity(id, messageId, name, mimeType, sizeLabel, sortOrder) " +
-                "VALUES ('a1','m1','f.png','image/png','1kb', 0);",
-            0,
-        )
-        driver.execute(
-            null,
-            "INSERT INTO messageReactionEntity(messageId, reactorKind, reactorId, emoji) " +
-                "VALUES ('m1','human','u1',':+1:');",
-            0,
-        )
-        driver.execute(null, "DELETE FROM messageEntity WHERE id='m1';", 0)
-        assertEquals(0L, driver.singleLong("SELECT COUNT(*) FROM attachmentEntity WHERE messageId='m1';"))
-        assertEquals(0L, driver.singleLong("SELECT COUNT(*) FROM messageReactionEntity WHERE messageId='m1';"))
+        // (The attachment/reaction/saved child tables were removed with the canonical-native rebuild —
+        // attachments/reactions live losslessly in canonicalFactJson, so there is no child FK-cascade to
+        // assert here. The store-level suite proves scalars==extract(decode(payload)) instead.)
 
         driver.close()
     }
@@ -121,10 +102,5 @@ class SyncPersistenceSchemaTest {
     private fun JdbcSqliteDriver.singleText(sql: String): String? =
         executeQuery(null, sql, { cursor ->
             QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
-        }, 0).value
-
-    private fun JdbcSqliteDriver.singleLong(sql: String): Long? =
-        executeQuery(null, sql, { cursor ->
-            QueryResult.Value(if (cursor.next().value) cursor.getLong(0) else null)
         }, 0).value
 }

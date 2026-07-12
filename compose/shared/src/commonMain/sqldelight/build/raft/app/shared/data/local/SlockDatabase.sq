@@ -114,47 +114,11 @@ CREATE TABLE messageEntity (
 -- Canonical (seq, id) tie-break order for server-backed restore/timeline reads (#491 P1).
 CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, seq, id);
 
-CREATE TABLE attachmentEntity (
-  id TEXT NOT NULL PRIMARY KEY,
-  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  mimeType TEXT NOT NULL,
-  sizeLabel TEXT NOT NULL,
-  sizeBytes INTEGER NOT NULL DEFAULT 0,
-  thumbnailUrl TEXT,
-  width INTEGER,
-  height INTEGER,
-  sortOrder INTEGER NOT NULL
-);
-
-CREATE INDEX attachmentEntity_messageId ON attachmentEntity(messageId);
-
-CREATE TABLE messageReactionEntity (
-  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
-  reactorKind TEXT NOT NULL,
-  reactorId TEXT NOT NULL,
-  emoji TEXT NOT NULL,
-  sortOrder INTEGER NOT NULL DEFAULT 0,
-  createdAtMs INTEGER,
-  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (messageId, reactorKind, reactorId, emoji)
-);
-
-CREATE INDEX messageReactionEntity_messageId ON messageReactionEntity(messageId);
-CREATE INDEX messageReactionEntity_reactor ON messageReactionEntity(reactorKind, reactorId);
-
-CREATE TABLE savedMessageEntity (
-  serverId TEXT NOT NULL,
-  messageId TEXT NOT NULL REFERENCES messageEntity(id) ON DELETE CASCADE,
-  ownerKind TEXT NOT NULL,
-  ownerId TEXT NOT NULL,
-  createdAtMs INTEGER,
-  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
-  PRIMARY KEY (serverId, messageId, ownerKind, ownerId)
-);
-
-CREATE INDEX savedMessageEntity_owner ON savedMessageEntity(serverId, ownerKind, ownerId);
-
+-- attachmentEntity / messageReactionEntity / savedMessageEntity were removed with the canonical-native
+-- rebuild: all three had zero live consumers, and the canonical fact (attachments, reactions) is stored
+-- losslessly in messageEntity.canonicalFactJson. Maintaining them would be a second materialized projection
+-- (reactions don't even map cleanly — per-reactor rows vs per-emoji aggregate) with CASCADE/drift surface
+-- and no verifiable benefit. A future SQL consumer reintroduces one WITH its projector + consistency gate.
 CREATE TABLE taskSummaryEntity (
   id TEXT NOT NULL PRIMARY KEY,
   serverId TEXT NOT NULL,
@@ -444,102 +408,14 @@ countCanonicalFactInScope:
 SELECT COUNT(*) FROM messageEntity
 WHERE id = ? AND serverId = ? AND scopeKind = ? AND channelId = ?;
 
--- Clear a scope's canonical server facts (snapshot rebaseline), EXCLUDING saved-referenced ids (saved is an
--- independent receiver domain; a message snapshot must never adjudicate it — savedMessageEntity ON DELETE
--- CASCADE would otherwise drop the saved marker). No pending exception: pending never enters (seq NOT NULL).
+-- Clear a scope's canonical server facts (snapshot rebaseline). No exclusions: savedMessageEntity was
+-- removed (zero live consumers), so there is no cross-domain CASCADE to work around, and pending never
+-- enters (seq NOT NULL). Just the full 3-part scope.
 clearCanonicalFactsForScope:
 DELETE FROM messageEntity
 WHERE serverId = ?
   AND scopeKind = ?
-  AND channelId = ?
-  AND id NOT IN (SELECT messageId FROM savedMessageEntity WHERE serverId = ?);
-
-deleteAttachmentsForMessage:
-DELETE FROM attachmentEntity
-WHERE messageId = ?;
-
-insertAttachment:
-INSERT INTO attachmentEntity(
-  id,
-  messageId,
-  name,
-  mimeType,
-  sizeLabel,
-  sizeBytes,
-  thumbnailUrl,
-  width,
-  height,
-  sortOrder
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-
-selectAttachmentsForMessage:
-SELECT *
-FROM attachmentEntity
-WHERE messageId = ?
-ORDER BY sortOrder, id;
-
-deleteReactionsForMessage:
-DELETE FROM messageReactionEntity
-WHERE messageId = ?;
-
-upsertMessageReaction:
-INSERT OR REPLACE INTO messageReactionEntity(
-  messageId,
-  reactorKind,
-  reactorId,
-  emoji,
-  sortOrder,
-  createdAtMs,
-  lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?);
-
-deleteMessageReaction:
-DELETE FROM messageReactionEntity
-WHERE messageId = ?
-  AND reactorKind = ?
-  AND reactorId = ?
-  AND emoji = ?;
-
-selectReactionsForMessage:
-SELECT *
-FROM messageReactionEntity
-WHERE messageId = ?
-ORDER BY sortOrder, emoji, reactorKind, reactorId;
-
-selectSavedMessage:
-SELECT *
-FROM savedMessageEntity
-WHERE serverId = ?
-  AND messageId = ?
-  AND ownerKind = ?
-  AND ownerId = ?
-LIMIT 1;
-
-selectSavedMessagesForOwner:
-SELECT *
-FROM savedMessageEntity
-WHERE serverId = ?
-  AND ownerKind = ?
-  AND ownerId = ?
-ORDER BY COALESCE(createdAtMs, 0) DESC,
-         messageId ASC;
-
-upsertSavedMessage:
-INSERT OR REPLACE INTO savedMessageEntity(
-  serverId,
-  messageId,
-  ownerKind,
-  ownerId,
-  createdAtMs,
-  lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?);
-
-deleteSavedMessage:
-DELETE FROM savedMessageEntity
-WHERE serverId = ?
-  AND messageId = ?
-  AND ownerKind = ?
-  AND ownerId = ?;
+  AND channelId = ?;
 
 selectTaskReference:
 SELECT *
