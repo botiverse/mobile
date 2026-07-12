@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.MemberKind
 
 internal data class SharedConversationHeaderEntry(
     val ids: Set<String>,
@@ -11,7 +12,8 @@ internal data class SharedConversationHeaderEntry(
     val subtitle: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(2).uppercase(),
-    val dmPeerMemberId: String? = null
+    val dmPeerMemberId: String? = null,
+    val dmPeerMemberKind: MemberKind? = null
 )
 
 internal data class ConversationAccessCandidate(
@@ -29,7 +31,8 @@ internal data class ThreadHeaderDisplayModel(
     val channelKind: String,
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
-    val dmPeerMemberId: String? = null
+    val dmPeerMemberId: String? = null,
+    val dmPeerMemberKind: MemberKind? = null
 )
 
 internal sealed interface ThreadHeaderProjectionInput {
@@ -133,6 +136,7 @@ internal fun SharedConversationDirectoryProjection?.headerProjectionDiagnostics(
             append(" avatar=").append(projection.avatarWireValue.headerAvatarDiagnosticValue())
             append(" avatarLabel=").append(projection.avatarLabel.headerDiagnosticValue())
             append(" peerMemberId=").append(projection.peerMemberId.headerDiagnosticValue())
+            append(" peerMemberKind=").append(projection.peerMemberKind?.name.headerDiagnosticValue())
             append(" parentChannelId=").append(projection.parentChannelId.headerDiagnosticValue())
             append(" parentMessageId=").append(projection.parentMessageId.headerDiagnosticValue())
             append(" joined=").append(projection.joined)
@@ -150,6 +154,7 @@ internal fun ThreadHeaderDisplayModel.headerDisplayDiagnostics(): String =
         append(" dmPeerAvatar=").append(dmPeerAvatarWireValue.headerAvatarDiagnosticValue())
         append(" dmPeerAvatarLabel=").append(dmPeerAvatarLabel.headerDiagnosticValue())
         append(" dmPeerMemberId=").append(dmPeerMemberId.headerDiagnosticValue())
+        append(" dmPeerMemberKind=").append(dmPeerMemberKind?.name.headerDiagnosticValue())
         append("}")
     }
 
@@ -236,7 +241,8 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
                 dmPeerAvatarLabel =
                     header?.avatarLabel?.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
-                dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId
+                dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId,
+                dmPeerMemberKind = header?.dmPeerMemberKind
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
@@ -288,7 +294,8 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 dmPeerAvatarLabel =
                     directory.avatarLabel.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
-                dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId
+                dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId,
+                dmPeerMemberKind = directory.peerMemberKind
             )
         }
         KuiklyThreadSurfaceKind.Channel ->
@@ -445,7 +452,8 @@ private fun SharedConversationDirectoryProjection.toConversationHeaderEntry(): S
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() },
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(2).uppercase(),
-        dmPeerMemberId = peerMemberId?.takeIf { it.isNotBlank() }
+        dmPeerMemberId = peerMemberId?.takeIf { it.isNotBlank() },
+        dmPeerMemberKind = peerMemberKind
     )
 
 internal fun SharedConversationDirectoryProjection.toConversationAccessCandidate(): ConversationAccessCandidate =
