@@ -41,6 +41,13 @@ class SyncCoreMessageShadowObserver(
                     "sync_core_shadow face=$face result=divergent msg=$messageId " +
                         "fields=${outcome.fields.joinToString(",")}",
                 )
+            is MessageShadowOutcome.EnvelopeDecodeFailed ->
+                diagnosticsLogger("sync_core_shadow face=$face result=envelope_decode_failed msg=$messageId")
+            is MessageShadowOutcome.EnvelopeRoundTripDivergent ->
+                diagnosticsLogger(
+                    "sync_core_shadow face=$face result=envelope_roundtrip_divergent msg=$messageId " +
+                        "fields=${outcome.fields.joinToString(",")}",
+                )
         }
     }
 }

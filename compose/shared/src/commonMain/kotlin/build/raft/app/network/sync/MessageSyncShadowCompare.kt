@@ -48,11 +48,42 @@ sealed interface MessageShadowOutcome {
 
     /** Both paths produced a message but their canonical facts differ. [fields] names the divergent facts. */
     data class Divergent(val face: ProductionFace, val fields: List<String>) : MessageShadowOutcome
+
+    /**
+     * The decoded fact did not survive the ENVELOPE codec round-trip: [encodeCanonicalFact] produced a BLOB
+     * that [decodeCanonicalFact] could not read back (fail-closed). This is the codec/envelope layer only —
+     * it does NOT prove the store persist→restore path on real traffic (that is a deterministic property
+     * covered off-line by the #709 store gates; see the fingerprint-coverage bridge in the KDoc).
+     */
+    data class EnvelopeDecodeFailed(val face: ProductionFace) : MessageShadowOutcome
+
+    /**
+     * The ENVELOPE codec round-trip restored a DIFFERENT canonical fact than was decoded (the envelope is
+     * lossy on this real production fact). [fields] names the drifted canonical-row fields. Codec/envelope
+     * layer — isolates an envelope-losslessness divergence from a decode/projection [Divergent]. Named
+     * `Envelope*` (not `Persist*`) deliberately: online (a) proves envelope losslessness, never real-traffic
+     * store persistence — conflating them is a fake-assurance trap (赵 contract-face).
+     */
+    data class EnvelopeRoundTripDivergent(val face: ProductionFace, val fields: List<String>) : MessageShadowOutcome
 }
 
 /**
  * Run the canonical pipeline over [rawJson] for [face] and compare its projection against the
  * authoritative [authoritative] message on canonical facts only. Pure — no store writes, no flag reads.
+ *
+ * The compared projection is the fact AFTER an ENVELOPE codec round-trip ([encodeCanonicalFact] →
+ * [decodeCanonicalFact]), so Parity proves: decode → envelope round-trip → project reproduces the
+ * authoritative message on real traffic. This is the envelope layer ONLY (non-invasive, no real DB); a fact
+ * that will not restore, or restores drifted, is surfaced as [MessageShadowOutcome.EnvelopeDecodeFailed] /
+ * [MessageShadowOutcome.EnvelopeRoundTripDivergent].
+ *
+ * IMPORTANT — this does NOT prove the store persist→restore path on real traffic. Store scope/scalar/poison
+ * are deterministic properties covered off-line by the #709 store gates (fullFieldRoundTrip / continuation /
+ * scalar-tamper poison) over SYNTHETIC fixtures. To stop "online envelope-clean" being misread as
+ * "real-traffic store-persist-clean", the t1 acceptance adds a fingerprint-coverage column: each event's
+ * envelope schema-fingerprint must be within the shape-set the offline store gates exercise; a real-traffic
+ * shape outside that set does not pass silently — it triggers adding that shape to the offline fixture. That
+ * fingerprint/counter face lands with t1 (per-face counters), aligned with the contract face (赵).
  *
  * [memberHydration] must match what the authoritative path applies; the realtime mapper builds the author
  * purely from wire (no directory enrichment), so the default identity hydration is the correct parity input.
@@ -62,6 +93,10 @@ fun compareCanonicalShadow(
     face: ProductionFace,
     authoritative: Message,
     memberHydration: CanonicalMemberHydration = { it },
+    // The persist codec seam — defaults to the real T-wrapper codec. Injectable so the persist-parity
+    // outcomes ([PersistDivergent]/[PersistDecodeFailed]) can be proven to bite on a lossy/failing codec.
+    encodeFact: (CanonicalMessageRow) -> String = ::encodeCanonicalFact,
+    decodeFact: (String) -> CanonicalMessageRow? = ::decodeCanonicalFact,
 ): MessageShadowOutcome {
     var violation: MessageWireCanonicalViolation? = null
     val decoded = decodeCanonicalMessageWire(rawJson, face) { violation = it }
@@ -69,9 +104,48 @@ fun compareCanonicalShadow(
             face,
             violation?.missingOrInvalidRequiredFields ?: emptySet(),
         )
-    val shadow = decoded.row.toAppMessage(memberHydration)
+    // Envelope parity: the decoded fact must round-trip losslessly through the envelope codec. Restore-purity
+    // (project the RESTORED row) folds the envelope layer into the same parity signal as decode.
+    val restored = decodeFact(encodeFact(decoded.row))
+        ?: return MessageShadowOutcome.EnvelopeDecodeFailed(face)
+    val envelopeFields = canonicalRowDiff(decoded.row, restored)
+    if (envelopeFields.isNotEmpty()) return MessageShadowOutcome.EnvelopeRoundTripDivergent(face, envelopeFields)
+
+    val shadow = restored.toAppMessage(memberHydration)
     val fields = shadowParityDiff(authoritative.toShadowParityView(), shadow.toShadowParityView())
     return if (fields.isEmpty()) MessageShadowOutcome.Parity else MessageShadowOutcome.Divergent(face, fields)
+}
+
+/**
+ * Names the canonical-row fields that differ between the decoded fact and its envelope round-trip restore.
+ * Empty = the envelope codec is lossless on this fact. Covers every [CanonicalMessageRow] field (a dropped
+ * field = a lossy envelope), so an OptionalAggregate the envelope silently flattened surfaces by name.
+ */
+private fun canonicalRowDiff(a: CanonicalMessageRow, b: CanonicalMessageRow): List<String> {
+    val diffs = mutableListOf<String>()
+    fun check(name: String, x: Any?, y: Any?) {
+        if (x != y) diffs.add(name)
+    }
+    check("id", a.id, b.id)
+    check("channelId", a.channelId, b.channelId)
+    check("seq", a.seq, b.seq)
+    check("senderType", a.senderType, b.senderType)
+    check("senderId", a.senderId, b.senderId)
+    check("content", a.content, b.content)
+    check("messageType", a.messageType, b.messageType)
+    check("createdAt", a.createdAt, b.createdAt)
+    check("randomId", a.randomId, b.randomId)
+    check("threadId", a.threadId, b.threadId)
+    check("senderName", a.senderName, b.senderName)
+    check("senderDescription", a.senderDescription, b.senderDescription)
+    check("senderMembershipStatus", a.senderMembershipStatus, b.senderMembershipStatus)
+    check("mentions", a.mentions, b.mentions)
+    check("attachments", a.attachments, b.attachments)
+    check("reactions", a.reactions, b.reactions)
+    check("commentRef", a.commentRef, b.commentRef)
+    check("actionMetadata", a.actionMetadata, b.actionMetadata)
+    check("conversationContext", a.conversationContext, b.conversationContext)
+    return diffs
 }
 
 /**

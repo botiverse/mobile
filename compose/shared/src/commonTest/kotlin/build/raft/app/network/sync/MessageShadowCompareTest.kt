@@ -224,6 +224,49 @@ class MessageShadowCompareTest {
         assertEquals(listOf("body"), (outcome as MessageShadowOutcome.Divergent).fields)
     }
 
+    // ── t0: envelope round-trip parity (codec layer) ─────────────────────────────────────────────────
+    // The compared projection is the fact AFTER an envelope codec round-trip, so Parity proves
+    // decode → envelope round-trip → project on real traffic. The injectable codec seam proves the new
+    // outcomes BITE (a happy-path-only assertion would be a false green — the round-trip could be dead code).
+
+    @Test
+    fun envelopeRoundTrip_realCodec_richFact_isParity() {
+        // The real envelope codec must round-trip the rich fact losslessly — the added round-trip introduces
+        // no divergence of its own (all existing parity tests also transitively exercise this).
+        assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, richMessagePayload())
+    }
+
+    @Test
+    fun envelopeRoundTrip_lossyDecodeDroppingReactions_isEnvelopeRoundTripDivergent() {
+        val payload = richMessagePayload() // has a 👍 reaction
+        val legacy = legacyMessage(RealtimeSocketEvents.MessageNew, payload)
+        // Inject a lossy codec that silently drops reactions on restore — the round-trip must catch the drift
+        // and name the field, isolated from decode/projection parity.
+        val outcome = compareCanonicalShadow(
+            payload,
+            ProductionFace.MessageNew,
+            legacy,
+            decodeFact = { json -> decodeCanonicalFact(json)?.copy(reactions = emptyList()) },
+        )
+        assertTrue(outcome is MessageShadowOutcome.EnvelopeRoundTripDivergent, "expected EnvelopeRoundTripDivergent, got $outcome")
+        assertEquals(listOf("reactions"), (outcome as MessageShadowOutcome.EnvelopeRoundTripDivergent).fields)
+    }
+
+    @Test
+    fun envelopeRoundTrip_decodeFailsClosed_isEnvelopeDecodeFailed() {
+        val payload = richMessagePayload()
+        val legacy = legacyMessage(RealtimeSocketEvents.MessageNew, payload)
+        // A persisted BLOB that will not restore (decode returns null) is fail-closed, not a silent pass.
+        val outcome = compareCanonicalShadow(
+            payload,
+            ProductionFace.MessageNew,
+            legacy,
+            decodeFact = { null },
+        )
+        assertTrue(outcome is MessageShadowOutcome.EnvelopeDecodeFailed, "expected EnvelopeDecodeFailed, got $outcome")
+        assertEquals(ProductionFace.MessageNew, (outcome as MessageShadowOutcome.EnvelopeDecodeFailed).face)
+    }
+
     private fun richMessagePayload(): JsonObject = buildJsonObject { richMessageFields(this) }
 
     /** A fully-populated, well-formed canonical message payload (all aggregates present, non-degenerate). */
