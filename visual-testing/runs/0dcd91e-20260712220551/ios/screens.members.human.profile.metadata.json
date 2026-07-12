@@ -1,0 +1,19 @@
+{
+  "provider": "ios",
+  "providerType": "ios-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "screens.members.human.profile",
+  "image": "screens.members.human.profile.png",
+  "pageName": "compose_member_detail",
+  "pageData": {
+    "pageName": "compose_member_detail",
+    "slockVisualZeroSafeArea": true
+  },
+  "viewport": {
+    "width": 1170,
+    "height": 2532,
+    "density": 1
+  },
+  "device": "iPhone 14",
+  "systemBars": "status-hidden-home-indicator-visible"
+}

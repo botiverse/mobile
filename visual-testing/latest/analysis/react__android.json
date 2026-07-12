@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-11T22:13:29.985Z",
+  "generatedAt": "2026-07-12T22:07:50.893Z",
   "baseline": "react",
   "current": "android",
   "comparison": "react__android",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 90,
-    "ready": 86,
-    "pending": 4
+    "ready": 75,
+    "pending": 15
   },
   "cases": [
     {
@@ -278,7 +278,7 @@
     {
       "id": "components.ui.status-dot.states",
       "status": "ready",
-      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe0ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
+      "imageHash": "p1:80000001000000001ffc1ffc0ffc0ffc0ffe0ffe7ffe7ffefffefffefffe7ffefffefffe07fe07fe07fe07fe07fe07fefffefffefffefffedffe1ffe01fe03fe01fe03fef7fef7fefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe0000000080000001fffffffffff00ffffff00ffffffe7fffffffffff",
       "generatedAt": "2026-07-10T22:11:45.609Z",
       "severity": "low",
       "summary": [
@@ -807,7 +807,7 @@
       "id": "components.thread.composer.as-task-selected",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:28.680Z",
+      "generatedAt": "2026-07-12T22:07:49.588Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -889,7 +889,7 @@
       "id": "components.thread.composer.image-preview",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:28.695Z",
+      "generatedAt": "2026-07-12T22:07:49.604Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -933,47 +933,25 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.18900364039252926
+      "metricMismatch": 0.18899730927508707
     },
     {
       "id": "components.thread.header.states",
-      "status": "ready",
-      "imageHash": "p1:ffffffffbffe7ffcbffe3ffc0ffe1ffeffff7fffffffffffffffffff818181e1818081f0808081e187808fe187868ff481010021cf81cffbffffffff000000000dbf07ff023f019f003f008f0fff0fff00000000ffff0000ffffffffffffffffffffffffffffffff00000000fffffffffffffffffff81fffffffffffffffffff",
-      "generatedAt": "2026-07-11T05:32:39.486Z",
-      "severity": "high",
-      "summary": [
-        "Android header has 2 trailing action icons (settings, members) while React has 4 (search, unread, settings, members) — search and unread icons are missing on Android.",
-        "Subtitle text length differs: React shows 'Home shell, …' (truncated), Android shows the full 'Home shell, server badge, and…' due to wider available space from fewer icons.",
-        "Members badge count differs: React shows '0', Android shows '4'.",
-        "Tab bar cells are wider on Android (3 tabs spanning the full width) versus React (4 tabs including an additional 4th tab area).",
-        "Right edge on Android has no 4th tab cell; React reserves a fourth tab slot that appears empty/styled differently."
-      ],
-      "likelyCauses": [
-        "Android thread header is rendering a different actions set (omitting search and unread/mailbox icons).",
-        "Badge value on members icon uses live server count (4) on Android vs static demo value (0) on React.",
-        "Tab strip configuration diverges — Android configured with 3 tabs, React with 4 tabs, changing cell widths."
-      ],
-      "suggestedOwner": "android-chat",
-      "suggestedFixes": [
-        "Add the search (magnifier) and unread/mailbox icon buttons to the Android ThreadHeader trailing actions group, in the same order as React.",
-        "Standardize the members badge: either both should pull live count or both should display a fixed placeholder; confirm whether '4' is the intended state.",
-        "Align the trailing actions block so the subtitle truncates identically (use the same max width / icon count contract on both platforms).",
-        "Reconcile tab count: either add the 4th tab to Android or remove it from React so cell widths match.",
-        "Re-run Slock visual diff after fixes to confirm pixel-mismatch ratio drops below the 2% tolerance."
-      ],
-      "intentional": [
-        "The yellow active-tab fill color and black border styling on Chat appear intentionally consistent across both platforms.",
-        "Title typography (Chinese characters '首页专修') weight and size match between React and Android."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.17837369420702753
+      "status": "pending",
+      "imageHash": "p1:ffffffffbffe7ffcbffe3ffc0ffe1ffeffff7fffffffffffffffffff830181e1800081f0800081e186008fe187068ff482010021cf01cffbffffffff000000000dbf07ff023f019f003f008f0fff0fff00000000ffff0000ffffffffffffffffffffffffffffffff00000000fffffffffffffffffff81fffffffffffffffffff",
+      "generatedAt": "2026-07-12T22:07:49.653Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18372981956315293
     },
     {
       "id": "components.thread.message.row",
       "status": "ready",
-      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03b307ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c0ffe000c007fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
+      "imageHash": "p1:ffffffff00000000fffcfffc0ffe1ffc1fff1fffffffffffffffffffffffffff1fff1fff030f03b307ff07ff1fff3fff00073fff000300071fff0007ffffefffc000c07fe000c003fffec003e01fc07fc007e0ffc003efffc007cfffe01fffffffffffff0000000000000000fffffffffffffffffff81fffffffffffffffffff",
       "generatedAt": "2026-07-11T22:10:16.850Z",
       "severity": "high",
       "summary": [
@@ -1005,7 +983,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.3395309302172047
+      "metricMismatch": 0.3404166941748641
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1045,7 +1023,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fe01fc80007ffe800e07be800000062000e046803ce07efc1e403efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff019effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
+      "imageHash": "p1:01fe01fc80007ffe800e07fe800000022000e042803ce07efc1e403efc0e001efc00009efc1e0fdefc1e019efc1e07defc0c07defc0001defc00001effff03defffe039effff019effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00020000fff83fff",
       "generatedAt": "2026-07-10T22:12:06.241Z",
       "severity": "high",
       "summary": [
@@ -1076,12 +1054,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4709638001107196
+      "metricMismatch": 0.47116667341785823
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:03fe01fc800c7ffe812207fe800000062000e0568034e006fd3e401efc0e001efc0c009efc1c2fdefc1e01defc1e07defc0c07defc0001defc00001effff03deffff039effff039effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00060000fffe3fff",
+      "imageHash": "p1:03fe01fc800c7ffe812207fe800000062000e0468034e006fd3e401efc0e001efc0c009efc1c2fdefc1e01defc1e07defc0c07defc0001defc00001effff03deffff039effff039effff001efffe001efffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00060000fffe7fff",
       "generatedAt": "2026-07-10T22:12:06.979Z",
       "severity": "high",
       "summary": [
@@ -1113,7 +1091,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4819726306693132
+      "metricMismatch": 0.4822831854822376
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1322,7 +1300,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2646656134807793
+      "metricMismatch": 0.26463995895275516
     },
     {
       "id": "components.home.search.channel-dropdown",
@@ -1355,7 +1333,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.27002572203994
+      "metricMismatch": 0.2699990548331781
     },
     {
       "id": "components.home.saved.results",
@@ -1390,42 +1368,20 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.19355205516778806
+      "metricMismatch": 0.19340585633737872
     },
     {
       "id": "components.home.activity.results",
-      "status": "ready",
-      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe83fe877e83fe000000008040804000000000fffefffedff9dff0c019c011c00ec00ec00e800ef03ee0fefffefffedbf8cbf1c0398031c00a800ec00e87fe8ffe8ffe8ffefffefffadff1c1f181f1c0f8effefffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
-      "generatedAt": "2026-07-11T22:10:24.183Z",
-      "severity": "medium",
-      "summary": [
-        "Activity item dates differ: React shows '20 days ago' / '22 days ago' while Android shows '14 days ago' / '16 days ago' — Android cards appear vertically compressed, pushing the second card up.",
-        "Text in each card wraps over more lines on Android (e.g., the first card's message spans 3 lines vs 2 on React), indicating tighter vertical padding and/or smaller line-height on Android.",
-        "Second card body text 'Captured the previous visual baseline before leaving the workspace.' wraps differently (4 lines on Android vs 3 on React) due to reduced card width or larger font.",
-        "Third card body text '201继续推进' appears truncated/cropped on React ('201继续推进') but fully rendered on Android ('201继续推进'), suggesting a text-clipping or overflow issue in the React implementation.",
-        "Inter-card vertical spacing is smaller on Android, so all three cards fit closer together whereas React leaves larger gaps."
-      ],
-      "likelyCauses": [
-        "Android uses a different default line-height or vertical padding inside the activity card than the React web baseline.",
-        "React card container may have text-overflow/ellipsis clipping non-Latin characters (CJK) while Android renders them fully.",
-        "Card content heights differ because Android wraps text over more lines, possibly due to font metrics or container width differences."
-      ],
-      "suggestedOwner": "android-ui",
-      "suggestedFixes": [
-        "Equalize line-height and vertical padding of the ActivityCard across React and Android so that body text wraps the same number of lines.",
-        "Audit text overflow handling for CJK characters in the React ActivityCard to prevent trailing-character truncation.",
-        "Match the card-to-card vertical margin between the two platforms (currently Android appears tighter).",
-        "Verify date strings are sourced from the same backend/time-format helper so 'days ago' values are identical.",
-        "Tune font-size in dp/sp on Android to match the React px size for card body and header metadata."
-      ],
-      "intentional": [
-        "The platform label badge in the top-right (REACT / ANDROID) differs by design.",
-        "Card border thickness and checkbox outline weight differ slightly — acceptable cross-platform styling."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.15697614705820706
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffc3ffe3ffe83fe83fe877e83fe000000008040804000000000fffefffecff9dff0c1f9c011807ec00ec38e800ed07ee0fef87efffefffacbf1c0f18031c018800e801e87fe8ffe8ffefffafffecff1dff1c3f981f1fffeeffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe00000000fffe7fff",
+      "generatedAt": "2026-07-12T22:07:49.874Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1618421052631579
     },
     {
       "id": "components.tasks.panel.states",
@@ -1529,84 +1485,39 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.2063397064581899
+      "metricMismatch": 0.20428801933541274
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003ffc3dfc2bf82df83f7c3ffc00ec0ffc3ffc3ffc27fc39fc3ffc3ffc2ffc3ffc1ffc03fc3dfc00b427fc1ffc27fc3ffc3dfc3ffc3ffc3ff42ffc7ffc3ffc3ffc3ffc3ffc2ffc3ffc3ffc3ffc2ffc07fc0ffc3ffc27fc3ffc27fc1ffc3ffc3ffc2ffc3ffc1ffc7ffc3ffc7f003ffc38003ffc0000ffffffff",
-      "generatedAt": "2026-07-11T22:10:25.017Z",
-      "severity": "high",
-      "summary": [
-        "Android version shows a 'Failed to create agent' error banner instead of the React baseline's 'Agent limit reached (2/2 on Free plan). Upgrade for more' notice — copy and tone differ.",
-        "Android adds a 'Suggested computer: computer-mbp' helper line under the Computer field that is absent on React.",
-        "Android exposes a 'MODE' section with 'Fast mode' checkbox plus an 'Advanced' disclosure link at the bottom; React's MODE block is in a framed card with helper text 'Launch this runtime with its faster service/minimal mode.' and no Advanced link.",
-        "Android renders 'Cancel' and 'Create Agent' action buttons in the footer (pink primary), React has no visible footer buttons in this viewport (cropped or not rendered).",
-        "Form fields are vertically compressed on Android vs React: smaller gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, MODEL, REASONING labels and inputs; DESCRIPTION textarea is shorter on Android."
-      ],
-      "likelyCauses": [
-        "Android implementation is missing the 'agent limit reached' upsell banner and replacing it with a generic API error toast/banner.",
-        "Extra 'Suggested computer' hint and Advanced disclosure were added on Android but not back-ported to React, or React baseline is from an older build.",
-        "Footer action buttons were clipped out of the React screenshot's crop region (manual-rect vs element contract difference).",
-        "Android uses tighter typography metrics/spacing tokens than the React design spec."
-      ],
-      "suggestedOwner": "components/members/create-agent-dialog owner (cross-platform parity lead)",
-      "suggestedFixes": [
-        "Reuse the React banner component on Android or align copy so the limit-reached state matches across platforms.",
-        "Remove the 'Suggested computer' hint on Android or add it to React for parity; keep helper text within a defined design slot.",
-        "Match React's MODE card layout (framed container + descriptive helper) on Android and ensure Advanced disclosure is consistent.",
-        "Verify React screenshot crop includes the dialog footer or re-capture with full modal so Cancel/Create Agent buttons appear in baseline.",
-        "Align vertical rhythm: increase Android field label-to-input and input-to-input spacing to match React tokens."
-      ],
-      "intentional": [
-        "Android may intentionally surface a different error message when the create call fails vs. when the limit is reached pre-submit."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2232349009600194
+      "status": "pending",
+      "imageHash": "p1:ffffdfff000000003ffc3dfc2bf82df83f6c3ffc00ec0ffc3ffc3ffc27fc39fc3ffc3ffc2ffc3ffc0ffc03fc3dfc3ffc23fc0ffc27fc3ffc3dfc3ffc3ffc3ff42ffc7ffc3ffc3ffc3ffc2ffc2ffc3ffc3ffc3ffc2ffc07fc0ffc2ffc27fc1ffc27fc1ffc3ffc3ffc2ffc3ffc0ffc7ff43ffc7d003ffc38003ffc0000ffffffff",
+      "generatedAt": "2026-07-12T22:07:49.981Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.22158592241530628
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:efffdfff000000003ffc3dfc2bf83df83f6c3ffc00ec09fc3ffc2ffc27fc3ffc3ffc3ffc2ffc00040ffc2ffc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc2ffc03fc3ffc3ffc3ffc3ffc0ffc3ffc3ffc3ffc27fc7ffc0ffc3ffc2ffc3ffc3ffc07fc3ffc2ffc0ffc3ffc3ffc3f8027fc7f0007fc38003ffc0000ffffffff",
-      "generatedAt": "2026-07-09T07:31:32.721Z",
-      "severity": "high",
-      "summary": [
-        "React baseline shows a pink/cream 'Agent limit reached (2/2 on Free plan). Upgrade for more' banner directly below the 'CREATE AGENT' header; Android current does not show this limit-reached banner at all.",
-        "Android current shows a 'Suggested computer: computer-mbp' hint directly beneath the COMPUTER select; this helper text is absent on the React baseline.",
-        "Android current shows Cancel and Create Agent action buttons anchored bottom-right inside the dialog; React baseline's buttons are not visible in the cropped viewport (the form scrolls past them on the baseline while Android renders them inline).",
-        "Android current is vertically compressed/zoomed vs the React baseline: form labels and inputs are rendered at a smaller scale, causing the whole content to fit above the action buttons, whereas the React layout lets the form flow off-screen and Reason field is clipped at the bottom.",
-        "Form field vertical spacing on Android is noticeably tighter than on React; gaps between COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, MODEL and REASONING are reduced on the Android side."
-      ],
-      "likelyCauses": [
-        "Android Compose implementation skipped the limit-reached warning banner state/conditional render that the React version shows.",
-        "Android implementation adds an extra suggested-computer hint element not present in the React spec.",
-        "Action button row (Cancel/Create Agent) was added/promoted into the visible dialog area on Android instead of being in a sticky footer or below the scrollable form as on React.",
-        "Missing or different scroll container/scale settings on Android: scale-to-fit or different padding/scale causes fields to render smaller and the Cancel/Create Agent buttons to become visible rather than scrolled-off.",
-        "Unit/density differences (dp vs px) and layout compression make Android content fit where React content overflows."
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Add the same 'Agent limit reached (2/2 on Free plan). Upgrade for more' warning banner component in Android, conditionally rendered when the user is on the Free plan with 2/2 agents, matching color, weight and copy of the React version.",
-        "Remove the 'Suggested computer: computer-mbp' helper text from the Android COMPUTER field if it is not part of the design, or add it to the React baseline if it is intended.",
-        "Match React layout/scroll behavior: keep Cancel and Create Agent either pinned in a sticky footer or outside the scrollable form so the Reason field isn't pushed off-screen; do not auto-scale the form down to force buttons into view.",
-        "Align vertical spacing between form fields and labels with the React baseline (increase dp padding between sections) so COMPUTER→NAME→DESCRIPTION→RUNTIME→PROVIDER→MODEL→REASONING gaps are visually consistent.",
-        "Verify typography scale and density: use the same font size/sp/dp scale as React so inputs, labels, and helper text match the React renders rather than appearing shrunken."
-      ],
-      "intentional": [
-        "Android dialog composites the form and action buttons within a single viewport rather than letting the form overflow, which may be an intentional responsive choice but conflicts with React's behavior."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25499520665397446
+      "status": "pending",
+      "imageHash": "p1:efffdfff000000003ffc3dfc2bf83df83f6c3ffc00ec09fc3ffc2ffc27fc3ffc3ffc3ffc2ffc21fc0ffc3ffc3dfc3ffc23fc3ffc27fc3ff43dfc7ffc3ffc3ffc2ffc03fc3ffc3ffc3ffc3ffc0ffc3ffc3ffc3ffc27fc7ffc0ffc3ffc2ffc3ffc3ffc07fc3ffc2ffc0ffc3ffc3ffc3f8027fc7f0007fc38003ffc0000ffffffff",
+      "generatedAt": "2026-07-12T22:07:49.977Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.25312377634652516
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:28.980Z",
+      "generatedAt": "2026-07-12T22:07:49.901Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -1617,40 +1528,16 @@
     },
     {
       "id": "components.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe80100030801008310000000000120fe081ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0ffff7ffd87fc3fff1fffffff1ffd47fffffffffffffd3ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
-      "generatedAt": "2026-07-11T22:10:28.995Z",
-      "severity": "high",
-      "summary": [
-        "Header avatar is a solid cyan square on React but a pixelated/mosaic pattern on Android, making it visually inconsistent.",
-        "React header title shows 'Product UX Designer' with subtitle 'Turns product feedback, s...' (truncated by ellipsis); Android shows the full subtitle 'Turns product feedback, screensho...' (truncated) with tighter vertical spacing and no baseline wrapping.",
-        "React main title is clipped to 'Product...' with a 'Capturing determ...' status pill on the right; Android shows the full 'Product UX Designer' title and moves the status pill ('Working') below the handle, losing the truncation indicator.",
-        "Android adds a trailing folder icon after the 'Reminders' tab and visibly crops the 'Activity' tab label to 'Activi...' because the tab row is narrower.",
-        "Runtime Config layout differs: React lays out Runtime/Model/Reasoning/Mode in a single horizontal row, while Android stacks them in a 2x2 grid (Runtime above Model, Reasoning below Runtime, Mode below Model)."
-      ],
-      "likelyCauses": [
-        "Android implementation uses a different avatar rendering (pixel/mosaic placeholder) instead of the solid color fallback used on React.",
-        "Tab bar on Android reserves space for a 5th item or trailing icon, forcing label truncation for 'Activity'.",
-        "The status pill layout was refactored on Android to sit below the handle rather than inline next to the title.",
-        "Runtime Config component was ported to a grid layout in Android instead of preserving the React single-row flex layout.",
-        "Date formatting/seed data divergence between the two clients (different default creation date)."
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Replace the Android header avatar with the same solid cyan square used on React, or align both on a shared avatar component spec.",
-        "Constrain the Android tab bar to 4 tabs (Profile/Activity/Chat/Reminders) matching React, or reduce label font size / enable auto-shrink so 'Activity' is not truncated to 'Activi...'.",
-        "Restore the inline 'Capturing determ...' status pill next to the title in the profile header, matching the React layout.",
-        "Convert the Android Runtime Config section back to a single horizontal row of Runtime/Model/Reasoning/Mode pills.",
-        "Unify the Connected indicator into a single line with version suffix (e.g. 'Connected · daemon v0.0.61.1') on Android as React does."
-      ],
-      "intentional": [
-        "Android intentionally uses a 2x2 grid for Runtime Config to better fit narrow viewports - verify with design before flattening.",
-        "Android shows the full 'Product UX Designer' title without truncation as a deliberate accessibility/clarity improvement over React."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.18078104535450512
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe80100030801008310000000000120fe081ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fffc0ffd87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "generatedAt": "2026-07-12T22:07:49.985Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.17964583248943433
     },
     {
       "id": "components.channel.members.panel",
@@ -2435,45 +2322,22 @@
     },
     {
       "id": "screens.members.agent-detail.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe80100030801008310000000000020fe080ff0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fffe7ffd87fc3fff1fffffff1ff947fffffffffffffd3ff0c3f80010c3f80010c7f80ff0007803f0003803fffffffff97ffdfff87ff80781c02ffffffff",
-      "generatedAt": "2026-07-11T22:10:42.076Z",
-      "severity": "medium",
-      "summary": [
-        "Header avatar is solid cyan on React but a pixelated/checkered pattern on Android.",
-        "Subtitle row in header is truncated with ellipsis on Android ('Turns product feedback, screensho...') but wraps to two lines on React ('Turns product feedback, S...').",
-        "Activity tab label is truncated to 'Activi...' on Android vs full 'Activity' on React, and a small extra folder/inbox icon appears at the right end of the tab bar on Android only.",
-        "Profile hero block on Android shows full title 'Product UX Designer' inline with @handle and a 'Working' status line, whereas React renders the title truncated ('Product...') with status 'Capturing determin...' beside it and @handle on a second line.",
-        "Role pill on Android shows 'Member' (purple) while React shows 'No role' (outlined)."
-      ],
-      "likelyCauses": [
-        "Android implementation diverged from the React design tokens, using a different layout primitive (e.g., FlowRow/Grid in Compose vs CSS flex/grid) that changes wrapping and column count.",
-        "Avatar rendering uses a placeholder/shimmer skeleton or image-loading state on Android instead of the final solid color used in React.",
-        "Text composables on Android apply maxLines=1 with ellipsis more aggressively than the React components, causing earlier truncation of header subtitle and tab labels.",
-        "Status/role data differs between builds ('Member' vs 'No role', 'Working' vs 'Capturing...'), suggesting a prop or API payload mismatch rather than a pure styling bug.",
-        "Environment Variables list is rendered with different item width constraints, causing two-up vs stacked layout."
-      ],
-      "suggestedOwner": "android",
-      "suggestedFixes": [
-        "Match the avatar to the React baseline: render the solid cyan/avatar asset or suppress the placeholder pattern in this state.",
-        "Allow the header subtitle to wrap to two lines (or remove the ellipsis truncation) and remove the trailing folder icon from the tab bar on Android.",
-        "Un-truncate the Activity tab label by reserving enough horizontal space or using auto-shrink text instead of hard ellipsis.",
-        "Reconcile profile/role/status data with the React source so Android shows 'No role' and the correct status text, and lay out the hero block with title on its own line as on React.",
-        "Use a 4-column flex/row layout for Runtime Config and stack Environment Variables in a single column to match React."
-      ],
-      "intentional": [
-        "None of the differences appear intentional; the layout, truncation, avatar style, and role/status text all visibly deviate from the React baseline."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.1825832759482049
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe80100030801008310000000000120fe0817f0f7f8fff001f8fff0fffffffdfff83ffe7ffffffdfff81fbdfff803f81ffffffffffffffffff8fff0fff8fff0fff80ffd87f80fff1fffffff1ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0007807f0003807fffffffff97ffdfff87ff80781c02ffffffff",
+      "generatedAt": "2026-07-12T22:07:50.443Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18020078043774723
     },
     {
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:29.463Z",
+      "generatedAt": "2026-07-12T22:07:50.365Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2484,36 +2348,16 @@
     },
     {
       "id": "screens.members.agent-detail.reminders",
-      "status": "ready",
-      "imageHash": "p1:03fc03fc00100030801000000000000000000000dffe7ffefffe0006fffe00fefe7e7ffefa5e7ffef81e7ffec0067ffee0067ffeffbe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-11T22:10:44.088Z",
-      "severity": "high",
-      "summary": [
-        "Tab bar order differs: React shows Activity/Chat/Reminders/Workspace while Android shows Profile/Activity/Chat/Reminders with an extra leading 'Profile' tab visible",
-        "React renders an empty-state ('No reminders yet') with bell icon and helper text; Android renders a populated reminder card ('Roll 1-6; if 3, tidy Product-UX memory/files' in 6 hours, Jun 20, 02:30)",
-        "Avatar differs: React uses a solid cyan square, Android uses a checkerboard/QR-pattern placeholder",
-        "Subtitle text differs: React shows 'Turns product feedback, S…' (truncated) while Android shows 'Turns product feedback, screensho…' (different truncation/clipping)",
-        "Tab labels truncate differently: Android's 'Activity' tab is clipped to 'Activi…' due to the added Profile tab consuming horizontal space"
-      ],
-      "likelyCauses": [
-        "Android build is loading with a different fixture/state (existing reminder vs empty list) than the React baseline",
-        "Tab/navigation component configuration diverges between web and Android (different tab set and order)",
-        "Avatar/placeholder component not ported consistently — Android falls back to a generic pattern placeholder",
-        "Insufficient horizontal tab space on Android triggers earlier text truncation of tab labels"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Sync Android reminders screen to use the same empty-state fixture as React (no reminders) or update the baseline to match the populated fixture intentionally",
-        "Align the tab bar configuration (order and membership) between React and Android, or confirm intent in the design spec",
-        "Ensure the avatar component renders identically on Android (solid color or shared placeholder component)",
-        "Adjust tab bar sizing/scroll behavior on Android so labels are not truncated when additional tabs are present",
-        "Verify the subtitle truncation character/width handling matches React"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.06330524837633844
+      "status": "pending",
+      "imageHash": "p1:03fc03fc0010003080100000000000000000000080027ffe00060006fffe00fefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
+      "generatedAt": "2026-07-12T22:07:50.512Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.06140073723012107
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2553,39 +2397,16 @@
     },
     {
       "id": "screens.members.agent-detail.apps",
-      "status": "ready",
-      "imageHash": "p1:07fe17fc80100030801008000000000000100000c7fffffefdfe03feffff0004ffff1efcffff03e0ffff03e1ffff001dffff201dffff3c7dffff003dffff0000ffff0000ffff0000ffff07e0ffff03e1ffff07fdffff03fdffff0030ffff0000ffff0000ffff7ffefffefffefffefffefffffffefffefffe7ffe7ffefffe7fff",
-      "generatedAt": "2026-07-11T22:10:47.940Z",
-      "severity": "high",
-      "summary": [
-        "React (left) shows empty/loading state with 'No connected apps yet.' and 'Loading…' text; Android (right) renders two populated app cards (Raft Actions and Calendar).",
-        "Tab bar differs: React shows Chat, Reminders, Workspace, Apps (4 tabs) with 'Apps' highlighted yellow; Android shows Profile, Activity, Chat, Reminders, Workspace (5 tabs) with no tab highlighted as active.",
-        "React avatar is a solid cyan square; Android avatar is a patterned/mosaic cyan-and-black square tile.",
-        "Android uses green 'ACTIVE' pill badges on each connected-app card; React has no such state indicators.",
-        "'Workspace' tab icon is clipped at the right edge on Android but fully visible on React."
-      ],
-      "likelyCauses": [
-        "React snapshot was captured while data was still loading; Android captured after data loaded — non-deterministic render timing between platforms.",
-        "Tab/navigation implementations differ between React and Android clients (different tab sets and active-state styling).",
-        "Android design tokens use thicker borders, larger paddings, and status badges not present in the React design system.",
-        "Test fixture or mock data seeded only on Android build."
-      ],
-      "suggestedOwner": "mobile-android",
-      "suggestedFixes": [
-        "Stabilize screenshot capture by waiting for connected-apps data fetch to complete on React (or mock the same fixture on both platforms).",
-        "Align tab navigation: same tab set, same active-state highlight (yellow pill) across React and Android.",
-        "Add 'ACTIVE' state badge to React connected-app cards to match Android visual parity.",
-        "Normalize avatar placeholder (solid cyan square) and remove mosaic tile variant on Android.",
-        "Match border-weight, padding, and card spacing between React and Android per shared design tokens."
-      ],
-      "intentional": [
-        "Different avatar placeholder style may be intentional Android branding.",
-        "5-tab navigation on Android vs 4-tab on React could be platform-specific IA."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.12086557027315326
+      "status": "pending",
+      "imageHash": "p1:07fe17fcfe7e0030ffff0000ffff0000fffe0000fffe7ffefffe03feffff0000ffff1cdcffff0020ffff03e0ffff001cffff0018ffff3c5cffff0038ffff0000ffff0000fffe0000ffff07e0ffff03e0ffff07f8ffff03fcffff0030ffff0000fffe0000fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff83fff",
+      "generatedAt": "2026-07-12T22:07:50.528Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.10242469045786584
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2619,12 +2440,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09505711508081172
+      "metricMismatch": 0.09519990278284118
     },
     {
       "id": "screens.members.human.profile",
       "status": "ready",
-      "imageHash": "p1:07fe07fc87f803e083f803e00000340083fe0bfe8ffe03fe8ffe0ffec7fe0ffe9ffe4ffefffe1ffefffe3ffe8ffe7ffe8ffe0ffee7fe1ffe8ffe07fe97fe07fef7fe5ffec3fe07fec7fe03fefffe7ffedffe7ffe8000fffe8000fffec0027ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
+      "imageHash": "p1:07fe07fc87f803e083f803e00000340083fe0bfe8ffe03fe8ffe0ffec7fe0ffe9ffe4ffefffe1ffefffe3ffe8ffe7ffe8ffe0ffe87fe1ffe8ffe07fe97fe07fef7fe5ffec3fe07fec7fe03fefffe7ffedffe7ffe8000fffe8000fffec0027ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00024000fff81fff",
       "generatedAt": "2026-07-11T22:10:50.711Z",
       "severity": "high",
       "summary": [
@@ -2651,81 +2472,33 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.105844506555407
+      "metricMismatch": 0.10593125936727832
     },
     {
       "id": "components.members.agent-lifecycle-actions",
-      "status": "ready",
-      "imageHash": "p1:1ffe3ffe8010003180100031000c238000843fac8000803f8fff001f8fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff9fff8fff0ffffffff87fc3fff1fffffff3ffd47fffffffffffffd7ff0c3f80010c3f80010c7f80ff0027807f0003807fffffffff97ffdfff87ff80781ffeffffffff",
-      "generatedAt": "2026-07-10T22:12:59.336Z",
-      "severity": "high",
-      "summary": [
-        "Lifecycle actions popover (Stop Agent / Restart / Reset) is clipped/cropped on the React side: only the top tab strip and two action buttons are visible, while the Android side shows the popover overlapping a card with the agent avatar/title that pushes content down.",
-        "Tab bar is missing 'Reminders' and the folder tab on React (only Profile and Activity visible); Android shows Profile (yellow) + Reminders + folder tab, causing different active tab selection.",
-        "Subtitle text is truncated differently: React shows 'Turns product feedback, s…' (truncated, smaller width); Android shows 'Turns product feedback, screensho…' (slightly longer truncation).",
-        "Below the avatar, React shows only one 'Product…' heading; Android shows the full 'Product UX Designer' heading plus a 'Working' status indicator with green dot — Working status row is missing on React.",
-        "INFO section differs: React uses a two-column 'Computer / Created / Creator' grid (Created wraps to two lines 'Jun 18, 2026'); Android stacks them as single-line rows with 'Computer Connected · daemon v0.61.1' inline and 'Creator artin @artin' on one row."
-      ],
-      "likelyCauses": [
-        "Different popover/menu rendering component on Android (likely rendered as overlay versus inline) causing overlap with the agent card and pushing subsequent content down.",
-        "Android layout uses a stacked/single-column info list while React uses a two-column grid, indicating different list/grid component implementations.",
-        "Truncation widths differ between platforms, likely due to different parent container widths or text overflow settings.",
-        "Agent status indicator ('Working' with green dot) is missing from the React implementation.",
-        "Avatar asset differs between platforms — Android uses a different placeholder image (pixelated/QR-style) versus a flat cyan block on React."
-      ],
-      "suggestedOwner": "android-engineering",
-      "suggestedFixes": [
-        "Unify lifecycle actions popover positioning and z-index handling so it overlays without cropping the tab strip on either platform.",
-        "Ensure the tab bar includes all tabs (Profile, Activity, Reminders, folder) consistently on both React and Android.",
-        "Match subtitle truncation width across platforms by using consistent parent container widths or text-overflow rules.",
-        "Add the 'Working' status row with green-dot indicator to the React version under the agent title/handle.",
-        "Align INFO section layout — pick either stacked rows or two-column grid and apply consistently across both platforms with matching date formatting (e.g., 'Jun 1, 2026' vs 'Jun 18, 2026')."
-      ],
-      "intentional": [
-        "Subtitle text truncation is platform-specific by design (each handles its own overflow).",
-        "Avatar style differences (flat cyan vs pixelated pattern) may be intentional placeholder variants for each platform."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.20385155479942207
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe8010003180100031000c238000843fac8000803f8fff001f8fff0fffffffdfff83ffe7ffffffffff85fbffffc03f81ffffffffffffffffff8fff9fff8fff0fffc0fff87f81fff1fffffff3ffd47fffffffffffffdfff0c3f80010c3f80010c7f80ff0027807f0003807fffffffff97ffdfff87ff80f81ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:50.594Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.20305761466898908
     },
     {
       "id": "components.members.avatar-management",
-      "status": "ready",
-      "imageHash": "p1:bffe7ffec03b823386b10f31000000008ffe001f81ff0bbf8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffffc1ffc03bffffffffffffffffdfffffff0fff8ffffffffffff9ffe7fff3fffffffffffefffffffeff8c3fffff8c3f88939c7f800189ffffffffff",
-      "generatedAt": "2026-07-10T22:13:02.030Z",
-      "severity": "medium",
-      "summary": [
-        "Header avatar differs: React shows a plain cyan square, Android shows a pixel-art avatar thumbnail",
-        "Profile header card layout differs: React compresses title/subtitle/status on one row; Android shows a larger avatar card with avatar, name, handle, and 'Working' status stacked",
-        "Tab labels truncated differently: Android's 'Activity' tab is truncated to 'Activi...' while React shows full label",
-        "Avatar grid dimensions differ: React shows 6 columns × 3 rows (18 tiles); Android shows 8 columns × 2 rows + 1 (17 tiles) with different tile sizing",
-        "Info section layout reorganized: React uses a wrapped two-column key/value layout (Created/Creator side by side, computer name on multiple lines); Android uses a denser inline horizontal row with ellipsized computer name"
-      ],
-      "likelyCauses": [
-        "Android and React implementations use independent component specs without a shared design-token contract",
-        "Avatar grid uses a fixed column count (8) on Android vs responsive wrap (6) on React, likely from differing container width or Flexbox vs ConstraintLayout behavior",
-        "Info section metadata layout was rebuilt for Android using a denser Row layout instead of mirroring React's wrap-to-two-columns",
-        "Runtime Config chips were re-flowed into a 2-column grid on Android (likely 2dp grid system) vs a single-row layout in React",
-        "Viewport height on Android causes Runtime Config / Environment Variables to overflow without scroll accommodation"
-      ],
-      "suggestedOwner": "android-eng",
-      "suggestedFixes": [
-        "Normalize avatar grid to use the same column count and tile size across platforms; centralize in shared design tokens",
-        "Align header card layout (avatar + name + handle + status) to match React's component contract",
-        "Ensure tab labels have min-width or ellipsis policy so 'Activity' is not truncated to 'Activi...'",
-        "Restructure Info section to use the same key/value row wrap behavior as React (or document intentional difference)",
-        "Convert Runtime Config chips to a single inline row like React, and verify scroll/viewport handles the Environment Variables section without clipping"
-      ],
-      "intentional": [
-        "Tag/chip background color saturation differences are likely platform-default theme variations",
-        "Android header avatar appearing as a pixel-art thumbnail while React shows a solid color block may be an intentional filled vs placeholder state"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.25457697033526416
+      "status": "pending",
+      "imageHash": "p1:bffe7ffec03b823386b10f31000000008ffe001f81ff0bbf8fff8fff8fffffffffffc001e0014001c001000180010001c0031ffff81fffffffffffffc7ffffffffffffffffffc1ffc03bffffffffffffffffdfffffff0fff8fffffffdffff9ffc0fff3fffffffffffefffffffeff8c3fffff8c3fdbdb9c7f800189ffffffffff",
+      "generatedAt": "2026-07-12T22:07:50.605Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.2529313673863437
     },
     {
       "id": "screens.settings.computers",
@@ -2829,36 +2602,16 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000cffe4ffecffe4ffecffe4ffe8ffe4ffecffe47fe87fe9ffebffe9ffebffe9ffebffe9ffebffe1ffe81fe41fe81fe9fdebffe9ffebffe9fdebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00007ffe01007ffe00004000fffe1fff",
-      "generatedAt": "2026-07-09T07:33:48.005Z",
-      "severity": "medium",
-      "summary": [
-        "Bottom tab bar with 4 tabs (Home/Tasks/Members/Settings) is present in the React baseline but missing entirely on the Android side",
-        "React renders Direct Messages section near the bottom of the viewport with sort/filter icons and 3 skeleton rows; Android renders Direct Messages higher up immediately after Channels",
-        "Android shows Channels and Direct Messages sections collapsed/grouped near the top of the content area; React shows a larger vertical gap between Channels and Direct Messages",
-        "Android is missing the up/down sort toggle icon next to the Channels header and the +/- (add) action button that appear in the React baseline",
-        "Android has 4 skeleton rows under Channels vs React's 3 rows under Channels, shifting the Direct Messages position downward on Android relative to baseline"
-      ],
-      "likelyCauses": [
-        "Android implementation did not wire up the bottom navigation tab bar component",
-        "Different ordering or grouping of list sections (Channels vs Direct Messages) between platforms",
-        "Missing section header action affordances (sort toggle and add button) in the Android build",
-        "Skeleton placeholder count differs (4 vs 3) due to inconsistent loading-state rendering logic between platforms"
-      ],
-      "suggestedOwner": "android-engineer",
-      "suggestedFixes": [
-        "Add the bottom tab bar with Home, Tasks, Members, Settings tabs to the Android home screen, matching React's layout and Home tab active highlight",
-        "Reorder sections to match React: Channels first, then Direct Messages, with consistent vertical spacing between them",
-        "Restore the sort (up/down arrow) toggle next to the Channels header and the add (+) action button on the Android side",
-        "Align Android skeleton row count under Channels (4) and Direct Messages (3) with the React baseline, or verify the intended counts in design spec",
-        "Pin Direct Messages header back to the lower position matching React baseline, with the up/down sort icon restored"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.16047109814882332
+      "status": "pending",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000dffecffecffe4ffecffecffe8ffe4ffec3fec7fe83fe9ffebffe9ffebffe9ffecffe9ffe8ffebffebffec1febffe9ffebffe9ffebffe9ffe81fefffe81fe7ffebffe7ffebffe7ffebffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe01007ffe00006002fffe3fff",
+      "generatedAt": "2026-07-12T22:07:50.681Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1774942277311946
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2892,12 +2645,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.24931641945623595
+      "metricMismatch": 0.2503834317887217
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "ready",
-      "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039fd07e1ffe00febffe03fe07fe67feffff01fe3ffffffe163efffe007e007e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe103e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
+      "imageHash": "p1:fffe7ffe1fffffff05ff9fffffff9d7feffffbffefffe2efec3fe3ffe001e01fe0cfefffc039fd47e1ffe00febffe03fe07fe67feffff81fe3ffffffe163efffe007e007e003e037e003e0ffe003e003e003e007e007e007e003e003e003e003efffe003e01fe103e003e1ffe001e003e001e003e001e003e03fe003ffffffff",
       "generatedAt": "2026-07-11T22:10:58.759Z",
       "severity": "medium",
       "summary": [
@@ -2925,7 +2678,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.508564224085551
+      "metricMismatch": 0.509372004158734
     },
     {
       "id": "screens.settings.administration.full-height",

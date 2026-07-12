@@ -1,0 +1,48 @@
+36136 START captureSettingsAccountPasswordExpanded
+41355 OK captureSettingsAccountPasswordExpanded durationMs=5223
+41436 START captureUiMenuItemStates
+45141 OK captureUiMenuItemStates durationMs=3709
+45201 START captureThreadMessageRowPermalinkChipsNarrow
+48958 OK captureThreadMessageRowPermalinkChipsNarrow durationMs=3758
+49116 START captureSettingsServerDangerModal
+52837 OK captureSettingsServerDangerModal durationMs=3723
+52911 START captureUiSectionEyebrowStates
+57180 OK captureUiSectionEyebrowStates durationMs=4269
+57346 START captureThreadComposerAsTaskSelected
+60464 OK captureThreadComposerAsTaskSelected durationMs=3117
+60602 START captureRaftUiButtonBadgeStates
+63774 OK captureRaftUiButtonBadgeStates durationMs=3158
+63835 START captureRaftUiAvatarStates
+66988 OK captureRaftUiAvatarStates durationMs=3150
+67292 START captureRaftUiLabelRadioStates
+70225 OK captureRaftUiLabelRadioStates durationMs=2937
+70400 START captureThreadForwardModal
+74314 OK captureThreadForwardModal durationMs=3930
+74383 START captureUiSurfaceListItemStates
+77064 OK captureUiSurfaceListItemStates durationMs=2680
+77402 START captureThreadMessageShareSelection
+80000 OK captureThreadMessageShareSelection durationMs=2597
+80188 START captureRaftUiTypographyStates
+82676 OK captureRaftUiTypographyStates durationMs=2488
+82698 START captureSettingsNotificationsPage
+86407 OK captureSettingsNotificationsPage durationMs=3700
+86693 START captureAuthLoginInputsFilled
+92307 OK captureAuthLoginInputsFilled durationMs=5613
+92410 START captureUiProgressBarStates
+94897 OK captureUiProgressBarStates durationMs=2487
+95066 START captureForegroundBannerContextVariants
+97777 OK captureForegroundBannerContextVariants durationMs=2711
+97876 START captureHomeCreateChannelDialog
+102128 OK captureHomeCreateChannelDialog durationMs=4252
+102349 START captureThreadActivityMuteStates
+105174 OK captureThreadActivityMuteStates durationMs=2825
+105347 START captureThreadCommentAnchor
+108526 OK captureThreadCommentAnchor durationMs=3179
+108722 START captureChannelAddMemberPanel
+112502 OK captureChannelAddMemberPanel durationMs=3780
+112746 START captureSettingsPageStates
+115264 OK captureSettingsPageStates durationMs=2518
+115341 START captureUiSectionHeaderStates
+117799 OK captureUiSectionHeaderStates durationMs=2463
+117887 START captureSettingsRootPage
+121700 OK captureSettingsRootPage durationMs=3813

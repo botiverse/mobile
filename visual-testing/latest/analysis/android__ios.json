@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-11T22:13:36.202Z",
+  "generatedAt": "2026-07-12T22:07:57.174Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 90,
-    "ready": 82,
-    "pending": 8
+    "ready": 51,
+    "pending": 39
   },
   "cases": [
     {
@@ -103,70 +103,29 @@
     },
     {
       "id": "components.ui.form-field.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc1ffc3ffe80000012000000028005000601f803f28000000287fd0dfe00010ff6f8016012ffff0006fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe1ff0fffe0000fffe0008fffe0008fffe0000fffe0008fffe0000fffe0000fffe0000fffe0860fffe0000fffe0000fffe1fff",
-      "generatedAt": "2026-07-10T13:23:03.727Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows an iOS system keyboard with tutorial overlay ('Speed up your typing by sliding your finger across the letters to compose a word' and 'Continue' button) while the Android side does not show the soft keyboard or keyboard tutorial.",
-        "Server Name input on iOS is in error state with red border and 'Name is required' helper text rendered below the field; on Android the field also shows the red error border but the helper/error text is clipped/missing within the cropped bounds.",
-        "Email input on iOS shows a visible text caret (vertical cursor) after 'cindy@slock.ai'; Android shows no caret in the static rendering.",
-        "Vertical spacing/rhythm differs: iOS exposes large empty area between the 'Name is required' error and the bottom keyboard, while Android layout ends earlier with no keyboard region, indicating inconsistent viewport/safe-area handling between the two Kuikly ends."
-      ],
-      "likelyCauses": [
-        "Native soft keyboard invocation timing differs between Android and iOS Kuikly renders (iOS captured with keyboard up, Android without).",
-        "Form-field error/helper text component renders the validation message at a y-offset that falls outside the manual-rect crop on the Android baseline (342x226), causing apparent clipping.",
-        "Text-input caret is inherently shown on focused iOS TextField but omitted in Android static snapshot or uses a non-rendered caret layer.",
-        "Viewport / window-insets handling (keyboard avoidance, safe area) not normalized across platforms, producing different vertical layout."
-      ],
-      "suggestedOwner": "Kuikly UI platform / Form-field component owner",
-      "suggestedFixes": [
-        "Normalize form-field helper/error text positioning so it is always visible regardless of crop region; verify errorText vertical offset is within the component bounds on both ends.",
-        "Disable or suppress native soft keyboard and tutorial overlay during Slock visual capture, or capture both ends in identical states (keyboard hidden) for parity.",
-        "Strip or hide the text caret in static visual-test rendering to avoid non-semantic caret diffs between platforms.",
-        "Unify keyboard-avoidance / safe-area logic in the KuiklyFormField container so vertical layout is consistent when the keyboard is present.",
-        "Ensure the Server Name error state uses identical border color, border thickness, and message typography/weight on Android and iOS."
-      ],
-      "intentional": [
-        "Text caret visible only on focused iOS field may be considered platform-typical",
-        "iOS system keyboard tutorial is a native iOS feature, not part of the app UI"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4194127138439935
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc1ffc3ffe000000020000000200000006000000120000000200fc01fe00000ff200000002fffe0006fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:55.571Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.018546535963597566
     },
     {
       "id": "components.ui.textarea.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc8001000780090013bff87ff380000003c7f501e78001001780010003800100073ffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
-      "generatedAt": "2026-07-11T22:11:38.210Z",
-      "severity": "high",
-      "summary": [
-        "iOS keyboard is visible and overlaps the lower textarea/content, while Android shows no keyboard (textarea state should be the same).",
-        "Cursor caret rendering inside the first textarea looks visually clipped/different on iOS compared to Android.",
-        "Error state text on iOS appears slightly clipped on the left edge of the description 'A' glyph ('AAgreement body...') whereas Android renders the full word clearly.",
-        "Slight horizontal offset and vertical alignment of the error message ('57/40' counter) between Android and iOS suggests different padding/metrics in the hint row."
-      ],
-      "likelyCauses": [
-        "Auto-focus on the textarea in iOS triggers native keyboard appearance that Android does not, indicating the same component spec but different default focus/IME behavior on iOS Kuikly runtime.",
-        "Textarea inner text padding / line-height differs on iOS, causing the first character glyph to be clipped against the left border.",
-        "Description/helper text container on iOS lacks the same left padding (or has truncated overflow) compared to Android, producing the 'AAgreement' clipping symptom.",
-        "Counter ('57/40') spacing differs because iOS uses different horizontal padding for the hint row than Android."
-      ],
-      "suggestedOwner": "Kuikly Textarea component owner (cross-platform UI)",
-      "suggestedFixes": [
-        "Add an explicit focus suppression or pre-existing blur state for the visual test snapshot so keyboard is not shown on either platform.",
-        "Normalize textarea content insets (left padding, line-height) on iOS to match Android measurements.",
-        "Audit the hint/helper row container padding on iOS so helper text and counter align identically to Android.",
-        "Decide whether keyboard appearance should be part of the captured state; if yes, snapshot rule should ensure both platforms have or don't have focus.",
-        "Add a visual regression snapshot tolerance for the iOS IME if focus-induced keyboard is expected (intentional difference)."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2993444592970659
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc00000002000000023ff87ff200000002000000260000000200000002000000060001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:55.650Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03000668367966941
     },
     {
       "id": "components.ui.checkbox.states",
@@ -256,34 +215,15 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "ready",
-      "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-11T22:11:38.278Z",
-      "severity": "low",
-      "summary": [
-        "Status dot component bounds differ slightly in vertical extent between Android (92px height) and iOS (2532px height) when comparing raw canvases, though the component area itself appears consistent.",
-        "Both ends render the same four status dots (green, orange, gray, blue) and the pink 'Waiting pulse' indicator with matching colors.",
-        "Typography weight and size for 'Waiting pulse' label appear visually equivalent across both ends.",
-        "Horizontal spacing and alignment of the status dots row and the pulse row are isomorphic between Android and iOS.",
-        "No clipping, missing elements, or state indicator differences observed."
-      ],
-      "likelyCauses": [
-        "Canvas/viewport size differences (342×92 vs 1170×2532) are expected platform-specific dimensions and not component-level divergence.",
-        "Minor pixel mismatch (0.30%) likely attributable to antialiasing and DPR scaling differences across platforms."
-      ],
-      "suggestedOwner": "ui-components",
-      "suggestedFixes": [
-        "No corrective action required — both ends are isomorphic within tolerance.",
-        "If normalizing, crop the iOS canvas to component bounds before comparison to reduce false-positive diffs from empty canvas area.",
-        "Confirm that the status dot color tokens (green/orange/gray/blue/pink) share a single source of truth across Android and iOS to prevent future drift."
-      ],
-      "intentional": [
-        "Platform-specific raw canvas sizes (Android 342×92, iOS 1170×2532) are expected and intentional.",
-        "Component renders identically within the 0.02 pixel-ratio tolerance threshold."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
+      "status": "pending",
+      "imageHash": "p1:0000000007fc0ffe03f407fe43fc07fe0000fffe0000fffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00000",
+      "generatedAt": "2026-07-12T22:07:55.729Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -381,36 +321,16 @@
     },
     {
       "id": "components.ui.slug-input.states",
-      "status": "ready",
-      "imageHash": "p1:1ff83ffc00000006800000128001000780f901f300010007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0000fffe0000fffe0000fffe0000fffe0c60fffe0000fffe0000fffe0000fffe5fff",
-      "generatedAt": "2026-07-11T22:11:38.347Z",
-      "severity": "high",
-      "summary": [
-        "iOS top input shows a visible text caret (I-beam) in 'design-lab' while Android does not, indicating iOS is focused/active and Android is not — different interaction state.",
-        "iOS has an on-screen QWERTY keyboard occupying the lower half of the screen; Android has no keyboard visible — different focus/keyboard state.",
-        "Top input border on iOS appears slightly thinner/lighter than Android's heavier black border; overall component bounds differ in vertical extent per side.",
-        "Bottom 'partner-workspace' input on iOS appears clipped/cropped at its right edge (divider line cut off) compared to Android's fully-bounded input.",
-        "Vertical gap between the two input fields looks larger on iOS than Android, changing component spacing."
-      ],
-      "likelyCauses": [
-        "Different default focus behavior between Kuikly Android and iOS input bindings (auto-focus firing on iOS).",
-        "iOS native soft keyboard inflating viewport / shifting layout while Android IME is not shown.",
-        "Component crop rect on baseline uses 'component-bounds' but current (iOS) has no crop, producing scale/aspect mismatch when diffed.",
-        "Inconsistent border/stroke width token applied per platform by the slug-input component."
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Ensure baseline and current are captured at the same component-bounds crop and DPR before diffing.",
-        "Disable auto-focus or normalize focus state across Android and iOS in the Kuikly slug-input component for visual testing.",
-        "Tokenize and unify the input border-width/stroke-color across platforms.",
-        "Verify IME insets/keyboard avoidance behavior is consistent on both platforms.",
-        "Recapture screenshots after dismissing the iOS keyboard to compare true resting state."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.26900730478929535
+      "status": "pending",
+      "imageHash": "p1:1ff83ffc0000000200000002000000020078009200000002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
+      "generatedAt": "2026-07-12T22:07:55.801Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.0016763208706336297
     },
     {
       "id": "components.ui.section-eyebrow.states",
@@ -477,34 +397,16 @@
     },
     {
       "id": "components.ui.selection-popover.states",
-      "status": "ready",
-      "imageHash": "p1:0ff81ffc87f01fc7800000038001000380010003aff8dff3a3f847f3bff87ff38000000380010007fffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
-      "generatedAt": "2026-07-09T22:22:40.942Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows an on-screen QWERTY keyboard occupying the lower portion of the screen, Android does not",
-        "Bottom channel row is clipped on iOS (text cut off by component bounds), Android shows 'No channel' fully visible",
-        "iOS raw canvas is 1170×2532 with the popover occupying only the top portion, Android is tightly cropped to 342×252 around the popover"
-      ],
-      "likelyCauses": [
-        "iOS trigger of the soft keyboard by default when text input gains focus; Android compose focus did not show the IME in this snapshot",
-        "Different component bounds / clipping behavior when the keyboard is shown on iOS, causing the list bottom to be clipped",
-        "Baseline crop rect on Android was set to component-bounds while iOS uses full device canvas"
-      ],
-      "suggestedOwner": "ui-platform",
-      "suggestedFixes": [
-        "Dismiss or hide the iOS keyboard before capturing this state, or render the popover over the keyboard area on both platforms consistently",
-        "Ensure the popover list height auto-shrinks when the keyboard appears so the last item is not clipped (apply safe-area / keyboard inset)",
-        "Use a consistent canvas size or apply the same component-bounds crop on iOS for fair side-by-side comparison",
-        "Verify the input field does not auto-focus on iOS on initial render, or only focus when explicitly tapped"
-      ],
-      "intentional": [
-        "On-screen keyboard appearing on iOS may be platform-correct behavior since the input is focused, but the resulting list clipping should be handled"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2988907792225328
+      "status": "pending",
+      "imageHash": "p1:0ff81ffc0000000600000002000000020000000227f84ff221f803f23ff87ff200000002000000067ffdfffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:55.809Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.030073858035943313
     },
     {
       "id": "components.ui.menu-item.states",
@@ -632,40 +534,16 @@
     },
     {
       "id": "components.auth.register.inputs",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ff81ffe7ffffff81fc0ffdfffc07bc8ffc003c003c3ffc003c003c3ffcfffc003c0fbcfffc003c00bdc1fc003e00fd41fc0030000f00f0000ffff0b90ffff0000ffff2236ffff0000ffff3180ffff0660ffff0e60ffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-07-09T22:22:46.507Z",
-      "severity": "medium",
-      "summary": [
-        "iOS side shows the soft keyboard occupying the lower half of the viewport, occluding the 'Create Account' button and 'Sign In' link; Android shows the button and footer link fully visible.",
-        "On iOS, the Name input is focused (visible caret and active state) causing field/placeholder styling differences versus Android's non-focused state.",
-        "Password field on iOS renders dots extending to ~the full input width whereas Android's dots are shorter, suggesting different secure-text rendering or font metrics on iOS.",
-        "Terms of Service / Privacy Policy text on iOS is partially clipped behind the keyboard suggestion bar; Android shows the full wrapped text and the 'Create Account' button.",
-        "Header yellow band on iOS appears taller and the RAFT logo is positioned lower/right-shifted compared to Android's tighter top band."
-      ],
-      "likelyCauses": [
-        "iOS keyboard auto-focus on the Password field pushes layout and reduces visible content area without scroll accommodation.",
-        "Missing keyboard-avoiding / safe-area / insets handling on iOS for the scrollable container.",
-        "iOS secure text entry (••••) uses a different glyph count/width than Android rendering.",
-        "Platform-specific font metrics for the placeholder/secure-text leading to different dot density.",
-        "Header component uses absolute or fixed sizing that scales differently on iOS viewport (1170×2532 vs 390×844 dp)."
-      ],
-      "suggestedOwner": "mobile-platform / auth-register component owner (Kuikly cross-platform layer)",
-      "suggestedFixes": [
-        "Wrap the form in a ScrollView and apply iOS keyboard inset adjustment (keyboardAvoidingView equivalent) so the submit button and footer remain reachable.",
-        "Normalize focus/blur state visuals across platforms or disable auto-focus on Password for visual parity.",
-        "Unify secure-text rendering by setting explicit fontFamily and letterSpacing for the password input on both platforms.",
-        "Replace fixed-height header with a percentage/dp-based layout and validate against iPhone 14/15 viewports.",
-        "Align checkbox size and vertical-center baseline using a shared design token; verify via accessibility snapshot on both platforms."
-      ],
-      "intentional": [
-        "iOS on-screen keyboard presence is expected; the divergence is driven by missing scroll/inset handling, not by intentional design.",
-        "Focused Name input state on iOS reflects real user interaction state captured at screenshot time."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3717104819000554
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffe000000000000000000000000f1800000fe7ffffffe7ffe7ff81ffe7ffffff81fc0fbdfffc00bc0fbc003c003c3fbde03c003c1fbcfffc003c07bcfffc003c003c41fc003c003c00fc003c003c003c003fffff00ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:55.955Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1529691740592215
     },
     {
       "id": "components.navigation.tabbar.states",
@@ -728,177 +606,68 @@
     },
     {
       "id": "components.thread.composer.states",
-      "status": "ready",
-      "imageHash": "p1:0ff81ffc00010003000100030f010f0200010003fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0020fffe0ce0fffe0000fffe0000fffe0000fffe7fff",
-      "generatedAt": "2026-07-09T22:22:48.983Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows the iOS software keyboard occupying the lower half of the screen, while Android has no keyboard visible — the composer area is fully empty on Android.",
-        "The thread composer on iOS is vertically compressed near the top of the screen with much less empty space below it, whereas Android shows the composer with a large vertical gap below it (likely because the keyboard is not rendered).",
-        "Body text 'Review the Android composer crop' appears slightly larger / heavier on iOS compared to Android; character glyphs render with iOS San Francisco metrics (taller x-height, tighter letter spacing) vs Android Roboto.",
-        "Send icon (pink square with paper plane) on iOS is rendered with a thinner border and slightly different inner glyph proportions than the Android version, which uses a thicker stroked outline.",
-        "Header tag pill on iOS reads 'IOS' (caps) instead of 'ANDROID'; badge text weight and color are consistent across platforms, but the label differs as expected."
-      ],
-      "likelyCauses": [
-        "Kuikly input/composer focus state is being triggered on iOS but not on Android, causing the iOS system keyboard to attach to the focused TextField while Android's IME is suppressed or not opened.",
-        "Platform-specific TextField focus / auto-focus behavior diverges — iOS auto-focuses on mount while Android does not.",
-        "Native keyboard insets are not being applied consistently, so the layout below the composer is not adjusted on Android the way it is on iOS."
-      ],
-      "suggestedOwner": "kuikly-platform-input",
-      "suggestedFixes": [
-        "Make the focus/IME invocation deterministic on both ends: explicitly call requestFocus and requestKeyboard on mount, or guard it so neither auto-opens during visual baseline capture.",
-        "Apply KeyboardAvoidingView / safe-area-inset-keyboard uniformly so the composer reflows the same way on both platforms.",
-        "For the baseline test, dismiss the keyboard on capture or add a 'no-keyboard' variant so the composer geometry can be compared in isolation.",
-        "Verify the send icon asset is shared and not substituted by a platform-specific drawable; align stroke weight of the paper plane glyph.",
-        "Normalize the body text fontFamily to a Kuikly-mapped token so San Francisco vs Roboto differences do not shift metrics during comparison."
-      ],
-      "intentional": [
-        "Different header pill label text ('IOS' vs 'ANDROID') is a deliberate platform marker and should not be treated as a regression."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.28936754837228773
+      "status": "pending",
+      "imageHash": "p1:0000000000010002000100020801080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:55.964Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.018655230148121094
     },
     {
       "id": "components.thread.composer.as-task-selected",
-      "status": "ready",
-      "imageHash": "p1:07f80ffc00010003000100030f010f0200010003fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0010fffe0000fffe0004fffe0000fffe0000fffe0020fffe0ce0fffe0000fffe0000fffe0000fffe7fff",
-      "generatedAt": "2026-07-09T22:22:49.718Z",
-      "severity": "medium",
-      "summary": [
-        "iOS viewport includes a system keyboard at the bottom covering ~half the canvas, while Android side shows the composer in isolation without any IME rendered.",
-        "Canvas dimensions differ drastically: Android is cropped to 342×100 (component bounds only), iOS is a full 1170×2532 device canvas — not a normalized crop comparison.",
-        "Composer body text \"Review the Android composer crop\" appears slightly larger/heavier on iOS than on Android.",
-        "iOS send button (pink) shows a small clipping/overflow on its right edge where the icon meets the button border; Android send button is clean and fully contained.",
-        "Header label \"iOS\" tag badge on iOS side is much wider than the \"ANDROID\" badge on the left, creating inconsistent metadata chrome spacing."
-      ],
-      "likelyCauses": [
-        "Baseline crop uses component-bounds (342×100) while iOS has no crop applied (full 1170×2532 canvas), so the comparison is apples-to-oranges at the canvas level.",
-        "iOS native IME auto-presented over the composer because a text field has focus; Android screenshot captured without IME or IME was suppressed.",
-        "Font rendering and weight scaling differences between Kuikly's Android (Skia/Compose text) and iOS (CoreText) text pipelines for the composer body.",
-        "Send button icon glyph padding computed independently per platform without a shared token."
-      ],
-      "suggestedOwner": "kuikly-rendering",
-      "suggestedFixes": [
-        "Normalize the iOS capture by cropping to the same component-bounds rect as Android (or crop both to the composer container) before comparison.",
-        "Dismiss the iOS IME or capture with hardware keyboard / focused state hidden so the composer is shown standalone.",
-        "Share a single text-style token (size + weight) for the composer body text across platforms.",
-        "Define a shared send-button inner padding / icon-size token so the pink send button renders identically on both ends.",
-        "Apply a consistent header badge width or use an icon-only platform indicator to remove the size mismatch."
-      ],
-      "intentional": [
-        "Full-screen vs cropped canvas difference is a capture-pipeline artifact rather than a product divergence.",
-        "iOS IME presence reflects real device state; only the comparison framing is wrong, not the app behavior."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.2898381064257841
+      "status": "pending",
+      "imageHash": "p1:0000000000010002000100020901080200010002fffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:56.033Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.01912578820161759
     },
     {
       "id": "components.thread.composer.member-suggestions",
-      "status": "ready",
-      "imageHash": "p1:03f807fe00010003000100030001000307f907fb01f901fb3ff93ffb00010003200900030fb10fb300030003fffdfffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe0000ffff0f30fffe0000fffe0424fffe0000fffe2100fffe0ce0fffe0ee0fffe0000fffe0000fffe0000ffffffff",
-      "generatedAt": "2026-07-09T22:22:51.366Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows a system keyboard occupying the lower half of the screen; Android does not show the keyboard, causing a large vertical layout divergence.",
-        "On Android, the 'NOT IN THIS CHANNEL' row text appears to overflow/clip with overlapping characters ('In element to search..' overlapping the member name and handle), while iOS renders the same row cleanly with ellipsis truncation.",
-        "iOS text/avatars and section header spacing appear visually larger due to higher device pixel density (1170x2532 vs 1026x960 baseline canvas), so component bounds and font sizes are not 1:1 equivalent.",
-        "Android 'Product UX ...' row has a blank sub-line area under the title (no subtitle visible), whereas iOS 'Product UX… T…' shows a truncated subtitle 'T…' instead of blank space.",
-        "Status badges differ in color/label (ANDROID yellow tag vs iOS 'iOS' yellow tag) and baseline metadata dimensions are 1026x960 vs current 1170x2532, indicating the crops/canvases are not normalized before diff."
-      ],
-      "likelyCauses": [
-        "iOS test environment rendered with the software keyboard up while Android did not, producing vertical layout shift and pushing the composer/suggestions panel upward on iOS.",
-        "Text overflow/ellipsis logic for suggestion row subtitles differs between Android and iOS rendering (different line count or maxLines handling).",
-        "Baseline crop is a 342x320 component-bounds rect while iOS crop is null/full canvas 1170x2532, so the comparison is between mismatched regions causing inflated pixel mismatch (32.67%).",
-        "Density/scale differences (iOS @3x vs Android dp) not normalized in the diff pipeline."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Dismiss or hide the iOS software keyboard in the Slock test fixture (or capture with the keyboard up on both platforms) to normalize the visible region.",
-        "Apply consistent maxLines + ellipsize on suggestion row subtitle on both platforms; remove the Android overlap by ensuring the second line reserves space and truncates with '…'.",
-        "Pass identical crop rect (or a normalized component-bounds rect) for both baseline and current instead of full canvas for iOS, so the diff is apples-to-apples.",
-        "Normalize for device pixel ratio (compare at the same dp/pt scale) before pixel-perfect comparison.",
-        "Unify badge color/label and metadata header rendering for both ends."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.32718468559700786
+      "status": "pending",
+      "imageHash": "p1:03f807fc00010002000100020001000202010202000100023ff93ffa00010002000100020fb10fb200010002fffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-07-12T22:07:56.037Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.05646730397915234
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "ready",
-      "imageHash": "p1:07fc0ffcc0010003c0010003cffd3ffbc0010003c0010003c7fd1ff3c2410903e0018007fffdfffffffdfffffffdfffffffdfffffffffffffffffffffffffffffffffffffffffffffffffffffffe0000fffe0000ffff0d30fffe0000fffe0004fffe0000fffe2100fffe0c60fffe0ce0fffe0000fffe0000fffe0000ffffffff",
-      "generatedAt": "2026-07-11T22:11:38.878Z",
-      "severity": "medium",
-      "summary": [
-        "iOS end shows the system IME keyboard with suggestion bar and send button, while Android end has no keyboard visible — composition/layout differs dramatically below the channel suggestions",
-        "The second input row (with the clip + link icons and 'As Task' + send arrow) is clipped on Android (right pink send icon cut off at canvas edge) but fully visible on iOS",
-        "Channel name (#) and description text in the first list card appear at different relative font sizes between the two ends — Android names look slightly larger/heavier vs iOS",
-        "Suggested send icon in the bottom row renders differently: Android shows a left chevron '<', iOS shows a paper-plane arrow glyph",
-        "On iOS the '#' prefix in the empty second input row is rendered thinner/lighter weight than on Android (Android uses a heavier '#' glyph)"
-      ],
-      "likelyCauses": [
-        "Keyboard presence/visibility differs between platform states — iOS shows the soft keyboard raising the composer, Android does not",
-        "Channel suggestion list card may have different maxWidth/padding logic per platform in Kuikly",
-        "Send icon asset is mapped to a platform-specific glyph (Material vs SF Symbols)",
-        "Typography for the leading '#' character and channel name likely uses platform default font instead of a shared Kuikly style token"
-      ],
-      "suggestedOwner": "kuikly-composer-thread",
-      "suggestedFixes": [
-        "Unify keyboard presence contract (always show or never show) across Android/iOS in the thread composer test harness",
-        "Constrain the second input row width so the trailing send icon is not clipped on Android; apply the same horizontal padding token used on iOS",
-        "Replace platform-specific icon assets for the send button with a single shared Kuikly vector or icon-font glyph",
-        "Centralize channel-name and '#' prefix typography in a shared style (font-family, weight, size) on both platforms",
-        "Re-run side-by-side capture with the same input-focus state (keyboard dismissed) before scoring pixel mismatch"
-      ],
-      "intentional": [
-        "Different send-icon glyph per platform may be intentional if material vs SF Symbols mapping is by design — flag for design review"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3011011193475649
+      "status": "pending",
+      "imageHash": "p1:03f807fc40010002c0010002c3fd0ffac0010002c0010002c3fd0ff2c0010002c0010002fffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
+      "generatedAt": "2026-07-12T22:07:56.050Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.030389813802136123
     },
     {
       "id": "components.thread.composer.image-preview",
-      "status": "ready",
-      "imageHash": "p1:07f80ffc080108030ffd4fff0ffd0fff000100030fb10fa300010003fffdfffffffdfffffffdffff0005fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffefffe0000fffe0000fffe0810fffe0000fffe0004fffe0000fffe0000fffe0820fffe0ce0fffe0000fffe0000fffe0000ffff7fff",
-      "generatedAt": "2026-07-09T22:22:54.329Z",
-      "severity": "medium",
-      "summary": [
-        "Image preview thumbnail is empty/blank on iOS (right) while Android (left) shows a rendered image with yellow background, pink circle, and black mountain shapes",
-        "iOS screenshot includes a system keyboard at the bottom (with suggestions bar '|', 'The', 'This' and QWERTY keys) that is absent on Android",
-        "Text input on iOS shows a trailing text cursor '|' after the period, not visible on Android",
-        "Both sides show the same composer structure: image preview with close (X) button, text field, action icons, 'As Task' checkbox, and pink send button",
-        "Overall layout/component structure is consistent between platforms, differences are state/content rather than component-level"
-      ],
-      "likelyCauses": [
-        "iOS did not load/bind the image source into the preview thumbnail (placeholder/empty state)",
-        "iOS keyboard is visible due to the text input being focused at capture time, while Android's keyboard was dismissed",
-        "Capture context difference: iOS shot taken with the composer focused vs Android with keyboard hidden",
-        "Potential difference in image-loading lifecycle (lazy load, placeholder rendering) on iOS render path"
-      ],
-      "suggestedOwner": "Kuikly composer / thread image-preview component owner (mobile iOS)",
-      "suggestedFixes": [
-        "Verify the iOS image-preview binding renders the image content (not a blank placeholder) when an attachment is present",
-        "Ensure the text input caret/cursor styling is consistent or hidden in test snapshots",
-        "Add or document a stable capture state that dismisses the soft keyboard before screenshotting on iOS",
-        "Confirm placeholder vs loaded image visual states are identical across Android and iOS Kuikly renderers",
-        "Align the raw capture canvas size between platforms or normalize scale before diffing"
-      ],
-      "intentional": [
-        "Differences in raw capture dimensions and the presence/absence of the system keyboard are likely environment artifacts rather than product divergences",
-        "The image-preview empty/loaded state difference may be a real bug if not an intentional placeholder for missing attachment"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.30836101321883314
+      "status": "pending",
+      "imageHash": "p1:00000000000100020ffd4ffe0ff50ff2000100020f810f02000100027ffdfffe7ffdfffe7ffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fff81fff",
+      "generatedAt": "2026-07-12T22:07:56.045Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.03768751434628215
     },
     {
       "id": "components.thread.files.list",
@@ -930,7 +699,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.05946382036429432
+      "metricMismatch": 0.05947192179419669
     },
     {
       "id": "components.thread.header.states",
@@ -1000,7 +769,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04543653204790643
+      "metricMismatch": 0.04608262108262107
     },
     {
       "id": "components.thread.message-row.deleted-human",
@@ -1035,7 +804,7 @@
     {
       "id": "components.thread.message-menu.default",
       "status": "ready",
-      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80060006e0066006e07e607ec03e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e819f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
+      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020002e0426006e07e607ec03e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e819f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
       "generatedAt": "2026-07-10T22:13:31.365Z",
       "severity": "medium",
       "summary": [
@@ -1066,12 +835,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.428484289977181
+      "metricMismatch": 0.42838673525877313
     },
     {
       "id": "components.thread.message-menu.task",
       "status": "ready",
-      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020006e0766046e0066006c01e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e839f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
+      "imageHash": "p1:01fc01fefffe7ffe87fe07fe80020002e0526006e0066006c01e001e801f001e809f009ea7df2fde81df01de87df07de87df07de81df01de801f001e83df03de839f039e839f019e801f001e801e001efffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ffe00006002fffe3fff",
       "generatedAt": "2026-07-10T22:13:31.368Z",
       "severity": "medium",
       "summary": [
@@ -1099,7 +868,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4309609646102537
+      "metricMismatch": 0.4309089804350468
     },
     {
       "id": "components.thread.message-share.selection",
@@ -1352,7 +1121,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.0649781936511794
+      "metricMismatch": 0.06481852797018672
     },
     {
       "id": "components.home.activity.results",
@@ -1455,135 +1224,55 @@
     },
     {
       "id": "components.home.create-channel.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff00000000000000000000000022043ff47efc7cf87ffc7ffc3ffc7ffc3ffc7ffc7ffc7ffc7ffc7ffc3ffc7ffc7ffc7ffc3ffc7ffc07fc47fc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc0ffcfeff3ffcffff1ffcffff3ffcffff3ffcffff3ffcfffd7f00bffd7d008ff100008ff10000ffff00009ff90000ffffffffffff",
-      "generatedAt": "2026-07-11T22:11:49.596Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an active software keyboard occupying the lower half of the viewport, while Android does not — this hides the AGENTS list, HUMANS section, selected 'Designer' row, and the Cancel / Create Channel action buttons.",
-        "Cancel and Create Channel buttons are clipped/missing on iOS because the keyboard covers the dialog footer; on Android they are fully visible.",
-        "AGENTS list with 'Cindy' and 'Visual QA' rows is partially visible on iOS, but HUMANS section and selected 'Designer' row are not visible on iOS while fully rendered on Android.",
-        "Caret position differs: iOS shows a vertical text caret near the 'a' in the Name field, Android shows no caret — indicates different focus/active-input state.",
-        "Dialog vertical scroll/position differs: iOS dialog appears to scroll up so the Name field stays above the keyboard; Android dialog sits lower with the full footer visible."
-      ],
-      "likelyCauses": [
-        "Soft keyboard appearance is not being accounted for in iOS layout (no keyboard avoidance / no resize for input focus).",
-        "Missing or incorrect implementation of UIResponder.keyboardWillShow notification handling in Kuikly iOS adapter for this dialog.",
-        "Dialog container is using a fixed/bottom-anchored layout that does not reflow when keyboard appears, instead of using scrollable content with insets.",
-        "inputAutoFocusState difference: iOS side is rendered with the Name field focused (caret shown) while Android side is not, producing different UI states for comparison."
-      ],
-      "suggestedOwner": "Kuikly iOS platform / CreateChannelDialog module owner",
-      "suggestedFixes": [
-        "Add keyboard-avoidance behavior to the CreateChannelDialog on iOS: shrink the dialog or scroll its content so the focused input and the action buttons remain visible above the keyboard.",
-        "Ensure the dialog footer (Cancel / Create Channel) is rendered above the keyboard by adding bottom safe-area inset equal to keyboard height.",
-        "If state must match Android for visual diffing, render screenshots with keyboard dismissed, or synchronize autofocus behavior between platforms before capture.",
-        "Verify the dialog uses a scrollable inner container with proper contentInsetAdjustmentBehavior on iOS so all sections (AGENTS, HUMANS, buttons) stay reachable when typing."
-      ],
-      "intentional": [
-        "Difference in platform-native keyboard rendering (system QWERTY on iOS vs. no keyboard on Android) is expected, but the resulting layout regression on iOS is not."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.35341002686974254
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000000000000000000000200027f43cfc6cf87ffc7ffc3ffc7ffc3ffc7dfc7ffc7ffc7ffc7ffc3ffc7ffc3ffc7ffc3ffc7ffc07fc07fc3ffc7ffc3ffc7ffc2ffc1ffc3ffc7ffc0ffcffff1ffcffff1ffcffff3ffcffff0ffcffff0ffcffff7f00ffff7d00ddb30000ffff0000ffff0000ffff0000ffffffffffff",
+      "generatedAt": "2026-07-12T22:07:56.428Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.43314362484978597
     },
     {
       "id": "components.members.create-agent.dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83ffc3ffc2ffc09fc3ffc3ffc3dfc7ffc3ffc3ffc3ffc000423fc0ffc00f43ffc2ffc3ffc3ffc3ff43ffc7ffc3ff43ffc3ffc07fc3ffc3ffc2ffc3ffc3ffc80003ffcffff27fcffff3ffcffff3ffcffff2ffcfff83ffcbff83ffc8ff03ffc0ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-11T22:11:50.005Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an on-screen software keyboard occupying the lower half of the viewport, which is not present on Android.",
-        "Android renders the full dialog including MODE (Fast mode, Advanced) and footer action buttons (Cancel, Create Agent); iOS only shows COMPUTER, NAME, DESCRIPTION, RUNTIME and the top of MODEL before being occluded by the keyboard.",
-        "Android displays an error banner 'Failed to create agent' with a peach/salmon background directly under the title; iOS has no error banner (asterisks on COMPUTER/NAME indicate required-field validation only).",
-        "Layout is scrolled on iOS: the title 'CREATE AGENT' sits higher and the COMPUTER field appears near the top, whereas Android starts with the error banner at the top below the title.",
-        "Footer action area is missing/clipped on iOS due to keyboard inset: no Cancel button, no Create Agent (pink) button visible."
-      ],
-      "likelyCauses": [
-        "iOS auto-focus on the first input (Computer dropdown/Name) triggers the system keyboard, reducing the available viewport and hiding bottom controls.",
-        "The dialog content is not scrollable enough on iOS, or scroll-into-view behavior is missing, so lower fields (REASONING, MODE, action buttons) remain below the keyboard.",
-        "Error banner is state-dependent and only rendered on Android in this snapshot; may indicate the dialog state was reset between captures or the error was dismissed on iOS.",
-        "Different safe-area / keyboard-avoiding-view handling between Kuikly Android and iOS implementations."
-      ],
-      "suggestedOwner": "Kuikly Mobile / Dialog (Members Create-Agent) component owner",
-      "suggestedFixes": [
-        "Implement consistent KeyboardAvoidingView / safe-area padding on iOS so footer buttons (Cancel, Create Agent) remain reachable when the keyboard is shown.",
-        "Make the dialog body scrollable on iOS and ensure focus auto-scrolls the active field into the visible area above the keyboard.",
-        "Normalize required-field error rendering across platforms: either show the same 'Failed to create agent' banner on iOS when in error state, or remove it from Android so both ends match.",
-        "Verify the FORM/Section component respects platform inset behavior for bottom-anchored action buttons (fix them above keyboard via flex/positioning rather than clipping).",
-        "Use a larger iOS viewport or shrink the device-scale in Slock to avoid the keyboard covering comparison content; otherwise add a 'keyboard hidden' capture mode for visual diff baselines."
-      ],
-      "intentional": [
-        "Different viewport scales (390x844 vs 1170x2532) used for side-by-side display rather than device-native rendering."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3937919417777238
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2df82df83ffc3ffc2ffc09fc3ffc3ffc3dfc3ffc3ffc3ffc3ffc000423fc1ffc3ffc3ffc3ffc3ffc3ffc3ff43ffc7ffc3ff43ffc3ffc07fc3ffc3ffc2ffc3ffc3ffc80003ffcde7327fcffff3ffcffff3ffcffff2ffcbff83ffc1ff83ffc0ff03ffc0fe03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.445Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.39406468991777044
     },
     {
       "id": "components.members.create-agent.claude-dialog",
-      "status": "ready",
-      "imageHash": "p1:ffffffff000000003dfc3dfc2ff82df83ffc3ffc29fc09fc2ffc3ffc3ffc7ffc3ffc3ffc000400042ffc0ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff27fcfff82ffcbff83ffc8ff03f800ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-10T13:23:05.041Z",
-      "severity": "high",
-      "summary": [
-        "iOS end has the software keyboard covering the lower half of the dialog (Provider, Model, Reasoning fields and Cancel/Create buttons are hidden/occluded).",
-        "Runtime value differs: Android shows 'Claude Code', iOS shows 'Codex CLI'.",
-        "Name input field on iOS shows an active text caret ('Product-QA-Bot' with a cursor between P and r) while Android has no visible caret."
-      ],
-      "likelyCauses": [
-        "Native iOS keyboard auto-presents and pushes/overlays the form instead of resizing the scroll container.",
-        "Form state diverged between renders (different runtime selection and active focus on Name field).",
-        "iOS side may be missing a KeyboardAvoidingView / safe-area inset adjustment applied on Android."
-      ],
-      "suggestedOwner": "Kuikly mobile platform / dialog component owner",
-      "suggestedFixes": [
-        "Wrap the dialog scroll view in a KeyboardAvoidingView equivalent (or apply bottom safe-area padding) so the keyboard pushes content rather than covering it.",
-        "Ensure the same initial Runtime value (e.g., 'Claude Code') is used in test fixtures on both platforms.",
-        "Reset/blur the Name field for parity in the visual test capture, or take the screenshot before focus.",
-        "Verify scroll container allows reaching the Cancel/Create Agent buttons when the keyboard is shown (add a footer that floats above the keyboard or ensure content scrolls past it)."
-      ],
-      "intentional": [
-        "Runtime selection difference and caret presence may be expected test-state differences and not platform bugs, but the keyboard occlusion is likely unintentional."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3166484384493863
+      "status": "pending",
+      "imageHash": "p1:ffffffff000000003dfc3dfc2ff82df83ffc3ffc29fc09fc2ffc3ffc3ffc3ffc3ffc3ffc23fc00043ffc1ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcde733ffcffff3ffcffff3ffcffff27fcbff82ffc1ff83ffc0ff03f800fe03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.454Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3200672418681897
     },
     {
       "id": "components.members.create-agent.claude-custom-provider-dialog",
-      "status": "ready",
-      "imageHash": "p1:efffffff000000003dfc3dfc2ff82df83ffc3ffc29fc09fc2ffc3ffc3ffc7ffc3ffc3ffc000400042ffc0ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcffff3ffcffff3ffcffff3ffcffff203cfff83ffcbff83ffc8ff03f840ff03f0080013800800100008001ffffffff",
-      "generatedAt": "2026-07-10T13:23:05.121Z",
-      "severity": "high",
-      "summary": [
-        "iOS (right) shows the system keyboard overlaying and obscuring the lower half of the form (Runtime, Provider, API URL, API KEY, action buttons are hidden or clipped behind the keyboard).",
-        "Android (left) renders the full form including Cancel and Create Agent buttons at the bottom; the form is not occluded by a keyboard.",
-        "iOS appears focused in the Name input field (visible caret in Product-QA-Bot) which triggered the keyboard, while Android shows a different Runtime selection ('Codex CLI' vs 'Claude Code').",
-        "Form fields above the keyboard on iOS are pushed/compressed — the Model label and refresh icon are visible just above the keyboard while Android shows Provider/Custom dropdown in the equivalent space.",
-        "Cancel and Create Agent action buttons are missing/clipped on iOS due to keyboard occlusion; Android displays both buttons clearly."
-      ],
-      "likelyCauses": [
-        "iOS focus auto-scroll or keyboard avoidance is not implemented (no keyboardAvoidingView / safe area inset handling) so the bottom of the dialog is covered by the system keyboard.",
-        "Test state differs: iOS has the Name field focused (and Runtime differs) so the keyboard is shown; Android was captured without an active input focus.",
-        "Dialog content extends below the viewport with no scroll-to-focused-input behavior on iOS."
-      ],
-      "suggestedOwner": "kuikly-mobile-dialog",
-      "suggestedFixes": [
-        "Wrap the dialog body in a scroll view and apply keyboard avoidance (e.g., KeyboardAvoidingView / adjustResize equivalent) so the focused input and primary actions remain visible on iOS.",
-        "Ensure the dialog has a max-height or scrolls internally so the Cancel/Create Agent buttons stay reachable when the keyboard is open.",
-        "Normalize the captured state across platforms for visual tests (blur inputs before screenshot) or capture with/without keyboard explicitly.",
-        "Verify field focus management so opening the dialog does not auto-focus an input on iOS.",
-        "Check that the Cancel button styling matches Android on iOS once it is visible."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.31663223558958153
+      "status": "pending",
+      "imageHash": "p1:efffffff000000003dfc3dfc2ff82df83ffc3ffc29fc09fc2ffc3ffc3ffc3ffc3ffc3ffc23fc00043ffc1ffc3ffc3ffc3ffc3ffc3ff43ff43ffc7ffc3ffc3ffc23fc07fc3ffc3ffc3ffc3ffc3ffc80003ffcde733ffcffff3ffcffff3ffcffff203cbff83ffc1ff83ffc0ff03f840fe03f0080013800800100008001ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.498Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.3199946665586476
     },
     {
       "id": "components.members.agent-detail.profile",
@@ -1650,39 +1339,16 @@
     },
     {
       "id": "components.channel.settings.panel",
-      "status": "ready",
-      "imageHash": "p1:ffffffff0000000000000000000000000000000000000000000000007ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffe7ffc7ffc7ffc7ffc7ffc7ffc7ffc7f807f807fc47fc47ffc7ffc0000ffff7ffcffff4000ffff4000ffff4000ffff0000fffd0000fffd0000dff900008ff10000ffff0000ffff8000ffffffffffff",
-      "generatedAt": "2026-07-09T22:23:14.917Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows an active on-screen keyboard occupying roughly the bottom 45% of the viewport, while Android shows none — the soft keyboard is not part of the panel component but is causing the visible divergence.",
-        "Because the keyboard is open on iOS, the bottom three action buttons (Make Private, Archive Channel, Delete Channel) are clipped/hidden behind it and not visible in the iOS render.",
-        "The Edit Channel modal/dialog on iOS appears shifted upward (typical iOS keyboard-avoidance) versus the Android panel which is vertically centered with all controls visible.",
-        "Dialog bounds: Android modal extends from ~y=600 to ~y=1800 (fully visible); iOS modal appears pushed up and its lower half is occluded by the keyboard.",
-        "Typography and color of visible elements (EDIT CHANNEL title, NAME/DESCRIPTION labels, input borders, Cancel/Save Changes buttons) appear consistent across both sides."
-      ],
-      "likelyCauses": [
-        "Soft keyboard was triggered on the iOS render (focus on a text input) but not on the Android render, causing layout shift and occlusion.",
-        "iOS keyboard-avoidance behavior is pushing the modal up, while Android render has no keyboard so the modal stays at its natural position.",
-        "Test fixture/snapshot may not have dismissed the keyboard before capturing the iOS screenshot.",
-        "The comparison may not be cropping out system UI (keyboard), inflating the pixel mismatch ratio."
-      ],
-      "suggestedOwner": "qa-visual-testing",
-      "suggestedFixes": [
-        "Dismiss the soft keyboard on the iOS side before capturing the screenshot (tap a non-input area or send a resign-first-responder), so both renders are in the same idle state.",
-        "Apply the same viewport/inset normalization on both sides: crop out the system keyboard region before diffing, or use ignoreKeyboardInsets tolerance.",
-        "Ensure the Edit Channel modal is keyboard-aware on iOS so content (Make Private, Archive Channel, Delete Channel) remains scrollable/visible above the keyboard instead of being clipped.",
-        "Verify the modal's content insets and scroll behavior are equivalent on Android and iOS (e.g., adjustResize vs. iOS keyboard avoidance).",
-        "Re-run the comparison after fixing the keyboard state; the panel content itself looks isomorphic."
-      ],
-      "intentional": [
-        "iOS system keyboard appearance is platform-native and expected when an input is focused.",
-        "iOS modal shifting upward to avoid the keyboard is standard platform behavior."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4005276056223923
+      "status": "pending",
+      "imageHash": "p1:ffffffff8001000100000000000000000000000000000000000000007ffe7ffc7ffc7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffe7ffe7ffc7ffe7ffc7ffe7ffc7fc07f807ffe7ff47ffe7ffcc00040007ffe7ffce00040007ffe7ffcc0004000200423c4000000000000000000000000000000000000000080018001ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.538Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.033346835716503986
     },
     {
       "id": "components.channel.members.add-panel",
@@ -1747,432 +1413,172 @@
     },
     {
       "id": "components.settings.page.states",
-      "status": "ready",
-      "imageHash": "p1:3ffe3ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff7cff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7bdf77df7f3077307ff070000fff70000c3070bb4ff070000eff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-10T22:13:45.690Z",
-      "severity": "high",
-      "summary": [
-        "iOS (right) shows a software keyboard overlay covering the lower half of the screen; Android (left) does not have a keyboard visible — different input focus/UI state.",
-        "On iOS, the DISPLAY NAME text field shows an active caret/cursor while on Android it does not — different focus states between the two captures.",
-        "On iOS, the 'Connected accounts' card, 'Change password', 'Session' and 'Log out' sections are hidden behind the keyboard; on Android they are fully visible — layout/visibility divergence caused by keyboard insets not being accounted for.",
-        "The 'Session' row label is rendered dimmer/more muted on iOS compared to Android, suggesting a different disabled/secondary text style or color token.",
-        "Bottom safe-area/keyboard gap is not reserved on iOS — content is pushed up and clipped instead of scrolling or insetting."
-      ],
-      "likelyCauses": [
-        "iOS capture taken while the DISPLAY NAME field is focused, triggering the native keyboard without applying keyboard-avoiding insets in the Kuikly layout.",
-        "Keyboard appearance not handled via safe-area/IME insets on iOS, so underlying page content is occluded instead of being scrolled out of view.",
-        "Inconsistent disabled/secondary label styling tokens between Android and iOS theme definitions.",
-        "Possibly different scroll/inset behavior between Android (no keyboard up) and iOS (keyboard up) test harness state."
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Add keyboard-avoiding behavior (IME insets / KeyboardAvoidingView equivalent in Kuikly) so focused inputs cause the scroll view to offset instead of being covered.",
-        "For Slock visual tests, ensure both baselines are captured in the same UI state (keyboard dismissed, no field focused) before diffing.",
-        "Align secondary/disabled label color tokens (e.g. 'Session' label) across Android and iOS theme definitions.",
-        "In test harness, dismiss the keyboard before snapshotting or normalize by applying consistent window insets.",
-        "Re-run the Slock diff after fixing state mismatch to verify whether remaining ~40% mismatch is purely the keyboard occlusion."
-      ],
-      "intentional": [
-        "Platform-native on-screen keyboard appearance on iOS when a text field gains focus is expected native behavior; the divergence is in how the app responds to it."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4028996367858927
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe9fff9fff83ff83ffffff7fffcfffcfff8ff70ff783f783f78ff70ff7bff75ff7bff77ff787f747f78fe70ff780070007fe377e378337023783f783f780f740f7b1f761f7f3077307bf077f07fff77ff7c3074307bf077f07e5f77ff7a1f761f780078007fff7ffff8ff74ff7fff77ff78007000780060006ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.612Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18818372692780272
     },
     {
       "id": "components.settings.account.page",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f78ff7cff7fff77ff7fff77ff797f747f79fe78ff780078007fe377e378337837783f783f780f741f7bdf77df7f3077307ff070000fff70000c3070bb4ff070000eff72236e1f7000080073580ffff06e08ff70e60fff700008007000080070000ffffffff",
-      "generatedAt": "2026-07-10T22:13:47.428Z",
-      "severity": "medium",
-      "summary": [
-        "iOS shows an active on-screen keyboard occupying roughly the bottom 45% of the viewport, while Android does not — keyboard is only present on one platform (state difference)",
-        "As a consequence of the keyboard, the iOS view is scrolled: the Session / Log out section visible on Android is hidden on iOS (clipping at 'Connect' button)",
-        "The iOS layout appears compressed/shifted upward so that the 'Change password' row is partially clipped between the main profile card and the Session card",
-        "Header underline/divider on iOS appears slightly closer to the 'Account' title than on Android, suggesting different header padding"
-      ],
-      "likelyCauses": [
-        "iOS test harness or screenshot capture triggered an active text input (focused input field) on the Display Name field before snapshot",
-        "Android render kept focus off-screen or unfocused, producing different scroll/keyboard state between the two captures",
-        "Autofocus / keyboard-avoiding-view differences between Kuikly's Android and iOS implementations during the same captured state"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Ensure both Android and iOS test fixtures dismiss/blur the focused field before capturing, or capture via a state where no input has focus",
-        "Verify Kuikly's KeyboardAvoidingView behavior on iOS so focused input does not push the Log out / Session section out of view",
-        "If capturing both ends in a typed-in state is intended, keep them aligned by using the same fixture (focused vs unfocused) and document it as the test contract",
-        "Re-run the snapshot and check whether the misalignment disappears once the keyboard is dismissed; if not, inspect ScrollView/FlatList contentInset for iOS"
-      ],
-      "intentional": [
-        "Log out copy diverges: Android uses 'Sign out on this device' and iOS uses 'Sign out of this browser' — platform-correct, do not align"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.4028996367858927
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe9fff9fff83ff83ffffff7fffcfffcfff8ff70ff783f783f78ff70ff7bff75ff7bff77ff787f747f78fe70ff780070007fe377e378337023783f783f780f740f7b1f761f7f3077307bf077f07fff77ff7c3074307bf077f07e5f77ff7a1f761f780078007fff7ffff8ff74ff7fff77ff78007000780060006ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.618Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18818372692780272
     },
     {
       "id": "components.settings.account.provider-linked",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffffffffff8ff38ff783f383f78ff3cff7fff37ff7fff37ff787f347f79fe78ff780038007fe337e378333837783f383f780f341f7bdf37df7f3037307ff930000fff30000c3030bb4ff030000fff32236e1f3000080073580ffff06e08ff30e60fff300008003000080030000ffffffff",
-      "generatedAt": "2026-07-11T22:11:51.035Z",
-      "severity": "high",
-      "summary": [
-        "iOS (right) is missing the bottom half of the screen: Session section, Log out block, description text, and Log out CTA are not visible, cropped or pushed off-screen by the keyboard.",
-        "iOS shows the iOS on-screen keyboard occupying the lower half of the viewport, which is not present on Android baseline.",
-        "Profile card vertical bounds differ — on iOS the card extends down into the keyboard overlay area, partially covering/hiding the 'Google' Connected row's subtitle and 'GitHub' row.",
-        "Display Name text input has a visible cursor on iOS but no cursor on Android (different focus/active state).",
-        "Subtle spacing/alignment drift: the '@artin' handle sits slightly closer to the name on iOS; input field vertical padding looks marginally different."
-      ],
-      "likelyCauses": [
-        "iOS has an active/focused text input, which causes the system keyboard to appear and shifts/resizes the scroll container; the page is not properly scrolled to keep the focused input visible.",
-        "ScrollView or content insets not adjusted for iOS keyboard avoidance (missing KeyboardAvoidingView / contentInset / safe-area handling).",
-        "Test harness or snapshot capture on iOS taken while the input is focused rather than at the same interaction state as Android."
-      ],
-      "suggestedOwner": "kuikly-mobile / account-settings owner",
-      "suggestedFixes": [
-        "Dismiss the keyboard or blur the input before taking the iOS snapshot to match Android's unfocused state.",
-        "Wrap the scroll container in a KeyboardAvoidingView equivalent on iOS and apply bottom contentInset equal to the keyboard height so the Log out/Session sections remain accessible.",
-        "Ensure the form scrolls to keep the focused field visible above the keyboard and that the scroll position resets when focus is lost.",
-        "Align the Profile card inner padding and input field heights between platforms to remove the small spacing drift.",
-        "Verify the snapshot pipeline takes both shots in identical interaction states (no focused input)."
-      ],
-      "intentional": [
-        "The system keyboard appearance itself is platform-correct and expected when an input is focused."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3795854093247458
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff83ff83ffdfff7fffcfffcfff87f30ff783f383f78ff30ff7bff35ff7bff37ff787f347f78fe30ff780030007be337e378333023783f383f780b340d7b1f341f7b3037307bf937f97bff37ff7c3034307bf035f07e5f36ff7a1f361f780078007fffffff78ff30ff7fff37ff78003000780020006ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.663Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.15049283698572802
     },
     {
       "id": "components.settings.account.password-expanded",
-      "status": "ready",
-      "imageHash": "p1:2ffe2ffe9fff9fff83ff83ffffffffffcfffffff8ff70ff783f783f78ff70ff7bff77ff7fff77ff797f747f78fe78ff780070007fe377e378337837783f783f780f740f7b1f761f7f3077307ff077f07fff77ff6c3070290bf070000e1f72236e1f7000081f73100bfe7066080070e60bff700008007000081d70000ffffffff",
-      "generatedAt": "2026-07-11T22:11:52.036Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows a system keyboard overlay covering roughly the bottom half of the viewport, hiding the GitHub connected-account row and the entire Change Password section (Current/New/Confirm password fields).",
-        "Android side shows the form fully laid out below Connected accounts — Change password accordion is expanded with CURRENT PASSWORD, NEW PASSWORD (placeholder 'Min 8 characters'), and CONFIRM PASSWORD label visible.",
-        "DISPLAY NAME field on iOS has a visible text caret/cursor inside the input (focus state) while Android shows no caret — consistent with the keyboard being up on iOS.",
-        "Layout/bounds for the upper form region (header, Profile card with avatar/name, NAME, DISPLAY NAME, Email VERIFIED chip, Save Profile button) appear consistent between sides."
-      ],
-      "likelyCauses": [
-        "iOS keyboard focus is active on a text input at capture time, whereas Android has no focused input / IME up.",
-        "Kuikly's iOS render or Slock capture does not dismiss or relayout the viewport when the soft keyboard appears (or the baseline snapshot was taken with the keyboard hidden).",
-        "Possible scroll/viewport height not being adjusted for the iOS keyboard safe area, leaving the password fields occluded instead of scrolling into view."
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly iOS shell (input/keyboard handling)",
-      "suggestedFixes": [
-        "Capture both renders with the keyboard explicitly dismissed (or capture two states: keyboard up / keyboard down) and compare the keyboard-down state for parity.",
-        "Ensure the Account screen's ScrollView insets its content so the focused field scrolls above the keyboard on iOS (KeyboardAvoidingView / contentInset adjustment).",
-        "Verify focus management: on Android the DISPLAY NAME field is unfocused at capture, on iOS it is focused — sync test precondition (tap target) before snapshot.",
-        "If the design intentionally keeps the password section visible, apply a platform-agnostic bottom inset equal to keyboard height on iOS."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3603090695507757
+      "status": "pending",
+      "imageHash": "p1:0ffe0ffe9fff9fff83ff83ffffff7fffcfffcfff8ff70ff783f783f78ff70ff7bff75ff7bff77ff787f747f78fe70ff780070007be377e378337023783f783f780f740f7b1f741f7b3077307bf077f07bff77ff7c3074307bf075f07e1f765f7e1f761f781f701f7bfe73ff780070007bff717f78007000781120112ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.677Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.18969633140249254
     },
     {
       "id": "components.settings.account.error-state",
-      "status": "ready",
-      "imageHash": "p1:3ffe7ffe9fffdfff83ff83ffffffffffefffffff8ff78ff783f783f787f78ff7a017c0179ff75ff7fff77ff7fff77ff787f7d7f78fa780078ff74007fe377e3783f783f783f783f7bc07dc178007400781f740f7f7e70b90ff070000ff972236c3070000cf073580a0f706e080270e60c0070000e1f70000a3f70000ffffffff",
-      "generatedAt": "2026-07-10T22:13:50.391Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an on-screen keyboard occupying the lower half of the screen, which is absent on Android; this likely indicates the DISPLAY NAME input has focus on iOS but not on Android.",
-        "As a consequence of the keyboard, the iOS view has no visible scroll offset shift, while the connected accounts section and Change password are scrolled out of view; the entire bottom area (Google, GitHub, Provider link failed banner, Change password) is clipped/hidden on iOS.",
-        "The DISPLAY NAME input on iOS is missing its left border/edge stroke where it meets the keyboard area, while Android shows the full bordered input clearly.",
-        "Input field text/placeholder rendering of 'artin' in DISPLAY NAME on iOS is clipped at the left edge (visible as 'rtin' is not the case here, but the cursor/text positioning differs).",
-        "The DISPLAY NAME input on Android is slightly narrower (no focus state highlight) versus iOS which shows what appears to be a focus/active border treatment around the input."
-      ],
-      "likelyCauses": [
-        "iOS test step focused the DISPLAY NAME TextField (tap gesture or programmatic focus) before capture, triggering the native iOS keyboard.",
-        "Android did not focus the input, so no soft keyboard is shown and the lower content (Connected accounts, Change password) is visible.",
-        "Possible lack of keyboard avoidanceView / insets handling in Kuikly iOS render, or differing focus/blur lifecycle between platforms.",
-        "Test harness (Slock) may be blurring/focusing fields differently per platform before snapshot."
-      ],
-      "suggestedOwner": "kuikly-mobile-platform / settings-account-component owner",
-      "suggestedFixes": [
-        "Blur the focused TextField on both platforms before capturing the Slock snapshot, or set the input as non-focusable in test mode.",
-        "Apply consistent keyboard-avoidance behavior (contentInset / resize) in the iOS Kuikly render so the form scrolls above the keyboard instead of being clipped.",
-        "Ensure DISPLAY NAME input border and focus state are rendered identically on both platforms (verify Kuikly TextField focus ring).",
-        "Align viewport/scroll state at capture time so the bottom of the form (Google/GitHub/Provider link failed/Change password) is shown on both sides.",
-        "Add platform-specific tolerance or skip the keyboard region in the pixel-perfect comparison to avoid false mismatches."
-      ],
-      "intentional": [
-        "On-screen keyboard appearance is platform-correct iOS behavior when an input is focused, not a render bug per se."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.38854018984350736
+      "status": "pending",
+      "imageHash": "p1:1ffe3ffe9fff9fff83ff83ffffff7fffcfffcfff8ff70ff783f783f785f70ff7800700178ff75ff7bff77ff7bff77ff787f707f78827000783f743d7be377e3783f783f783f783f7bc0718178007400780f741f7b7e773f7f3075707bf177f17c3074307cf074f0780f700f78027003780074017e1f761f7a1f661f2ffffffff",
+      "generatedAt": "2026-07-12T22:07:56.702Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.19417068362565992
     },
     {
       "id": "components.settings.server.profile",
-      "status": "ready",
-      "imageHash": "p1:1ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:51.795Z",
-      "severity": "high",
-      "summary": [
-        "iOS side displays the system soft keyboard occupying the lower half of the screen, which is absent on the Android side",
-        "NAME input field is focused on iOS (caret visible) but not on Android, causing a different page composition/keyboard occlusion state",
-        "Danger Zone Delete Server card is pushed up and partially compressed/overlapped on iOS due to keyboard insets, while Android shows it with full surrounding whitespace",
-        "Save Profile button on iOS is visually clipped/shortened horizontally compared to Android (smaller width)",
-        "Lower ~50% of the iOS viewport (below the keyboard area) is occluded, hiding any content that exists in that region on Android (empty whitespace on Android)"
-      ],
-      "likelyCauses": [
-        "iOS keyboard presentation adjusts content insets while Android does not, or Android screenshot was taken without an active keyboard",
-        "Input field auto-focus differs between platforms (iOS focused on load, Android did not)",
-        "Missing or inconsistent keyboard avoidance view / safe-area handling in the Kuikly iOS renderer for this screen",
-        "Page layout is not responding to keyboard show/hide events symmetrically across platforms"
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly renderer team (settings profile screen owner in copy)",
-      "suggestedFixes": [
-        "Reproduce with the keyboard dismissed on iOS to compare like-for-like baseline states",
-        "Add a unified keyboard-avoidance + content-inset policy for Kuikly-rendered forms on iOS so layout does not collapse when the soft keyboard appears",
-        "Ensure the Name input does not auto-focus on iOS (or align auto-focus behavior across Android/iOS)",
-        "Verify SafeArea / keyboard insets are applied to the scroll container so Danger Zone card remains fully visible",
-        "Add a visual regression check that covers both the keyboard-dismissed and keyboard-shown states on both platforms"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.3928612900176881
+      "status": "pending",
+      "imageHash": "p1:1ffc1ffe9dfe1dfe80fe80fe1f0e1f0e80f600d6800200128002000680020002bff23ff28ff20ff283f203f2800200028006000687f207f686020602820202068e02020280060006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe7ff87ffeffff7fff",
+      "generatedAt": "2026-07-12T22:07:56.699Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1672273531278271
     },
     {
       "id": "components.settings.administration.admins",
-      "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8fff0ff79ff31ff783f3000780030007bff37ff7bff37ff7bbf33bf7800300078007800787f307f786030e07ba037e07af030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:52.687Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows an on-screen software keyboard occupying the lower half of the viewport; Android does not, leaving that area blank",
-        "The Name input field on iOS shows a blinking text caret/cursor, on Android no caret is visible (focus state only on iOS)",
-        "Vertical content layout shifts: on iOS the 'Delete Server' card and its button sit higher relative to viewport because the keyboard pushes content up, while on Android they sit in their natural position with empty space below",
-        "Save Profile button on iOS appears slightly dimmer/grayed-out pink vs. a more saturated pink on Android (possibly disabled/disabled-by-empty state vs. active state)",
-        "Form input borders, card borders, and button drop-shadow offsets appear consistent between platforms; main divergence is keyboard-induced layout shift and caret/focus indicator"
-      ],
-      "likelyCauses": [
-        "iOS is rendering an active software keyboard because an input has focus, while Android is not (focus/IME state not synchronized between platforms in the Slock capture)",
-        "Focus state was triggered only on the iOS run, or auto-focus differs between Android and iOS Kuikly renders",
-        "Text caret rendering differs: iOS shows native blinking caret, Android may suppress it in the test harness",
-        "Submit button enabled/disabled state differs between platforms based on validation that hasn't fired identically"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Ensure the test harness dismisses/blurs any focused input before screenshot, or capture both runs with identical IME/focus state",
-        "Unify auto-focus behavior across Android and iOS so neither platform opens the keyboard unexpectedly",
-        "Synchronize input validation state so Save Profile button uses the same enabled color on both platforms",
-        "Add an IME-state guard in Kuikly to avoid keyboard-driven viewport reflow during visual regression baselines",
-        "If keyboard presence on iOS is expected, include a non-keyboard variant in the visual baseline set"
-      ],
-      "intentional": [
-        "Keyboard appearance may be a real production behavior on iOS, in which case baselines should be updated to include the keyboard layout"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.37025593767299925
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffe8ffe8ffe80fe80ff1ffe1fff89f30bf7801200128012000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280020007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.750Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.14256491270709282
     },
     {
       "id": "components.settings.administration.invites",
-      "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:52.829Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows the on-screen keyboard occupying roughly the bottom 40% of the viewport, while Android side has no keyboard visible — the form is fully scrollable/focusable on Android but the keyboard pushes the iOS layout up.",
-        "NAME input on iOS displays an active text caret/cursor inside the field (text is being edited), whereas the Android NAME field is unfocused and shows no caret.",
-        "iOS renders the NAME input with a heavier/stroked outlined border (active focus ring) compared to Android's thinner border.",
-        "iOS Name field content 'Visual Server' is rendered with a noticeably larger/heavier font weight than Android's lighter weight in the same field.",
-        "Vertical spacing between the Save Profile button and the Danger Zone card is reduced on iOS because the keyboard compresses the viewport; on Android there is empty space between the Danger Zone and the bottom of the screen."
-      ],
-      "likelyCauses": [
-        "iOS native keyboard automatically appears when an input is focused and is not being dismissed or inset-padded the same way as on Android.",
-        "Kuikly input/focus handling differs between Android and iOS runs — iOS triggered auto-focus on render while Android did not.",
-        "Platform-specific TextField styling (focus border weight, font weight in active state) is not unified in the Kuikly component mapping.",
-        "Safe-area / keyboard-inset padding is not applied uniformly, causing layout shift on iOS only."
-      ],
-      "suggestedOwner": "Kuikly mobile platform team (input/focus & keyboard-inset handling)",
-      "suggestedFixes": [
-        "Add a uniform focus/autofocus policy so both ends start in the same unfocused state for screenshot diffs, or blur on mount.",
-        "Normalize TextField active-state styling (border thickness, font weight) via a shared theme so focused and unfocused appearances match across Android and iOS.",
-        "Apply consistent keyboard-inset/safe-area padding to the scroll container so layout below the Danger Zone is not pushed off-screen on iOS.",
-        "Ensure the iOS render uses the same viewport-bounds crop contract as Android for comparison.",
-        "Pin the Slug placeholder/value font weight to match between platforms (currently 'visual' placeholder weight differs slightly)."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:0ffc0ffe8ffe8ffe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.766Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.administration.join-links",
-      "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:56.111Z",
-      "severity": "high",
-      "summary": [
-        "iOS (current) shows a system soft keyboard occupying the lower half of the viewport, while Android (baseline) does not, indicating iOS captured the screen with keyboard visible",
-        "All content below the 'Delete Server' card is occluded by the keyboard on iOS; Android has empty space showing the full layout end",
-        "Name input field shows a visible text caret/blinking cursor on iOS but not on Android, suggesting iOS rendered an active focused input state",
-        "Layout vertical positioning of Profile card and Danger Zone card appears slightly shifted due to the keyboard pushing content up on iOS",
-        "Visual proportions and component bounds are otherwise consistent between the two ends (cards, buttons, typography, colors align)"
-      ],
-      "likelyCauses": [
-        "Test capture on iOS triggered a focused text field which invoked the on-screen keyboard",
-        "Screenshot timing on iOS captured during/after input focus rather than after dismissal",
-        "Input auto-focus behavior differs between Kuikly Android and iOS renders, causing iOS to show focus + keyboard by default",
-        "No explicit blur or keyboard-dismiss step in the iOS test harness before capturing"
-      ],
-      "suggestedOwner": "mobile-platform / qa-automation",
-      "suggestedFixes": [
-        "Dismiss the soft keyboard (tap-outside or send blur event) before taking the iOS screenshot to match the Android baseline state",
-        "Avoid auto-focusing the Name input on screen mount, or guard auto-focus behind a platform-specific flag",
-        "Re-capture iOS with keyboard hidden so the lower Danger Zone area is fully visible and the two ends become directly comparable",
-        "Normalize viewport rendering in Slock by waiting for IME to close or by using a fixed-state capture (e.g., after input loses focus)",
-        "If the keyboard is the intended state for the visual check, add an Android counterpart that also focuses an input so both sides are captured with the IME shown"
-      ],
-      "intentional": [
-        "Keyboard visibility itself is platform-correct behavior; the divergence is a test-capture artifact rather than a render bug"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:07fc0ffe97fe87fe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.801Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.administration.pre-join-agreement",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:58.392Z",
-      "severity": "high",
-      "summary": [
-        "iOS shows a system keyboard occupying the lower ~40% of the viewport, while Android does not — completely different layout state between the two ends.",
-        "NAME input shows a blinking text caret ('|' character) on iOS but not on Android, indicating iOS has input focus while Android does not.",
-        "The iOS NAME input appears slightly wider and the 'Visual Server' text sits closer to the left edge, while Android has more left padding inside the input.",
-        "Component bounds (Profile card, Danger Zone card, Delete Server button) are essentially identical between sides; main divergence is the keyboard overlay and input focus state on iOS."
-      ],
-      "likelyCauses": [
-        "iOS is rendered while the NAME field is focused (keyboard up), whereas Android is rendered without focus — likely a test/setup state mismatch rather than a rendering bug.",
-        "Possible difference in default focus/auto-focus behavior on TextInput between Kuikly Android and iOS targets.",
-        "Keyboard avoidance/viewport resize handling may differ between platforms, causing the visible canvas to differ in effective height."
-      ],
-      "suggestedOwner": "Kuikly cross-platform QA / Input component owner",
-      "suggestedFixes": [
-        "Dismiss the keyboard on the iOS capture (tap outside the input or blur) before screenshotting to match the Android resting state.",
-        "Ensure consistent auto-focus policy on the TextInput component across iOS and Android (neither should auto-focus on mount, or both should).",
-        "If auto-focus is intended on iOS only, document the intentional difference and add a visual test fixture that pre-blurs the input for parity comparisons.",
-        "Verify the keyboard-insets/avoidingView behavior so that focused inputs produce consistent viewport bounds on both platforms.",
-        "Re-run the visual diff after aligning input focus state to confirm the only real divergence is the keyboard itself."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:03fc03fe83fe93fe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.782Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.administration.onboarding",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:13:59.591Z",
-      "severity": "medium",
-      "summary": [
-        "iOS view shows an active on-screen QWERTY keyboard occupying the lower half, while Android shows no keyboard (focus may differ or keyboard is suppressed on Android).",
-        "NAME input on iOS displays an active text caret (vertical bar) inside 'Visual Server', while Android has no caret visible (input not focused).",
-        "Save Profile button has reduced opacity/faded appearance on iOS (~50% alpha) vs. fully solid pink fill on Android — visual disabled/dimmed state divergence.",
-        "A vertical pale-yellow/orange band is visible along the right edge of the Android panel (likely viewport/safe-area indicator) that has no counterpart on iOS."
-      ],
-      "likelyCauses": [
-        "Text input auto-focus behavior differs between platforms (iOS focuses and raises keyboard, Android does not or keyboard is dismissed).",
-        "Save Profile button enabled/disabled state or opacity styling not normalized across Kuikly platform renderers.",
-        "Android render includes an extra viewport/insets debug or status-bar artifact not present on iOS."
-      ],
-      "suggestedOwner": "kuikly-mobile / settings-onboarding component owner",
-      "suggestedFixes": [
-        "Normalize input focus and keyboard presentation across Android/iOS (or capture both states explicitly in the visual test).",
-        "Align Save Profile button opacity/disabled-state logic so both platforms render the same enabled appearance when inputs are valid.",
-        "Investigate and remove or align the right-edge colored band on Android to match iOS viewport bounds.",
-        "Re-run visual diff with keyboard explicitly hidden/visible on both ends for an apples-to-apples comparison."
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:07fc07fe97fe87fe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.846Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.administration.member-permissions",
-      "status": "ready",
-      "imageHash": "p1:0ffe0ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:14:00.817Z",
-      "severity": "medium",
-      "summary": [
-        "iOS side shows an active on-screen keyboard occupying the bottom ~40% of the viewport, while Android side has no keyboard visible.",
-        "NAME input field is focused on iOS (shows active caret/text cursor) versus unfocused on Android.",
-        "Visual layout of Profile and Danger Zone sections otherwise appears structurally similar but scaled due to iOS keyboard pushing content / different viewport occupation.",
-        "iOS rendering canvas is 1170x2532 vs Android 390x844, but displayed at comparable scale; the keyboard presence is the dominant divergence."
-      ],
-      "likelyCauses": [
-        "iOS side captured while the NAME field had focus, triggering the iOS software keyboard.",
-        "Android capture was taken without an active keyboard (focus dismissed or never triggered).",
-        "Possible difference in how focus/blur is handled between Kuikly Android and iOS bridges, or simply a state difference at screenshot time."
-      ],
-      "suggestedOwner": "Mobile platform / Kuikly integration team",
-      "suggestedFixes": [
-        "Dismiss iOS keyboard before screenshot or blur the focused field to match Android's idle state.",
-        "Standardize capture script so both ends dismiss active input controls prior to visual diff.",
-        "Verify Kuikly iOS TextInput focus behavior to ensure consistency with Android.",
-        "If keyboard visibility is test-relevant, add a dedicated test case for focused state rather than comparing across states.",
-        "Investigate why pixel mismatch is ~39% despite only the keyboard region diverging — confirm scale normalization is correct."
-      ],
-      "intentional": [
-        "Keyboard appearance on iOS when a text field is focused is platform-correct behavior and expected."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:03fc03fe83fe83fe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.851Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.administration.translation",
-      "status": "ready",
-      "imageHash": "p1:0ffe1ffe9fff9fff80ff80ffbfff3fff8ff70ff79ff31ff783e3000780030007bff37ff7bff37ff7abf33bf7800300078007800787f307f786030e07be037e07ae030e0780078007ffffffffffff0000ffff0000ffff0b90ffff0000ffff2224ffff0000ffff3100ffff0660ffff0660ffff0000ffff0000fffe0000ffffffff",
-      "generatedAt": "2026-07-10T22:14:02.771Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows a software keyboard occupying the lower ~40% of the screen, Android side does not — likely because iOS focused state of the Name input was not normalized in the test capture",
-        "Name input has a visible blinking text caret (cursor) on iOS but not on Android, indicating iOS is in active-focus state while Android is not",
-        "As a result of the keyboard, the lower portion of the iOS layout (the empty area beneath the Danger Zone card) is occluded, making the two screens non-isomorphic at this moment",
-        "Save Profile button text on iOS appears slightly lower-contrast/fainter than on Android; possible disabled-state styling leak from focus shift",
-        "Pixel-perfect similarity drops to ~61% while RGB similarity stays at ~92%, consistent with a large localized region difference (keyboard + caret) rather than a global style drift"
-      ],
-      "likelyCauses": [
-        "iOS test capture was taken while a text field was focused, triggering native keyboard; Android capture was not, or Android hid the IME",
-        "No focus-state normalization (e.g., blur active input or dismiss keyboard) in the Slock capture step for iOS",
-        "Possible difference in input autofocus behavior between the two platform adapters in Kuikly",
-        "Button hover/active/disabled style being re-applied when a sibling element gains focus on iOS"
-      ],
-      "suggestedOwner": "Mobile platform / visual-testing harness owner (Kuikly + Slock capture pipeline)",
-      "suggestedFixes": [
-        "Blur the focused input and dismiss the keyboard before taking the baseline/current screenshot on both platforms",
-        "Add an explicit `tintColor`/disabled-state check for Save Profile to ensure it renders identically regardless of focus context",
-        "In Slock config, normalize iOS captures by waiting for keyboard dismissal or by capturing a `keyboardHidden` variant",
-        "Treat keyboard presence as a non-isomorphic capture and exclude it from the compare canvas, or assert keyboard visibility parity in the test",
-        "Audit Kuikly iOS TextField rendering for unintended caret/IME focus propagation on mount"
-      ],
-      "intentional": [],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39283563548966394
+      "status": "pending",
+      "imageHash": "p1:07fc07fe87fe87fe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
+      "generatedAt": "2026-07-12T22:07:56.869Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.16720169859980283
     },
     {
       "id": "components.settings.billing.page",
@@ -2338,44 +1744,22 @@
     },
     {
       "id": "screens.auth.login.signing",
-      "status": "ready",
-      "imageHash": "p1:bffefffe800000008000000000000000ffff0000fe7ffffffe7ffe7ffefffe7ffffffe7fcfffffffc1ffdfffc403c003dfffc603c003ffffc003c003c003c003dd9bc003fd9fffffc003f81bc001c003c0038003ffffffffffff3794ffff7ffeffff1ff8ffff1ff8ffff0fe0ffff0fe0ffff0000ffff0000ffff0000ffffffff",
-      "generatedAt": "2026-07-09T22:23:40.017Z",
-      "severity": "high",
-      "summary": [
-        "iOS side shows an on-screen keyboard covering the lower half of the login form, while Android side has no keyboard present (scroll content visible: Terms/Privacy, Forgot Password, Create One).",
-        "Bottom controls (Continue with GitHub button and Footer link row) are clipped/occluded on iOS but fully rendered on Android.",
-        "Vertical spacing/padding of form fields appears larger on iOS, pushing Google/GitHub buttons and footer further down relative to the same logical position on Android.",
-        "Email and Password input text appears cropped on the left edge on iOS (cursor/text clipped at input border), but fully contained on Android.",
-        "Header status badges differ: Android shows 'ANDROID' tag, iOS shows 'IOS' tag (top-right pill text differs)."
-      ],
-      "likelyCauses": [
-        "iOS platform is showing the software keyboard while Android renders without one, indicating differing default input focus/keyboard presentation between ends.",
-        "Adaptive resize / keyboard-avoiding view behavior not being applied identically across platforms (iOS shrinks viewport, Android does not).",
-        "Different safe-area or system-bar offset handling between ends when keyboard is raised.",
-        "Possible missing dismissKeyboard or focus state synchronization in the Kuikly render on the iOS side."
-      ],
-      "suggestedOwner": "mobile-platform / Kuikly render integration",
-      "suggestedFixes": [
-        "Dismiss the keyboard or blur inputs before capture on iOS so both renders show equivalent viewport state for diffing.",
-        "Apply platform-consistent keyboardAvoidingView / softKeyboardMode so layout reflows identically and does not occlude bottom controls.",
-        "Ensure Email/Password input paddings and text insets match across platforms to avoid left-edge clipping.",
-        "Normalize header tag pill (ANDROID/iOS) and safe-area insets in the test scaffold only, not in product code, so it does not affect comparisons.",
-        "Re-run the comparison after equalizing keyboard state on both ends to verify whether residual layout differences remain."
-      ],
-      "intentional": [
-        "Platform-specific software keyboard is expected behavior on iOS, but it should be controlled during visual regression capture."
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.39226786027733895
+      "status": "pending",
+      "imageHash": "p1:9ffe3ffe000000000000000000000000ffff0000fe7ffffffe7ffe7ffe7ffe7ffffffe7fc7ffffffc1fbc7ffc003c0fbdfffcfffc003dfffc003c003c003c003c183c003fc19fffbc003f81bc0018003c0038003ffbfc003fffff59fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "generatedAt": "2026-07-12T22:07:57.012Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.1951215889604515
     },
     {
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2388,7 +1772,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2401,7 +1785,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2414,7 +1798,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2427,7 +1811,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2440,7 +1824,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:35.907Z",
+      "generatedAt": "2026-07-12T22:07:56.885Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2452,7 +1836,7 @@
     {
       "id": "screens.members.human.profile",
       "status": "ready",
-      "imageHash": "p1:021c000403e003fe004002020000000001fe7ffe01fe7ffe0ffe7ffe0ffe7ffe07fe7ffe1ffe7ffe1ffe7ffe7ffe7ffe0ffe7ffe0ffe7ffe07fe7ffe03fe7e7e07fe7e7e07fe700e03fe7c3e03fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
+      "imageHash": "p1:021c000403e003fe004002020000000001fe7ffe01fe7ffe0ffe7ffe0ffe7ffe07fe7ffe1ffe7ffe1ffe7ffe7ffe7ffe0ffe7ffe0ffe7ffe07fe7ffe03fe7e7e07fe7e7e07fe700e03fe781e03fe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
       "generatedAt": "2026-07-09T22:23:40.858Z",
       "severity": "high",
       "summary": [
@@ -2479,7 +1863,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04948150848624777
+      "metricMismatch": 0.049821768542147704
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -2511,7 +1895,7 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.09253149430874552
+      "metricMismatch": 0.09253250698748328
     },
     {
       "id": "components.members.avatar-management",
@@ -2647,38 +2031,16 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "ready",
-      "imageHash": "p1:3ffc3ffc000000000000000000000000cffe4ffecffe4ffe8ffe4ffecffe4ffec7fe47fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe3ffec1fe41fc9fde9f7e9ffe9ffe9fde9f7ebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe0000fffe0000fffe000000027ffefffa1fff",
-      "generatedAt": "2026-07-09T22:23:47.550Z",
-      "severity": "medium",
-      "summary": [
-        "iOS end renders a bottom tab bar (HOME/TASKS/MEMBERS/SETTINGS) that is completely missing from the Android end",
-        "iOS shows sort/create icons (↑↓ and +) next to the CHANNELS and DIRECT MESSAGES section headers; Android omits these",
-        "iOS server pill is taller and the dropdown caret appears slightly larger/heavier; spacing inside the yellow header band is greater on iOS",
-        "Section headers ('CHANNELS', 'DIRECT MESSAGES') on iOS appear in a heavier weight and sit further from the row items below compared to Android",
-        "Skeleton placeholder rows on iOS have slightly larger vertical spacing and thicker bar heights than the Android equivalents"
-      ],
-      "likelyCauses": [
-        "Bottom tab bar component is conditionally rendered or only wired up for the iOS Kuikly runtime",
-        "Section header action icons (sort/create) are iOS-only branches in the shared component",
-        "Density/scale tokens differ between Android and iOS builds, causing heavier type and larger row spacing on iOS",
-        "Safe-area handling adds extra vertical padding on iOS around the header band"
-      ],
-      "suggestedOwner": "mobile-platform",
-      "suggestedFixes": [
-        "Verify the bottom tab bar component is mounted on the Android rendering path and not gated by a platform check",
-        "Ensure section header trailing icons (↑↓, +) are rendered consistently on both platforms",
-        "Normalize typography weight and row spacing tokens so CHANNELS/DM headers and skeleton rows match across platforms",
-        "Re-run Slock with the Android crop normalized to the same logical dp grid as iOS to reduce scaling-driven divergence",
-        "Inspect the yellow server header for platform-specific padding/safe-area insets and unify via shared style"
-      ],
-      "intentional": [
-        "Tab bar presence may be intentional on iOS only pending Android rollout"
-      ],
-      "analysisProvider": "minimax",
-      "analysisModel": "MiniMax-M3",
-      "error": null,
-      "metricMismatch": 0.04528969363092583
+      "status": "pending",
+      "imageHash": "p1:3ffc3ffc000000000000000000000000cffe4ffecffe4ffe8ffe4ffecffe4ffec7fe47fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffe3ffec1fe41fc9fde9f7e9ffe9ffe9fde9f7ebffe3ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe5dbafffe199a00020000fffa1fff",
+      "generatedAt": "2026-07-12T22:07:57.121Z",
+      "severity": "unknown",
+      "summary": [],
+      "likelyCauses": [],
+      "suggestedOwner": "",
+      "suggestedFixes": [],
+      "error": "codex CLI not found",
+      "metricMismatch": 0.08182410445443622
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2714,12 +2076,12 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.04537070792994968
+      "metricMismatch": 0.04504361269764112
     },
     {
       "id": "components.thread.message-row.long-inline-code",
       "status": "ready",
-      "imageHash": "p1:fffe7ffeffffffff9fff9fff9d7f9d5ffbfff3ffe16fe0efe3ffe3ffe01fe01fefffeffffc07fc07e00fe00fe03fe03fe67fe6fffa9fe01ff7ffffffe7ffe7ffe003e003e02fe07fe0ffe0ffe003e003e007e001e003e001e003e001e003e001e003e003e001e1ffe1ffe001e003e001e001e001e003e001e003e00fffffffff",
+      "imageHash": "p1:fffe7ffeffffffff9fff9fff9d7f9d5ffbfff3ffe16fe0efe3ffe3ffe01fe01fefffeff7fc07f807e00fe00fe03fe03fe67fe67ffa9fe01ff7ffffffe7ffe7ffe003e003e02fe07fe0ffe0ffe003e003e007e001e003e001e003e001e003e001e003e003e001e1ffe1ffe001e003e001e001e001e003e001e003e00fffffffff",
       "generatedAt": "2026-07-11T22:12:05.274Z",
       "severity": "medium",
       "summary": [
@@ -2744,13 +2106,13 @@
       "analysisProvider": "minimax",
       "analysisModel": "MiniMax-M3",
       "error": null,
-      "metricMismatch": 0.4053857630871849
+      "metricMismatch": 0.4084808468694725
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:36.122Z",
+      "generatedAt": "2026-07-12T22:07:57.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2763,7 +2125,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-11T22:13:36.122Z",
+      "generatedAt": "2026-07-12T22:07:57.089Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
