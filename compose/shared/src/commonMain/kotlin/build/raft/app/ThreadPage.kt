@@ -112,7 +112,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
 import build.raft.app.markdown.LocalSlockMessagePermalinkLabelResolver
+import build.raft.app.markdown.LocalSlockMarkdownRenderConfig
 import build.raft.app.markdown.SlockMarkdownBody
+import build.raft.app.markdown.SlockMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareSlockMarkdownFullRendererBodies
@@ -2190,7 +2192,9 @@ private fun ThreadMessageVisualScreenContent() {
             }
         }
     CompositionLocalProvider(
-        LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver
+        LocalSlockMessagePermalinkLabelResolver provides visualMessagePermalinkLabelResolver,
+        LocalSlockMarkdownRenderConfig provides
+            SlockMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
     ) {
         Column(
             modifier =

@@ -47,6 +47,40 @@ class SlockMarkdownTest {
     private val inlineCodePadding = SLOCK_RICHTEXT_INLINE_CODE_EDGE_PADDING.toString()
 
     @Test
+    fun messagePermalinkRenderConfigDefaultsToOrdinaryLink() {
+        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val source = buildAnnotatedString {
+            withLink(LinkAnnotation.Url(url)) { append(url) }
+        }
+
+        val resolved = source.withSlockMessagePermalinkRenderConfig()
+
+        assertEquals(url, resolved.text.text)
+        assertTrue(resolved.inlineContent.isEmpty())
+        assertEquals(
+            url,
+            (resolved.text.getLinkAnnotations(0, resolved.text.length).single().item as LinkAnnotation.Url).url,
+        )
+    }
+
+    @Test
+    fun messagePermalinkRenderConfigCanEnableTagProjection() {
+        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val source = buildAnnotatedString {
+            withLink(LinkAnnotation.Url(url)) { append(url) }
+        }
+
+        val resolved =
+            source.withSlockMessagePermalinkRenderConfig(
+                config = SlockMarkdownRenderConfig(renderMessagePermalinksAsTag = true),
+                resolveLabel = { "proj" },
+            )
+
+        assertEquals("#proj msg", resolved.text.text.replace("\uFFFC", ""))
+        assertEquals(3, resolved.inlineContent.size)
+    }
+
+    @Test
     fun raftMessagePermalinkUsesGenericInlineBoxChip() {
         val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
         val source =
@@ -62,8 +96,11 @@ class SlockMarkdownTest {
             }
         val link = resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
 
-        assertEquals("See #proj-server-management msg now", resolved.text)
-        assertEquals(1, resolved.slockMarkdownInlineContentIds().size)
+        assertEquals(
+            "See #proj-server-management msg now",
+            resolved.text.replace("\uFFFC", ""),
+        )
+        assertEquals(3, resolved.slockMarkdownInlineContentIds().size)
         assertEquals(url, link.url)
         assertEquals(Color(0xFFFCEFBD), link.styles?.style?.inlineBoxStyle?.backgroundColor)
         assertEquals(SlockColor.BorderBlack, link.styles?.style?.inlineBoxStyle?.borderColor)
@@ -93,14 +130,29 @@ class SlockMarkdownTest {
                 withLink(LinkAnnotation.Url(url)) { append(url) }
             }
 
-        assertEquals("linked message msg", source.withSlockMessagePermalinkChips().text)
+        assertEquals(
+            "linked message msg",
+            source.withSlockMessagePermalinkChips().text.replace("\uFFFC", ""),
+        )
     }
 
     @Test
-    fun shortPermalinkChipWidthDoesNotDoubleCountLegacyChrome() {
-        val width = slockMessagePermalinkChipWidthSp("#proj", "msg").value
+    fun permalinkChipUsesNativeTextRunsInsteadOfEstimatedWholeChipWidth() {
+        val url = "https://app.raft.build/s/mobile/channel/channel-1?msg=message-1"
+        val source = buildAnnotatedString {
+            withLink(LinkAnnotation.Url(url)) { append(url) }
+        }
 
-        assertTrue(width in 84f..92f, "unexpected short permalink width: $width")
+        val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
+        val labelStyle =
+            resolved.spanStyles.first {
+                it.item.fontSize == 14.sp && it.item.fontWeight == FontWeight.Bold
+            }
+        val suffixStyle = resolved.spanStyles.first { it.item.fontSize == 10.sp }
+
+        assertEquals("#proj-server-management", resolved.text.substring(labelStyle.start, labelStyle.end))
+        assertEquals("msg", resolved.text.substring(suffixStyle.start, suffixStyle.end))
+        assertEquals(3, resolved.slockMarkdownInlineContentIds().size)
     }
 
     @Test
@@ -115,7 +167,7 @@ class SlockMarkdownTest {
 
         val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
 
-        assertEquals("#proj-server-management thread", resolved.text)
+        assertEquals("#proj-server-management thread", resolved.text.replace("\uFFFC", ""))
     }
 
     @Test
@@ -127,7 +179,10 @@ class SlockMarkdownTest {
 
         val resolved = source.withSlockMessagePermalinkChips { "proj-server-management" }
 
-        assertEquals("Thread reply: #proj-server-management thread", resolved.text)
+        assertEquals(
+            "Thread reply: #proj-server-management thread",
+            resolved.text.replace("\uFFFC", ""),
+        )
     }
 
     @Test
@@ -150,7 +205,7 @@ class SlockMarkdownTest {
 
         val resolved = source.withSlockMessagePermalinkChips()
 
-        assertEquals("$url external", resolved.text)
+        assertEquals("$url external", resolved.text.replace("\uFFFC", ""))
         val remainingLink =
             resolved.getLinkAnnotations(0, resolved.length).single().item as LinkAnnotation.Url
         assertEquals(externalUrl, remainingLink.url)

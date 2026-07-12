@@ -59,6 +59,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.withLink
+import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.isSpecified
@@ -100,6 +101,13 @@ internal typealias SlockMessagePermalinkLabelResolver =
 
 internal val LocalSlockMessagePermalinkLabelResolver =
     compositionLocalOf<SlockMessagePermalinkLabelResolver> { { null } }
+
+internal data class SlockMarkdownRenderConfig(
+    val renderMessagePermalinksAsTag: Boolean = false,
+)
+
+internal val LocalSlockMarkdownRenderConfig =
+    compositionLocalOf { SlockMarkdownRenderConfig() }
 
 enum class ThreadMarkdownTagKind {
     ChannelThread,
@@ -1038,9 +1046,27 @@ private object SlockMarkdownTextProvider : TextProvider {
         val resolvedStyle = style.withResolvedSlockFontFamily()
         val markdownOverflow = slockMarkdownContentOverflow(overflow)
         val permalinkLabelResolver = LocalSlockMessagePermalinkLabelResolver.current
-        val permalinkContent = remember(text, permalinkLabelResolver) {
-            text.withSlockMessagePermalinkChipContent(permalinkLabelResolver)
-        }
+        val renderMessagePermalinksAsTag =
+            LocalSlockMarkdownRenderConfig.current.renderMessagePermalinksAsTag
+        val permalinkUriHandler = LocalUriHandler.current
+        val permalinkCoroutineScope = rememberCoroutineScope()
+        val permalinkContent =
+            remember(
+                text,
+                permalinkLabelResolver,
+                permalinkUriHandler,
+                renderMessagePermalinksAsTag,
+            ) {
+                text.withSlockMessagePermalinkRenderConfig(
+                    config =
+                        SlockMarkdownRenderConfig(
+                            renderMessagePermalinksAsTag = renderMessagePermalinksAsTag,
+                        ),
+                    resolveLabel = permalinkLabelResolver,
+                ) { url ->
+                    permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
+                }
+            }
         val resolvedText = remember(permalinkContent.text, resolvedStyle) {
             permalinkContent.text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
@@ -1225,13 +1251,28 @@ internal fun AnnotatedString.withSlockMessagePermalinkChips(
     resolveLabel: SlockMessagePermalinkLabelResolver = { null }
 ): AnnotatedString = withSlockMessagePermalinkChipContent(resolveLabel).text
 
-private data class SlockMessagePermalinkChipContent(
+internal data class SlockMessagePermalinkChipContent(
     val text: AnnotatedString,
     val inlineContent: Map<String, InlineTextContent>
 )
 
+internal fun AnnotatedString.withSlockMessagePermalinkRenderConfig(
+    config: SlockMarkdownRenderConfig = SlockMarkdownRenderConfig(),
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null },
+    openUri: (String) -> Unit = {},
+): SlockMessagePermalinkChipContent =
+    if (config.renderMessagePermalinksAsTag) {
+        withSlockMessagePermalinkChipContent(resolveLabel, openUri)
+    } else {
+        SlockMessagePermalinkChipContent(
+            text = withoutLinksInsideSlockInlineCode(),
+            inlineContent = emptyMap(),
+        )
+    }
+
 private fun AnnotatedString.withSlockMessagePermalinkChipContent(
-    resolveLabel: SlockMessagePermalinkLabelResolver = { null }
+    resolveLabel: SlockMessagePermalinkLabelResolver = { null },
+    openUri: (String) -> Unit = {},
 ): SlockMessagePermalinkChipContent {
     val source = withoutLinksInsideSlockInlineCode()
     val permalinkLinks =
@@ -1254,22 +1295,47 @@ private fun AnnotatedString.withSlockMessagePermalinkChipContent(
         builder.append(source, cursor, range.start)
         val targetLabel = target.slockMessagePermalinkChipTargetLabel(resolveLabel(target))
         val kindLabel = target.slockMessagePermalinkChipKindLabel()
-        val inlineId = "slock-message-permalink-${range.start}-${range.end}"
+        val inlinePrefix = "slock-message-permalink-${range.start}-${range.end}"
+        val iconId = "$inlinePrefix-icon"
+        val iconGapId = "$inlinePrefix-icon-gap"
+        val suffixGapId = "$inlinePrefix-suffix-gap"
         builder.withLink(
             LinkAnnotation.Url(
                 url = link.url,
                 styles = slockMessagePermalinkChipLinkStyles(),
-                linkInteractionListener = link.linkInteractionListener
+                linkInteractionListener = LinkInteractionListener { clickedLink: LinkAnnotation ->
+                    val clickedUrl = clickedLink as? LinkAnnotation.Url ?: return@LinkInteractionListener
+                    link.linkInteractionListener?.onClick(clickedUrl) ?: openUri(clickedUrl.url)
+                }
             )
         ) {
-            appendInlineContent(inlineId, "$targetLabel $kindLabel")
+            appendInlineContent(iconId, "\uFFFC")
+            appendInlineContent(iconGapId, "\uFFFC")
+            withStyle(
+                SpanStyle(
+                    color = SlockColor.TextBlack,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = slockFontFamilyForWeight(FontWeight.Bold),
+                )
+            ) {
+                append(targetLabel)
+            }
+            appendInlineContent(suffixGapId, " ")
+            withStyle(
+                SpanStyle(
+                    color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Normal,
+                    fontFamily = slockFontFamilyForWeight(FontWeight.Normal),
+                )
+            ) {
+                append(kindLabel)
+            }
         }
-        inlineContent[inlineId] =
-            slockMessagePermalinkChipInlineContent(
-                targetLabel = targetLabel,
-                kindLabel = kindLabel,
-                link = link
-            )
+        inlineContent[iconId] = slockMessagePermalinkIconInlineContent()
+        inlineContent[iconGapId] = slockMessagePermalinkSpacerInlineContent(4.sp)
+        inlineContent[suffixGapId] = slockMessagePermalinkSpacerInlineContent(6.sp)
         cursor = range.end
     }
     builder.append(source, cursor, source.length)
@@ -1279,85 +1345,27 @@ private fun AnnotatedString.withSlockMessagePermalinkChipContent(
     )
 }
 
-private fun slockMessagePermalinkChipInlineContent(
-    targetLabel: String,
-    kindLabel: String,
-    link: LinkAnnotation.Url
-): InlineTextContent {
-    val width = slockMessagePermalinkChipWidthSp(targetLabel, kindLabel)
+private fun slockMessagePermalinkIconInlineContent(): InlineTextContent {
     return InlineTextContent(
         placeholder =
             Placeholder(
-                width = width,
-                height = 24.sp
+                width = 12.sp,
+                height = 12.sp,
             )
     ) {
-        val uriHandler = LocalUriHandler.current
-        val coroutineScope = rememberCoroutineScope()
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockMessagePermalinkChipBackground)
-                    .border(1.dp, SlockColor.BorderBlack)
-                    .clickable {
-                        val listener = link.linkInteractionListener
-                        if (listener != null) {
-                            listener.onClick(link)
-                        } else {
-                            coroutineScope.launch { uriHandler.openUri(link.url) }
-                        }
-                    }
-                    .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            SlockLucideIcon(
-                name = SlockLucideIconName.Link,
-                modifier = Modifier.size(12.dp),
-                color = SlockColor.TextBlackArgb,
-                strokeWidth = 2f
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            KuiklyText(
-                text = targetLabel,
-                color = SlockColor.TextBlack,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            KuiklyText(
-                text = kindLabel,
-                modifier = Modifier.padding(top = 5.dp),
-                color = SlockColor.TextBlack.copy(alpha = 0.5f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                style = SlockType.Body.copy(fontSize = 10.sp, lineHeight = 12.sp)
-            )
-        }
+        SlockLucideIcon(
+            name = SlockLucideIconName.Link,
+            modifier = Modifier.size(12.dp),
+            color = SlockColor.TextBlackArgb,
+            strokeWidth = 2f,
+        )
     }
 }
 
-internal fun slockMessagePermalinkChipWidthSp(targetLabel: String, kindLabel: String): TextUnit {
-    // This chip supplies its own icon, gaps, and horizontal padding. Reusing
-    // slockMarkdownInlineChipWidthSp() here would also inherit the legacy tag
-    // chrome/min-width safety, then count the new chrome a second time. That is
-    // especially visible for short labels such as `#proj` as a large empty tail.
-    // The shared glyph table approximates regular 14sp text. Wider bold labels
-    // need a proportional guard, but applying it to every short label recreates
-    // the visible empty tail this path is meant to avoid. The fixed chrome
-    // allowance already covers short targets such as `#proj`.
-    val rawTargetWidth =
-        targetLabel.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat()
-    val targetWidth =
-        if (rawTargetWidth > 40f) rawTargetWidth * 1.12f else rawTargetWidth
-    val suffixWidth =
-        kindLabel.sumOf { it.slockInlineChipWidthSp().toDouble() }.toFloat() * (10f / 14f)
-    return (targetWidth + suffixWidth + 34f).sp
-}
+private fun slockMessagePermalinkSpacerInlineContent(width: TextUnit): InlineTextContent =
+    InlineTextContent(
+        placeholder = Placeholder(width = width, height = 1.sp),
+    ) {}
 
 private fun SlockMessagePermalinkTarget.slockMessagePermalinkChipTargetLabel(
     resolvedLabel: String?
