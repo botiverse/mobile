@@ -95,33 +95,24 @@ CREATE INDEX threadFollowEntity_parentMessageId ON threadFollowEntity(serverId, 
 
 -- Message body cache. channelId is the current message-list channel. For
 -- thread replies this is the id of the thread channel row.
+-- T-wrapper canonical-native fact store (RFC 043 §9.9). One row = one canonical SERVER fact:
+-- `canonicalFactJson` (versioned envelope, CanonicalFactCodec) is the LOSSLESS restore/continuation source
+-- of truth; the remaining columns are ONLY the minimal query/sort scalars a SQL read needs. No presentation
+-- state is persisted (author display / body / timestamp label / delivery are projected at read time via
+-- CanonicalMessageRow.toAppMessage). Pending/optimistic/outbox rows NEVER enter this table — `seq NOT NULL`
+-- makes that structural, so `clearScope` only ever handles committed server facts (saved-referenced excepted).
 CREATE TABLE messageEntity (
   id TEXT NOT NULL PRIMARY KEY,
   serverId TEXT NOT NULL,
   channelId TEXT NOT NULL,
-  seq INTEGER,
-  authorId TEXT NOT NULL,
-  authorDisplayName TEXT NOT NULL,
-  authorHandle TEXT NOT NULL,
-  authorKind TEXT NOT NULL,
-  authorDescription TEXT,
-  timestampLabel TEXT NOT NULL,
-  body TEXT NOT NULL,
-  messageType TEXT NOT NULL,
-  systemEventType TEXT,
-  metadataJson TEXT NOT NULL DEFAULT '{}',
-  deliveryState TEXT NOT NULL,
-  replyCount INTEGER NOT NULL DEFAULT 0,
-  parentMessageId TEXT,
-  updatedAtLabel TEXT,
-  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0
+  scopeKind TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  createdAt TEXT NOT NULL,
+  canonicalFactJson TEXT NOT NULL
 );
 
-CREATE INDEX messageEntity_channelSeq ON messageEntity(serverId, channelId, seq);
-CREATE INDEX messageEntity_channelIdId ON messageEntity(serverId, channelId, id);
--- #491 P1: canonical (seq, id) tie-break order for server-backed restore/timeline reads.
+-- Canonical (seq, id) tie-break order for server-backed restore/timeline reads (#491 P1).
 CREATE INDEX messageEntity_channelSeqId ON messageEntity(serverId, channelId, seq, id);
-CREATE INDEX messageEntity_parentMessageId ON messageEntity(serverId, parentMessageId);
 
 CREATE TABLE attachmentEntity (
   id TEXT NOT NULL PRIMARY KEY,
@@ -431,87 +422,30 @@ WHERE serverId = ?
   AND followerKind = ?
   AND followerId = ?;
 
-selectMessage:
-SELECT *
-FROM messageEntity
-WHERE id = ?;
 
-selectMessagesForChannel:
-SELECT *
-FROM messageEntity
+-- T-wrapper canonical parent upsert (form A): in-place UPDATE keyed by id, SCOPED to serverId+channelId so
+-- a (contractually impossible) cross-scope id collision can never update another scope's row. Writes ONLY
+-- canonical facts (scalars + the JSON envelope); never touches saved/local state. Replaces the old
+-- INSERT OR REPLACE (whose parent replace CASCADE-wiped child rows) — child rows are reconciled explicitly.
+upsertCanonicalFact:
+INSERT INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  scopeKind = excluded.scopeKind,
+  seq = excluded.seq,
+  createdAt = excluded.createdAt,
+  canonicalFactJson = excluded.canonicalFactJson
+WHERE messageEntity.serverId = excluded.serverId
+  AND messageEntity.channelId = excluded.channelId;
+
+-- Clear a scope's canonical server facts (snapshot rebaseline), EXCLUDING saved-referenced ids (saved is an
+-- independent receiver domain; a message snapshot must never adjudicate it — savedMessageEntity ON DELETE
+-- CASCADE would otherwise drop the saved marker). No pending exception: pending never enters (seq NOT NULL).
+clearCanonicalFactsForScope:
+DELETE FROM messageEntity
 WHERE serverId = ?
   AND channelId = ?
-ORDER BY CASE WHEN timestampLabel = '' THEN 1 ELSE 0 END,
-         timestampLabel,
-         COALESCE(seq, -9223372036854775808),
-         id;
-
-selectTimelineInvalidation:
-SELECT channelId AS id FROM channelEntity
-WHERE serverId = ?
-  AND (channelId = ? OR parentChannelId = ? OR parentMessageId = ?)
-UNION
-SELECT id FROM messageEntity
-WHERE serverId = ?
-  AND (channelId = ? OR parentMessageId = ?)
-UNION
-SELECT id FROM taskSummaryEntity
-WHERE serverId = ?
-  AND (
-    channelId = ?
-    OR messageId IN (
-      SELECT id FROM messageEntity
-      WHERE serverId = ?
-        AND channelId = ?
-    )
-    OR parentMessageId IN (
-      SELECT id FROM messageEntity
-      WHERE serverId = ?
-        AND channelId = ?
-    )
-  )
-UNION
-SELECT threadChannelId AS id FROM threadFollowEntity
-WHERE serverId = ?
-  AND (threadChannelId = ? OR parentMessageId = ?)
-UNION
-SELECT channelId AS id FROM channelReadStateEntity
-WHERE serverId = ?
-  AND channelId = ?
-UNION
-SELECT messageId AS id FROM savedMessageEntity
-WHERE serverId = ?
-  AND messageId IN (
-    SELECT id FROM messageEntity
-    WHERE serverId = ?
-      AND channelId = ?
-  )
-UNION
-SELECT id FROM memberProfileEntity
-WHERE serverId = ?;
-
-upsertMessage:
-INSERT OR REPLACE INTO messageEntity(
-  id,
-  serverId,
-  channelId,
-  seq,
-  authorId,
-  authorDisplayName,
-  authorHandle,
-  authorKind,
-  authorDescription,
-  timestampLabel,
-  body,
-  messageType,
-  systemEventType,
-  metadataJson,
-  deliveryState,
-  replyCount,
-  parentMessageId,
-  updatedAtLabel,
-  lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  AND id NOT IN (SELECT messageId FROM savedMessageEntity WHERE serverId = ?);
 
 deleteAttachmentsForMessage:
 DELETE FROM attachmentEntity
@@ -744,12 +678,14 @@ WHERE serverId = ?
 -- #491 P1 warm-start restore: canonical server-backed timeline read. Only server-backed rows
 -- (seq IS NOT NULL) in (seq, id) tie-break order — NOT selectMessagesForChannel, which sorts by
 -- timestampLabel. Sparse seq orders only; it never synthesizes dense successors.
+-- T-wrapper restore: a scope's canonical facts in (seq, id) tie-break order. No `seq IS NOT NULL` filter —
+-- `seq` is NOT NULL by schema (pending/optimistic never enter this table), so the filter would be a
+-- tautology that misleads readers into thinking seq-null rows still exist here.
 selectServerBackedMessagesForChannel:
 SELECT *
 FROM messageEntity
 WHERE serverId = ?
   AND channelId = ?
-  AND seq IS NOT NULL
 ORDER BY seq, id;
 
 insertOutboxMessage:

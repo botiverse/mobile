@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 /**
  * Shared driver-level smoke check reused by the native (iOS + OHOS) leaf tests.
  *
- * The JVM driver already has coverage via SqlDelightComposeLocalDataStoreTest using
+ * The JVM driver already has coverage via the JVM androidUnitTest suite using
  * JdbcSqliteDriver; this exercises the real `NativeSqliteDriver` path instead:
  *   1. the schema was created/opened (the driver is already wrapped in [SlockSqlDatabase]),
  *   2. the schema is present (at least one table exists in `sqlite_master`),

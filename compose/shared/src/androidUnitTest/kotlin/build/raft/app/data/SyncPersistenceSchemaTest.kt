@@ -46,11 +46,18 @@ class SyncPersistenceSchemaTest {
             driver.indexColumns("messageEntity_channelSeqId"),
         )
 
-        // 3) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves
-        //    the .sq query, not raw SQL): same seq tie-breaks by id (m1 before m2); pending seq=NULL excluded.
+        // 3) canonical-native schema contract: messageEntity carries the lossless `canonicalFactJson` +
+        //    `scopeKind`, and `seq` is NOT NULL (pending/optimistic NEVER enter this table — the constraint
+        //    is structural, so no "seq-null pending" state can exist to be filtered/preserved).
+        val cols = driver.columnInfo("messageEntity")
+        assertNotNull(cols.firstOrNull { it.name == "canonicalFactJson" }, "canonicalFactJson column missing")
+        assertNotNull(cols.firstOrNull { it.name == "scopeKind" }, "scopeKind column missing")
+        assertEquals(1L, cols.first { it.name == "seq" }.notNull, "seq must be NOT NULL (no pending rows)")
+
+        // 4) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves the .sq
+        //    query, not raw SQL): same seq tie-breaks by id (m1 before m2). No seq-null filter needed.
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)
-        driver.insertMessage(id = "pending", seq = null) // client/pending (seq NULL) excluded
         val restored = SlockDatabase(driver).slockDatabaseQueries
             .selectServerBackedMessagesForChannel(serverId = "s1", channelId = "c1")
             .executeAsList()
@@ -83,20 +90,20 @@ class SyncPersistenceSchemaTest {
         driver.close()
     }
 
-    private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int?) = execute(
+    private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int) = execute(
         null,
-        "INSERT INTO messageEntity(id, serverId, channelId, seq, authorId, authorDisplayName, " +
-            "authorHandle, authorKind, timestampLabel, body, messageType, deliveryState) " +
-            "VALUES ('$id','s1','c1', ${seq ?: "NULL"}, 'u1','U','u','human','t','b','text','delivered');",
+        "INSERT INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
+            "VALUES ('$id','s1','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
         0,
     )
 
-    private data class ColumnInfo(val name: String, val type: String)
+    private data class ColumnInfo(val name: String, val type: String, val notNull: Long)
 
     private fun JdbcSqliteDriver.columnInfo(table: String): List<ColumnInfo> =
         executeQuery(null, "PRAGMA table_info($table);", { cursor ->
             val rows = mutableListOf<ColumnInfo>()
-            while (cursor.next().value) rows += ColumnInfo(cursor.getString(1)!!, cursor.getString(2)!!)
+            // PRAGMA table_info columns: cid(0), name(1), type(2), notnull(3), dflt_value(4), pk(5).
+            while (cursor.next().value) rows += ColumnInfo(cursor.getString(1)!!, cursor.getString(2)!!, cursor.getLong(3)!!)
             QueryResult.Value(rows.toList())
         }, 0).value
 
