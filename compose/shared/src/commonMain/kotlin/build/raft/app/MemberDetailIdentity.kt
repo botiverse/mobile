@@ -13,6 +13,14 @@ internal data class MemberDetailIdentity(
     val sourceServerId: ServerId? = null
 )
 
+internal enum class MemberDetailIdentitySource(val wireValue: String) {
+    DirectoryDmPeer("directory_dm_peer"),
+    ThreadMember("thread_member"),
+    ThreadMessageAuthor("thread_message_author"),
+    ThreadForwardAuthor("thread_forward_author"),
+    LegacyPageData("legacy_page_data")
+}
+
 internal fun memberDetailIdentity(
     memberId: String?,
     kind: MemberKind?,
@@ -27,9 +35,35 @@ internal fun memberDetailIdentity(
     )
 }
 
+internal fun memberDetailIdentityFromWire(
+    memberId: String?,
+    kindWireValue: String?,
+    sourceServerId: String? = null,
+    source: MemberDetailIdentitySource,
+    diagnostics: (String) -> Unit = { message -> slockLogWarn("MemberDetailIdentity", message) }
+): MemberDetailIdentity? {
+    val kind = kindWireValue.parsedMemberKindOrNull()
+    if (kind == null) {
+        val boundedKind =
+            kindWireValue
+                ?.trim()
+                ?.lowercase()
+                ?.take(32)
+                ?.takeIf { it.isNotBlank() }
+                ?: "blank"
+        diagnostics(
+            "member_detail_identity_rejected source=${source.wireValue} kind=$boundedKind"
+        )
+        return null
+    }
+    return memberDetailIdentity(memberId, kind, sourceServerId)
+}
+
 internal fun String?.parsedMemberKindOrNull(): MemberKind? =
     when (this?.trim()?.lowercase()) {
         "agent" -> MemberKind.Agent
+        // `human` is canonical. Home DM payloads still emit `user` (HomeParserTest),
+        // while Thread member payloads accept `member` (SharedThreadStore parser).
         "human", "user", "member" -> MemberKind.Human
         "system" -> MemberKind.System
         else -> null

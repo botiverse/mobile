@@ -1,8 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.MemberDetailIdentity
-import build.raft.app.memberDetailIdentity
-import build.raft.app.parsedMemberKindOrNull
+import build.raft.app.MemberDetailIdentitySource
+import build.raft.app.memberDetailIdentityFromWire
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.toKuiklySurfaceKind
 import build.raft.app.toWireChannelKindOrNull
@@ -208,11 +208,16 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
         peerIdentity =
-            memberDetailIdentity(
-                memberId = presenceMemberId?.value,
-                kind = directMessagePeerType.parsedMemberKindOrNull(),
-                sourceServerId = serverId.value
-            ),
+            if (kind == ConversationKind.DirectMessage) {
+                memberDetailIdentityFromWire(
+                    memberId = presenceMemberId?.value,
+                    kindWireValue = directMessagePeerType,
+                    sourceServerId = serverId.value,
+                    source = MemberDetailIdentitySource.DirectoryDmPeer
+                )
+            } else {
+                null
+            },
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,

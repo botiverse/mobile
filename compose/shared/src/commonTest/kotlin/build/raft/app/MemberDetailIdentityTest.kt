@@ -51,15 +51,23 @@ class MemberDetailIdentityTest {
 
     @Test
     fun unknownThreadMemberKindCannotBePromotedToHumanIdentity() {
+        val diagnostics = mutableListOf<String>()
         assertEquals(null, "".parsedMemberKindOrNull())
         assertEquals(null, "unknown".parsedMemberKindOrNull())
         assertEquals(
             null,
-            memberDetailIdentity(
-                memberId = "member-1",
-                kind = "unknown".parsedMemberKindOrNull()
+            memberDetailIdentityFromWire(
+                memberId = "secret-member-id",
+                kindWireValue = "workflow",
+                source = MemberDetailIdentitySource.ThreadMessageAuthor,
+                diagnostics = diagnostics::add
             )
         )
+        assertEquals(
+            listOf("member_detail_identity_rejected source=thread_message_author kind=workflow"),
+            diagnostics
+        )
+        assertEquals(false, diagnostics.single().contains("secret-member-id"))
     }
 
     @Test

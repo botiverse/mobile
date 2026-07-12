@@ -2673,14 +2673,14 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
     return KuiklyMemberDetailPayload(
         instanceId = payload.optString("instanceId").ifBlank { optString("instanceId") },
         identity =
-            memberDetailIdentity(
+            memberDetailIdentityFromWire(
                 memberId = payload.optString("memberId").ifBlank { payload.optString("selectedMemberId") },
-                kind =
+                kindWireValue =
                     payload.optString("memberKind")
                         .ifBlank { payload.optString("selectedMemberKind") }
-                        .ifBlank { payload.optString("kind") }
-                        .parsedMemberKindOrNull(),
-                sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") }
+                        .ifBlank { payload.optString("kind") },
+                sourceServerId = payload.optString("sourceServerId").ifBlank { payload.optString("serverId") },
+                source = MemberDetailIdentitySource.LegacyPageData
             ),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         visualMode = payload.optNullableString("visualMode") ?: optNullableString("visualMode"),

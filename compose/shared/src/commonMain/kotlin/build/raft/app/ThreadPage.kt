@@ -835,16 +835,18 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile? {
 }
 
 private fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentity(
+    memberDetailIdentityFromWire(
         memberId = id,
-        kind = kind.parsedMemberKindOrNull(),
-        sourceServerId = sourceServerId
+        kindWireValue = kind,
+        sourceServerId = sourceServerId,
+        source = MemberDetailIdentitySource.ThreadMember
     )
 
 private fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentity(
+    memberDetailIdentityFromWire(
         memberId = authorId,
-        kind = authorKind.parsedMemberKindOrNull()
+        kindWireValue = authorKind,
+        source = MemberDetailIdentitySource.ThreadMessageAuthor
     )
 
 private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSnapshot? {
@@ -16867,9 +16869,10 @@ private fun ForwardMessageItem.localizedForwardAttachmentLabel(): String =
     }
 
 private fun ForwardMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
-    memberDetailIdentity(
+    memberDetailIdentityFromWire(
         memberId = authorId,
-        kind = authorKind.parsedMemberKindOrNull()
+        kindWireValue = authorKind,
+        source = MemberDetailIdentitySource.ThreadForwardAuthor
     )
 
 private enum class ThreadForwardSelectionMode(val wireValue: String, val label: String) {

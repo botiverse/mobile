@@ -65,9 +65,9 @@ class MemberDetailIdentityBoundaryTest {
                 "onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity)",
                 "onOpenMemberProfile: (MemberDetailIdentity) -> Unit",
                 "onOpenMember: (MemberDetailIdentity) -> Unit",
-                "fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = id,\n        kind = kind.parsedMemberKindOrNull()",
-                "fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = authorId,\n        kind = authorKind.parsedMemberKindOrNull()",
-                "fun ForwardMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = authorId,\n        kind = authorKind.parsedMemberKindOrNull()",
+                "fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentityFromWire(\n        memberId = id,\n        kindWireValue = kind,\n        sourceServerId = sourceServerId,\n        source = MemberDetailIdentitySource.ThreadMember",
+                "fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentityFromWire(\n        memberId = authorId,\n        kindWireValue = authorKind,\n        source = MemberDetailIdentitySource.ThreadMessageAuthor",
+                "fun ForwardMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentityFromWire(\n        memberId = authorId,\n        kindWireValue = authorKind,\n        source = MemberDetailIdentitySource.ThreadForwardAuthor",
             ),
             forbidden = listOf(
                 "onOpenMemberProfile: (String",
@@ -88,6 +88,20 @@ class MemberDetailIdentityBoundaryTest {
                 "onPinnedMemberClick: (kind: String, memberId: String)",
                 "openPinnedMemberDirectMessage(\n    kind: String",
             ),
+        ),
+        BoundaryFile(
+            path = "build/raft/app/SettingsHomePage.kt",
+            required = listOf(
+                "launchPayload.toMemberDetailPageData(\n                                MemberDetailIdentity(",
+                "onPinnedMemberClick = { identity ->",
+                "repository.openPinnedMemberDirectMessage(identity)",
+            ),
+            forbidden = listOf("onPinnedMemberClick = { kind, memberId ->"),
+        ),
+        BoundaryFile(
+            path = "build/raft/app/SlockForegroundBannerHost.kt",
+            required = listOf("row.peerIdentity?.memberId?.value"),
+            forbidden = listOf("row.peerMemberId"),
         ),
     )
 
@@ -119,6 +133,40 @@ class MemberDetailIdentityBoundaryTest {
             violations.isEmpty(),
             "Member-detail projection/click/launch/dispatch boundaries must carry MemberDetailIdentity " +
                 "instead of separable String id + nullable kind fields:\n${violations.joinToString("\n")}",
+        )
+    }
+
+    @Test
+    fun memberDetailBoundaryRegistryIsClosedOverProductionFiles() {
+        val commonMain = locateCommonMain()
+        val registered = boundaries.mapTo(linkedSetOf()) { it.path }
+        val discoveryTokens =
+            listOf(
+                "dispatchMemberDetailLookup",
+                "onOpenMemberProfile",
+                "onPinnedMemberClick",
+                "toMemberDetailPageData",
+                "toThreadMemberDetailPageData",
+                "openPinnedMemberDirectMessage",
+                "dmPeerIdentity",
+                "peerIdentity",
+            )
+        val discovered =
+            commonMain
+                .walkTopDown()
+                .filter { file -> file.isFile && file.extension == "kt" }
+                .filter { file ->
+                    val source = file.readText()
+                    discoveryTokens.any(source::contains)
+                }
+                .map { file -> file.relativeTo(commonMain).invariantSeparatorsPath }
+                .toSet()
+        val unregistered = discovered - registered
+
+        assertTrue(
+            unregistered.isEmpty(),
+            "Member-detail boundary files must be added to the explicit registry before production " +
+                "can introduce new identity/open/dispatch surfaces:\n${unregistered.sorted().joinToString("\n")}",
         )
     }
 
