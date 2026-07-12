@@ -297,6 +297,7 @@ class RealtimeRepositoryTest {
                 "channelId" to "channel-1",
                 "seq" to 13,
                 "content" to "Hello",
+                "messageType" to "chat",
                 "senderType" to "user",
                 "senderId" to "user-1",
                 "senderName" to "Artin"
@@ -314,6 +315,7 @@ class RealtimeRepositoryTest {
                         "channelId" to "channel-1",
                         "seq" to 14,
                         "content" to "Resumed",
+                        "messageType" to "chat",
                         "senderType" to "user",
                         "senderId" to "user-2",
                         "senderName" to "Cindy"
@@ -329,6 +331,68 @@ class RealtimeRepositoryTest {
         assertEquals("Hello", (events[1] as MessageNew).message.body)
         assertEquals(14L, (events[2] as SyncResumeResponse).currentSeq)
         assertEquals("Resumed", (events[2] as SyncResumeResponse).messages.single().body)
+    }
+
+    @Test
+    fun clientDoesNotCommitResumeCursorAcrossRejectedMessageAndSelectsRecovery() {
+        val transport = FakeRealtimeSocketTransport()
+        val client = SocketIoRealtimeClient(transport)
+        val events = mutableListOf<RealtimeEvent>()
+        client.observeEvents { events += it }
+
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1")),
+                lastSeq = 10,
+            )
+        )
+        val poisonedResume =
+            mapOf(
+                "currentSeq" to 12,
+                "hasMore" to false,
+                "messages" to
+                    listOf(
+                        mapOf(
+                            "id" to "message-valid",
+                            "seq" to 11,
+                            "threadId" to "thread-1",
+                            "channelId" to "channel-1",
+                            "content" to "Valid",
+                            "messageType" to "chat",
+                            "senderType" to "user",
+                            "senderId" to "user-1",
+                            "senderName" to "Artin",
+                        ),
+                        mapOf(
+                            "id" to "message-invalid",
+                            "seq" to 12,
+                            "threadId" to "thread-1",
+                            "channelId" to "channel-1",
+                            "content" to "Invalid",
+                            "messageType" to "chat",
+                            "senderType" to "system",
+                            "senderId" to "system",
+                            "senderName" to "System",
+                        ),
+                    ),
+            )
+        transport.receive(RealtimeSocketEvents.SyncResumeResponse, poisonedResume)
+
+        val recovery = events.single() as Heartbeat
+        assertEquals(12L, recovery.seq)
+        assertTrue(events.none { it is SyncResumeResponse })
+
+        val retry = transport.emitted.single { it.first == RealtimeSocketEvents.SyncResume }
+        assertEquals(10L, retry.second["lastSeq"])
+
+        transport.receive(RealtimeSocketEvents.SyncResumeResponse, poisonedResume)
+
+        assertEquals(2, events.filterIsInstance<Heartbeat>().size)
+        assertEquals(1, transport.emitted.count { it.first == RealtimeSocketEvents.SyncResume })
+        val escalation = events.filterIsInstance<RealtimeRefreshRequired>().single()
+        assertEquals(RealtimeRefreshScope.Home, escalation.scope)
+        assertEquals("sync_resume_projection_rejected_repeatedly", escalation.reason)
+        assertEquals(ServerId("server-1"), escalation.serverId)
     }
 
     @Test
@@ -374,6 +438,7 @@ class RealtimeRepositoryTest {
                 "channelId" to "channel-1",
                 "seq" to 43,
                 "content" to "Caught up",
+                "messageType" to "chat",
                 "senderType" to "user",
                 "senderId" to "user-1",
                 "senderName" to "Artin"
@@ -618,7 +683,11 @@ class RealtimeRepositoryTest {
                 "threadId" to "channel-1",
                 "channelId" to "channel-1",
                 "seq" to 89,
-                "content" to "Realtime body"
+                "content" to "Realtime body",
+                "messageType" to "chat",
+                "senderType" to "user",
+                "senderId" to "user-1",
+                "senderName" to "Artin"
             )
         )
         transport.emitted.clear()
@@ -696,6 +765,7 @@ class RealtimeRepositoryTest {
                 "threadId" to "thread-1",
                 "channelId" to "channel-1",
                 "content" to "Wrong server",
+                "messageType" to "chat",
                 "senderType" to "user",
                 "senderId" to "user-1",
                 "senderName" to "Artin"
@@ -864,6 +934,7 @@ class RealtimeRepositoryTest {
                   "channelId": "channel-json",
                   "seq": 77,
                   "content": "Socket payload",
+                  "messageType": "chat",
                   "senderType": "user",
                   "senderId": "user-json",
                   "senderName": "Socket User"
@@ -895,6 +966,7 @@ class RealtimeRepositoryTest {
                     "threadId": "thread-envelope",
                     "channelId": "channel-envelope",
                     "content": "Envelope fallback",
+                    "messageType": "chat",
                     "senderType": "user",
                     "senderId": "user-envelope",
                     "senderName": "Envelope User"
@@ -919,6 +991,10 @@ class RealtimeRepositoryTest {
                   "threadId": "thread-json",
                   "channelId": "channel-json",
                   "content": "Images from socket",
+                  "messageType": "chat",
+                  "senderType": "user",
+                  "senderId": "user-json",
+                  "senderName": "Socket User",
                   "attachments": [
                     {
                       "id": "image-1",
@@ -967,6 +1043,7 @@ class RealtimeRepositoryTest {
                   "threadId": "thread-agent",
                   "channelId": "channel-agent",
                   "content": "Agent payload",
+                  "messageType": "chat",
                   "senderType": "agent",
                   "senderId": "agent-1",
                   "senderName": "API Integration",
@@ -998,7 +1075,10 @@ class RealtimeRepositoryTest {
                   "channelId": "channel-json",
                   "seq": 78,
                   "messageType": "system",
-                  "content": "Task moved to Review"
+                  "content": "Task moved to Review",
+                  "senderType": "user",
+                  "senderId": "system",
+                  "senderName": "System"
                 }
                 """.trimIndent()
             )

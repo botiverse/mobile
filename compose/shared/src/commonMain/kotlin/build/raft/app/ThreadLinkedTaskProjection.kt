@@ -28,7 +28,8 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     return copy(
         taskId = linkedTask.id.value,
         taskNumber = linkedTask.taskNumber ?: taskNumber,
-        taskStatus = linkedTask.status.name,
+        taskStatus = linkedTask.status.toWireValue(),
+        taskAssigneeKind = linkedTask.assignee?.kind?.memberKindWireValue(),
         taskAssigneeId = linkedTask.assignee?.id?.value,
         taskAssigneeName = linkedTask.threadLinkedTaskAssigneeDisplayName()
     )
@@ -46,13 +47,21 @@ internal fun KuiklyThreadMessageItem.withLinkedTaskProjection(
 }
 
 internal fun KuiklyThreadMessageItem.withoutLinkedTask(): KuiklyThreadMessageItem =
-    if (taskId == null && taskNumber == null && taskStatus == null && taskAssigneeId == null && taskAssigneeName == null) {
+    if (
+        taskId == null &&
+        taskNumber == null &&
+        taskStatus == null &&
+        taskAssigneeKind == null &&
+        taskAssigneeId == null &&
+        taskAssigneeName == null
+    ) {
         this
     } else {
         copy(
             taskId = null,
             taskNumber = null,
             taskStatus = null,
+            taskAssigneeKind = null,
             taskAssigneeId = null,
             taskAssigneeName = null
         )

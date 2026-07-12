@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
@@ -9,6 +10,8 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class TasksDataSourceTest {
     @Test
@@ -174,6 +177,119 @@ class TasksDataSourceTest {
 
         assertEquals("Align the visual fixture copy.", snapshot.tasks[0].description)
         assertEquals(null, snapshot.tasks[1].description)
+    }
+
+    @Test
+    fun taskListDropsUnknownStatusAndDoesNotInventUnknownAssigneeKind() = runBlocking {
+        val logs = mutableListOf<String>()
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    listBody =
+                        """
+                        {
+                          "tasks": [
+                            {
+                              "id": "task-invalid-status",
+                              "channelId": "channel-1",
+                              "title": "Must not become Todo",
+                              "status": "future-status",
+                              "createdByType": "user",
+                              "createdById": "user-1"
+                            },
+                            {
+                              "id": "task-invalid-assignee",
+                              "channelId": "channel-1",
+                              "title": "Keep task, drop assignee",
+                              "status": "in_review",
+                              "createdByType": "user",
+                              "createdById": "user-1",
+                              "claimedByType": "future-member",
+                              "claimedById": "secret-assignee-id",
+                              "claimedByName": "Secret Assignee"
+                            },
+                            {
+                              "id": "task-valid",
+                              "channelId": "channel-1",
+                              "title": "Keep valid task",
+                              "status": "done",
+                              "createdByType": "user",
+                              "createdById": "user-1",
+                              "claimedByType": "agent",
+                              "claimedById": "agent-1",
+                              "claimedByName": "Agent One"
+                            },
+                            {
+                              "id": "task-cross-dialect",
+                              "channelId": "channel-1",
+                              "title": "Keep task without invented members",
+                              "status": "todo",
+                              "createdByType": "human",
+                              "createdById": "user-2",
+                              "claimedByType": "system",
+                              "claimedById": "system"
+                            }
+                          ]
+                        }
+                        """.trimIndent(),
+                ),
+                diagnosticsLogger = logs::add,
+            )
+
+        val snapshot =
+            assertIs<DataResult.Content<TaskSnapshot>>(
+                client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible),
+            ).data
+
+        assertEquals(
+            listOf("task-invalid-assignee", "task-valid", "task-cross-dialect"),
+            snapshot.tasks.map { it.id.value },
+        )
+        assertEquals(TaskStatus.InReview, snapshot.tasks.first().status)
+        assertNull(snapshot.tasks.first().assignee)
+        assertEquals(MemberKind.Agent, snapshot.tasks[1].assignee?.kind)
+        assertNull(snapshot.tasks.last().creator)
+        assertNull(snapshot.tasks.last().assignee)
+        assertTrue(logs.any { it == "projection_value_rejected source=task_wire field=task_status value=future-status" })
+        assertTrue(logs.any { it == "projection_value_rejected source=task_assignee field=member_kind value=future-member" })
+        assertTrue(logs.any { it == "projection_value_rejected source=task_creator field=member_kind value=human" })
+        assertTrue(logs.any { it == "projection_value_rejected source=task_assignee field=member_kind value=system" })
+        assertTrue(logs.none { "secret-assignee-id" in it || "Secret Assignee" in it })
+    }
+
+    @Test
+    fun taskActionWithUnknownStatusReturnsContractMismatch() = runBlocking {
+        val logs = mutableListOf<String>()
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    actionBody =
+                        """
+                        {
+                          "task": {
+                            "id": "task-1",
+                            "channelId": "channel-1",
+                            "title": "Must not become Todo",
+                            "status": "future-status",
+                            "createdByType": "user",
+                            "createdById": "user-1"
+                          }
+                        }
+                        """.trimIndent(),
+                ),
+                diagnosticsLogger = logs::add,
+            )
+
+        val error =
+            assertIs<DataResult.Error>(
+                client.taskByNumber(ChannelId("channel-1"), 1, DataRequestPriority.Visible),
+            )
+
+        assertEquals("tasks_by_number_contract_mismatch", error.error.code)
+        assertEquals(
+            listOf("projection_value_rejected source=task_wire field=task_status value=future-status"),
+            logs,
+        )
     }
 
     private class RecordingTasksApi(

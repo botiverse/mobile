@@ -64,7 +64,10 @@ class MemberDetailIdentityTest {
             )
         )
         assertEquals(
-            listOf("member_detail_identity_rejected source=thread_message_author kind=workflow"),
+            listOf(
+                "projection_value_rejected source=thread_message_author " +
+                    "field=member_kind value=workflow",
+            ),
             diagnostics
         )
         assertEquals(false, diagnostics.single().contains("secret-member-id"))

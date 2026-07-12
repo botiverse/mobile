@@ -42,32 +42,14 @@ internal fun memberDetailIdentityFromWire(
     source: MemberDetailIdentitySource,
     diagnostics: (String) -> Unit = { message -> slockLogWarn("MemberDetailIdentity", message) }
 ): MemberDetailIdentity? {
-    val kind = kindWireValue.parsedMemberKindOrNull()
-    if (kind == null) {
-        val boundedKind =
-            kindWireValue
-                ?.trim()
-                ?.lowercase()
-                ?.take(32)
-                ?.takeIf { it.isNotBlank() }
-                ?: "blank"
-        diagnostics(
-            "member_detail_identity_rejected source=${source.wireValue} kind=$boundedKind"
-        )
-        return null
-    }
+    val kind =
+        kindWireValue.strictMemberKindOrNull(
+            source = source.wireValue,
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.Identity,
+        ) ?: return null
     return memberDetailIdentity(memberId, kind, sourceServerId)
 }
-
-internal fun String?.parsedMemberKindOrNull(): MemberKind? =
-    when (this?.trim()?.lowercase()) {
-        "agent" -> MemberKind.Agent
-        // `human` is canonical. Home DM payloads still emit `user` (HomeParserTest),
-        // while Thread member payloads accept `member` (SharedThreadStore parser).
-        "human", "user", "member" -> MemberKind.Human
-        "system" -> MemberKind.System
-        else -> null
-    }
 
 internal fun MemberKind.memberKindWireValue(): String =
     when (this) {

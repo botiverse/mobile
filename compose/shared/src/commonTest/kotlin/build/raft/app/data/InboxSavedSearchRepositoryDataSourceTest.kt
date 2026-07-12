@@ -8,6 +8,8 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class InboxSavedSearchRepositoryDataSourceTest {
@@ -61,7 +63,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                               "parentChannelName": "mardown专修",
                               "parentChannelType": "channel",
                               "parentMessagePreview": "inline code 也有这个问题",
-                              "parentMessageSenderType": "human",
+                              "parentMessageSenderType": "user",
                               "parentMessageSenderId": "user-1",
                               "latestActivityPreview": "收到，我会修 inline code",
                               "latestActivitySenderType": "agent",
@@ -218,6 +220,75 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("Search hit", search.data.items.single().lastMessagePreview)
         assertEquals("user-1", search.data.items.single().lastMessageSenderId)
         assertEquals(MemberKind.Human, search.data.items.single().lastMessageSenderKind)
+    }
+
+    @Test
+    fun inboxAcceptsSystemFactsButRejectsCrossDialectHumanAndUnknownTaskStatus() {
+        val diagnostics = mutableListOf<String>()
+        val snapshot =
+            parseSharedInboxSnapshot(
+                bodyText =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-1",
+                          "parentMessageSenderType": "system",
+                          "parentMessageSenderId": "system",
+                          "latestActivitySenderType": "human",
+                          "latestActivitySenderId": "user-1",
+                          "taskStatus": "future-status"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                diagnostics = diagnostics::add,
+            )
+
+        val item = assertNotNull(snapshot).items.single()
+        assertEquals(MemberKind.System, item.parentMessageSenderKind)
+        assertNull(item.latestActivitySenderKind)
+        assertNull(item.taskStatus)
+        assertEquals(
+            listOf(
+                "projection_value_rejected source=inbox_latest_activity_sender " +
+                    "field=member_kind value=human",
+                "projection_value_rejected source=inbox_task field=task_status value=future-status",
+            ),
+            diagnostics,
+        )
+    }
+
+    @Test
+    fun savedAndSearchRejectInboxOnlySystemSenderKind() {
+        val savedDiagnostics = mutableListOf<String>()
+        val searchDiagnostics = mutableListOf<String>()
+        val saved =
+            parseSharedSavedItems(
+                """{"saved":[{"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"system","senderId":"system","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}]}""",
+                savedDiagnostics::add,
+            )
+        val search =
+            parseSharedSearchItems(
+                """{"results":[{"id":"message-2","channelId":"channel-2","channelName":"product","channelType":"channel","parentChannelId":"channel-2","parentChannelName":"product","parentChannelType":"channel","senderId":"system","senderType":"system","senderName":"System","content":"Search hit","snippet":"Search hit","createdAt":"2026-05-01T00:00:00Z"}]}""",
+                searchDiagnostics::add,
+            )
+
+        assertNull(assertNotNull(saved).items.single().lastMessageSenderKind)
+        assertNull(assertNotNull(search).items.single().lastMessageSenderKind)
+        assertEquals(
+            listOf(
+                "projection_value_rejected source=saved_message_sender field=member_kind value=system",
+            ),
+            savedDiagnostics,
+        )
+        assertEquals(
+            listOf(
+                "projection_value_rejected source=search_message_sender field=member_kind value=system",
+            ),
+            searchDiagnostics,
+        )
     }
 
     @Test

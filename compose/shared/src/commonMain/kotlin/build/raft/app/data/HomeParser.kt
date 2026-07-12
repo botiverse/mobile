@@ -1,12 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
@@ -344,11 +346,23 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
     )
 }
 
-internal fun HomeNetworkPayload.directMessagePeerProfiles(serverId: ServerId): List<MemberProfile> =
-    directMessages.mapNotNull { it.toPeerMemberProfile(serverId) }
+internal fun HomeNetworkPayload.directMessagePeerProfiles(
+    serverId: ServerId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): List<MemberProfile> =
+    directMessages.mapNotNull { it.toPeerMemberProfile(serverId, diagnostics) }
 
-private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): MemberProfile? {
+private fun HomeDirectMessageWireDto.toPeerMemberProfile(
+    serverId: ServerId,
+    diagnostics: (String) -> Unit,
+): MemberProfile? {
     val cleanPeerId = peerId.trim().takeIf { it.isNotBlank() } ?: return null
+    val memberKind =
+        peerType.strictMemberKindOrNull(
+            source = "home_dm_peer",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
     val displayName =
         peerDisplayName?.takeIf { it.isNotBlank() }
             ?: peerName.takeIf { it.isNotBlank() }
@@ -358,7 +372,7 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(serverId: ServerId): Me
         id = MemberId(cleanPeerId),
         displayName = displayName,
         handle = peerName.takeIf { it.isNotBlank() } ?: displayName,
-        kind = if (peerType.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
+        kind = memberKind,
         description = peerDescription?.takeIf { it.isNotBlank() },
         avatarUrl = directAvatarUrl,
         avatar = directAvatarUrl?.let { AvatarReference.fromWireValue(it) },

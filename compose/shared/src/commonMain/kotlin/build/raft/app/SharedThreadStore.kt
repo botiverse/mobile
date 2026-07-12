@@ -397,7 +397,7 @@ internal class SharedThreadDataSource(
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
-    private val diagnosticsLogger: (String) -> Unit = {},
+    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
     /**
      * Task #43: shared create-agent coordinator used by the action-card
      * path. Mirrors the field on `SharedMembersDataSource`; the actual
@@ -433,7 +433,7 @@ internal class SharedThreadDataSource(
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
-        diagnosticsLogger: (String) -> Unit = {}
+        diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
     ) : this(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
@@ -533,14 +533,13 @@ internal class SharedThreadDataSource(
             cacheReplyThreadResolution(channelId.value, parentMessage.id, resolvedThreadChannelId)
         }
         if (parentMessage.needsReplyOriginContextHydration()) return
-        messageResolver.upsert(
-            channelId = channelId,
-            message =
-                parentMessage.toMessage(
+        val projectedParent =
+            parentMessage.toMessage(
                     threadId = ThreadId(channelId.value),
-                    channelId = channelId
-                )
-        )
+                    channelId = channelId,
+                    diagnostics = diagnosticsLogger,
+                ) ?: return
+        messageResolver.upsert(channelId = channelId, message = projectedParent)
         diagnosticsLogger(
             "thread_parent_context_store_seed parentChannelId=${channelId.value} " +
                 "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"
@@ -669,7 +668,8 @@ internal class SharedThreadDataSource(
                 basePayload = pendingPayload,
                 page = sentPage,
                 session = readSession(),
-                trustedReplyThreadChannelId = localMessage.pendingSendContext?.streamChannelId
+                trustedReplyThreadChannelId = localMessage.pendingSendContext?.streamChannelId,
+                diagnostics = diagnosticsLogger,
             )
         val replaced =
             appended
@@ -1052,7 +1052,8 @@ internal class SharedThreadDataSource(
                     buildSharedThreadPayloadFromMessagesPage(
                         basePayload = resolvedBasePayload,
                         page = page,
-                        session = session
+                        session = session,
+                        diagnostics = diagnosticsLogger,
                     )
                 )
             }
@@ -1332,7 +1333,10 @@ internal class SharedThreadDataSource(
             payload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val memberKind =
-            kind.toThreadMemberKind()
+            kind.strictMemberKindOrNull(
+                source = "thread_add_member",
+                contract = MemberKindWireContract.Projected,
+            )
                 ?: return DataResult.Error(ScreenError(code = "thread_member_kind_missing", retryable = false))
         val cleanMemberId =
             memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
@@ -1453,7 +1457,10 @@ internal class SharedThreadDataSource(
             payload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val memberKind =
-            kind.toThreadMemberKind()
+            kind.strictMemberKindOrNull(
+                source = "thread_remove_member",
+                contract = MemberKindWireContract.Projected,
+            )
                 ?: return DataResult.Error(ScreenError(code = "thread_member_kind_missing", retryable = false))
         val cleanMemberId =
             memberId.takeIf { it.isNotBlank() }?.let(::MemberId)
@@ -2072,7 +2079,8 @@ internal class SharedThreadDataSource(
                     buildSharedThreadPayloadFromMessagesPage(
                         basePayload = basePayload,
                         page = page,
-                        session = session
+                        session = session,
+                        diagnostics = diagnosticsLogger,
                     )
                 )
             }
@@ -2232,7 +2240,8 @@ internal class SharedThreadDataSource(
                 parentMessage =
                     basePayload.originMessage.toMessage(
                         threadId = ThreadId(originParentChannelId),
-                        channelId = ChannelId(originParentChannelId)
+                        channelId = ChannelId(originParentChannelId),
+                        diagnostics = diagnosticsLogger,
                     )
             )
         }
@@ -3851,7 +3860,8 @@ internal class SharedThreadStore(
             appendSharedThreadSentMessageFromPage(
                 basePayload = currentPayload,
                 page = page,
-                session = dataSource.readSession()
+                session = dataSource.readSession(),
+                diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
             )
         val appendedCanonicalMessages =
             appended.messages.filter { appendedMessage ->
@@ -3911,7 +3921,8 @@ internal class SharedThreadStore(
                         .messages
                         .firstOrNull { it.id == messageId }
                         ?.pendingSendContext
-                        ?.streamChannelId
+                        ?.streamChannelId,
+                diagnostics = diagnosticsLogger ?: strictProjectionDiagnosticsLogger,
             )
         val replaced =
             appended
@@ -5031,14 +5042,6 @@ private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): Str
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
-private fun String?.toThreadMemberKind(): MemberKind? =
-    when (this?.trim()?.lowercase()) {
-        "agent" -> MemberKind.Agent
-        "human", "member", "user" -> MemberKind.Human
-        "system" -> MemberKind.System
-        else -> null
-    }
-
 private fun ChannelFilesSnapshot.toKuiklyThreadFilesPayload(
     basePayload: KuiklyThreadScreenPayload,
     currentPayload: KuiklyThreadFilesPayload?,
@@ -5898,6 +5901,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         taskId = update.taskId ?: taskId,
         taskNumber = update.taskNumber ?: taskNumber,
         taskStatus = update.taskStatus ?: taskStatus,
+        taskAssigneeKind = update.taskAssigneeKind ?: taskAssigneeKind,
         taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
         reactions =
@@ -6207,26 +6211,44 @@ internal fun KuiklyThreadMessageItem.toMessage(
     threadId: ThreadId,
     channelId: ChannelId,
     currentUserId: String? = null,
-    currentUserName: String? = null
-): Message {
+    currentUserName: String? = null,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Message? {
+    val authorMemberKind =
+        authorKind.strictMemberKindOrNull(
+            source = "thread_item_author",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.Projected,
+        ) ?: return null
+    val resolvedMessageType = messageType.strictMessageTypeOrNull("thread_item_message", diagnostics) ?: return null
+    val hasTaskProjection = taskId != null || taskNumber != null || taskStatus != null
+    val resolvedTaskStatus =
+        if (hasTaskProjection) taskStatus.strictTaskStatusOrNull("thread_item_task", diagnostics) else null
     val taskSummary =
-        if (taskId != null || taskNumber != null) {
+        if (hasTaskProjection && resolvedTaskStatus != null) {
             TaskSummary(
                 id = TaskId(taskId ?: "task-${taskNumber ?: id}"),
                 title = body.ifBlank { taskNumber?.let { "Task #$it" } ?: "Task" },
-                status = TaskStatus.fromWireValue(taskStatus) ?: TaskStatus.Todo,
+                status = resolvedTaskStatus,
                 taskNumber = taskNumber,
                 messageId = MessageId(id),
                 channelId = channelId,
                 threadId = threadId,
                 assignee = taskAssigneeId?.takeIf { it.isNotBlank() }?.let { id ->
                     val name = taskAssigneeName?.takeIf { it.isDisplaySafeTaskAssigneeName(id) } ?: id
-                    MemberProfile(
-                        id = MemberId(id),
-                        displayName = name,
-                        handle = name.removePrefix("@"),
-                        kind = MemberKind.Human
+                    taskAssigneeKind.strictMemberKindOrNull(
+                        source = "thread_item_task_assignee",
+                        diagnostics = diagnostics,
+                        contract = MemberKindWireContract.Projected,
                     )
+                        ?.let { kind ->
+                            MemberProfile(
+                                id = MemberId(id),
+                                displayName = name,
+                                handle = name.removePrefix("@"),
+                                kind = kind,
+                            )
+                        }
                 },
                 updatedAtLabel = timestampLabel
             )
@@ -6238,11 +6260,11 @@ internal fun KuiklyThreadMessageItem.toMessage(
         threadId = threadId,
         channelId = channelId,
         threadChannelId = threadChannelId?.let(::ChannelId),
-        author = toMemberProfile(),
+        author = toMemberProfile(authorMemberKind),
         seq = seq,
         timestampLabel = timestampLabel,
         body = body,
-        messageType = if (messageType.equals("System", ignoreCase = true)) MessageType.System else MessageType.Chat,
+        messageType = resolvedMessageType,
         systemEventType = systemEventType,
         metadata = metadata.withLocalSendMetadata(pendingSendContext, pendingSendErrorCode, pendingSendErrorMessage),
         attachments = attachments.map { attachment -> attachment.toAttachment() },
@@ -6285,7 +6307,7 @@ private fun List<KuiklyThreadReactionItem>.toMessageReactions(
         )
     }.takeIf { it.isNotEmpty() }
 
-private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
+private fun KuiklyThreadMessageItem.toMemberProfile(kind: MemberKind): MemberProfile {
     val cleanAuthorDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }
     val cleanMembershipStatus =
         senderMembershipStatus?.takeIf { it.isNotBlank() }
@@ -6294,7 +6316,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
         id = MemberId(authorId),
         displayName = authorName,
         handle = authorName.removePrefix("@"),
-        kind = if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human,
+        kind = kind,
         avatarUrl = avatarWireValue?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
@@ -6395,7 +6417,8 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         isSaved = isSaved,
         taskId = task?.id?.value,
         taskNumber = task?.taskNumber,
-        taskStatus = task?.status?.name,
+        taskStatus = task?.status?.toWireValue(),
+        taskAssigneeKind = task?.assignee?.kind?.memberKindWireValue(),
         taskAssigneeId = task?.assignee?.id?.value,
         taskAssigneeName = task?.assignee?.displayName,
         deliveryState = deliveryState.toKuiklyThreadDeliveryState(),
@@ -6499,7 +6522,7 @@ private fun TaskSummary.toKuiklyThreadTaskItem(): KuiklyThreadTaskItem =
     KuiklyThreadTaskItem(
         id = id.value,
         title = title,
-        status = status.name,
+        status = status.toWireValue(),
         taskNumber = taskNumber,
         messageId = messageId?.value,
         assigneeId = assignee?.id?.value,

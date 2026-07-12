@@ -1696,6 +1696,7 @@ class SharedThreadStoreTest {
                                 senderType = "user",
                                 senderId = "u1",
                                 senderName = "Artin",
+                                messageType = "chat",
                                 content = "sent body"
                             )
                         ),
@@ -5331,6 +5332,7 @@ class SharedThreadStoreTest {
                                     senderType = "user",
                                     senderId = "u1",
                                     senderName = "Artin",
+                                    messageType = "chat",
                                     seq = 1,
                                     content = "dm parent"
                                 )
@@ -8241,7 +8243,18 @@ class SharedThreadStoreTest {
             basePayload = base,
             page =
                 ThreadMessagesPage(
-                    messages = listOf(WireMessage(id = id, channelId = channelId, senderType = "user", senderId = "u1", senderName = "Artin", content = body)),
+                    messages =
+                        listOf(
+                            WireMessage(
+                                id = id,
+                                channelId = channelId,
+                                senderType = "user",
+                                senderId = "u1",
+                                senderName = "Artin",
+                                messageType = "chat",
+                                content = body,
+                            ),
+                        ),
                     canLoadMoreBefore = false,
                     canLoadMoreAfter = null
                 ),
@@ -8279,6 +8292,7 @@ class SharedThreadStoreTest {
                         senderType = "user",
                         senderId = "u1",
                         senderName = "Artin",
+                        messageType = "chat",
                         content = body,
                         createdAt = "2026-05-19T16:01:00Z",
                         seq = 11
@@ -8567,7 +8581,8 @@ class SharedThreadStoreTest {
                   "createdAt": "2026-05-19T16:00:00Z",
                   "senderId": "u1",
                   "senderName": "Artin",
-                  "senderType": "user"
+                  "senderType": "user",
+                  "messageType": "chat"
                 }
               ]
             }
@@ -8620,7 +8635,8 @@ class SharedThreadStoreTest {
                   "createdAt": "2026-05-19T16:00:00Z",
                   "senderId": "agent-1",
                   "senderName": "Product-UX-Designer",
-                  "senderType": "agent"
+                  "senderType": "agent",
+                  "messageType": "chat"
                 }
               ]
             }
@@ -8642,7 +8658,8 @@ class SharedThreadStoreTest {
                 "createdAt": "2026-05-19T16:00:00Z",
                 "senderId": "u1",
                 "senderName": "Artin",
-                "senderType": "user"
+                "senderType": "user",
+                "messageType": "chat"
               }
             ]
             """.trimIndent()

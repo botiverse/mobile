@@ -488,10 +488,13 @@ class ThreadApiTest {
             HomeNetworkResponse(code = 200, bodyText = reactionBody)
 
         override suspend fun convertMessageToTask(messageId: String): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"task-converted","messageId":"$messageId"}}""")
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"task":{"id":"task-converted","messageId":"$messageId","status":"todo"}}""",
+            )
 
         override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"$taskId"}}""")
+            HomeNetworkResponse(code = 200, bodyText = """{"task":{"id":"$taskId","status":"in_review"}}""")
 
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = createThreadBody)
@@ -523,10 +526,11 @@ class ThreadApiTest {
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")
                 normalizedPath.startsWith("channels/saved/") && method == "DELETE" -> ok("""{"ok":true}""")
                 normalizedPath.endsWith("/reactions") -> ok(reactionBody)
-                normalizedPath == "tasks/convert-message" && method == "POST" -> ok("""{"task":{"id":"task-converted"}}""")
+                normalizedPath == "tasks/convert-message" && method == "POST" ->
+                    ok("""{"task":{"id":"task-converted","status":"todo"}}""")
                 normalizedPath.startsWith("tasks/") && normalizedPath.endsWith("/status") -> {
                     val taskId = normalizedPath.removePrefix("tasks/").removeSuffix("/status")
-                    ok("""{"task":{"id":"$taskId"}}""")
+                    ok("""{"task":{"id":"$taskId","status":"in_review"}}""")
                 }
                 normalizedPath.endsWith("/threads") -> ok(createThreadBody)
                 else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")

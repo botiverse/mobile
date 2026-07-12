@@ -979,6 +979,7 @@ internal data class KuiklyThreadMessageItem(
     val taskId: String? = null,
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
+    val taskAssigneeKind: String? = null,
     val taskAssigneeId: String? = null,
     val taskAssigneeName: String? = null,
     val reactions: List<KuiklyThreadReactionItem> = emptyList(),
@@ -14733,9 +14734,15 @@ private fun Modifier.threadMessageLongPressActions(
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     if (threadAuthorBadgeLabel() != null) return null
-    val isAgent = isThreadAgentAuthor()
+    // Avatar slot styling consumes the already-normalized Thread projection. It must not infer a
+    // human author from unknown presentation data or from the legacy agent-id heuristic.
+    val authorMemberKind =
+        authorKind.strictMemberKindOrNull(
+            source = "thread_avatar_author",
+            contract = MemberKindWireContract.Projected,
+        ) ?: return null
     val resolution = resolveAvatarSlot(
-        kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
+        kind = authorMemberKind,
         id = authorId.ifBlank { authorName },
         avatarWireValue = avatarWireValue
     )

@@ -412,6 +412,15 @@ enum class TaskStatus {
     Done,
     Closed;
 
+    fun toWireValue(): String =
+        when (this) {
+            Todo -> "todo"
+            InProgress -> "in_progress"
+            InReview -> "in_review"
+            Done -> "done"
+            Closed -> "closed"
+        }
+
     companion object {
         fun fromWireValue(value: String?): TaskStatus? =
             when (value?.trim()?.lowercase()) {

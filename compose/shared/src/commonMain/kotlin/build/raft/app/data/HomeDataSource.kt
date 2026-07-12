@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.slockAvatarDiagnosticsSource
+import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -47,7 +48,7 @@ class SharedHomeDataSource(
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) {
     private val typedApi = SlockHomeApiClient(api, diagnosticsLogger)
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
@@ -112,7 +113,8 @@ class SharedHomeDataSource(
             }
         val result = parseHome(payload, session)
         if (result is DataResult.Content) {
-            val directMessagePeerProfiles = payload.directMessagePeerProfiles(result.data.server.id)
+            val directMessagePeerProfiles =
+                payload.directMessagePeerProfiles(result.data.server.id, diagnosticsLogger)
             diagnosticsLogger(
                 directMessagePeerProfiles.homeDirectMessageAvatarSeedDiagnostics(
                     serverId = result.data.server.id,

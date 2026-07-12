@@ -50,7 +50,7 @@ class FoldContinuationEquivalenceTest {
         id = "m1",
         channelId = scope.scopeId,
         seq = 1,
-        senderType = "human",
+        senderType = "user",
         senderId = "u1",
         content = "body",
         messageType = "chat",
@@ -69,7 +69,7 @@ class FoldContinuationEquivalenceTest {
         put("id", "m1")
         put("seq", 1L)
         put("channelId", scope.scopeId)
-        put("senderType", "human")
+        put("senderType", "user")
         put("senderId", "u1")
         put("content", "body")
         put("messageType", "chat")

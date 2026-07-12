@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
+import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
@@ -27,6 +28,49 @@ import kotlin.test.assertTrue
 
 class RealtimeEventMapperTest {
     @Test
+    fun syncResumeRejectsWholeBatchAndSelectsGapRecoveryWhenOneMessageIsInvalid() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.SyncResumeResponse,
+                """
+                {
+                  "currentSeq": 12,
+                  "hasMore": false,
+                  "messages": [
+                    {
+                      "id": "message-valid",
+                      "seq": 11,
+                      "channelId": "channel-1",
+                      "threadId": "thread-1",
+                      "content": "valid",
+                      "messageType": "chat",
+                      "senderType": "user",
+                      "senderId": "user-1",
+                      "senderName": "Artin"
+                    },
+                    {
+                      "id": "message-invalid",
+                      "seq": 12,
+                      "channelId": "channel-1",
+                      "threadId": "thread-1",
+                      "content": "invalid",
+                      "messageType": "chat",
+                      "senderType": "system",
+                      "senderId": "system",
+                      "senderName": "System"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            )
+
+        val recovery = assertIs<Heartbeat>(event)
+        assertEquals(12L, recovery.seq)
+        assertTrue(logs.any { it == "sync_resume_projection_rejected recovery=heartbeat currentSeq=12" })
+    }
+
+    @Test
     fun messageUpdatedMapsReactionPayload() {
         val event =
             RealtimeEventMapper().map(
@@ -36,6 +80,7 @@ class RealtimeEventMapperTest {
                   "id": "message-1",
                   "channelId": "channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "hello",
@@ -69,6 +114,7 @@ class RealtimeEventMapperTest {
                   "id": "message-1",
                   "channelId": "channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "hello",
@@ -94,6 +140,7 @@ class RealtimeEventMapperTest {
                   "id": "message-1",
                   "channelId": "channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "hello",
@@ -119,6 +166,7 @@ class RealtimeEventMapperTest {
                   "id": "message-1",
                   "channelId": "channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "edited body"
@@ -141,6 +189,7 @@ class RealtimeEventMapperTest {
                   "threadId": "reply-stream-1",
                   "channelId": "parent-channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "parent edited"
@@ -164,6 +213,7 @@ class RealtimeEventMapperTest {
                   "id": "msg-1",
                   "channelId": "ch-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "senderMembershipStatus": "active",
@@ -240,6 +290,118 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun messageEventsRejectUnknownSenderKindAndMessageTypeWithPayloadFreeDiagnostics() {
+        val logs = mutableListOf<String>()
+        val mapper = RealtimeEventMapper(diagnosticsLogger = logs::add)
+
+        val unknownSender =
+            mapper.map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "secret-message-id",
+                  "channelId": "channel-1",
+                  "senderType": "future-member",
+                  "senderId": "secret-sender-id",
+                  "senderName": "Secret Sender",
+                  "messageType": "chat",
+                  "content": "private body",
+                  "createdAt": "2026-06-13T01:00:00Z"
+                }
+                """.trimIndent(),
+            )
+        val unknownMessageType =
+            mapper.map(
+                RealtimeSocketEvents.MessageUpdated,
+                """
+                {
+                  "id": "secret-message-id-2",
+                  "channelId": "channel-1",
+                  "senderType": "user",
+                  "senderId": "secret-sender-id-2",
+                  "senderName": "Secret Sender Two",
+                  "messageType": "future-message",
+                  "content": "another private body",
+                  "createdAt": "2026-06-13T01:00:00Z"
+                }
+                """.trimIndent(),
+            )
+
+        assertNull(unknownSender)
+        assertNull(unknownMessageType)
+        assertTrue(logs.any { it == "projection_value_rejected source=realtime_message_sender field=member_kind value=future-member" })
+        assertTrue(logs.any { it == "projection_value_rejected source=realtime_message_type field=message_type value=future-message" })
+        assertTrue(
+            logs.none {
+                "secret-message-id" in it || "secret-sender-id" in it || "private body" in it || "Secret Sender" in it
+            },
+        )
+    }
+
+    @Test
+    fun taskCreatedDropsUnknownStatusAndKeepsValidSibling() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.TaskCreated,
+                """
+                {
+                  "channelId": "channel-3",
+                  "tasks": [
+                    {
+                      "id": "task-invalid",
+                      "messageId": "m-invalid",
+                      "title": "Must not become Todo",
+                      "status": "future-status"
+                    },
+                    {
+                      "id": "task-valid",
+                      "messageId": "m-valid",
+                      "title": "Keep valid",
+                      "status": "in_review"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            )
+
+        val created = assertIs<TaskCreated>(event)
+        assertEquals(listOf("task-valid"), created.tasks.map { it.id.value })
+        assertEquals(
+            "projection_value_rejected source=realtime_task field=task_status value=future-status",
+            logs.first { it.startsWith("projection_value_rejected") },
+        )
+    }
+
+    @Test
+    fun taskUpdatedDropsUnknownAssigneeKindWithoutDroppingTask() {
+        val logs = mutableListOf<String>()
+        val event =
+            RealtimeEventMapper(diagnosticsLogger = logs::add).map(
+                RealtimeSocketEvents.TaskUpdated,
+                """
+                {
+                  "channelId": "channel-2",
+                  "task": {
+                    "id": "task-2",
+                    "messageId": "m2",
+                    "title": "Keep task",
+                    "status": "in_review",
+                    "claimedByType": "future-member",
+                    "claimedById": "secret-assignee-id",
+                    "claimedByName": "Secret Assignee"
+                  }
+                }
+                """.trimIndent(),
+            )
+
+        val updated = assertIs<TaskUpdated>(event)
+        assertNull(updated.task.assignee)
+        assertTrue(logs.any { it == "projection_value_rejected source=realtime_task_member field=member_kind value=future-member" })
+        assertTrue(logs.none { "secret-assignee-id" in it || "Secret Assignee" in it })
+    }
+
+    @Test
     fun taskUpdatedUsesEnvelopeChannelIdWhenTaskOmitsChannelId() {
         val event =
             RealtimeEventMapper().map(
@@ -305,6 +467,7 @@ class RealtimeEventMapperTest {
                     "id": "msg-1",
                     "channelId": "ch-1",
                     "senderType": "user",
+                    "messageType": "chat",
                     "senderId": "u1",
                     "content": "hello"
                   }
@@ -337,6 +500,7 @@ class RealtimeEventMapperTest {
                   "id": "msg-1",
                   "channelId": "dm-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "content": "hello"
                 }
@@ -599,6 +763,7 @@ class RealtimeEventMapperTest {
                   "id": "message-1",
                   "channelId": "thread-channel-1",
                   "senderType": "user",
+                  "messageType": "chat",
                   "senderId": "u1",
                   "senderName": "Artin",
                   "content": "reply in dm thread",
@@ -626,7 +791,7 @@ class RealtimeEventMapperTest {
                 RealtimeSocketEvents.MessageNew,
                 """
                 {
-                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1", "messageType": "chat",
                   "content": "hi",
                   "conversationContext": { "channelType": "dm" }
                 }
@@ -643,7 +808,7 @@ class RealtimeEventMapperTest {
                 RealtimeSocketEvents.MessageNew,
                 """
                 {
-                  "id": "m2", "channelId": "c2", "senderType": "user", "senderId": "u1",
+                  "id": "m2", "channelId": "c2", "senderType": "user", "senderId": "u1", "messageType": "chat",
                   "content": "hi",
                   "conversationContext": { "channelType": "private" }
                 }
@@ -662,7 +827,7 @@ class RealtimeEventMapperTest {
                 RealtimeSocketEvents.MessageNew,
                 """
                 {
-                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1", "messageType": "chat",
                   "content": "hi"
                 }
                 """.trimIndent()
@@ -681,7 +846,7 @@ class RealtimeEventMapperTest {
                 RealtimeSocketEvents.MessageNew,
                 """
                 {
-                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1",
+                  "id": "m1", "channelId": "c1", "senderType": "user", "senderId": "u1", "messageType": "chat",
                   "content": "hi",
                   "conversationContext": { "channelType": "mystery-kind", "parentChannelType": " " }
                 }

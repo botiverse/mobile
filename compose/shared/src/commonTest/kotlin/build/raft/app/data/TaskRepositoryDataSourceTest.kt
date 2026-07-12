@@ -26,6 +26,7 @@ class TaskRepositoryDataSourceTest {
                           "taskNumber": 181,
                           "messageId": "parent-message-1",
                           "threadId": "thread-message-1",
+                          "claimedByType": "user",
                           "claimedById": "user-1",
                           "claimedByName": "Artin",
                           "channelName": "android-dev",
@@ -35,16 +36,17 @@ class TaskRepositoryDataSourceTest {
                           "id": "task-2",
                           "title": "Done task",
                           "status": "done",
+                          "claimedByType": "user",
                           "claimedById": "other-user"
                         }
                       ]
                     }
                 """.trimIndent(),
                 claimTaskJson = """
-                    {"task":{"id":"task-1","title":"Wire tasks","status":"in_review","claimedById":"user-1"}}
+                    {"task":{"id":"task-1","title":"Wire tasks","status":"in_review","claimedByType":"user","claimedById":"user-1"}}
                 """.trimIndent(),
                 updateTaskStatusJson = """
-                    {"task":{"id":"task-1","title":"Wire tasks","status":"closed","claimedById":"user-1"}}
+                    {"task":{"id":"task-1","title":"Wire tasks","status":"closed","claimedByType":"user","claimedById":"user-1"}}
                 """.trimIndent()
             )
         val repository = RealTaskRepository(sampleStore(), network)

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.KuiklyThreadAttachmentItem
@@ -11,7 +12,14 @@ import build.raft.app.KuiklyThreadScreenPayload
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.SharedThreadComposerAttachment
 import build.raft.app.matchesResolvedReplyThreadTimeline
+import build.raft.app.memberKindWireValue
 import build.raft.app.replyThreadContentChannelId
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictMessageTypeOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictTaskStatusOrNull
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MessageType
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -205,13 +213,14 @@ internal fun parseSharedThreadPickedPlatformFiles(
 internal fun buildSharedThreadPayloadFromMessagesPage(
     basePayload: KuiklyThreadScreenPayload,
     page: ThreadMessagesPage,
-    session: StoredAuthSession?
+    session: StoredAuthSession?,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): KuiklyThreadScreenPayload {
     val currentUserId = session?.user?.id
     val messages =
         page.messages
             .filter { it.belongsToBasePayloadThread(basePayload) }
-            .map { it.toMessageItem(currentUserId) }
+            .mapNotNull { it.toMessageItem(currentUserId, diagnostics) }
     return basePayload.copy(
         status = if (messages.isEmpty()) "empty" else "content",
         messages = messages,
@@ -225,7 +234,8 @@ internal fun appendSharedThreadSentMessageFromPage(
     basePayload: KuiklyThreadScreenPayload,
     page: ThreadMessagesPage,
     session: StoredAuthSession?,
-    trustedReplyThreadChannelId: String? = null
+    trustedReplyThreadChannelId: String? = null,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): KuiklyThreadScreenPayload {
     val trustSingleReplySend =
         page.messages.size == 1 &&
@@ -236,7 +246,7 @@ internal fun appendSharedThreadSentMessageFromPage(
     val sent =
         page.messages
             .filter { it.belongsToBasePayloadThread(basePayload) || trustSingleReplySend }
-            .map { it.toMessageItem(session?.user?.id) }
+            .mapNotNull { it.toMessageItem(session?.user?.id, diagnostics) }
             .filterNot { it.id in basePayload.messages.map { message -> message.id }.toSet() }
 
     return if (sent.isEmpty()) {
@@ -250,27 +260,44 @@ internal fun appendSharedThreadSentMessageFromPage(
     }
 }
 
-private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
+private fun WireMessage.toMessageItem(
+    currentUserId: String?,
+    diagnostics: (String) -> Unit,
+): KuiklyThreadMessageItem? {
+    val resolvedMessageType = messageType.strictMessageTypeOrNull("thread_wire_message", diagnostics) ?: return null
+    val senderKind =
+        senderType.strictMemberKindOrNull(
+            source = "thread_wire_sender",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
+    val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
+    val hasTaskProjection = taskNumber != null || taskStatus != null
+    val resolvedTaskStatus =
+        if (hasTaskProjection) taskStatus.strictTaskStatusOrNull("thread_wire_task", diagnostics) else null
+    val cleanTaskAssigneeId = taskAssigneeId?.trim()?.takeIf { it.isNotBlank() }
+    val taskAssigneeKind =
+        cleanTaskAssigneeId?.let {
+            taskAssigneeType.strictMemberKindOrNull(
+                source = "thread_wire_task_assignee",
+                diagnostics = diagnostics,
+                contract = MemberKindWireContract.InternalActor,
+            )
+        }
     val resolvedName = senderName?.takeIf { it.isNotBlank() } ?: "Unknown"
-    val isSystem = messageType.equals("system", ignoreCase = true)
     val summary = threadSummary
     return KuiklyThreadMessageItem(
         id = id,
         authorId = senderId.ifBlank { "unknown" },
         authorName = resolvedName,
-        authorKind = when {
-            isSystem -> "system"
-            senderType.equals("agent", ignoreCase = true) -> "agent"
-            senderType.equals("user", ignoreCase = true) -> "human"
-            else -> ""
-        },
+        authorKind = authorKind.memberKindWireValue(),
         isOwn = currentUserId != null && senderId == currentUserId,
         avatarLabel = resolvedName.take(1).uppercase(),
         avatarWireValue = null,
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         seq = seq,
-        messageType = if (isSystem) "System" else "Chat",
+        messageType = resolvedMessageType.name,
         systemEventType = null,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         body = content,
@@ -280,11 +307,14 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: summary?.unreadCount ?: 0,
         firstUnreadReplyMessageId = firstNonBlank(firstUnreadReplyMessageId, summary?.firstUnreadMessageId),
         isSaved = isSaved,
-        taskId = if (taskNumber != null || taskStatus != null) id else null,
-        taskNumber = taskNumber,
-        taskStatus = taskStatus,
-        taskAssigneeId = taskAssigneeId?.trim()?.takeIf { it.isNotBlank() },
-        taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName),
+        taskId = if (hasTaskProjection && resolvedTaskStatus != null) id else null,
+        taskNumber = taskNumber?.takeIf { resolvedTaskStatus != null },
+        taskStatus = taskStatus?.takeIf { resolvedTaskStatus != null },
+        taskAssigneeKind = taskAssigneeKind?.memberKindWireValue(),
+        taskAssigneeId = cleanTaskAssigneeId?.takeIf { taskAssigneeKind != null },
+        taskAssigneeName =
+            firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName)
+                ?.takeIf { taskAssigneeKind != null },
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
         commentRef = commentRef?.toMessageCommentRef(),

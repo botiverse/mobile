@@ -72,7 +72,7 @@ class MessageShadowCompareTest {
             put("id", "m-min")
             put("seq", 7L)
             put("channelId", "c-1")
-            put("senderType", "human")
+            put("senderType", "user")
             put("senderId", "u-1")
             put("content", "hi")
             put("messageType", "chat")
@@ -130,7 +130,7 @@ class MessageShadowCompareTest {
             put("id", "m-x")
             put("seq", 1L)
             put("channelId", "c-1")
-            put("senderType", "human")
+            put("senderType", "user")
             put("senderId", "u-1")
             put("messageType", "chat")
             put("randomId", JsonNull)
@@ -151,15 +151,34 @@ class MessageShadowCompareTest {
     // registered known-delta, never silently introduced).
 
     @Test
-    fun adversarial_systemSenderWithChatType_authorKindParity() {
-        // senderType=system + messageType=chat: legacy maps kind by messageType only (=> Human); projection
-        // must not upgrade to System off senderType alone. No contract-level cross-field impossibility gate.
+    fun rawSystemSenderIsRejectedByFrontendRealtimeProjection() {
         val payload = buildJsonObject {
             richMessageFields(this)
             put("senderType", "system")
             put("messageType", "chat")
         }
-        assertParity(RealtimeSocketEvents.MessageNew, ProductionFace.MessageNew, payload)
+
+        assertEquals(null, mapper.map(RealtimeSocketEvents.MessageNew, payload))
+    }
+
+    @Test
+    fun unknownSenderKind_isProjectionRejectedInsteadOfHumanDefault() {
+        val validPayload = richMessagePayload()
+        val authoritative = legacyMessage(RealtimeSocketEvents.MessageNew, validPayload)
+        val invalidPayload =
+            buildJsonObject {
+                richMessageFields(this)
+                put("senderType", "future-member")
+            }
+
+        val outcome =
+            compareCanonicalShadow(
+                invalidPayload,
+                ProductionFace.MessageNew,
+                authoritative,
+            )
+
+        assertEquals(MessageShadowOutcome.ProjectionRejected(ProductionFace.MessageNew), outcome)
     }
 
     @Test
@@ -274,7 +293,7 @@ class MessageShadowCompareTest {
         put("id", "m-rich")
         put("seq", 42L)
         put("channelId", "c-1")
-        put("senderType", "human")
+        put("senderType", "user")
         put("senderId", "u-1")
         put("content", "hello world")
         put("messageType", "chat")

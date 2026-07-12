@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.model.AttachmentId
@@ -170,7 +171,7 @@ private suspend fun SlockNetworkClient.executePendingMentionActions(
 class RealConversationRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : ConversationRepository {
     override suspend fun getThread(
         threadId: ThreadId,
@@ -238,7 +239,7 @@ class RealConversationRepository(
             source = "messages_context",
             mapper = { bodyText ->
                 val fallbackThreadId = ThreadId(messageId.value)
-                val payload = parseSharedMessageContext(bodyText, fallbackThreadId)
+                val payload = parseSharedMessageContext(bodyText, fallbackThreadId, warningLogger)
                 canonicalTargetKind = payload.canonicalTarget?.kind
                 val resolvedThreadId = payload.channelId?.let { ThreadId(it.value) } ?: fallbackThreadId
                 buildSharedThreadSnapshot(
@@ -331,7 +332,7 @@ class RealConversationRepository(
             emptyWhen = { it.messages.isEmpty() },
             source = "messages_channel_newer",
             mapper = { bodyText ->
-                val payload = parseSharedChannelMessages(bodyText, threadId)
+                val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
@@ -361,7 +362,7 @@ class RealConversationRepository(
             emptyWhen = { it.messages.isEmpty() },
             source = "messages_sync",
             mapper = { bodyText ->
-                val payload = parseSharedSyncMessages(bodyText, threadId)
+                val payload = parseSharedSyncMessages(bodyText, threadId, warningLogger)
                 buildSharedThreadSnapshot(
                     payload = payload,
                     threadId = threadId,
@@ -512,7 +513,10 @@ class RealConversationRepository(
             source = "messages_send",
             mapper = { bodyText ->
                 val fallbackThreadId = topLevelThreadId(channelId)
-                val sentPayload = parseSharedSentMessagePayload(bodyText, fallbackThreadId)
+                val sentPayload = parseSharedSentMessagePayload(bodyText, fallbackThreadId, warningLogger)
+                if (sentPayload.projectionRejected) {
+                    error("sent message projection rejected")
+                }
                 val message =
                     sentPayload.message
                         ?: Message(
@@ -614,7 +618,11 @@ class RealConversationRepository(
                 emptyWhen = { it.messages.isEmpty() },
                 source = source,
                 mapper = { bodyText ->
-                    parseSharedChannelMessages(bodyText, ThreadId(resolvedThreadChannelId.value))
+                    parseSharedChannelMessages(
+                        bodyText,
+                        ThreadId(resolvedThreadChannelId.value),
+                        warningLogger,
+                    )
                 }
             )
         val rawMessages: List<Message> =
@@ -670,7 +678,7 @@ class RealConversationRepository(
                     emptyWhen = { it.messages.isEmpty() },
                     source = source,
                     mapper = { bodyText ->
-                        val payload = parseSharedChannelMessages(bodyText, threadId)
+                        val payload = parseSharedChannelMessages(bodyText, threadId, warningLogger)
                         buildSharedThreadSnapshot(
                             payload = payload,
                             threadId = threadId,

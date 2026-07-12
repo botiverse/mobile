@@ -171,7 +171,7 @@ class MessageWireCanonicalDecoderTest {
         put("id", "m1")
         put("seq", 7L)
         put("channelId", "c1")
-        put("senderType", "human")
+        put("senderType", "user")
         put("senderId", "u1")
         put("content", "task body")
         put("messageType", "chat")

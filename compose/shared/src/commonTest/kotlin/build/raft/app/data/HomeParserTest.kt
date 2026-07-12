@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import kotlinx.serialization.builtins.ListSerializer
@@ -75,6 +76,64 @@ class HomeParserTest {
         assertNull(peerProfile.avatarUrl)
         assertEquals("pixel:robot", peerProfile.avatarWireValueForRenderedAvatar())
         assertEquals(6, snapshot.unreadTotal)
+    }
+
+    @Test
+    fun directMessagePeerProfilesDropUnknownKindWithoutPoisoningValidPeers() {
+        val logs = mutableListOf<String>()
+        val payload =
+            homePayload(
+                directMessages =
+                    listOf(
+                        HomeDirectMessageWireDto(
+                            id = "dm-invalid",
+                            name = "invalid",
+                            type = "dm",
+                            peerType = "future-kind",
+                            peerId = "secret-peer-id",
+                            peerName = "Secret Person",
+                        ),
+                        HomeDirectMessageWireDto(
+                            id = "dm-human",
+                            name = "human",
+                            type = "dm",
+                            peerType = "human",
+                            peerId = "user-human",
+                            peerName = "Human Alias",
+                        ),
+                        HomeDirectMessageWireDto(
+                            id = "dm-system",
+                            name = "system",
+                            type = "dm",
+                            peerType = "system",
+                            peerId = "system",
+                            peerName = "System",
+                        ),
+                        HomeDirectMessageWireDto(
+                            id = "dm-agent",
+                            name = "agent",
+                            type = "dm",
+                            peerType = "agent",
+                            peerId = "agent-1",
+                            peerName = "agent-one",
+                            peerDisplayName = "Agent One",
+                        ),
+                    ),
+            )
+
+        val profiles = payload.directMessagePeerProfiles(ServerId("server-1"), logs::add)
+
+        assertEquals(listOf("agent-1"), profiles.map { it.id.value })
+        assertEquals(MemberKind.Agent, profiles.single().kind)
+        assertEquals(
+            listOf(
+                "projection_value_rejected source=home_dm_peer field=member_kind value=future-kind",
+                "projection_value_rejected source=home_dm_peer field=member_kind value=human",
+                "projection_value_rejected source=home_dm_peer field=member_kind value=system",
+            ),
+            logs,
+        )
+        assertTrue(logs.none { "secret-peer-id" in it || "Secret Person" in it })
     }
 
     @Test

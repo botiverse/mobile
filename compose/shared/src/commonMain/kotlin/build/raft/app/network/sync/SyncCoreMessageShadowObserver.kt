@@ -54,6 +54,8 @@ class SyncCoreMessageShadowObserver(
                     "sync_core_shadow face=$face result=divergent msg=$messageId " +
                         "fields=${outcome.fields.joinToString(",")}",
                 )
+            is MessageShadowOutcome.ProjectionRejected ->
+                diagnosticsLogger("sync_core_shadow face=$face result=projection_rejected msg=$messageId")
             is MessageShadowOutcome.EnvelopeDecodeFailed ->
                 diagnosticsLogger("sync_core_shadow face=$face result=envelope_decode_failed msg=$messageId")
             is MessageShadowOutcome.EnvelopeRoundTripDivergent ->

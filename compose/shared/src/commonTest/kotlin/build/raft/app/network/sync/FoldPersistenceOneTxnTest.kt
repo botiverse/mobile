@@ -24,7 +24,7 @@ class FoldPersistenceOneTxnTest {
         id = id,
         channelId = "c1",
         seq = seq,
-        senderType = "human",
+        senderType = "user",
         senderId = "u1",
         content = "body-$id",
         messageType = "chat",

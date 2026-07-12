@@ -51,6 +51,9 @@ sealed interface MessageShadowOutcome {
     /** Both paths produced a message but their canonical facts differ. [fields] names the divergent facts. */
     data class Divergent(val face: ProductionFace, val fields: List<String>) : MessageShadowOutcome
 
+    /** Canonical facts decoded, but the app projection rejected an unknown sender/message enum. */
+    data class ProjectionRejected(val face: ProductionFace) : MessageShadowOutcome
+
     /**
      * The decoded fact did not survive the ENVELOPE codec round-trip: [encodeCanonicalFact] produced a BLOB
      * that [decodeCanonicalFact] could not read back (fail-closed). This is the codec/envelope layer only —
@@ -130,7 +133,8 @@ fun compareCanonicalShadow(
     val envelopeFields = canonicalRowDiff(decoded.row, restored)
     if (envelopeFields.isNotEmpty()) return MessageShadowOutcome.EnvelopeRoundTripDivergent(face, envelopeFields)
 
-    val shadow = restored.toAppMessage(memberHydration)
+    val shadow = restored.toAppMessage(memberHydration = memberHydration)
+        ?: return MessageShadowOutcome.ProjectionRejected(face)
     val fields = shadowParityDiff(authoritative.toShadowParityView(), shadow.toShadowParityView())
     return if (fields.isEmpty()) MessageShadowOutcome.Parity else MessageShadowOutcome.Divergent(face, fields)
 }

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.MemberKind
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,6 +21,7 @@ class MessageParserTest {
                       "senderType": "user",
                       "senderId": "u-1",
                       "senderName": "Artin",
+                      "messageType": "chat",
                       "content": "parent",
                       "createdAt": "2026-06-06T00:00:00.000Z",
                       "threadSummary": {
@@ -55,6 +57,7 @@ class MessageParserTest {
                       "channelId": "channel-1",
                       "senderType": "user",
                       "senderId": "u-1",
+                      "messageType": "chat",
                       "content": "parent",
                       "createdAt": "2026-06-06T00:00:00.000Z",
                       "replyCount": 5,
@@ -91,6 +94,7 @@ class MessageParserTest {
                       "senderId": "u-1",
                       "senderName": "Artin",
                       "senderMembershipStatus": "removed",
+                      "messageType": "chat",
                       "content": "image",
                       "randomId": "rid-parser-1",
                       "createdAt": "2026-06-06T00:00:00.000Z",
@@ -134,5 +138,67 @@ class MessageParserTest {
         assertEquals(2, reaction.count)
         assertEquals(listOf("u-1", "agent-1"), reaction.reactorIds)
         assertEquals(listOf("Artin", "Bot"), reaction.reactorNames)
+    }
+
+    @Test
+    fun unknownSenderKindDropsOnlyInvalidRestMessageWithBoundedDiagnostic() {
+        val diagnostics = mutableListOf<String>()
+        val payload =
+            parseSharedChannelMessages(
+                bodyText =
+                    """
+                    {
+                      "messages": [
+                        {
+                          "id": "bad-message-secret-id",
+                          "channelId": "channel-1",
+                          "senderType": "future sender kind with long suffix 123456789",
+                          "senderId": "secret-user-id",
+                          "messageType": "chat",
+                          "content": "secret body"
+                        },
+                        {
+                          "id": "bad-system-sender",
+                          "channelId": "channel-1",
+                          "senderType": "system",
+                          "senderId": "system",
+                          "messageType": "chat",
+                          "content": "invalid frontend sender"
+                        },
+                        {
+                          "id": "good-system-message",
+                          "channelId": "channel-1",
+                          "senderType": "user",
+                          "senderId": "system",
+                          "messageType": "system",
+                          "content": "valid system row"
+                        },
+                        {
+                          "id": "good-message",
+                          "channelId": "channel-1",
+                          "senderType": "agent",
+                          "senderId": "agent-1",
+                          "messageType": "chat",
+                          "content": "kept"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1"),
+                diagnostics = diagnostics::add,
+            )
+
+        assertEquals(listOf("good-system-message", "good-message"), payload.messages.map { it.id.value })
+        assertEquals(MemberKind.System, payload.messages.first().author.kind)
+        assertEquals(
+            listOf(
+                "projection_value_rejected source=rest_message_sender " +
+                    "field=member_kind value=future_sender_kind_with_long_suf",
+                "projection_value_rejected source=rest_message_sender " +
+                    "field=member_kind value=system",
+            ),
+            diagnostics,
+        )
+        assertEquals(false, diagnostics.any { it.contains("secret") })
     }
 }

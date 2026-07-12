@@ -6590,7 +6590,7 @@ private fun MembersAgentProfileTab(
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
                 )
-                val creatorProfile = summary?.creator?.toMemberProfile()
+                val creatorProfile = summary?.creator?.toStrictMemberProfile()
                 if (creatorProfile != null) {
                     Row(
                         modifier = Modifier.weight(1f),
@@ -9527,14 +9527,22 @@ internal fun buildMembersAgentDiagnostics(
     ).joinToString("\n")
 }
 
-private fun AgentCreatorSummary.toMemberProfile(): MemberProfile? {
+internal fun AgentCreatorSummary.toStrictMemberProfile(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): MemberProfile? {
     if (id.isBlank() || name.isBlank()) return null
+    val kind =
+        type.strictMemberKindOrNull(
+            source = "agent_creator",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.AgentCreator,
+        ) ?: return null
     val display = displayName?.takeIf { it.isNotBlank() } ?: name
     return MemberProfile(
         id = MemberId(id),
         displayName = display,
         handle = name,
-        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
+        kind = kind,
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = display.take(1).uppercase()

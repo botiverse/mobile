@@ -1,5 +1,10 @@
 package build.raft.app.data
 
+import build.raft.app.MemberKindWireContract
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictMessageTypeOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.model.Attachment
@@ -17,7 +22,6 @@ import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageType
 import build.raft.app.model.Presence
 import build.raft.app.model.TaskId
-import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import kotlinx.serialization.Serializable
@@ -91,7 +95,7 @@ private data class MessagesWireMessage(
     val senderName: String = "",
     val senderDescription: String? = null,
     val senderMembershipStatus: String? = null,
-    val messageType: String = "chat",
+    val messageType: String? = null,
     val content: String = "",
     val randomId: String? = null,
     /** Anchor marker on a thread PARENT message — points to the thread channel
@@ -219,28 +223,37 @@ data class SharedMessagesCanonicalTarget(
 
 data class SharedSentMessagePayload(
     val message: Message?,
-    val pendingMentionActions: List<PendingMentionAction> = emptyList()
+    val pendingMentionActions: List<PendingMentionAction> = emptyList(),
+    val projectionRejected: Boolean = false,
 )
 
-fun parseSharedChannelMessages(bodyText: String, fallbackThreadId: ThreadId): SharedMessagesPayload {
+fun parseSharedChannelMessages(
+    bodyText: String,
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
     val response = runCatching {
         messagesJson.decodeFromString(MessagesWireChannelResponse.serializer(), bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
     return SharedMessagesPayload(
-        messages = response.messages.map { it.toDomain(fallbackThreadId) },
+        messages = response.messages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
         historyLimited = response.historyLimited,
     )
 }
 
-fun parseSharedMessageContext(bodyText: String, fallbackThreadId: ThreadId): SharedMessagesPayload {
+fun parseSharedMessageContext(
+    bodyText: String,
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
     val response = runCatching {
         messagesJson.decodeFromString(MessagesWireContextResponse.serializer(), bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
     val resolvedThreadId = response.channelId?.let(::ThreadId) ?: fallbackThreadId
     return SharedMessagesPayload(
-        messages = response.messages.map { it.toDomain(resolvedThreadId) },
+        messages = response.messages.mapNotNull { it.toDomain(resolvedThreadId, diagnostics) },
         channelId = response.channelId?.let(::ChannelId),
         targetMessageId = response.targetMessageId?.let(::MessageId),
         canonicalTarget = response.canonicalTarget?.toDomain(),
@@ -262,37 +275,56 @@ private fun MessagesWireCanonicalTarget.toDomain(): SharedMessagesCanonicalTarge
     )
 }
 
-fun parseSharedSyncMessages(bodyText: String, fallbackThreadId: ThreadId): SharedMessagesPayload {
+fun parseSharedSyncMessages(
+    bodyText: String,
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedMessagesPayload {
     if (bodyText.isBlank()) return SharedMessagesPayload(emptyList())
     val wireMessages = runCatching {
         messagesJson.decodeFromString<List<MessagesWireMessage>>(bodyText)
     }.getOrNull() ?: return SharedMessagesPayload(emptyList())
     return SharedMessagesPayload(
-        messages = wireMessages.map { it.toDomain(fallbackThreadId) },
+        messages = wireMessages.mapNotNull { it.toDomain(fallbackThreadId, diagnostics) },
     )
 }
 
-fun parseSharedSentMessage(bodyText: String, fallbackThreadId: ThreadId): Message? {
+fun parseSharedSentMessage(
+    bodyText: String,
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Message? {
     if (bodyText.isBlank()) return null
     return runCatching {
         messagesJson.decodeFromString(MessagesWireMessage.serializer(), bodyText)
-    }.getOrNull()?.toDomain(fallbackThreadId)
+    }.getOrNull()?.toDomain(fallbackThreadId, diagnostics)
 }
 
-fun parseSharedSentMessagePayload(bodyText: String, fallbackThreadId: ThreadId): SharedSentMessagePayload {
+fun parseSharedSentMessagePayload(
+    bodyText: String,
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): SharedSentMessagePayload {
     if (bodyText.isBlank()) return SharedSentMessagePayload(message = null)
     val rawMessage = runCatching {
         messagesJson.decodeFromString(MessagesWireMessage.serializer(), bodyText)
     }.getOrNull()
     if (rawMessage != null) {
-        return SharedSentMessagePayload(message = rawMessage.toDomain(fallbackThreadId))
+        val message = rawMessage.toDomain(fallbackThreadId, diagnostics)
+        return SharedSentMessagePayload(
+            message = message,
+            projectionRejected = message == null,
+        )
     }
     val wrapped = runCatching {
         messagesJson.decodeFromString(MessagesWireSendResponse.serializer(), bodyText)
     }.getOrNull()
+    val wrappedMessage = wrapped?.message
+    val message = wrappedMessage?.toDomain(fallbackThreadId, diagnostics)
     return SharedSentMessagePayload(
-        message = wrapped?.message?.toDomain(fallbackThreadId),
-        pendingMentionActions = wrapped?.pendingMentionActions.orEmpty().mapNotNull { it.toDomain() }
+        message = message,
+        pendingMentionActions = wrapped?.pendingMentionActions.orEmpty().mapNotNull { it.toDomain() },
+        projectionRejected = wrappedMessage != null && message == null,
     )
 }
 
@@ -311,7 +343,10 @@ fun parsePendingMentionActionExecuteResults(bodyText: String): List<PendingMenti
     }.getOrDefault(emptyList())
 }
 
-private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
+private fun MessagesWireMessage.toDomain(
+    fallbackThreadId: ThreadId,
+    diagnostics: (String) -> Unit,
+): Message? {
     val summary = threadSummary
     val resolvedThreadChannelId =
         threadId
@@ -319,11 +354,14 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
     val resolvedFirstUnreadReplyMessageId =
         firstUnreadReplyMessageId
             ?: summary?.firstUnreadMessageId?.takeIf { it.isNotBlank() }
-    val authorKind = when {
-        senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
-        messageType.equals("system", ignoreCase = true) -> MemberKind.System
-        else -> MemberKind.Human
-    }
+    val resolvedMessageType = messageType.strictMessageTypeOrNull("rest_message_type", diagnostics) ?: return null
+    val senderKind =
+        senderType.strictMemberKindOrNull(
+            source = "rest_message_sender",
+            diagnostics = diagnostics,
+            contract = MemberKindWireContract.InternalActor,
+        ) ?: return null
+    val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val author = MemberProfile(
         id = MemberId(senderId),
         displayName = senderName.ifBlank { senderId },
@@ -333,27 +371,33 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         presence = Presence.Offline,
     )
     val resolvedThreadId = channelId.takeIf { it.isNotBlank() }?.let(::ThreadId) ?: fallbackThreadId
-    val task = if (taskNumber != null || taskStatus != null) {
+    val hasTaskProjection = taskNumber != null || taskStatus != null
+    val resolvedTaskStatus =
+        if (hasTaskProjection) taskStatus.strictTaskStatusOrNull("rest_message_task", diagnostics) else null
+    val task = if (hasTaskProjection && resolvedTaskStatus != null) {
         TaskSummary(
             id = TaskId(id),
             title = content,
-            status = TaskStatus.fromWireValue(taskStatus) ?: TaskStatus.Todo,
+            status = resolvedTaskStatus,
             taskNumber = taskNumber,
             messageId = MessageId(id),
             channelId = ChannelId(channelId),
             assignee = taskAssigneeId?.let { aid ->
-                val kind = if (taskAssigneeType.equals("agent", ignoreCase = true)) {
-                    MemberKind.Agent
-                } else {
-                    MemberKind.Human
+                val kind =
+                    taskAssigneeType.strictMemberKindOrNull(
+                        source = "rest_message_task_assignee",
+                        diagnostics = diagnostics,
+                        contract = MemberKindWireContract.InternalActor,
+                    )
+                kind?.let {
+                    MemberProfile(
+                        id = MemberId(aid),
+                        displayName = aid,
+                        handle = aid,
+                        kind = it,
+                        presence = Presence.Offline,
+                    )
                 }
-                MemberProfile(
-                    id = MemberId(aid),
-                    displayName = aid,
-                    handle = aid,
-                    kind = kind,
-                    presence = Presence.Offline,
-                )
             },
             updatedAtLabel = updatedAt,
         )
@@ -369,11 +413,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         author = author,
         timestampLabel = createdAt,
         body = content,
-        messageType = if (messageType.equals("system", ignoreCase = true)) {
-            MessageType.System
-        } else {
-            MessageType.Chat
-        },
+        messageType = resolvedMessageType,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
         randomId = randomId?.takeIf { it.isNotBlank() },

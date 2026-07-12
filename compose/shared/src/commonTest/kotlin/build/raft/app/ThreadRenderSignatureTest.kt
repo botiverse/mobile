@@ -310,8 +310,12 @@ class ThreadRenderSignatureTest {
             )
 
         val roundTripped =
-            origin
-                .toMessage(threadId = ThreadId("parent-channel"), channelId = ChannelId("parent-channel"))
+            requireNotNull(
+                origin.toMessage(
+                    threadId = ThreadId("parent-channel"),
+                    channelId = ChannelId("parent-channel"),
+                ),
+            )
                 .toKuiklyThreadMessageItem(currentUserId = null)
 
         assertEquals("deleted", roundTripped.senderMembershipStatus)
