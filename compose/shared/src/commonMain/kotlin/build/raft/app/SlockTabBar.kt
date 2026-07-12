@@ -66,7 +66,7 @@ internal enum class SlockTabBarPresentation {
     NavigationRail
 }
 
-private enum class SlockAppTabBarRenderer {
+internal enum class SlockAppTabBarRenderer {
     SharedCompose,
     OhosHdsImmersive,
     IosLiquidGlass,
@@ -361,7 +361,20 @@ private fun SlockNativeFloatingBottomTabBarHost(
 @Composable
 private fun slockAppTabBarRenderer(): SlockAppTabBarRenderer {
     val params = (LocalActivity.current.getPager() as Pager).pageData.params
-    return when (params.optString("slockNativeTabBarRenderer").ifBlank { params.optString("nativeTabBarRenderer") }) {
+    val explicitRenderer =
+        params.optString("slockNativeTabBarRenderer")
+            .ifBlank { params.optString("nativeTabBarRenderer") }
+    return resolveSlockAppTabBarRenderer(
+        explicitRenderer = explicitRenderer,
+        platformDefaultRenderer = slockPlatformDefaultAppTabBarRenderer()
+    )
+}
+
+internal fun resolveSlockAppTabBarRenderer(
+    explicitRenderer: String?,
+    platformDefaultRenderer: String?
+): SlockAppTabBarRenderer {
+    return when (explicitRenderer?.takeIf { it.isNotBlank() } ?: platformDefaultRenderer.orEmpty()) {
         "ohosHdsImmersive", "hdsImmersive" -> SlockAppTabBarRenderer.OhosHdsImmersive
         "iosLiquidGlass", "iosNativeFloating" -> SlockAppTabBarRenderer.IosLiquidGlass
         "androidFloating", "androidNativeFloating" -> SlockAppTabBarRenderer.AndroidFloating
