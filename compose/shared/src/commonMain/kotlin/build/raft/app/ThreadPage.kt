@@ -9153,7 +9153,7 @@ private fun ThreadPageContent(
 @Composable
 private fun ThreadPageHeader(
     payload: KuiklyThreadScreenPayload,
-    headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
+    headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderFallbackDisplayModel(),
     activityMuteState: ThreadActivityMuteUiState? = payload.threadActivityMuteState(null),
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     applyTopSafeArea: Boolean = true,
