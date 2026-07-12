@@ -40,6 +40,7 @@ class SharedConversationDirectoryStoreTest {
                     channelId = ChannelId("dm-1"),
                     kind = ConversationKind.DirectMessage,
                     name = "artin",
+                    directMessagePeerType = "human",
                     presenceMemberId = MemberId("member-1")
                 ),
                 HomeChannelRow(
@@ -71,6 +72,21 @@ class SharedConversationDirectoryStoreTest {
                 row.toSharedConversationDirectoryProjection(serverId)
             )
         }
+    }
+
+    @Test
+    fun homeDmDirectoryProjectionPreservesHumanPeerKind() {
+        val projection =
+            HomeDirectMessageRow(
+                threadId = ThreadId("dm-1"),
+                channelId = ChannelId("dm-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "artin",
+                directMessagePeerType = "human",
+                presenceMemberId = MemberId("member-1")
+            ).toSharedConversationDirectoryProjection(ServerId("server-1"))
+
+        assertEquals(MemberKind.Human, projection?.peerMemberKind)
     }
 
     @Test

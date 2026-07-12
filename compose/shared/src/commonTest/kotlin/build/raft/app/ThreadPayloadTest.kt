@@ -2353,7 +2353,8 @@ class ThreadPayloadTest {
                 title = "Product-UX-Designer",
                 avatarWireValue = "pixel:robot",
                 avatarLabel = "PR",
-                peerMemberId = "agent-1"
+                peerMemberId = "agent-1",
+                peerMemberKind = MemberKind.Agent
             )
 
         val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
@@ -2362,6 +2363,7 @@ class ThreadPayloadTest {
         assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
         assertEquals("agent-1", headerDisplay.dmPeerMemberId)
+        assertEquals(MemberKind.Agent, headerDisplay.dmPeerMemberKind)
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)

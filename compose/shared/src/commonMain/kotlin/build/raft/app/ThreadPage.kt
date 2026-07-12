@@ -9063,7 +9063,9 @@ private fun ThreadPageHeader(
                     onClick =
                         headerDisplay.dmPeerMemberId
                             ?.takeIf { it.isNotBlank() }
-                            ?.let { memberId -> { onOpenMemberProfile(memberId, null, null) } }
+                            ?.let { memberId ->
+                                { onOpenMemberProfile(memberId, headerDisplay.dmPeerMemberKind, null) }
+                            }
                 )
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)

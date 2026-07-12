@@ -41,6 +41,7 @@ internal data class SharedConversationDirectoryProjection(
     val senderAvatarWireValue: String? = null,
     val senderAvatarLabel: String? = null,
     val peerMemberId: String? = null,
+    val peerMemberKind: MemberKind? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val joined: Boolean = true,
@@ -205,6 +206,12 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         avatarWireValue = null,
         avatarLabel = title.take(2).uppercase(),
         peerMemberId = presenceMemberId?.value?.takeIf { it.isNotBlank() },
+        peerMemberKind =
+            when (directMessagePeerType?.trim()?.lowercase()) {
+                "agent" -> MemberKind.Agent
+                "human", "user" -> MemberKind.Human
+                else -> null
+            },
         parentChannelId = if (kind == ConversationKind.Thread) thread?.parentChannelId?.value else null,
         parentMessageId = if (kind == ConversationKind.Thread) thread?.parentMessageId?.value else null,
         joined = joined && permissions.canRead,
