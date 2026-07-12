@@ -94,7 +94,7 @@
 <body>
   <header>
     <h1><a href="../../">Raft Visual Testing</a></h1>
-    <p class="runMeta"><code>0dcd91e-20260712220551</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-12T22:07:58.835Z" data-timestamp="2026-07-12T22:07:58.835Z" title="2026-07-12T22:07:58.835Z">2026-07-12 22:07:58 UTC</time></p>
+    <p class="runMeta"><code>0dcd91e-20260712220551</code> · <strong>react</strong> vs <strong>ios</strong> · Generated <time class="localizedTime" datetime="2026-07-12T22:13:35.475Z" data-timestamp="2026-07-12T22:13:35.475Z" title="2026-07-12T22:13:35.475Z">2026-07-12 22:13:35 UTC</time></p>
     <p class="runMeta">Comparisons: <a href="index.html">React vs Android</a> · <strong>React vs iOS</strong> · <a href="android__ios.html">Android vs iOS</a></p>
     <div class="summary">
       <span class="pill">Total 90</span>
@@ -103,7 +103,7 @@
       <span class="pill">Basic pass 11</span>
       <span class="pill">Different 57</span>
       <span class="pill">Missing 11</span>
-      <span class="pill">AI 47/90 ready</span>
+      <span class="pill">AI 79/90 ready</span>
       <span class="pill">Matrix 91/110 active</span>
       <span class="pill">Components Parity 77/81 active</span><span class="pill">Screens Parity 14/29 active</span>
     </div>
@@ -324,7 +324,12 @@
       <p><code>RGB 91.2%</code><br/><code>Pixel 94.99%</code><br/><code>Mismatch 5.01%</code><br/><code>Raw 1026×888 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×296 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS</summary>
+    <ul><li>iOS error border on SERVER NAME field is thinner and appears as a single line versus React's thicker, more prominent double-line red error state</li><li>iOS SERVER NAME input field has noticeably shorter height than React's taller error-state field</li><li>Email, DESCRIPTION, and SERVER NAME field heights are taller on iOS compared to React, causing larger overall component bounds</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Increase iOS SERVER NAME error-state border width to match React's 2px border (use custom border layer rather than UITextField default)</li><li>Reduce iOS input field heights to match React baseline by overriding intrinsicContentSize or applying fixed height constraint per design token</li><li>Apply consistent error message typography (font size/weight) between platforms via shared design tokens</li><li>Audit iOS TextField padding tokens to match React's taller input fields</li><li>Add explicit height tokens for error-state inputs in shared design system</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.form-field.states.png" data-current-src="ios/components.ui.form-field.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -383,7 +388,12 @@
       <p><code>RGB 89.8%</code><br/><code>Pixel 91.12%</code><br/><code>Mismatch 8.88%</code><br/><code>Raw 1026×720 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×240 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · design-system / iOS platform team</summary>
+    <ul><li>Error-state textarea on iOS renders at a different vertical position/height relative to the helper text and counter, causing the error helper to be clipped against the bottom of the comparison canvas.</li><li>iOS error helper text 'Aareement body must be shorter.' (note typo) appears clipped/cut off at the bottom of the visible area, while React shows it fully below the textarea with proper spacing.</li><li>iOS error-state character counter '57/40' sits on the same baseline as a truncated/clipped helper text, whereas React places the counter flush right with the full helper text on its own line beneath the field.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align iOS Textarea padding, helper-text gap, and counter baseline to the shared spacing tokens used by React; verify with a side-by-side at identical DP scale.</li><li>Crop the iOS snapshot to the component bounds (same contract as baseline) so layout diffing is not affected by empty canvas area.</li><li>Fix the typo in the iOS helper string ('Aareement' → 'Agreement') by sourcing copy from the shared localization catalog.</li><li>Reconcile the error-state background and border colors with the React tokens (e.g., danger-50 fill, danger-500 border) in the iOS theme map.</li><li>Verify iOS text font/size matches React's body token so line wrapping and leading inside the textarea are consistent.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.textarea.states.png" data-current-src="ios/components.ui.textarea.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -890,7 +900,12 @@
       <p><code>RGB 89.3%</code><br/><code>Pixel 98.18%</code><br/><code>Mismatch 1.82%</code><br/><code>Raw 1026×366 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 98.18% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×122 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-systems</summary>
+    <ul><li>Slug input components render with visually near-identical structure on both platforms: same prefix '/' icon-adornment, same two states (default 'design-lab' and placeholder 'partner-workspace'), same border treatment and cream-colored prefix block.</li><li>Minor size difference: the iOS inputs appear slightly taller/larger overall, consistent with the larger iOS viewport (1170×2532 vs 342×122) and possible platform-specific default font metrics.</li><li>Typography weight and color of the input text ('design-lab' dark, 'partner-workspace' muted gray) match between React and iOS; no clipping or cropping observed.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>If exact parity matters, set an explicit font on the iOS slug input matching the web font family/weight.</li><li>Normalize input vertical padding to a fixed token instead of relying on platform defaults.</li><li>Add a snapshot tolerance that accounts for font-rendering anti-aliasing differences to reduce noise in CI.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.slug-input.states.png" data-current-src="ios/components.ui.slug-input.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1077,7 +1092,12 @@
       <p><code>RGB 89.0%</code><br/><code>Pixel 95.84%</code><br/><code>Mismatch 4.16%</code><br/><code>Raw 1026×756 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×252 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS platform team (SelectionPopover component owner)</summary>
+    <ul><li>The 'No channel' empty-state row is clipped/cropped on iOS but fully visible on React.</li><li>The popover container's bottom border appears thicker/bolder on iOS than React.</li><li>List item vertical spacing/padding is tighter on iOS, causing rows to appear more compressed.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Increase popover max-height or enable internal scrolling so 'No channel' row is visible without clipping.</li><li>Normalize list-item vertical padding to match React values (e.g., 12–14pt).</li><li>Map 'medium/semibold' font weights to the same UIFont weight used in React (e.g., .regular vs .semibold).</li><li>Standardize border widths to a shared design token (1pt) for both web and iOS popover borders.</li><li>Verify the empty-state row is rendered when channel list is empty rather than truncated by container height.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.ui.selection-popover.states.png" data-current-src="ios/components.ui.selection-popover.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1395,7 +1415,12 @@
       <p><code>RGB 90.3%</code><br/><code>Pixel 80.04%</code><br/><code>Mismatch 19.96%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-system</summary>
+    <ul><li>Header banner height differs: iOS header is ~2× taller than React, making the RAFT logo appear shifted down.</li><li>Top header logo position differs: React logo is top-left with tight margin; iOS logo is offset downward and inward with larger top padding.</li><li>Input fields in iOS use noticeably thicker black borders compared to the thinner borders in React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize the auth header banner height across React and iOS using a shared spacing token.</li><li>Standardize input border-width (e.g., 1px) via a shared design token on both platforms.</li><li>Align font-weight values (label/body/button) using a shared typography scale.</li><li>Resize the iOS checkbox to match React's dimensions and stroke style.</li><li>Re-run the visual snapshot after applying tokens to confirm mismatch drops below 2%.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.auth.register.inputs.png" data-current-src="ios/components.auth.register.inputs.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1588,7 +1613,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 97.90%</code><br/><code>Mismatch 2.10%</code><br/><code>Raw 1026×300 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       <p class="cropInfo">basic pass: pixel perfect 97.90% &gt; 96% · raw different</p>
       <p class="cropInfo"><code>Crop component-bounds 342×100 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · low · design-systems</summary>
+    <ul><li>Composer card bounding box is significantly wider on iOS (1170px canvas) versus React baseline, but internal layout, spacing, and component arrangement remain visually consistent.</li><li>Header text &quot;Review the Android composer crop&quot;, icon attachments (image, paperclip), &quot;As Task&quot; checkbox, and pink send button are present in both with matching relative positions.</li><li>Font weight, size, and color of header/body text appear equivalent between React and iOS renders.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the iOS snapshot crop contract matches React's component-bounds crop so visual diffs aren't comparing canvas vs. element regions.</li><li>If component scaling is intentional, normalize the comparison crop region on the iOS side to align 1:1 with the React 342×100 baseline.</li><li>Re-run the comparison with the correct element-bounds crop on iOS to confirm whether the remaining 2.1% mismatch is purely antialiasing noise.</li><li>Confirm font rendering tokens (weight, size, family) are shared between React and iOS implementations to prevent future text-weight drift.</li><li>Document that the pink send button and attachment icon set are platform-consistent and require no action.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.states.png" data-current-src="ios/components.thread.composer.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1676,7 +1706,12 @@
       <p><code>RGB 84.3%</code><br/><code>Pixel 92.33%</code><br/><code>Mismatch 7.67%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · ios-eng</summary>
+    <ul><li>Different list item ordering: React highlights 'artin' (avatar placeholder, no bot indicator) as selected, while iOS highlights 'Cindy' (bot avatar, with status dot) as selected.</li><li>iOS 'IN THIS CHANNEL' section shows secondary text (status/preview like 'Keeps visual testing releas...', 'T...') inline with name; React shows it only on the non-selected row and omits it on the selected 'artin' row.</li><li>iOS renders all 'NOT IN THIS CHANNEL' avatars with the bot/checkered pattern, while React uses a generic person placeholder for 'artin' and a solid teal block for 'Product UX De…'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify selected/highlighted row index matches the React baseline (first entry, 'artin') and align list ordering logic if iOS re-sorts.</li><li>Match secondary text rendering per row so the preview/status string appears consistently on both selected and non-selected items.</li><li>Align avatar rendering so placeholder vs bot avatars are consistent across platforms (or accept as platform-specific asset if intentional).</li><li>Normalize list row height and internal padding to the React spec; reduce vertical gap between the suggestions card and the composer toolbar.</li><li>Confirm whether iOS composer attachment below the card is intentional platform behavior or should be moved flush against the suggestions card.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.member-suggestions.png" data-current-src="ios/components.thread.composer.member-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -1735,7 +1770,12 @@
       <p><code>RGB 85.4%</code><br/><code>Pixel 88.24%</code><br/><code>Mismatch 11.76%</code><br/><code>Raw 1026×960 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×320 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS</summary>
+    <ul><li>Channel suggestions list renders at the very top of the iOS canvas with no top padding, while React has generous top spacing.</li><li>Composer input row (text area, As Task checkbox, send button) sits directly below the suggestions on iOS but is visually separated with breathing room on React.</li><li>Yellow '#' icon tile appears missing/clipped on the iOS composer row header — only the '#' character shows without the yellow square background that React renders.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add equivalent top padding/inset on the iOS channel suggestions container to match React's vertical rhythm</li><li>Restore the yellow '#' badge background tile on the iOS composer row header (check icon asset and view background)</li><li>Align iOS channel name font weight with the React design token (e.g., semibold → medium)</li><li>Normalize the send button background state across platforms — either both filled accent or both outlined</li><li>Audit iOS composer row vertical spacing/padding to match React's measured values within the 1dp tolerance</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.thread.composer.channel-suggestions.png" data-current-src="ios/components.thread.composer.channel-suggestions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2850,7 +2890,12 @@
       <p><code>RGB 91.6%</code><br/><code>Pixel 90.95%</code><br/><code>Mismatch 9.05%</code><br/><code>Raw 1026×1860 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 342×620 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-system</summary>
+    <ul><li>In the first result card, the '#design' label and 'days ago' timestamp are placed on separate lines in iOS but inline on React.</li><li>In iOS, the first card body text is bolder/heavier weight than React, with tighter line wrapping (e.g., 'Captured the Android visual artifact for #product:f8e569cb…' wraps differently and uses heavier weight).</li><li>iOS renders the first card's flag icon outline in pink/magenta, while React renders it as a neutral gray outline.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify the relative-date label and channel/handle label placement so they sit on the same line in both platforms, or intentionally align both.</li><li>Reconcile font-weight tokens for card title and body text (e.g., body text semibold on iOS should map to the same weight as React).</li><li>Recolor the flag/notification icon outline to the same neutral gray on iOS, or update the React token if the pink is intentional.</li><li>Normalize pill colors (yellow '@ you', pink 'new') to match between React and iOS theme palettes.</li><li>Align card vertical padding/spacing to a shared spacing token across web and native.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.activity.results.png" data-current-src="ios/components.home.activity.results.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -2909,7 +2954,12 @@
       <p><code>RGB 79.4%</code><br/><code>Pixel 48.77%</code><br/><code>Mismatch 51.23%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-ios</summary>
+    <ul><li>iOS screenshot shows a keyboard tutorial overlay ('Speed up your typing by sliding your finger across the letters to compose a word.') and 'Continue' button covering the bottom half of the dialog, blocking Cancel/Create Channel actions and member list.</li><li>React baseline shows fully populated AGENTS list (Cindy, Visual QA) and HUMANS list (Designer) with checkmarks; iOS shows empty AGENTS/HUMANS sections.</li><li>React description textarea is a multi-line field showing full wrapped text; iOS renders description as a single-line field clipping 'blockers' to 'blockers'.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss or wait out the iOS keyboard tutorial before capturing screenshots, or suppress QuickPath overlay in UI test environment.</li><li>Ensure iOS description field uses a multi-line UITextView with wrapping that matches React textarea height.</li><li>Remove or gate the 'Start with a letter…' helper text on iOS to match React baseline, or add it to both platforms consistently.</li><li>Align iOS label font weight/size with React design tokens (bold uppercase, larger size).</li><li>Verify AGENTS and HUMANS data loading state in iOS before dialog render and ensure same default selections (Cindy, Designer) as React.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.home.create-channel.dialog.png" data-current-src="ios/components.home.create-channel.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3102,7 +3152,12 @@
       <p><code>RGB 82.8%</code><br/><code>Pixel 56.95%</code><br/><code>Mismatch 43.05%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · components/members create-agent dialog owner (mobile/iOS team)</summary>
+    <ul><li>iOS view has the system software keyboard overlaid covering the bottom portion of the form (MODEL, REASONING, MODE fields are obscured/missing).</li><li>iOS view is missing the orange/peach 'Agent limit reached (2/2 on Free plan)' banner notice shown above the COMPUTER field in React.</li><li>iOS screenshot has a scaled-up/larger canvas (1170×2532) versus React's 390×844, making typography and spacing appear proportionally larger.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Recapture iOS screenshot with keyboard dismissed to reveal full form (MODEL, REASONING, MODE).</li><li>Ensure 'Agent limit reached' banner parity across React and iOS implementations and snapshot tests.</li><li>Normalize viewport/scale when comparing web 390×844 vs iOS 1170×2532; consider cropping iOS to element bounds.</li><li>Match field vertical spacing/padding between React and iOS using shared design tokens.</li><li>Add a regression test that the dialog scrolls to the active field rather than hiding lower fields behind the keyboard.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.dialog.png" data-current-src="ios/components.members.create-agent.dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3161,7 +3216,12 @@
       <p><code>RGB 82.9%</code><br/><code>Pixel 56.69%</code><br/><code>Mismatch 43.31%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineer (Create Agent dialog component owner), with React team consulted for canonical field order and error banner spec.</summary>
+    <ul><li>iOS shows the Create Agent modal scrolled to a different position than React baseline, exposing NAME, DESCRIPTION, RUNTIME, and MODEL fields while React shows COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, MODEL, and REASONING fields at the top.</li><li>React baseline displays a prominent pink/peach 'Agent limit reached (2/2 on Free plan). Upgrade for more' error banner at the top of the form; iOS version is missing this alert/banner entirely.</li><li>iOS screen has the on-screen iOS keyboard occupying the lower half of the viewport, occluding fields like MODEL and any submit/CTA area; React does not show a keyboard.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Dismiss the iOS keyboard before capturing the screenshot so the full form is visible and comparable to the React baseline.</li><li>Re-add the 'Agent limit reached' alert/banner component in the iOS Create Agent dialog to match the React error/limit-reached UI.</li><li>Align the default runtime selection to 'Claude Code' (or document intended platform-specific defaults) so the captured state matches.</li><li>Ensure the iOS modal's initial scroll position matches the React baseline (top of form) and verify field order: COMPUTER, NAME, DESCRIPTION, RUNTIME, PROVIDER, MODEL, REASONING.</li><li>Add scroll-to-top on dialog open and keyboard avoidance so required fields like MODEL and submit CTA remain visible when typing.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.create-agent.claude-dialog.png" data-current-src="ios/components.members.create-agent.claude-dialog.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3249,7 +3309,12 @@
       <p><code>RGB 89.9%</code><br/><code>Pixel 82.11%</code><br/><code>Mismatch 17.89%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop page-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-frontend</summary>
+    <ul><li>Header avatar on React renders as solid cyan square; iOS renders a pixelated/mosaic avatar pattern</li><li>React header subtitle truncated with ellipsis (e.g., 'Turns product feedback, s…'); iOS subtitle wraps to two lines without truncation</li><li>Tab bar on React shows 'Reminders' without an extra icon; iOS shows an additional trailing edit/compose icon at the right edge of the tab bar</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify avatar rendering across platforms — both should show the same image source or agreed placeholder</li><li>Standardize header subtitle behavior: either truncate with ellipsis on both or allow wrap on both</li><li>Normalize tab bar contents — ensure the trailing edit icon is present on both platforms</li><li>Refactor Profile hero block to use a shared layout spec (name + handle + status arrangement)</li><li>Align Info section to a consistent label-value grid pattern across platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-detail.profile.png" data-current-src="ios/components.members.agent-detail.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3308,7 +3373,12 @@
       <p><code>RGB 88.7%</code><br/><code>Pixel 79.77%</code><br/><code>Mismatch 20.23%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS</summary>
+    <ul><li>Header layout differs: iOS uses a single inline row with avatar square followed by title and buttons, whereas React shows an extra standalone avatar square plus a back button above the title row.</li><li>Primary tabs bar content mismatch: React shows 'Profile | Activity' tab labels, iOS shows 'Profile | Reminders' tab labels.</li><li>The 'Stop Agent / Restart / Reset' context-menu overlay is positioned differently: in React it is anchored to the right action-button area; in iOS it appears wider, left-aligned, and partially overlaps the title/avatar.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify tab labels so both platforms show the same set (decide canonical label: Activity or Reminders).</li><li>Match the Runtime Config and Environment Variables chip layout across platforms (either both single-row or both wrapping).</li><li>Add a 'Working'/agent status indicator to the React view to match iOS, or remove from iOS for parity.</li><li>Consolidate the Computer/Connected version string and Created/Creator row ordering to match across platforms.</li><li>Verify the agent-lifecycle actions popover anchors consistently relative to the action button on both platforms.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.agent-lifecycle-actions.png" data-current-src="ios/components.members.agent-lifecycle-actions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3367,7 +3437,12 @@
       <p><code>RGB 85.6%</code><br/><code>Pixel 74.59%</code><br/><code>Mismatch 25.41%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS team (mobile platform) with design-system review</summary>
+    <ul><li>Avatar grid layout differs: React shows ~7 cols x 2-3 rows filling width; iOS shows 8 cols x 2 rows + partial row, with larger spacing between tiles</li><li>Profile header on iOS shows avatar + name + @handle + 'Working' status indicator (online dot), while React shows a placeholder edit box with cropped text 'Product...' and a 'Capturing determ...' status</li><li>Top header on iOS uses a single combined row (back arrow + avatar + title + description + chat/menu icons); React separates header, tabs, and profile into three distinct rows</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align iOS avatar grid tile size and gutters to match React spec (verify tile width and row gap tokens)</li><li>Constrain tab bar to 4 tabs or shrink icon+label spacing so 'Activity' is not truncated; remove the extra 5th tab or move to overflow menu</li><li>Standardize profile header content across platforms: ensure avatar, name, handle, and status are always rendered without clipping; add min-width/ellipsis handling for header title and description</li><li>Fix header overflow on React: the 'Product...' and 'Capturing determ...' crops indicate missing width constraints or wrong flex layout on the header row</li><li>Match Created date and computer/version data between fixtures, or at least mask them consistently in visual tests</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.members.avatar-management.png" data-current-src="ios/components.members.avatar-management.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3493,7 +3568,12 @@
       <p><code>RGB 87.1%</code><br/><code>Pixel 79.53%</code><br/><code>Mismatch 20.47%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop modal-viewport 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-design-system</summary>
+    <ul><li>Make Private, Archive Channel, and Delete Channel buttons span the full panel width on iOS but are narrower (centered with side padding) on React.</li><li>Cancel/Save Changes button row alignment differs: React centers them with a gap, iOS right-aligns them with the same gap.</li><li>Divider line above Make Private is positioned closer to the Save Changes button on iOS than on React.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Normalize button widths to a shared design token (e.g., max-width or percentage of panel width)</li><li>Align Cancel/Save row to a consistent flex alignment across platforms</li><li>Recolor required-field asterisk to match shared semantic token (warning/required)</li><li>Audit spacing scale so Make Private/Archive/Delete stack matches baseline on iOS</li><li>Add a shared Storybook visual test for channel-settings panel to catch regressions</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.channel.settings.panel.png" data-current-src="ios/components.channel.settings.panel.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3683,7 +3763,12 @@
       <p><code>RGB 88.0%</code><br/><code>Pixel 67.12%</code><br/><code>Mismatch 32.88%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · ios-settings</summary>
+    <ul><li>React (left) renders a 'Workspace mode' toggle card at the top and a 'Profile'-labeled avatar block; iOS (right) skips Workspace mode and shows 'Profile' header only above the avatar card.</li><li>Field labels differ: React uses sentence-case 'Name', 'Display Name', 'Email', 'Change Password'; iOS uses uppercase 'NAME', 'DISPLAY NAME', 'Email', 'Change password' (mixed case).</li><li>Account card bound differs: React wraps the avatar plus Name/Display Name/Email inside one bordered card; iOS places the avatar in a separate inner card stacked under the 'Profile' header, then a different card for Name/Display Name/Email.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Reconcile component spec: decide whether 'Workspace mode' and 'Profile' header belong on the Account screen, then implement identically on both platforms.</li><li>Unify field-label style tokens (case, weight, size) across iOS and React so 'Name' / 'Display Name' / 'Email' render the same way.</li><li>Wrap avatar + name + display name + email in a single group/card on iOS to match the React bounded card, instead of two stacked cards under a 'Profile' label.</li><li>Sync connected-accounts mock state (Google pre-connected on iOS) or render the same conditional button label/action.</li><li>Add 'Session → Change password' and 'Log out' sections to the React baseline if they are intended, or remove them from iOS to match baseline.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.page.states.png" data-current-src="ios/components.settings.page.states.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3742,7 +3827,12 @@
       <p><code>RGB 88.0%</code><br/><code>Pixel 67.12%</code><br/><code>Mismatch 32.88%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS platform team</summary>
+    <ul><li>iOS (right) is missing the 'Workspace mode' card/header section present at the top of React (left).</li><li>iOS is missing the 'ACCOUNT' section header label above the profile card (React shows a small icon + 'ACCOUNT' header).</li><li>Google account shows 'Connected as artin@slock.ai' on React but 'Not connected' on iOS — inconsistent connection state for the same user.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the 'Workspace mode' card to the iOS Account page to match React (or hide both if the toggle is web-only, then align absence intentionally).</li><li>Insert the 'ACCOUNT' section header label above the profile card on iOS for parity.</li><li>Investigate why Google connected status diverges ('Connected as ...' vs 'Not connected') — verify iOS uses the same account-state source as React and snapshot at the same lifecycle stage.</li><li>Standardize the Save Profile button to the shared primary style (size, color, disabled state) across platforms.</li><li>Decide whether 'Sign out' and 'Change Password' should be in their own cards on iOS or inline rows like React, and align the structure across both.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.account.page.png" data-current-src="ios/components.settings.account.page.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3801,7 +3891,12 @@
       <p><code>RGB 88.1%</code><br/><code>Pixel 67.04%</code><br/><code>Mismatch 32.96%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · iOS settings/account component owner</summary>
+    <ul><li>iOS version omits the &quot;Workspace mode&quot; banner card present at the top of the React baseline.</li><li>iOS adds an extra &quot;Log out&quot; section at the bottom (with a red/orange button) that is not visible in the React baseline view.</li><li>Section headings and input labels are uppercase on iOS (&quot;PROFILE&quot;, &quot;ACCOUNT&quot; → &quot;PROFILE&quot;, &quot;NAME&quot;, &quot;DISPLAY NAME&quot;) vs. sentence case on React (&quot;Profile&quot;, &quot;Account&quot;, &quot;Name&quot;, &quot;Display Name&quot;).</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide whether the iOS view should include the &quot;Workspace mode&quot; promo banner; add it if scope requires parity.</li><li>Standardize section title casing across platforms (pick either sentence case or uppercase) via shared design tokens.</li><li>Constrain the &quot;Connected&quot; badge or shorten its label so the &quot;Connected as …&quot; subtext is not truncated on iOS.</li><li>Match the &quot;Save Profile&quot; button sizing and padding to the React baseline (or update both tokens together).</li><li>Align vertical rhythm between Name / Display Name / Email fields with the React spacing scale.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.account.provider-linked.png" data-current-src="ios/components.settings.account.provider-linked.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3860,7 +3955,12 @@
       <p><code>RGB 86.2%</code><br/><code>Pixel 76.81%</code><br/><code>Mismatch 23.19%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · mobile-design-system</summary>
+    <ul><li>iOS includes a Profile section with avatar, display name, and Name/Display Name fields that React does not have</li><li>React shows a 'SESSION' section with 'Log out' block and orange button; iOS omits this entirely</li><li>Google connected-account state differs: React shows 'Connected as artin@slock.ai' with no Connect button; iOS shows 'Not connected' with a Connect button</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Decide whether Profile/Name/Display Name fields should exist on web; align components or intentionally scope them to iOS</li><li>Move Log out to a dedicated iOS screen or add it back to the Account screen to match web coverage</li><li>Sync connected-account provider state (Google as Connected vs Not connected, GitHub copy) across platforms</li><li>Normalize header and label casing to a shared design-token spec (e.g., 'Change password', 'Current password') to remove ad-hoc platform casing</li><li>Match Save Profile enabled/disabled visual state across web and iOS using a shared disabled style token</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.account.password-expanded.png" data-current-src="ios/components.settings.account.password-expanded.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3919,7 +4019,12 @@
       <p><code>RGB 87.8%</code><br/><code>Pixel 58.96%</code><br/><code>Mismatch 41.04%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · settings-account-frontend</summary>
+    <ul><li>iOS shows a 'Profile' section header while React shows 'ACCOUNT' (intentional platform naming).</li><li>React displays a 'Workspace mode' promotional/info card at the top; iOS omits it entirely.</li><li>iOS surfaces two additional error states ('Profile save failed: server_unavailable' and 'Provider link failed: oauth_provider_unavailable') that React does not render in the same view.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Capture a React baseline that matches the iOS error fixture (avatar + server + provider errors) for a true apples-to-apples comparison.</li><li>Decide whether Workspace mode card should appear on mobile/iOS; if not, suppress in React at the same breakpoint for parity.</li><li>If 'Retry' is the intended button in error state, update React's Save Profile to mirror the copy and styling when submission fails.</li><li>Verify Connected accounts data source so both platforms reflect the same Google connection status for the test user.</li><li>Align form-label casing strategy or document the per-platform typography divergence as intentional.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.account.error-state.png" data-current-src="ios/components.settings.account.error-state.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -3978,7 +4083,12 @@
       <p><code>RGB 89.7%</code><br/><code>Pixel 78.69%</code><br/><code>Mismatch 21.31%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-settings</summary>
+    <ul><li>iOS view is missing the large server avatar block (V tile + 'Visual Server' title + '/visual' subtitle) present in React</li><li>iOS Profile section label uses title case 'Profile' while React uses uppercase tracked 'PROFILE'</li><li>React slug input shows a leading '/' prefix chip; iOS slug input shows the value 'visual' directly without the prefix adornment</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add the server avatar tile with initial 'V' and display name '/visual' subtitle to the iOS Server Profile header</li><li>Apply uppercase letter-spacing to the 'Profile' and 'Danger Zone' section labels on iOS to match web</li><li>Wrap the iOS Slug TextField with a leading '/' accessory or prefix label to mirror the React input</li><li>Ensure Save Profile button reflects the correct enabled/disabled state matching the form validity rules on web</li><li>Wrap Danger Zone in its own card with consistent vertical spacing matching the Profile card on iOS</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.server.profile.png" data-current-src="ios/components.settings.server.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4037,7 +4147,12 @@
       <p><code>RGB 91.9%</code><br/><code>Pixel 80.92%</code><br/><code>Mismatch 19.08%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Mobile (iOS) team — Settings/Administration feature owner</summary>
+    <ul><li>React renders the 'Owners &amp; Admins' admin-management UI with member dropdown, role selector, Update Role button, and admin list item</li><li>iOS renders an entirely different 'Administration' screen with back button, Profile (Name/Slug inputs, Save Profile button), and Danger Zone (Delete Server)</li><li>The two screens are different features/views: iOS does not implement the admin/owners management screen at all</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify iOS routing: ensure the admins sub-screen is reachable from Administration and is the screen captured for this test id</li><li>If the Admins view is not yet implemented on iOS, either implement it to match React parity or skip this visual test until parity lands</li><li>Align screenshot capture scripts to target the same route on both platforms (Admins sub-screen, not Administration overview)</li><li>Add the missing UI elements on iOS: 'Owners &amp; Admins' section title with count, member-select dropdown, role dropdown, Update Role action, and admin list rows with avatar, name, email, role badge, and 'Last owner' indicator</li><li>Match typography weight and size for section headings, field labels, and button labels between platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.admins.png" data-current-src="ios/components.settings.administration.admins.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4096,7 +4211,12 @@
       <p><code>RGB 94.3%</code><br/><code>Pixel 87.77%</code><br/><code>Mismatch 12.23%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform</summary>
+    <ul><li>iOS shows the full Administration page (Profile, Danger Zone/Delete Server) while React baseline only shows the Pending Invites section — content scope differs</li><li>React crop targets the invites component bounds; iOS screenshot is uncropped and renders the entire screen, making the comparison region mismatch</li><li>React has an envelope mail icon next to 'PENDING INVITES 2' header; iOS shows a back-arrow icon next to 'Administration' title — different navigation header</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Align the iOS capture crop with the same component bounds used for the React baseline (e.g., invite list region)</li><li>Ensure both sides render the same screen state (Invites) before snapshotting</li><li>Add a route guard or explicit deep-link to the Invites section on iOS so both platforms capture identical content</li><li>Standardize tolerance contract so full-screen iOS captures are compared against the equivalent full-screen React view, not an element crop</li><li>Verify the fixture/test data matches (same invites, same server config) before capturing</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.invites.png" data-current-src="ios/components.settings.administration.invites.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4155,7 +4275,12 @@
       <p><code>RGB 91.4%</code><br/><code>Pixel 85.55%</code><br/><code>Mismatch 14.45%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineering (settings/administration feature owner)</summary>
+    <ul><li>Two completely different screens are being compared: React shows 'Invite Links' (create/manage join links), iOS shows 'Administration' (server profile + danger zone).</li><li>iOS renders Profile form (Name, Slug, Save Profile) instead of the Max Uses / Expires At / Create Invite Link form.</li><li>iOS renders Danger Zone (Delete Server) card which does not exist in the React view.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the iOS navigation route for Settings &gt; Administration &gt; Join Links; ensure the Join Links screen is mounted, not the parent Administration profile screen.</li><li>If Join Links is not yet implemented on iOS, either implement it to match React (Max Uses, Expires At, Create Invite Link, list with copy/delete) or explicitly show a 'Not implemented' placeholder.</li><li>Align page header: on iOS, replace generic 'Administration' header with 'Invite Links' (and the count badge) when on this route, and ensure a back button is present on both.</li><li>Unify card/styling tokens across platforms (border weight, card padding, button color palette for primary/destructive actions).</li><li>Add a visual regression test that pins this exact route on iOS to prevent the Administration screen from regressing into this view.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.join-links.png" data-current-src="ios/components.settings.administration.join-links.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4214,7 +4339,12 @@
       <p><code>RGB 90.2%</code><br/><code>Pixel 74.40%</code><br/><code>Mismatch 25.60%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS Administration settings engineer (with visual-testing harness owner)</summary>
+    <ul><li>iOS screenshot renders the Administration/Profile/Delete Server view instead of the Pre-Join Agreement screen targeted by the test ID</li><li>React shows the Pre-Join Agreement form (checkbox, Title, Body textarea, Preview, Save); iOS shows the wrong screen entirely</li><li>Page titles differ: React uses 'PRE-JOIN AGREEMENT' with a document icon; iOS uses 'Administration' with a back chevron in a square container</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify iOS app routing from the Administration landing to the Pre-Join Agreement screen; confirm tab/section state matches React default</li><li>Implement Pre-Join Agreement component in iOS: requirement checkbox, Title input, Body textarea (with 5000 char counter), Preview block, Save CTA, and version-audit helper text</li><li>Re-map the screenshot test harness so ID 'components.settings.administration.pre-join-agreement' targets the agreement screen, not the profile screen</li><li>Align disabled-state styling tokens (Save button opacity, border/shadow stack) with the React design spec</li><li>Unify label casing policy and required-field indicator (red asterisk) across both platforms</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.pre-join-agreement.png" data-current-src="ios/components.settings.administration.pre-join-agreement.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4273,7 +4403,12 @@
       <p><code>RGB 91.7%</code><br/><code>Pixel 85.25%</code><br/><code>Mismatch 14.75%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS settings/administration feature owner</summary>
+    <ul><li>iOS (right) shows the Administration/Profile/Danger Zone view, while React (left) shows the Onboarding settings — these are different screens being compared, not the same component.</li><li>React Onboarding card has 'Human Onboarding Agent' select set to '@cindy (Cindy)' and 'New Agent Greeting' select set to 'Yes'; iOS has no onboarding form fields at all.</li><li>iOS header is 'Administration' with a back arrow icon; React header is 'ONBOARDING' with a different icon — page-level navigation and title differ.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Re-capture the iOS snapshot after navigating to the Onboarding settings sub-section to match the React baseline.</li><li>Verify the settings navigation map: 'components.settings.administration.onboarding' must route to the Onboarding card, not Administration → Profile.</li><li>If the Onboarding view does not exist on iOS, either implement it or update the snapshot contract to reflect the actual iOS equivalent.</li><li>Confirm the iOS page title and header icon align with the design system spec for the Onboarding screen.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.onboarding.png" data-current-src="ios/components.settings.administration.onboarding.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4332,7 +4467,12 @@
       <p><code>RGB 93.4%</code><br/><code>Pixel 86.69%</code><br/><code>Mismatch 13.31%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineering — route/render mapping for Member Permissions screen</summary>
+    <ul><li>Wrong screen rendered on iOS: shows 'Administration' with Profile (Name/Slug) and Danger Zone (Delete Server), while React baseline shows 'Member Permissions' with a 'Hide human directory and counts from members' toggle.</li><li>iOS is missing the 'Member Permissions' section entirely, including the people icon header, checkbox control, descriptive body text, and pink 'Save' button present in React.</li><li>iOS shows an unexpected back-arrow button next to the 'Administration' header, which has no counterpart on the React baseline.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify iOS navigation/route configuration so the 'Member Permissions' route renders this view instead of 'Administration'.</li><li>Ensure the people-icon section header, checkbox, descriptive text, and Save button are wired into the iOS Member Permissions view.</li><li>Restore enabled state for Save Profile and Delete Server buttons, or align disabled style with React's solid pink primary CTA.</li><li>Reconcile typography and spacing tokens (header size/weight, card padding, form field height) across iOS and React baselines.</li><li>Add visual-regression coverage for the Member Permissions iOS route so future mismatches are caught.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.member-permissions.png" data-current-src="ios/components.settings.administration.member-permissions.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4391,7 +4531,12 @@
       <p><code>RGB 93.3%</code><br/><code>Pixel 86.81%</code><br/><code>Mismatch 13.19%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop component-bounds 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · mobile-platform</summary>
+    <ul><li>The iOS screenshot shows an entirely different screen (Administration/Profile/Delete Server) instead of the Translation settings panel shown in the React baseline.</li><li>React baseline renders a 'TRANSLATION' section header with an 'Enable message translation for this server' checkbox card and a 'Save' button.</li><li>iOS renders a full 'Administration' view with a back arrow, 'Profile' section (Name, Slug inputs, Save Profile button), and a 'Danger Zone' with a red 'Delete Server' button.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the iOS test harness navigates into the Translation settings view (not the parent Administration screen) before capture.</li><li>Confirm the iOS route mapping for 'settings.administration.translation' is wired to the Translation component, not the Administration parent.</li><li>Add explicit wait/assertion for 'TRANSLATION' header or 'Enable message translation' copy before snapshotting on iOS.</li><li>Align iOS visual regression screenshot naming and crop contract to the component-bounds used in the React baseline so the same region is compared.</li><li>If the iOS app intentionally lacks this screen, gate the visual test rather than letting it mismatch the parent screen.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/components.settings.administration.translation.png" data-current-src="ios/components.settings.administration.translation.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4770,7 +4915,12 @@
       <p><code>RGB 83.3%</code><br/><code>Pixel 71.63%</code><br/><code>Mismatch 28.37%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · medium · design-systems</summary>
+    <ul><li>Header banner height differs: React header band is shorter (less vertical padding) than iOS header band</li><li>Sign In title vertical position is higher on iOS (closer to header) vs React, where it sits further down with more top whitespace</li><li>Form field vertical spacing is tighter on iOS: Email/Password inputs and labels are more compact than React</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Unify spacing tokens: map web px and iOS pt to a shared scale (e.g., 4/8/12/16/24) and apply identically to header, form, and buttons on both platforms</li><li>Normalize typography: use a shared type ramp with platform-aware font families but identical font-size/weight/line-height tokens</li><li>Audit header banner padding to match height across platforms; align Sign In title to a consistent top offset</li><li>Standardize input field height, internal padding, and inter-field vertical gap on iOS to match React baseline</li><li>Recompute GitHub button background/icon proportions so the black fill and icon size match the React reference</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.auth.login.signing.png" data-current-src="ios/screens.auth.login.signing.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -4982,7 +5132,12 @@
       <p><code>RGB 95.5%</code><br/><code>Pixel 90.73%</code><br/><code>Mismatch 9.27%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop screen-route 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · iOS engineer (members/profile flow)</summary>
+    <ul><li>iOS shows an error state ('Could not load member' with 'member_identity_missing') while React displays a fully populated member profile (avatar, name, description, info, role, email, joined date, created agents, remove action).</li><li>Header titles differ: React renders the member name 'artin' next to the avatar; iOS renders a generic two-line title 'Member / Profile'.</li><li>iOS is missing the trailing chat/message icon button present in the React header.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Verify the member identity is correctly passed to the iOS profile route and that the API call returns valid data.</li><li>Inspect the iOS error handling so that 'member_identity_missing' is not thrown for valid members; add logging.</li><li>Align iOS header layout with React: show member name inline with avatar and include the chat/message icon when applicable.</li><li>Ensure iOS renders the same fallback loading/empty state as React when data is unavailable instead of a generic error.</li><li>Add an integration test covering the member profile load on iOS to catch missing identity regressions.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.members.human.profile.png" data-current-src="ios/screens.members.human.profile.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">
@@ -5279,7 +5434,12 @@
       <p><code>RGB 96.1%</code><br/><code>Pixel 79.50%</code><br/><code>Mismatch 20.50%</code><br/><code>Raw 1170×2532 / 1170×2532</code><br/><code>Canvas 1170×2532</code><br/><code>Compositor sharp</code><br/><code>Display preserve-provider-raw-size</code><br/><code>Metrics rgb-resize-pixel-pad-no-crop</code></p>
       
       <p class="cropInfo"><code>Crop viewport-with-portal 390×844 / unknown n/a</code></p>
-      <div class="aiNotes aiPending"><strong>AI diff notes</strong><br/>analysis stale; rerun analyze</div>
+      <details class="aiNotes" open>
+    <summary>AI diff notes · high · Mobile (iOS) engineer</summary>
+    <ul><li>React renders a bottom tab bar (Home/Tasks/Members/Settings) with bold filled icons and a yellow active highlight on Home; iOS bottom tabs overlap main content with faded/un-styled labels and icons, indicating tab bar is missing or not styled.</li><li>React shows a full sidebar with sections in this order: Search, Activity, Saved, JOINT CHANNELS, CHANNELS, DIRECT MESSAGES; iOS shows Search, Activity, Saved, CHANNELS, DIRECT MESSAGES — JOINT CHANNELS section is missing on iOS.</li><li>React has 2 skeleton rows under JOINT CHANNELS, 4 under CHANNELS, 3 under DIRECT MESSAGES; iOS has 4 under CHANNELS and 3 under DIRECT MESSAGES but no JOINT CHANNELS group at all.</li></ul>
+    <strong>Suggested fixes</strong><ul><li>Add JOINT CHANNELS section to iOS sidebar between Saved and CHANNELS, matching React's order and skeleton row count (2).</li><li>Wrap iOS bottom tabs in the shared TabBar component: apply yellow active background on Home, filled black icons, and bold labels matching React.</li><li>Set iOS screenshot crop to viewport (390×844) or ensure the tab bar uses position: fixed/absolute at bottom with content padding-bottom equal to tab bar height to prevent overlap.</li><li>Apply the circular pill style to section count badges ('0') on iOS to match React.</li><li>Ensure '+' add icon is rendered next to all collapsible section headers that support adding items, not only CHANNELS.</li></ul>
+    <p><a href="analysis-summary.json">analysis summary</a></p>
+  </details>
       <details class="overlayComparison" open data-overlay-comparison data-baseline-src="react/screens.home.loading.png" data-current-src="ios/screens.home.loading.png" data-overlay-width="1170" data-overlay-height="2532">
     <summary>Overlay comparison · React under iOS</summary>
     <div class="overlayControls">

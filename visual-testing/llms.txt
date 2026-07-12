@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-12 22:07:58 UTC
+Generated: 2026-07-12 22:13:35 UTC
 Latest run: 0dcd91e-20260712220551
 Latest commit: 0dcd91e-20260712220551
 Commit subject: docs(projection): §6 Ruling 1 — key-set closure ≠ value-set closure (#786)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 90, same 0, pass 0, basic-pass 1, different 85, missing 4
-AI analysis: ready 75 / total 90, pending 15
+AI analysis: ready 86 / total 90, pending 4
 Visual coverage matrix: active 91 / total 110, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

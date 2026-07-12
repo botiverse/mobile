@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-12T22:07:58.835Z",
+  "generatedAt": "2026-07-12T22:13:35.475Z",
   "latestRunId": "0dcd91e-20260712220551",
   "latest": {
     "runId": "0dcd91e-20260712220551",
     "commit": "0dcd91e-20260712220551",
     "commitSubject": "docs(projection): §6 Ruling 1 — key-set closure ≠ value-set closure (#786)",
-    "generatedAt": "2026-07-12T22:07:58.835Z",
+    "generatedAt": "2026-07-12T22:13:35.475Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 90,
-      "ready": 75,
-      "pending": 15
+      "ready": 86,
+      "pending": 4
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "0dcd91e-20260712220551",
       "commit": "0dcd91e-20260712220551",
       "commitSubject": "docs(projection): §6 Ruling 1 — key-set closure ≠ value-set closure (#786)",
-      "generatedAt": "2026-07-12T22:07:58.835Z",
+      "generatedAt": "2026-07-12T22:13:35.475Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 90,
-        "ready": 75,
-        "pending": 15
+        "ready": 86,
+        "pending": 4
       },
       "comparisons": [
         "react__android",
