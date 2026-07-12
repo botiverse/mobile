@@ -687,9 +687,9 @@ internal class SlockSharedStoreProvider private constructor(
 internal fun createSharedAuthDataSourceForCurrentEnvironment(
     apiEnvironmentStore: SharedApiEnvironmentStore,
     authStore: SlockAuthSessionStore,
-    transportFactory: (String) -> SlockAuthTransport = { baseUrl ->
+    transportFactory: (() -> String) -> SlockAuthTransport = { baseUrlProvider ->
         SharedSlockAuthTransport(
-            baseUrl = baseUrl,
+            baseUrlProvider = baseUrlProvider,
             warningLogger = { message ->
                 slockLogWarn(SHARED_AUTH_LOG_TAG, "shared_auth_network $message")
             }
@@ -698,7 +698,7 @@ internal fun createSharedAuthDataSourceForCurrentEnvironment(
     diagnosticsLogger: (String) -> Unit = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "shared_auth")
 ): SharedAuthDataSource =
     SharedAuthDataSource(
-        transport = transportFactory(apiEnvironmentStore.current().apiBaseUrl),
+        transport = transportFactory { apiEnvironmentStore.current().apiBaseUrl },
         sessionStore = authStore,
         diagnosticsLogger = diagnosticsLogger
     )
