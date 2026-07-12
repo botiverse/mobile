@@ -1,7 +1,11 @@
 package build.raft.app
 
-import build.raft.app.data.userFacingErrorCodeMessage
+import androidx.compose.runtime.Composable
 import build.raft.app.network.SlockRequestTimeoutException
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.localized
+import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -20,6 +24,29 @@ private val ThreadFailureReasonKnownLabels =
         "thread_send_cancelled" to "request cancelled",
         "thread_send_network" to "network error",
         "thread_send_exception" to "unexpected error"
+    )
+
+internal enum class ThreadUserFacingErrorReason {
+    AuthenticationRequired,
+    PermissionDenied,
+    ServerUnreachable,
+    RequestTimedOut,
+    NetworkFailed,
+    ServerUnavailable,
+    ItemNotFound,
+    AttachmentTooLarge,
+    RateLimited,
+    ResponseUnreadable,
+    RequestCancelled,
+    Generic
+}
+
+private val ThreadUserFacingKnownReasons =
+    mapOf(
+        "thread_send_timeout" to ThreadUserFacingErrorReason.RequestTimedOut,
+        "thread_send_cancelled" to ThreadUserFacingErrorReason.RequestCancelled,
+        "thread_send_network" to ThreadUserFacingErrorReason.NetworkFailed,
+        "thread_send_exception" to ThreadUserFacingErrorReason.Generic
     )
 
 internal fun threadSendFailureStatusLabel(errorCode: String?, errorMessage: String? = null): String {
@@ -46,20 +73,105 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
             }
         }
 
-internal fun threadUserFacingErrorCodeLabel(errorCode: String?): String? =
-    errorCode
-        ?.trim()
-        ?.replace(Regex("\\s+"), " ")
-        ?.takeIf { it.isNotBlank() }
-        ?.let { value -> ThreadFailureReasonKnownLabels[value] ?: value.userFacingErrorCodeMessage() }
-        ?.let(::redactThreadFailureReason)
-        ?.let { value ->
-            if (value.length <= ThreadFailureReasonMaxLength) {
-                value
-            } else {
-                value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
-            }
-        }
+internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFacingErrorReason? {
+    val normalized =
+        errorCode
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+    ThreadUserFacingKnownReasons[normalized]?.let { return it }
+    return when {
+        normalized == "auth_required" ||
+            normalized == "auth_session" ||
+            normalized == "unauthenticated" ||
+            "auth" in normalized -> ThreadUserFacingErrorReason.AuthenticationRequired
+        "dns" in normalized ||
+            "host" in normalized ||
+            "unreachable" in normalized -> ThreadUserFacingErrorReason.ServerUnreachable
+        "timeout" in normalized ||
+            "timed_out" in normalized -> ThreadUserFacingErrorReason.RequestTimedOut
+        "network" in normalized ||
+            "socket" in normalized ||
+            normalized == "code_0" ||
+            normalized == "0" -> ThreadUserFacingErrorReason.NetworkFailed
+        "server_unavailable" in normalized ||
+            "http_5" in normalized ||
+            normalized.endsWith("_503") -> ThreadUserFacingErrorReason.ServerUnavailable
+        "not_found" in normalized ||
+            "http_404" in normalized -> ThreadUserFacingErrorReason.ItemNotFound
+        "permission" in normalized ||
+            "forbidden" in normalized ||
+            "admin_required" in normalized ||
+            "no_permission" in normalized -> ThreadUserFacingErrorReason.PermissionDenied
+        "too_large" in normalized ||
+            "attachment_size" in normalized -> ThreadUserFacingErrorReason.AttachmentTooLarge
+        "rate" in normalized ||
+            "too_many" in normalized -> ThreadUserFacingErrorReason.RateLimited
+        "contract" in normalized ||
+            "parse" in normalized ||
+            "mismatch" in normalized -> ThreadUserFacingErrorReason.ResponseUnreadable
+        else -> ThreadUserFacingErrorReason.Generic
+    }
+}
+
+internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
+    when (this) {
+        ThreadUserFacingErrorReason.AuthenticationRequired -> MR.strings.thread_error_reason_auth.desc()
+        ThreadUserFacingErrorReason.PermissionDenied -> MR.strings.thread_error_reason_permission.desc()
+        ThreadUserFacingErrorReason.ServerUnreachable -> MR.strings.thread_error_reason_server_unreachable.desc()
+        ThreadUserFacingErrorReason.RequestTimedOut -> MR.strings.thread_error_reason_timeout.desc()
+        ThreadUserFacingErrorReason.NetworkFailed -> MR.strings.thread_error_reason_network.desc()
+        ThreadUserFacingErrorReason.ServerUnavailable -> MR.strings.thread_error_reason_server_unavailable.desc()
+        ThreadUserFacingErrorReason.ItemNotFound -> MR.strings.thread_error_reason_not_found.desc()
+        ThreadUserFacingErrorReason.AttachmentTooLarge -> MR.strings.thread_error_reason_attachment_too_large.desc()
+        ThreadUserFacingErrorReason.RateLimited -> MR.strings.thread_error_reason_rate_limited.desc()
+        ThreadUserFacingErrorReason.ResponseUnreadable -> MR.strings.thread_error_reason_response_unreadable.desc()
+        ThreadUserFacingErrorReason.RequestCancelled -> MR.strings.thread_error_reason_cancelled.desc()
+        ThreadUserFacingErrorReason.Generic -> MR.strings.thread_error_reason_generic.desc()
+    }
+
+internal class ThreadUserFacingErrorLabels(
+    private val labels: Map<ThreadUserFacingErrorReason, String>
+) {
+    init {
+        require(labels.keys == ThreadUserFacingErrorReason.entries.toSet())
+    }
+
+    fun forErrorCode(errorCode: String?): String? =
+        threadUserFacingErrorCodeReason(errorCode)?.let(labels::get)
+}
+
+@Composable
+internal fun threadUserFacingErrorLabels(): ThreadUserFacingErrorLabels =
+    ThreadUserFacingErrorLabels(
+        mapOf(
+            ThreadUserFacingErrorReason.AuthenticationRequired to
+                ThreadUserFacingErrorReason.AuthenticationRequired.stringDesc().localized(),
+            ThreadUserFacingErrorReason.PermissionDenied to
+                ThreadUserFacingErrorReason.PermissionDenied.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ServerUnreachable to
+                ThreadUserFacingErrorReason.ServerUnreachable.stringDesc().localized(),
+            ThreadUserFacingErrorReason.RequestTimedOut to
+                ThreadUserFacingErrorReason.RequestTimedOut.stringDesc().localized(),
+            ThreadUserFacingErrorReason.NetworkFailed to
+                ThreadUserFacingErrorReason.NetworkFailed.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ServerUnavailable to
+                ThreadUserFacingErrorReason.ServerUnavailable.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ItemNotFound to
+                ThreadUserFacingErrorReason.ItemNotFound.stringDesc().localized(),
+            ThreadUserFacingErrorReason.AttachmentTooLarge to
+                ThreadUserFacingErrorReason.AttachmentTooLarge.stringDesc().localized(),
+            ThreadUserFacingErrorReason.RateLimited to
+                ThreadUserFacingErrorReason.RateLimited.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ResponseUnreadable to
+                ThreadUserFacingErrorReason.ResponseUnreadable.stringDesc().localized(),
+            ThreadUserFacingErrorReason.RequestCancelled to
+                ThreadUserFacingErrorReason.RequestCancelled.stringDesc().localized(),
+            ThreadUserFacingErrorReason.Generic to
+                ThreadUserFacingErrorReason.Generic.stringDesc().localized()
+        )
+    )
 
 internal fun threadSendExceptionErrorCode(throwable: Throwable): String {
     val type = throwable::class.simpleName.orEmpty()

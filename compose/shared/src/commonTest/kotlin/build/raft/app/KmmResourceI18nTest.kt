@@ -248,7 +248,19 @@ class KmmResourceI18nTest {
                 MR.strings.thread_action_card_scope_identity,
                 MR.strings.thread_comments_title,
                 MR.strings.thread_forward_destinations,
-                MR.strings.thread_share_preview_title
+                MR.strings.thread_share_preview_title,
+                MR.strings.thread_error_reason_auth,
+                MR.strings.thread_error_reason_permission,
+                MR.strings.thread_error_reason_server_unreachable,
+                MR.strings.thread_error_reason_timeout,
+                MR.strings.thread_error_reason_network,
+                MR.strings.thread_error_reason_server_unavailable,
+                MR.strings.thread_error_reason_not_found,
+                MR.strings.thread_error_reason_attachment_too_large,
+                MR.strings.thread_error_reason_rate_limited,
+                MR.strings.thread_error_reason_response_unreadable,
+                MR.strings.thread_error_reason_cancelled,
+                MR.strings.thread_error_reason_generic
             )
 
         literalResources.forEach { resource ->
