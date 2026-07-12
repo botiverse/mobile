@@ -48,4 +48,50 @@ class MemberDetailIdentityTest {
 
         assertEquals(null, payload.identity)
     }
+
+    @Test
+    fun unknownThreadMemberKindCannotBePromotedToHumanIdentity() {
+        assertEquals(null, "".parsedMemberKindOrNull())
+        assertEquals(null, "unknown".parsedMemberKindOrNull())
+        assertEquals(
+            null,
+            memberDetailIdentity(
+                memberId = "member-1",
+                kind = "unknown".parsedMemberKindOrNull()
+            )
+        )
+    }
+
+    @Test
+    fun systemIdentityDispatchesToUnsupportedWithoutHumanOrAgentLookup() = runBlocking {
+        var humanLookups = 0
+        var agentLookups = 0
+        var unsupportedLookups = 0
+        val identity =
+            MemberDetailIdentity(
+                memberId = MemberId("system-1"),
+                kind = "system".parsedMemberKindOrNull()!!
+            )
+
+        val result =
+            identity.dispatchMemberDetailLookup(
+                loadHuman = { _, _ ->
+                    humanLookups += 1
+                    "human"
+                },
+                loadAgent = {
+                    agentLookups += 1
+                    "agent"
+                },
+                unsupported = { _, kind ->
+                    unsupportedLookups += 1
+                    "unsupported:${kind.name}"
+                }
+            )
+
+        assertEquals("unsupported:System", result)
+        assertEquals(0, humanLookups)
+        assertEquals(0, agentLookups)
+        assertEquals(1, unsupportedLookups)
+    }
 }
