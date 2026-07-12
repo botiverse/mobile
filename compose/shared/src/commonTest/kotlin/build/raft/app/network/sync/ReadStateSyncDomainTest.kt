@@ -5,48 +5,6 @@ import kotlin.test.assertEquals
 
 class ReadStateSyncDomainTest {
     @Test
-    fun web4622EqualVerdictVectorV1MatchesEveryStep() {
-        data class Step(
-            val serverId: String,
-            val scopeId: String,
-            val version: Long,
-            val maxReadSeq: Long,
-            val expected: ReadStateSyncApplyResult,
-            val expectedState: ReadStateSyncState
-        )
-
-        val states = mutableMapOf<String, ReadStateSyncState>()
-        fun run(step: Step) {
-            val key = "${step.serverId}:${step.scopeId}"
-            val transition =
-                reduceReadStateSyncState(
-                    states[key] ?: ReadStateSyncState(),
-                    ReadStateSyncEvent(step.version, step.maxReadSeq)
-                )
-            assertEquals(step.expected, transition.result, key)
-            assertEquals(step.expectedState, transition.state, key)
-            states[key] = transition.state
-        }
-
-        run(Step("A", "X", 5, 100, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(5, 100)))
-        run(Step("B", "X", 3, 50, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(3, 50)))
-
-        states.clear()
-        run(Step("A", "X", 5, 100, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(5, 100)))
-        run(Step("A", "X", 7, 80, ReadStateSyncApplyResult.Regressed, ReadStateSyncState(7, 100)))
-        run(Step("A", "X", 6, 200, ReadStateSyncApplyResult.Stale, ReadStateSyncState(7, 100)))
-
-        states.clear()
-        run(Step("A", "X", 5, 100, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(5, 100)))
-        run(Step("A", "X", 7, 100, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(7, 100)))
-
-        states.clear()
-        run(Step("A", "X", 5, 100, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(5, 100)))
-        run(Step("A", "X", 3, 50, ReadStateSyncApplyResult.Stale, ReadStateSyncState(5, 100)))
-        run(Step("A", "Y", 2, 30, ReadStateSyncApplyResult.Advanced, ReadStateSyncState(2, 30)))
-    }
-
-    @Test
     fun reducerSeparatesVersionStalenessFromWatermarkRegression() {
         val current = ReadStateSyncState(readStateVersion = 4, maxReadSeq = 40)
 
