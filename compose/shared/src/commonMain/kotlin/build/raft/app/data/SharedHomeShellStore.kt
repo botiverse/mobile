@@ -36,6 +36,7 @@ sealed interface SharedHomeShellIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeShellIntent
     data class DismissNotification(val id: String) : SharedHomeShellIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
+    data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
     data class Home(val intent: SharedHomeIntent) : SharedHomeShellIntent
     data class Activity(val intent: SharedActivityIntent) : SharedHomeShellIntent
     data class SearchSaved(val intent: SharedHomeSearchSavedIntent) : SharedHomeShellIntent
@@ -137,6 +138,8 @@ class SharedHomeShellStore(
             is SharedHomeShellIntent.DismissNotification ->
                 dispatchHome(SharedHomeIntent.DismissNotification(intent.id))
             is SharedHomeShellIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
+            is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent ->
+                dispatchHome(SharedHomeIntent.ApplyBackgroundServerUnreadEvent(intent.serverId, intent.event))
             is SharedHomeShellIntent.Home -> dispatchHomeIntent(intent.intent)
             is SharedHomeShellIntent.Activity -> dispatchActivity(intent.intent)
             is SharedHomeShellIntent.SearchSaved -> dispatchSearchSaved(intent.intent)
@@ -246,6 +249,7 @@ private fun SharedHomeShellIntent.toSharedHomeShellIntentDiagnosticsLabel(): Str
         is SharedHomeShellIntent.SelectTopAction -> "SelectTopAction:$action"
         is SharedHomeShellIntent.DismissNotification -> "DismissNotification:$id"
         is SharedHomeShellIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId"
+        is SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent -> "ApplyBackgroundServerUnreadEvent:$serverId"
         is SharedHomeShellIntent.Home -> "Home:${intent.toSharedHomeShellHomeIntentDiagnosticsLabel()}"
         is SharedHomeShellIntent.Activity -> "Activity"
         is SharedHomeShellIntent.SearchSaved -> "SearchSaved"
@@ -262,6 +266,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.SelectTopAction -> "patch:top-action:$action"
         is SharedHomeIntent.SelectServer -> "hydrate:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "patch:realtime:$serverId"
+        is SharedHomeIntent.ApplyBackgroundServerUnreadEvent -> "patch:background-unread:$serverId"
         SharedHomeIntent.RefreshNotifications -> "patch:notifications-refresh"
         is SharedHomeIntent.UpsertNotification -> "patch:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "patch:notification-dismiss:$id"

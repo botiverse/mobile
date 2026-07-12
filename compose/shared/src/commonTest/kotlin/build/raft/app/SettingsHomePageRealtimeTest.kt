@@ -64,6 +64,23 @@ class SettingsHomePageRealtimeTest {
         assertFalse(shouldRouteRealtimeEventToShell(null, "server-a"))
     }
 
+    @Test
+    fun backgroundUnreadProjectionRequiresAnotherServerInTheAuthenticatedSession() {
+        val session =
+            sampleSession().copy(
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-1", name = "Raft"),
+                        StoredAuthServer(id = "server-2", name = "Work")
+                    )
+            )
+
+        assertTrue(shouldProjectBackgroundServerUnread(session, "server-1", "server-2"))
+        assertFalse(shouldProjectBackgroundServerUnread(session, "server-1", "server-1"))
+        assertFalse(shouldProjectBackgroundServerUnread(session, "server-1", "server-unknown"))
+        assertFalse(shouldProjectBackgroundServerUnread(null, "server-1", "server-2"))
+    }
+
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),

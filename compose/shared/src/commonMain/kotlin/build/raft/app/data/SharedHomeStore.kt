@@ -6,6 +6,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.data.realtime.PerReceiverStateScope
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
 import build.raft.app.network.sync.ReadStateSyncApplyResult
 import build.raft.app.network.sync.ReadStateSyncEvent
 import build.raft.app.network.sync.ReadStateSyncState
@@ -120,6 +121,8 @@ internal class SharedHomeStore(
     private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
     private var channelActivityMuteRequestSeq: Long = 0L
     private val channelActivityMuteRequests = linkedMapOf<ChannelId, ChannelActivityMuteRequest>()
+    private val backgroundUnreadByScope =
+        linkedMapOf<BackgroundUnreadScopeKey, BackgroundUnreadScopeProjection>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
@@ -229,6 +232,7 @@ internal class SharedHomeStore(
         agentDirectMessageStatusJob = null
         sidebarOrderByServer.clear()
         contentByServer.clear()
+        backgroundUnreadByScope.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
     }
@@ -306,6 +310,8 @@ internal class SharedHomeStore(
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+            is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
+                applyBackgroundServerUnreadEvent(ServerId(intent.serverId), intent.event)
             SharedHomeIntent.RefreshNotifications ->
                 loadNotifications()
             is SharedHomeIntent.UpsertNotification ->
@@ -452,6 +458,112 @@ internal class SharedHomeStore(
             return
         }
         applyRealtimeHomeEventLocally(serverId, event)
+    }
+
+    private fun applyBackgroundServerUnreadEvent(serverId: ServerId, event: RealtimeEvent): Boolean {
+        val current = _state.value
+        val content = current.content as? SharedHomeContentState.Content ?: return false
+        if (content.snapshot.server.id == serverId) return false
+        if (content.session.servers.none { it.id == serverId.value }) return false
+        val memberId = MemberId(content.session.user.id)
+        return when (event) {
+            is MessageNew -> applyBackgroundUnreadMessages(serverId, memberId, listOf(event.message))
+            is SyncResumeResponse -> applyBackgroundUnreadMessages(serverId, memberId, event.messages)
+            is PerReceiverReadStateChanged -> {
+                if (event.serverId != null && event.serverId != serverId) return false
+                event.scopes.fold(false) { changed, scope ->
+                    applyBackgroundReadState(
+                        serverId = serverId,
+                        memberId = memberId,
+                        scope = scope
+                    ) || changed
+                }
+            }
+            else -> false
+        }
+    }
+
+    private fun applyBackgroundUnreadMessages(
+        serverId: ServerId,
+        memberId: MemberId,
+        messages: List<Message>
+    ): Boolean {
+        var increment = 0
+        messages
+            .distinctBy { it.id }
+            .filter { it.author.id != memberId }
+            .forEach { message ->
+            val scopeId = message.channelId ?: ChannelId(message.threadId.value)
+            val checkpoint = perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, scopeId)
+            if (message.seq != null && message.seq <= checkpoint.maxReadSeq) return@forEach
+            val key = BackgroundUnreadScopeKey(serverId, scopeId)
+            val projection = backgroundUnreadByScope.getOrPut(key) { BackgroundUnreadScopeProjection() }
+            val seq = message.seq
+            if (seq == null) {
+                projection.unknownSeqCount += 1
+            } else {
+                projection.countBySeq[seq] = (projection.countBySeq[seq] ?: 0) + 1
+                projection.trimOldestBuckets()
+            }
+            increment += 1
+        }
+        if (increment == 0) return false
+        val current = _state.value
+        val previous = current.serverUnreadCounts[serverId.value] ?: 0
+        return reduceState(
+            current.copy(
+                serverUnreadCounts =
+                    current.serverUnreadCounts + (serverId.value to (previous + increment).coerceAtLeast(0))
+            )
+        )
+    }
+
+    private fun applyBackgroundReadState(
+        serverId: ServerId,
+        memberId: MemberId,
+        scope: build.raft.app.model.PerReceiverReadStateScope
+    ): Boolean {
+        val incomingMaxReadSeq = scope.maxReadSeq ?: return false
+        val checkpoint = perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, scope.scopeId)
+        val transition =
+            reduceReadStateSyncState(
+                current =
+                    ReadStateSyncState(
+                        readStateVersion = checkpoint.version,
+                        maxReadSeq = checkpoint.maxReadSeq
+                    ),
+                event =
+                    ReadStateSyncEvent(
+                        readStateVersion = scope.readStateVersion,
+                        maxReadSeq = incomingMaxReadSeq
+                    )
+            )
+        if (transition.result == ReadStateSyncApplyResult.Stale) return false
+        perReceiverStateVersionStore.writeReadStateCheckpoint(
+            serverId = serverId,
+            memberId = memberId,
+            scopeId = scope.scopeId,
+            checkpoint =
+                PerReceiverReadStateCheckpoint(
+                    version = transition.state.readStateVersion,
+                    maxReadSeq = transition.state.maxReadSeq
+                )
+        )
+        if (transition.result == ReadStateSyncApplyResult.Regressed) return true
+        val key = BackgroundUnreadScopeKey(serverId, scope.scopeId)
+        val projection = backgroundUnreadByScope[key] ?: return true
+        val clearedUnread = projection.removeThrough(transition.state.maxReadSeq)
+        if (projection.isEmpty()) backgroundUnreadByScope.remove(key)
+        if (clearedUnread == 0) return true
+        val current = _state.value
+        val previous = current.serverUnreadCounts[serverId.value] ?: 0
+        return reduceState(
+            current.copy(
+                serverUnreadCounts =
+                    current.serverUnreadCounts +
+                        (serverId.value to (previous - clearedUnread).coerceAtLeast(0))
+            )
+        )
     }
 
     // RFC 041 wire events carry the scope facts but not the receiving member —
@@ -864,6 +976,13 @@ internal class SharedHomeStore(
                     val previous = _state.value.appBadgeCount
                     previous.copy(isStale = true)
                 }
+            if (freshSnapshot != null) {
+                // The server unread-summary is the canonical aggregate after
+                // cold start/reconnect/refresh. Drop only the local
+                // count-only deltas; persisted read-state checkpoints remain
+                // available to reject replayed messages and stale frames.
+                backgroundUnreadByScope.clear()
+            }
             reduceState(
                 _state.value.copy(
                     content = nextContent,
@@ -1564,20 +1683,20 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content ?: return false
         if (current.snapshot.server.id != update.serverId) return false
         if (current.snapshot.currentMember.id != update.memberId) return false
-        val currentVersion =
-            perReceiverStateVersionStore.readVersion(
+        val checkpoint =
+            perReceiverStateVersionStore.readReadStateCheckpoint(
                 serverId = update.serverId,
                 memberId = update.memberId,
-                scope = PerReceiverStateScope.ReadState,
                 scopeId = update.channelId
             )
-        val currentMaxReadSeq = current.snapshot.readStateMaxReadSeq(update.channelId) ?: 0L
+        val currentMaxReadSeq =
+            maxOf(checkpoint.maxReadSeq, current.snapshot.readStateMaxReadSeq(update.channelId) ?: 0L)
         val incomingMaxReadSeq = update.maxReadSeq ?: return false
         val transition =
             reduceReadStateSyncState(
                 current =
                     ReadStateSyncState(
-                        readStateVersion = currentVersion,
+                        readStateVersion = checkpoint.version,
                         maxReadSeq = currentMaxReadSeq
                     ),
                 event =
@@ -1587,12 +1706,15 @@ internal class SharedHomeStore(
                     )
             )
         if (transition.result == ReadStateSyncApplyResult.Stale) return false
-        perReceiverStateVersionStore.writeAcceptedVersion(
+        perReceiverStateVersionStore.writeReadStateCheckpoint(
             serverId = update.serverId,
             memberId = update.memberId,
-            scope = PerReceiverStateScope.ReadState,
-            acceptedVersion = transition.state.readStateVersion,
-            scopeId = update.channelId
+            scopeId = update.channelId,
+            checkpoint =
+                PerReceiverReadStateCheckpoint(
+                    version = transition.state.readStateVersion,
+                    maxReadSeq = transition.state.maxReadSeq
+                )
         )
         if (transition.result == ReadStateSyncApplyResult.Regressed) return true
         return applyHomeSnapshotLocally { snapshot ->
@@ -2022,6 +2144,8 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.SelectTopAction -> "${SharedHomeChannelFoldEvent.Patch.wireName}:top-action:$action"
         is SharedHomeIntent.SelectServer -> "${SharedHomeChannelFoldEvent.Hydrate.wireName}:server:$serverId"
         is SharedHomeIntent.ApplyRealtimeEvent -> "${event.toSharedHomeChannelFoldEvent().wireName}:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+        is SharedHomeIntent.ApplyBackgroundServerUnreadEvent ->
+            "${SharedHomeChannelFoldEvent.Patch.wireName}:background-unread:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
         SharedHomeIntent.RefreshNotifications -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notifications-refresh"
         is SharedHomeIntent.UpsertNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification:${notification.id}"
         is SharedHomeIntent.DismissNotification -> "${SharedHomeChannelFoldEvent.Patch.wireName}:notification-dismiss:$id"
@@ -2084,6 +2208,47 @@ private data class HomeRealtimeMessagePatch(
     val messages: List<Message>,
     val incrementUnread: Boolean
 )
+
+private data class BackgroundUnreadScopeKey(
+    val serverId: ServerId,
+    val scopeId: ChannelId
+)
+
+private data class BackgroundUnreadScopeProjection(
+    val countBySeq: LinkedHashMap<Long, Int> = linkedMapOf(),
+    var unknownSeqCount: Int = 0
+) {
+    fun removeThrough(maxReadSeq: Long): Int {
+        var removed = 0
+        val iterator = countBySeq.iterator()
+        while (iterator.hasNext()) {
+            val (seq, count) = iterator.next()
+            if (seq <= maxReadSeq) {
+                removed += count
+                iterator.remove()
+            }
+        }
+        // A missing seq cannot be proven read by a watermark. Keep those
+        // counts until the canonical unread-summary replaces the projection.
+        return removed
+    }
+
+    fun trimOldestBuckets() {
+        while (countBySeq.size > BackgroundUnreadSeqBucketLimit) {
+            countBySeq.entries.iterator().also { iterator ->
+                if (iterator.hasNext()) {
+                    val oldest = iterator.next()
+                    unknownSeqCount += oldest.value
+                    iterator.remove()
+                }
+            }
+        }
+    }
+
+    fun isEmpty(): Boolean = countBySeq.isEmpty() && unknownSeqCount == 0
+}
+
+private const val BackgroundUnreadSeqBucketLimit = 256
 
 private data class HomeRealtimeConversationPatch(
     val conversation: ConversationSummary,
@@ -2452,6 +2617,7 @@ sealed interface SharedHomeIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data class ApplyBackgroundServerUnreadEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data object RefreshNotifications : SharedHomeIntent
     data class UpsertNotification(val notification: SharedHomeNotification) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
@@ -2500,6 +2666,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
             SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
@@ -2533,6 +2700,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
             SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,
@@ -2566,6 +2734,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.ApplyBackgroundServerUnreadEvent,
             SharedHomeIntent.RefreshNotifications,
             is SharedHomeIntent.UpsertNotification,
             is SharedHomeIntent.DismissNotification,

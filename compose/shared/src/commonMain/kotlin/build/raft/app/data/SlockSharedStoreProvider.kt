@@ -720,10 +720,12 @@ internal interface RealtimeDomainEventOwner {
     fun registerActiveThreadSink(sink: RealtimeActiveThreadSink)
     fun unregisterActiveThreadSink(sink: RealtimeActiveThreadSink)
     fun accept(serverId: String, event: RealtimeEvent, source: String = "unknown")
+    fun acceptHomeUnreadProjection(serverId: String, event: RealtimeEvent, source: String = "unknown")
 }
 
 internal data class RealtimeDomainEventSinks(
     val applyHomeShell: (String, RealtimeEvent) -> Unit = { _, _ -> },
+    val applyHomeUnreadProjection: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applySettings: (String, RealtimeEvent) -> Unit = { _, _ -> },
     val applyServerMembersRefresh: (String, RealtimeRefreshRequired) -> Unit = { _, _ -> },
     val applyAgentActivity: (MemberPresenceUpdated) -> Unit = {},
@@ -819,6 +821,25 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent !is MemberPresenceUpdated) {
                 activeSinks?.log?.invoke(
                     "realtime_domain_accept source=$source serverId=$resolvedServerId projection=domain"
+                )
+            }
+        }
+    }
+
+    override fun acceptHomeUnreadProjection(serverId: String, event: RealtimeEvent, source: String) {
+        val resolvedServerId = serverId.takeIf { it.isNotBlank() } ?: return
+        val key = event.realtimeDomainKey(resolvedServerId)
+        if (key != null && !rememberAcceptedKey(key)) {
+            sinks?.log?.invoke("realtime_domain_accept_skip source=$source reason=duplicate key=$key")
+            return
+        }
+        val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
+        if (acceptedEvents.isEmpty()) return
+        acceptedEvents.forEach { acceptedEvent ->
+            if (acceptedEvent !is Heartbeat) {
+                sinks?.applyHomeUnreadProjection?.invoke(resolvedServerId, acceptedEvent)
+                sinks?.log?.invoke(
+                    "realtime_domain_accept source=$source serverId=$resolvedServerId projection=home_unread_count"
                 )
             }
         }
