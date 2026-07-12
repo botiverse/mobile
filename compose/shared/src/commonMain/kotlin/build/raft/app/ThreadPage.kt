@@ -14834,6 +14834,15 @@ private val ThreadMessageMenuFallbackHeight = 250.dp
 private val ThreadMessageMenuAnchorGap = 8.dp
 private val ThreadMessageMenuHorizontalNudge = 16.dp
 
+internal fun shouldShowThreadFollowAction(
+    message: KuiklyThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata
+): Boolean =
+    !message.hasLocalSendState() &&
+        (replyMetadata.threadChannelId?.isNotBlank() == true ||
+            replyMetadata.replyCount > 0 ||
+            replyMetadata.isThreadFollowed)
+
 private fun threadMessageMenuActions(
     message: KuiklyThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
@@ -14912,7 +14921,7 @@ private fun threadMessageMenuActions(
             )
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
-        if (followThreadChannelId != null || replyMetadata.replyCount > 0 || replyMetadata.isThreadFollowed) {
+        if (shouldShowThreadFollowAction(message, replyMetadata)) {
             add(
                 ThreadMessageMenuAction(
                     label =
