@@ -568,13 +568,15 @@ class SlockMarkdownTest {
         assertEquals(expectedTokenIds, annotated.slockMarkdownClickableTags())
         assertEquals(
             listOf(
-                SlockMarkdownTagChromeKind.SelfMention.wireValue,
-                SlockMarkdownTagChromeKind.Channel.wireValue,
-                SlockMarkdownTagChromeKind.Thread.wireValue,
-                SlockMarkdownTagChromeKind.Task.wireValue,
-                SlockMarkdownTagChromeKind.Task.wireValue
+                SlockColor.BrandYellow,
+                SlockColor.AccentPink.copy(alpha = 0.3f),
+                SlockColor.AccentCyan.copy(alpha = 0.3f),
+                SlockColor.BrandYellow.copy(alpha = 0.4f),
+                SlockColor.BrandYellow.copy(alpha = 0.4f)
             ),
-            annotated.slockMarkdownTagChromeAnnotations()
+            plan.tagTokens().map { token ->
+                annotated.slockMarkdownClickableTagInlineBoxBackground(token.id)
+            }
         )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
@@ -682,18 +684,15 @@ class SlockMarkdownTest {
             )
 
         assertEquals(SlockColor.BrandYellow, annotated.slockMarkdownClickableTagBackground(channelToken.id))
-        assertTrue(
-            annotated.slockMarkdownTagChromeAnnotations()
-                .contains(SlockMarkdownTagChromeKind.Active.wireValue)
-        )
-        assertFalse(
-            annotated.slockMarkdownTagChromeAnnotations()
-                .contains(SlockMarkdownTagChromeKind.Channel.wireValue)
-        )
-        // Non-active task ref now renders as the react underline, so it carries no chip fill.
+        assertEquals(SlockColor.BrandYellow, annotated.slockMarkdownClickableTagInlineBoxBackground(channelToken.id))
+        // The generic inline box owns the task chip fill; LinkAnnotation.background stays unspecified.
         assertEquals(
             Color.Unspecified,
             annotated.slockMarkdownClickableTagBackground(taskToken.id)
+        )
+        assertEquals(
+            SlockColor.BrandYellow.copy(alpha = 0.4f),
+            annotated.slockMarkdownClickableTagInlineBoxBackground(taskToken.id)
         )
         assertEquals(
             threadMarkdownTagActivationKey(channelToken.tag!!),
@@ -708,7 +707,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun markdownReferenceTagsDeclareChromeKindSeparatelyFromClicks() {
+    fun markdownReferenceTagsDeclareGenericInlineBoxStylesSeparatelyFromClicks() {
         val body = "Ping @artin and @Android-App-Integrator in #markdown专修 #markdown专修:692d9e88 for #42"
         val validator =
             validThreadMarkdownTags(
@@ -732,17 +731,15 @@ class SlockMarkdownTest {
         )
         assertEquals(
             listOf(
-                SlockRichTextChromeKind.SelfMention.wireValue,
-                SlockRichTextChromeKind.OrdinaryMention.wireValue,
-                SlockRichTextChromeKind.Channel.wireValue,
-                SlockRichTextChromeKind.Thread.wireValue,
-                SlockRichTextChromeKind.Task.wireValue
+                SlockColor.BrandYellow,
+                null,
+                SlockColor.AccentPink.copy(alpha = 0.3f),
+                SlockColor.AccentCyan.copy(alpha = 0.3f),
+                SlockColor.BrandYellow.copy(alpha = 0.4f)
             ),
-            annotated.slockMarkdownTagChromeAnnotations()
-        )
-        assertFalse(
-            annotated.slockMarkdownTagChromeAnnotations()
-                .contains(SlockMarkdownTagChromeKind.SelfMention.wireValue + ":ordinary")
+            listOf("slock:5", "slock:16", "slock:43", "slock:55", "slock:80").map { tag ->
+                annotated.slockMarkdownClickableTagInlineBoxBackground(tag)
+            }
         )
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
@@ -777,8 +774,14 @@ class SlockMarkdownTest {
         assertEquals(expectedActionIds, annotated.slockMarkdownClickableTags())
         assertEquals(expectedActionIds, annotated.slockMarkdownClickableLinkTags())
         assertEquals(
-            refTokens.mapNotNull { it.chrome?.wireValue },
-            annotated.slockMarkdownTagChromeAnnotations()
+            listOf(
+                SlockColor.BrandYellow,
+                SlockColor.AccentCyan.copy(alpha = 0.3f),
+                SlockColor.BrandYellow.copy(alpha = 0.4f)
+            ),
+            refTokens.map { token ->
+                annotated.slockMarkdownClickableTagInlineBoxBackground(token.actionId!!)
+            }
         )
         assertEquals("#not-ref", inlineCode.text)
         assertFalse(annotated.slockMarkdownClickableTags().contains(inlineCode.id))
@@ -815,7 +818,6 @@ class SlockMarkdownTest {
         assertEquals(body, annotated.text)
         assertEquals(listOf("@KMP-专家", "#520"), body.threadInlineTagMatches().map { it.tag.label })
         assertEquals(emptySet(), annotated.slockMarkdownClickableTags())
-        assertEquals(emptyList(), annotated.slockMarkdownTagChromeAnnotations())
         assertTrue(annotated.slockMarkdownInlineContentIds().isEmpty())
     }
 
@@ -847,10 +849,12 @@ class SlockMarkdownTest {
         assertEquals(setOf("slock:17", "slock:26"), annotated.slockMarkdownClickableTags())
         assertEquals(
             listOf(
-                SlockRichTextChromeKind.Channel.wireValue,
-                SlockRichTextChromeKind.SelfMention.wireValue
+                SlockColor.AccentPink.copy(alpha = 0.3f),
+                SlockColor.BrandYellow
             ),
-            annotated.slockMarkdownTagChromeAnnotations()
+            listOf("slock:17", "slock:26").map { tag ->
+                annotated.slockMarkdownClickableTagInlineBoxBackground(tag)
+            }
         )
     }
 
@@ -1557,10 +1561,16 @@ class SlockMarkdownTest {
                     ?.background
             }
 
-    private fun AnnotatedString.slockMarkdownTagChromeAnnotations(): List<String> =
-        getStringAnnotations(SlockMarkdownTagChromeAnnotationTag, 0, length)
-            .sortedBy { it.start }
-            .map { it.item }
+    private fun AnnotatedString.slockMarkdownClickableTagInlineBoxBackground(tag: String): Color? =
+        getLinkAnnotations(0, length)
+            .firstNotNullOfOrNull { range ->
+                (range.item as? LinkAnnotation.Clickable)
+                    ?.takeIf { it.tag == tag }
+                    ?.styles
+                    ?.style
+                    ?.inlineBoxStyle
+                    ?.backgroundColor
+            }
 
     private fun validThreadMarkdownTags(
         knownChannels: Set<String> = emptySet(),

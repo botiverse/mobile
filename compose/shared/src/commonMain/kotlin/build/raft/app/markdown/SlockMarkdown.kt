@@ -942,24 +942,14 @@ private fun AnnotatedString.Builder.appendSlockRichTextToken(
         tag = SlockMarkdownTagAnnotationTag,
         annotation = action.id
     )
-    val chromeKind = token.chrome
-    if (chromeKind != null) {
-        pushStringAnnotation(
-            tag = SlockMarkdownTagChromeAnnotationTag,
-            annotation = chromeKind.wireValue
-        )
-    }
     withLink(
         LinkAnnotation.Clickable(
             tag = action.id,
-            styles = slockMarkdownRichTextTagLinkStyles(chromeKind),
+            styles = slockMarkdownRichTextTagLinkStyles(token.chrome),
             linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
         )
     ) {
         append(label)
-    }
-    if (chromeKind != null) {
-        pop()
     }
     pop()
 }
@@ -1180,7 +1170,6 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val SlockMarkdownTagAnnotationTag = "raft.build.markdown.tag"
-internal const val SlockMarkdownTagChromeAnnotationTag = "raft.build.markdown.tagChrome"
 private val SlockMessagePermalinkChipBackground = Color(0xFFFCEFBD)
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
@@ -1829,14 +1818,6 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
     )
 }
 
-internal enum class SlockMarkdownTagChromeKind(val wireValue: String) {
-    Channel("channel"),
-    Thread("thread"),
-    Task("task"),
-    SelfMention("selfMention"),
-    Active("active")
-}
-
 internal fun slockMarkdownInlineTagWidthSp(
     label: String,
     kind: ThreadMarkdownTagKind,
@@ -1941,23 +1922,6 @@ internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boo
         .styleToken
         .chipFill
         .toSlockMarkdownColor()
-
-internal fun slockMarkdownTagChromeKind(
-    kind: ThreadMarkdownTagKind,
-    highlighted: Boolean = false,
-    active: Boolean = false
-): SlockMarkdownTagChromeKind? =
-    if (active) {
-        SlockMarkdownTagChromeKind.Active
-    } else {
-        when (kind) {
-            ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownTagChromeKind.Thread
-            ThreadMarkdownTagKind.Channel -> SlockMarkdownTagChromeKind.Channel
-            ThreadMarkdownTagKind.Task -> SlockMarkdownTagChromeKind.Task
-            ThreadMarkdownTagKind.UserMention ->
-                if (highlighted) SlockMarkdownTagChromeKind.SelfMention else null
-        }
-    }
 
 internal val SlockMarkdownTagFontSize = SlockRichTextChromeKind.OrdinaryMention.styleToken.fontSizeSp.orZero().sp
 
