@@ -40,6 +40,8 @@ const kDockHostHeight = 92;
 const kAnimationDuration = 240;
 const kItemHeight = 40;
 const kIconSize = 17;
+const kGradientMaskColor = '#66F1F3F5';
+const kGradientMaskHeight = 92;
 const kBottomBarPosition: BarPosition = BarPosition.End;
 
 interface SlockHdsTabItem {
@@ -219,6 +221,10 @@ export struct SlockNativeFloatingTabBar {
           barSideMargin: kDockSideMargin,
           barBottomMargin: kDockBottomMargin,
           adaptToHandedness: true,
+          gradientMask: {
+            maskColor: kGradientMaskColor,
+            maskHeight: kGradientMaskHeight,
+          },
           thermoCtrl: true,
           systemMaterialEffect: {
             materialType: hdsMaterial.MaterialType.ADAPTIVE,
