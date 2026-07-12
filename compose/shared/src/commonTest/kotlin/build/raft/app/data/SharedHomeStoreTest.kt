@@ -3920,6 +3920,11 @@ class SharedHomeStoreTest {
         assertEquals(20, advanced.channels.single().readStateMaxReadSeq)
         assertEquals(0, advanced.unreadTotal)
 
+        store.accept(SharedHomeIntent.MarkUnread("channel-1"))
+        val optimisticUnread = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(1, optimisticUnread.channels.single().unreadCount)
+        assertEquals(1, optimisticUnread.unreadTotal)
+
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
                 serverId = "server-1",
@@ -3939,8 +3944,9 @@ class SharedHomeStoreTest {
         )
 
         val regressed = (store.state.value.content as SharedHomeContentState.Content).snapshot
-        assertEquals(0, regressed.channels.single().unreadCount)
+        assertEquals(1, regressed.channels.single().unreadCount)
         assertEquals(20, regressed.channels.single().readStateMaxReadSeq)
+        assertEquals(1, regressed.unreadTotal)
         assertEquals(
             3,
             versionStore.readVersion(

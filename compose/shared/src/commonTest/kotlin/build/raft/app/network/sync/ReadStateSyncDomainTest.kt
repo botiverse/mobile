@@ -24,13 +24,29 @@ class ReadStateSyncDomainTest {
         assertEquals(ReadStateSyncApplyResult.Regressed, regressed.result)
         assertEquals(ReadStateSyncState(readStateVersion = 5, maxReadSeq = 40), regressed.state)
 
-        val advanced =
+        val olderVersionAfterRegression =
             reduceReadStateSyncState(
                 regressed.state,
-                ReadStateSyncEvent(readStateVersion = 6, maxReadSeq = 60)
+                ReadStateSyncEvent(readStateVersion = 4, maxReadSeq = 90)
+            )
+        assertEquals(ReadStateSyncApplyResult.Stale, olderVersionAfterRegression.result)
+        assertEquals(regressed.state, olderVersionAfterRegression.state)
+
+        val equalWatermark =
+            reduceReadStateSyncState(
+                regressed.state,
+                ReadStateSyncEvent(readStateVersion = 6, maxReadSeq = 40)
+            )
+        assertEquals(ReadStateSyncApplyResult.Advanced, equalWatermark.result)
+        assertEquals(ReadStateSyncState(readStateVersion = 6, maxReadSeq = 40), equalWatermark.state)
+
+        val advanced =
+            reduceReadStateSyncState(
+                equalWatermark.state,
+                ReadStateSyncEvent(readStateVersion = 7, maxReadSeq = 60)
             )
         assertEquals(ReadStateSyncApplyResult.Advanced, advanced.result)
-        assertEquals(ReadStateSyncState(readStateVersion = 6, maxReadSeq = 60), advanced.state)
+        assertEquals(ReadStateSyncState(readStateVersion = 7, maxReadSeq = 60), advanced.state)
     }
 
     @Test

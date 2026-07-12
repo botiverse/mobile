@@ -780,6 +780,18 @@ class RealtimeEventMapperTest {
                 """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": -1, "readStateVersion": 2 }"""
             )
         )
+        assertNull(
+            mapper.map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": 2, "readStateVersion": 0 }"""
+            )
+        )
+        assertNull(
+            mapper.map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": 2, "readStateVersion": "abc" }"""
+            )
+        )
     }
 
     @Test

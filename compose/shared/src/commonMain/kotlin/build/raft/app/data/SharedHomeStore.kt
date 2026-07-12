@@ -1587,11 +1587,11 @@ internal class SharedHomeStore(
                     )
             )
         if (transition.result == ReadStateSyncApplyResult.Stale) return false
-        perReceiverStateVersionStore.recordApplied(
+        perReceiverStateVersionStore.writeAcceptedVersion(
             serverId = update.serverId,
             memberId = update.memberId,
             scope = PerReceiverStateScope.ReadState,
-            incomingVersion = update.version,
+            acceptedVersion = transition.state.readStateVersion,
             scopeId = update.channelId
         )
         if (transition.result == ReadStateSyncApplyResult.Regressed) return true
