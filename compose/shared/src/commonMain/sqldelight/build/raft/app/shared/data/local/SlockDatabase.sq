@@ -417,6 +417,14 @@ WHERE serverId = ?
   AND scopeKind = ?
   AND channelId = ?;
 
+-- Retention prune: delete one canonical fact by id within its full scope.
+deleteCanonicalFactInScope:
+DELETE FROM messageEntity
+WHERE id = ?
+  AND serverId = ?
+  AND scopeKind = ?
+  AND channelId = ?;
+
 selectTaskReference:
 SELECT *
 FROM taskSummaryEntity
