@@ -6,6 +6,10 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.data.realtime.PerReceiverStateScope
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.network.sync.ReadStateSyncApplyResult
+import build.raft.app.network.sync.ReadStateSyncEvent
+import build.raft.app.network.sync.ReadStateSyncState
+import build.raft.app.network.sync.reduceReadStateSyncState
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
@@ -1557,16 +1561,32 @@ internal class SharedHomeStore(
         // read_state the scope is the channel (server PR #4175 keeps the
         // counter on the per-(user, channel) cursor row), so the gate MUST
         // key on channelId or one channel's high version swallows another's.
-        if (!canApplyPerReceiverState(
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return false
+        if (current.snapshot.server.id != update.serverId) return false
+        if (current.snapshot.currentMember.id != update.memberId) return false
+        val currentVersion =
+            perReceiverStateVersionStore.readVersion(
                 serverId = update.serverId,
                 memberId = update.memberId,
                 scope = PerReceiverStateScope.ReadState,
-                version = update.version,
                 scopeId = update.channelId
             )
-        ) {
-            return false
-        }
+        val currentMaxReadSeq = current.snapshot.readStateMaxReadSeq(update.channelId) ?: 0L
+        val incomingMaxReadSeq = update.maxReadSeq ?: return false
+        val transition =
+            reduceReadStateSyncState(
+                current =
+                    ReadStateSyncState(
+                        readStateVersion = currentVersion,
+                        maxReadSeq = currentMaxReadSeq
+                    ),
+                event =
+                    ReadStateSyncEvent(
+                        readStateVersion = update.version,
+                        maxReadSeq = incomingMaxReadSeq
+                    )
+            )
+        if (transition.result == ReadStateSyncApplyResult.Stale) return false
         perReceiverStateVersionStore.recordApplied(
             serverId = update.serverId,
             memberId = update.memberId,
@@ -1574,8 +1594,9 @@ internal class SharedHomeStore(
             incomingVersion = update.version,
             scopeId = update.channelId
         )
+        if (transition.result == ReadStateSyncApplyResult.Regressed) return true
         return applyHomeSnapshotLocally { snapshot ->
-            snapshot.withPerReceiverReadState(update)
+            snapshot.withPerReceiverReadState(update.copy(maxReadSeq = transition.state.maxReadSeq))
         }
     }
 
@@ -2299,24 +2320,26 @@ private fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUp
     var delta = 0
     fun HomeChannelRow.updated(): HomeChannelRow {
         if (!matchesHomeConversation(update.channelId.value)) return this
-        val nextUnread = perReceiverReadStateUnreadCount(update.maxReadSeq) ?: return this
+        val nextReadSeq = update.maxReadSeq ?: return this
+        val nextUnread = 0
         delta += nextUnread - unreadCount
         return copy(
             unreadCount = nextUnread,
             unreadCountKnown = true,
             firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
-            readStateMaxReadSeq = update.maxReadSeq
+            readStateMaxReadSeq = nextReadSeq
         )
     }
     fun HomeDirectMessageRow.updated(): HomeDirectMessageRow {
         if (!matchesHomeConversation(update.channelId.value)) return this
-        val nextUnread = perReceiverReadStateUnreadCount(update.maxReadSeq) ?: return this
+        val nextReadSeq = update.maxReadSeq ?: return this
+        val nextUnread = 0
         delta += nextUnread - unreadCount
         return copy(
             unreadCount = nextUnread,
             unreadCountKnown = true,
             firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
-            readStateMaxReadSeq = update.maxReadSeq
+            readStateMaxReadSeq = nextReadSeq
         )
     }
     val nextChannels = channels.map { it.updated() }
@@ -2332,25 +2355,10 @@ private fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUp
     )
 }
 
-private fun HomeConversationRow.perReceiverReadStateUnreadCount(maxReadSeq: Long?): Int? {
-    val nextReadSeq = maxReadSeq ?: return null
-    val latestSeq = lastMessageSeq
-    if (latestSeq != null) {
-        return if (nextReadSeq >= latestSeq) {
-            0
-        } else {
-            unreadCount.takeIf { it > 0 } ?: 1
-        }
-    }
-    val previousReadSeq = readStateMaxReadSeq
-    if (previousReadSeq != null && nextReadSeq < previousReadSeq) {
-        return unreadCount.takeIf { it > 0 } ?: 1
-    }
-    if (unreadCount > 0) {
-        return 0
-    }
-    return unreadCount
-}
+private fun HomeSnapshot.readStateMaxReadSeq(channelId: ChannelId): Long? =
+    (channels.asSequence() + directMessages.asSequence())
+        .firstOrNull { it.matchesHomeConversation(channelId.value) }
+        ?.readStateMaxReadSeq
 
 private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {
     var removedUnread = 0

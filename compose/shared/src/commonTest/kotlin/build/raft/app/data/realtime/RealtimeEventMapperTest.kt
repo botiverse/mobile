@@ -765,6 +765,24 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun readStateUpdatedWithoutUsableWatermarkIsIgnored() {
+        val mapper = RealtimeEventMapper()
+
+        assertNull(
+            mapper.map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """{ "serverId": "server-1", "scopeId": "channel-1", "readStateVersion": 2 }"""
+            )
+        )
+        assertNull(
+            mapper.map(
+                RealtimeSocketEvents.ReadStateUpdated,
+                """{ "serverId": "server-1", "scopeId": "channel-1", "maxReadSeq": -1, "readStateVersion": 2 }"""
+            )
+        )
+    }
+
+    @Test
     fun notificationPrefsUpdatedMapsPreferenceAndVersion() {
         val event =
             RealtimeEventMapper().map(

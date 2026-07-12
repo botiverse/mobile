@@ -3537,7 +3537,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun perReceiverReadStateUsesVersionNotWatermarkForApplyDecision() = runBlocking {
+    fun perReceiverReadStateGatesVersionAndPreventsWatermarkRollback() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
         val store =
@@ -3612,11 +3612,12 @@ class SharedHomeStoreTest {
             )
         )
 
-        val unreadSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
-        assertEquals(1, unreadSnapshot.channels.single().unreadCount)
-        assertEquals(null, unreadSnapshot.channels.single().firstUnreadMessageId)
-        assertEquals(1, unreadSnapshot.unreadTotal)
-        assertEquals(1, store.state.value.appBadgeCount.count)
+        val regressedSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, regressedSnapshot.channels.single().unreadCount)
+        assertEquals(null, regressedSnapshot.channels.single().firstUnreadMessageId)
+        assertEquals(31, regressedSnapshot.channels.single().readStateMaxReadSeq)
+        assertEquals(0, regressedSnapshot.unreadTotal)
+        assertEquals(0, store.state.value.appBadgeCount.count)
         scope.cancel()
     }
 
@@ -3685,9 +3686,9 @@ class SharedHomeStoreTest {
             )
         )
 
-        val unreadSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
-        assertEquals(1, unreadSnapshot.channels.single().unreadCount)
-        assertEquals(1, unreadSnapshot.unreadTotal)
+        val regressedSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, regressedSnapshot.channels.single().unreadCount)
+        assertEquals(0, regressedSnapshot.unreadTotal)
         assertEquals(0, store.state.value.appBadgeCount.count)
         scope.cancel()
     }
@@ -3863,6 +3864,92 @@ class SharedHomeStoreTest {
         assertEquals(0, next.channels.first { it.channelId.value == "channel-2" }.unreadCount)
         assertEquals(0, next.unreadTotal)
         assertEquals(0, store.state.value.appBadgeCount.count)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeReadStateClearsOptimisticUnreadWithoutAllowingWatermarkRollback() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            channels =
+                                listOf(
+                                    channel("channel-1", "general").copy(
+                                        unreadCount = 4,
+                                        unreadCountKnown = true,
+                                        lastMessageSeq = 50,
+                                        firstUnreadMessageId = MessageId("message-47"),
+                                        readStateMaxReadSeq = 10
+                                    )
+                                ),
+                            unreadTotal = 4,
+                            server = ServerSummary(ServerId("server-1"), "Slock Community", unreadCount = 4),
+                            serverUnreadCounts = mapOf("server-1" to 4)
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-1"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-1"),
+                                    maxReadSeq = 20,
+                                    readStateVersion = 2
+                                )
+                            )
+                    )
+            )
+        )
+
+        val advanced = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, advanced.channels.single().unreadCount)
+        assertEquals(20, advanced.channels.single().readStateMaxReadSeq)
+        assertEquals(0, advanced.unreadTotal)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-1"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-1"),
+                                    maxReadSeq = 5,
+                                    readStateVersion = 3
+                                )
+                            )
+                    )
+            )
+        )
+
+        val regressed = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, regressed.channels.single().unreadCount)
+        assertEquals(20, regressed.channels.single().readStateMaxReadSeq)
+        assertEquals(
+            3,
+            versionStore.readVersion(
+                serverId = ServerId("server-1"),
+                memberId = MemberId("user-1"),
+                scope = PerReceiverStateScope.ReadState,
+                scopeId = ChannelId("channel-1")
+            )
+        )
         scope.cancel()
     }
 
