@@ -11,18 +11,31 @@ Status: design note (docs-first, pre-head). Owner: HanXin. Contract-face + platf
 Builds on: #709 (T-wrapper V1 persistence, §9.9 one-txn + crash-window; canonical fact codec; scope
 rebaseline via `clearScope` + rebuild / `ingestSnapshot`) and the shadow-compare (`compareCanonicalShadow`).
 
-## 1. Wiring point
+## 1. Wiring point — the host-ingest apply owner (NOT the mapper hook)
 
-The sole-apply selection lives at **exactly** the mapper boundary AD2 already isolated for shadow:
-`RealtimeEventMapper.withShadowObserved(eventName, element): Message`. Today it is shadow-only — it runs
-`messageShadowObserver.observe(...)` fail-open and returns the legacy `Message` (`this`) unchanged. Sole-apply
-extends this one hook to **select** canonical-vs-legacy; nothing else in the mapper changes.
+> **Correction (AD2 + MingQi t0).** The first draft wired sole-apply into
+> `RealtimeEventMapper.withShadowObserved(...)`. That is the wrong layer. The mapper hook is a **synchronous
+> `Message → Message` diagnostic**: no transaction, no snapshot/queue, no breaker lifecycle, and it is
+> **fail-open** (any exception returns legacy and moves on). Sole-apply is a **stop-apply** decision with a
+> *persisted* side effect, and its fault path must **reconcile**, not fail-open-and-forget — the two
+> lifecycles are incompatible. So sole-apply does not extend the mapper; it moves to the ingest owner.
 
-It reuses two things already present:
-- the canonical pipeline `decodeCanonicalMessageWire(element) → CanonicalMessageRow → toAppMessage` (the same
-  path `compareCanonicalShadow` runs), and
-- that comparison's outcome `Parity / Divergent / DecodeFailed / EnvelopeRoundTripDivergent /
-  EnvelopeDecodeFailed`.
+Sole-apply lives in the **single host-ingest apply owner** — the one authoritative ingest/apply lane
+(MingQi's **t0**). Its contract:
+
+- **One ingest = core fold + SQLite commit, atomic (#709 §9.9 one-txn), and the result becomes visible to the
+  UI / observers ONLY AFTER the commit succeeds.** There is exactly **one** apply path; the mapper and the
+  legacy direct-writer must not form a second one (the t0 no-second-path invariant).
+- The **mapper stays a pure candidate producer**: it decodes the wire to a canonical candidate
+  (`decodeCanonicalMessageWire(element) → CanonicalMessageRow → toAppMessage` — the same path
+  `compareCanonicalShadow` already runs) and hands it to the owner. It does **not** decide apply-vs-fallback
+  and does **not** persist.
+- The owner is a **per-scope serial lane** that holds the queue / single-flight / circuit-breaker lifecycle
+  (§3) the mapper hook structurally cannot.
+
+It still reuses the comparison outcome already present — `Parity / Divergent / DecodeFailed /
+EnvelopeRoundTripDivergent / EnvelopeDecodeFailed` — but the **branch on that outcome and its persisted
+consequence live in the owner, never in the mapper.**
 
 ## 2. Canary semantics (conservative)
 
@@ -35,8 +48,10 @@ When `sole-apply` is on, per realtime message:
   the UI (safe), a **rollback metric** is incremented, and core is reconciled (§3).
 
 So during the canary the user always sees **legacy-or-equal** — zero user-visible risk — and the **fallback
-rate is the canary signal**. Fail-open is preserved: any exception on the sole-apply path falls back to
-legacy (AD2's mapper-boundary isolation invariant is not weakened).
+rate is the canary signal**. Note the asymmetry: the path is **user-facing fail-safe** (any exception shows
+the user legacy, like the mapper's old fail-open) but **core fail-closed** — the core does NOT silently skip
+the fact, it reconciles (§3), so it never advances a cursor over a fact it did not absorb. That stop-apply +
+reconcile lifecycle is the owner's (§1); it is exactly what the fail-open mapper hook cannot host.
 
 ## 3. Fallback reconcile — the load-bearing invariant
 
@@ -82,6 +97,13 @@ For every message, whether applied or fallen back:
 fallback rate converges to ≈0 and holds is sync-core allowed to become authoritative and legacy retired;
 non-zero = not ready → legacy keeps its fallback role → no flip. The metric is the gate.
 
+**Denominator discipline (or the gate lies).** rate = `fallbacks / messages-the-owner-actually-attempted`.
+A scope whose breaker is **paused** (§3) is attempting nothing, so its messages must be **excluded from the
+denominator** — otherwise a paused (i.e. known-bad) scope silently deflates the rate toward 0 and the gate
+reads green on a scope that never applied. Equivalently: the go-condition is `attempted > 0 AND fallbacks ≈ 0`
+across the live (non-paused) scopes, held over a window — never `fallbacks ≈ 0` alone (which a fully-paused
+canary trivially satisfies).
+
 ## 6. Acceptance battery (RED-first)
 
 - **Divergent fallback keeps core clean**: inject a deliberately-divergent event → fallback → assert the
@@ -91,4 +113,13 @@ non-zero = not ready → legacy keeps its fallback role → no flip. The metric 
 - **Crash atomicity**: crash before/after the fallback commit leaves the complete old-or-new frame (§9.9
   crash-window form).
 - **Circuit breaker**: a burst of same-scope fallbacks trips the breaker (bounded rebaselines, no storm).
-- **Rate gate**: the go-condition reads the real fallback-rate metric, not a constant.
+- **Rate gate**: the go-condition reads the real fallback-rate metric, not a constant — AND a paused scope's
+  messages are excluded from the denominator (§5): assert a fully-paused canary does NOT read green.
+- **Independent (non-tautological) oracle**: the "server canonical" the acceptance asserts against must be an
+  **independent fixture** — a hand-authored expected row / a second decode implementation — NOT the same
+  `decodeCanonicalMessageWire` output the owner just applied. Deep-equal against your own decode proves the
+  decode equals itself; it cannot catch a decode bug. The oracle must be able to disagree.
+- **Ordering + stale-completion**: while a scope's rebaseline is in flight, (a) a newer event must not apply
+  out of order, and (b) a rebaseline that **completes after** a newer event already landed must **not clobber**
+  the newer state — inject `rebaseline(e_n)` that finishes after `apply(e_{n+1})` and assert `e_{n+1}` survives
+  (the stale-completion form of the decide/apply-once discipline).
