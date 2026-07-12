@@ -10,35 +10,38 @@ import kotlinx.coroutines.runBlocking
 
 class SharedApiEnvironmentNetworkClientTest {
     @Test
-    fun currentEnvironmentAuthDataSourceFactoryReadsLatestApiEnvironment() {
+    fun currentEnvironmentAuthDataSourceTracksLatestApiEnvironmentWithoutRecreation() = runBlocking {
         val environmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
-        val sessionStore = InMemorySlockAuthSessionStore()
-        val capturedBaseUrls = mutableListOf<String>()
+        val executor = RecordingHttpExecutor(responseCode = 500)
+        val sessionStore =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
+                    accessToken = "staging-access-token",
+                    refreshToken = "staging-refresh-token"
+                )
+            )
 
-        createSharedAuthDataSourceForCurrentEnvironment(
+        val dataSource = createSharedAuthDataSourceForCurrentEnvironment(
             apiEnvironmentStore = environmentStore,
             authStore = sessionStore,
-            transportFactory = { baseUrl ->
-                capturedBaseUrls += baseUrl
-                NoopAuthTransport
+            transportFactory = { baseUrlProvider ->
+                SharedSlockAuthTransport(
+                    baseUrlProvider = baseUrlProvider,
+                    executor = executor
+                )
             }
         )
+        dataSource.loadServers()
         environmentStore.select("staging")
-        createSharedAuthDataSourceForCurrentEnvironment(
-            apiEnvironmentStore = environmentStore,
-            authStore = sessionStore,
-            transportFactory = { baseUrl ->
-                capturedBaseUrls += baseUrl
-                NoopAuthTransport
-            }
-        )
+        dataSource.loadServers()
 
         assertEquals(
             listOf(
-                SharedApiEnvironmentStore.Production.apiBaseUrl,
-                SharedApiEnvironmentStore.Staging.apiBaseUrl
+                "${SharedApiEnvironmentStore.Production.apiBaseUrl.trimEnd('/')}/servers",
+                "${SharedApiEnvironmentStore.Staging.apiBaseUrl.trimEnd('/')}/servers"
             ),
-            capturedBaseUrls
+            executor.urls
         )
     }
 
@@ -90,36 +93,9 @@ class SharedApiEnvironmentNetworkClientTest {
         )
     }
 
-    private object NoopAuthTransport : SlockAuthTransport {
-        override suspend fun login(bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse = noop()
-        override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse = noop()
-        override suspend fun startMobileOAuthLink(
-            provider: String,
-            bodyText: String,
-            authorization: String
-        ): AuthNetworkResponse = noop()
-        override suspend fun completeMobileOAuthLink(
-            provider: String,
-            bodyText: String,
-            authorization: String
-        ): AuthNetworkResponse = noop()
-        override suspend fun register(bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun resendVerification(authorization: String): AuthNetworkResponse = noop()
-        override suspend fun currentUser(authorization: String): AuthNetworkResponse = noop()
-        override suspend fun refresh(bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun logout(bodyText: String): AuthNetworkResponse = noop()
-        override suspend fun servers(authorization: String): AuthNetworkResponse = noop()
-        override suspend fun serverOrder(authorization: String): AuthNetworkResponse = noop()
-        override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse = noop()
-
-        private fun noop(): AuthNetworkResponse =
-            AuthNetworkResponse(code = 200, bodyText = "{}")
-    }
-
-    private class RecordingHttpExecutor : SlockHttpExecutor {
+    private class RecordingHttpExecutor(
+        private val responseCode: Int = 200
+    ) : SlockHttpExecutor {
         val urls = mutableListOf<String>()
 
         override suspend fun execute(
@@ -131,7 +107,7 @@ class SharedApiEnvironmentNetworkClientTest {
             jsonBody: Boolean
         ): SlockHttpExecutorResponse {
             urls += url
-            return SlockHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
 
         override suspend fun executeMultipart(
@@ -142,7 +118,7 @@ class SharedApiEnvironmentNetworkClientTest {
             headers: Map<String, String>
         ): SlockHttpExecutorResponse {
             urls += url
-            return SlockHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+            return SlockHttpExecutorResponse(code = responseCode, bodyText = "{}", errorBodyText = null)
         }
     }
 }

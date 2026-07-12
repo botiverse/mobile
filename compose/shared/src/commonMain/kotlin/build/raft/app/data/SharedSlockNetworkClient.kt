@@ -315,11 +315,32 @@ internal class SharedSlockNetworkClient(
 }
 
 class SharedSlockAuthTransport internal constructor(
-    private val baseUrl: String,
+    private val baseUrlProvider: () -> String,
     private val executor: SlockHttpExecutor,
     private val warningLogger: (String) -> Unit = {},
     private val requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
 ) : SlockAuthTransport {
+    internal constructor(
+        baseUrlProvider: () -> String,
+        warningLogger: (String) -> Unit = {}
+    ) : this(
+        baseUrlProvider = baseUrlProvider,
+        executor = createPlatformSlockHttpExecutor(warningLogger),
+        warningLogger = warningLogger
+    )
+
+    internal constructor(
+        baseUrl: String,
+        executor: SlockHttpExecutor,
+        warningLogger: (String) -> Unit = {},
+        requestScheduler: SlockRequestScheduler = SlockRequestScheduler()
+    ) : this(
+        baseUrlProvider = { baseUrl },
+        executor = executor,
+        warningLogger = warningLogger,
+        requestScheduler = requestScheduler
+    )
+
     constructor(
         baseUrl: String = SLOCK_API_BASE_URL,
         warningLogger: (String) -> Unit = {}
@@ -414,7 +435,7 @@ class SharedSlockAuthTransport internal constructor(
                 ) {
                     executor.execute(
                         priority = SlockRequestPriority.Foreground,
-                        url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}",
+                        url = "${baseUrlProvider().trimEnd('/')}/${path.trimStart('/')}",
                         method = normalizedMethod,
                         headers = authorization?.let { mapOf(HEADER_AUTHORIZATION to it) } ?: emptyMap(),
                         bodyText = bodyText,
