@@ -2,6 +2,7 @@ package build.raft.app.base
 
 import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
+import build.raft.app.SlockAdaptivePanePagerEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -64,6 +65,16 @@ internal abstract class BasePager : ComposeContainer() {
         super.themeDidChanged(data)
         nightModel = data.optBoolean(IS_NIGHT_MODE_KEY)
     }
+
+    override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
+        super.onReceivePagerEvent(pagerEvent, eventData)
+        if (pagerEvent == SlockAdaptivePanePagerEvent) {
+            onSlockAdaptivePaneChanged(eventData)
+        }
+    }
+
+    /** Host window facts are not route data. Pages opt in when they own a responsive surface. */
+    protected open fun onSlockAdaptivePaneChanged(eventData: JSONObject) = Unit
 
     // 是否为夜间模式
     override fun isNightMode(): Boolean {

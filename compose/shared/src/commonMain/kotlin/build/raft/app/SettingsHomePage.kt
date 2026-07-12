@@ -1275,16 +1275,28 @@ internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
 @Page(SLOCK_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeSlockAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
+    private var adaptivePane by mutableStateOf(SlockAdaptivePaneState())
 
     override fun willInit() {
         super.willInit()
-        setContent { SlockAppShellContent(slockPageVisibleResumeTick, initialAuthRestoreTick) }
+        setContent {
+            SlockAppShellContent(
+                pageVisibleTick = slockPageVisibleResumeTick,
+                initialAuthRestoreTick = initialAuthRestoreTick,
+                adaptivePane = adaptivePane
+            )
+        }
     }
 
     override fun onSlockPageDidAppear(isInitialAppearance: Boolean) {
         if (isInitialAppearance) {
             initialAuthRestoreTick += 1
         }
+    }
+
+    override fun onSlockAdaptivePaneChanged(eventData: JSONObject) {
+        val event = eventData.toSlockAdaptivePaneEventOrNull() ?: return
+        adaptivePane = reduceSlockAdaptivePane(adaptivePane, event)
     }
 }
 
@@ -1964,7 +1976,11 @@ private fun SlockAppShellChildTabHost(
 }
 
 @Composable
-private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTick: Int = 0) {
+private fun SlockAppShellContent(
+    pageVisibleTick: Int = 0,
+    initialAuthRestoreTick: Int = 0,
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
+) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
     // in the app shell lifecycle, so shared `StringDesc` lookups resolve
@@ -2634,7 +2650,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
         bridge.log("diagnostics_deeplink_complete id=${request.id}")
     }
-    val shellScope = rememberSlockAppShellScope()
+    val shellScope = rememberSlockAppShellScope(adaptivePane)
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
     val realtimeEventMapper =
         remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }

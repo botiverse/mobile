@@ -20,7 +20,8 @@ internal data class SlockAppShellScope(
     val topSafeArea: Dp,
     val bottomSafeArea: Dp,
     val bottomTabBarContentInset: Dp,
-    val bottomTabBarOverlaysContent: Boolean
+    val bottomTabBarOverlaysContent: Boolean,
+    val adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
 ) {
     fun topInset(includeTopSafeArea: Boolean): Dp =
         if (includeTopSafeArea) topSafeArea else 0.dp
@@ -51,17 +52,20 @@ internal data class SlockAppShellScope(
 }
 
 @Composable
-internal fun rememberSlockAppShellScope(): SlockAppShellScope {
+internal fun rememberSlockAppShellScope(
+    adaptivePane: SlockAdaptivePaneState = SlockAdaptivePaneState()
+): SlockAppShellScope {
     val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val bottomTabBarContentInset = slockAppBottomTabBarContentInset(bottomSafeArea)
     val bottomTabBarOverlaysContent = slockAppBottomTabBarOverlaysContent()
-    return remember(topSafeArea, bottomSafeArea, bottomTabBarContentInset, bottomTabBarOverlaysContent) {
+    return remember(topSafeArea, bottomSafeArea, bottomTabBarContentInset, bottomTabBarOverlaysContent, adaptivePane) {
         SlockAppShellScope(
             topSafeArea = topSafeArea,
             bottomSafeArea = bottomSafeArea,
             bottomTabBarContentInset = bottomTabBarContentInset,
-            bottomTabBarOverlaysContent = bottomTabBarOverlaysContent
+            bottomTabBarOverlaysContent = bottomTabBarOverlaysContent,
+            adaptivePane = adaptivePane
         )
     }
 }
