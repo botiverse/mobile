@@ -1,0 +1,279 @@
+{
+  "schemaVersion": 1,
+  "vectorId": "read-state-behavior-v1",
+  "source": {
+    "repository": "botiverse/slock",
+    "authoritativeHead": "3916ad7014c12cbe1fe5e115b72970070eeef4fd",
+    "task": "#proj-frontend task #194 / #211",
+    "webPr": 4655
+  },
+  "defaults": {
+    "serverId": "server-read-state",
+    "channelScopeId": "channel-read-state",
+    "threadScopeId": "thread-read-state",
+    "currentUserId": "viewer-1"
+  },
+  "cases": [
+    {
+      "id": "single-update-clear-channel-activity",
+      "family": "projection",
+      "webTestName": "read_state:updated clears current-user channel unread state and Activity row",
+      "actions": [{ "type": "read_state:updated", "scopeId": "channel-read-state", "maxReadSeq": 42, "readStateVersion": 1 }],
+      "expected": { "messageUnread": 0, "messageMention": false, "activityUnread": 0, "activityMention": false }
+    },
+    {
+      "id": "bulk-clear-channel-thread-no-echo",
+      "family": "bulk",
+      "webTestName": "read_state:updated_bulk clears channel and followed thread state without echoing a read write",
+      "actions": [{ "type": "read_state:updated_bulk", "scopes": ["channel-read-state", "thread-read-state"] }],
+      "expected": { "channelUnread": 0, "threadUnread": 0, "postEchoCount": 0 }
+    },
+    {
+      "id": "stale-version-rejected-after-newer",
+      "family": "acceptance",
+      "webTestName": "read_state:updated rejects stale versions after a newer read state was accepted",
+      "actions": [
+        { "type": "read_state:updated", "maxReadSeq": 20, "readStateVersion": 2 },
+        { "type": "read_state:updated", "maxReadSeq": 30, "readStateVersion": 1 }
+      ],
+      "expected": { "secondOutcome": "stale", "messageUnread": 2, "activityUnread": 2, "mention": true }
+    },
+    {
+      "id": "partial-cursor-leaves-newer-unread",
+      "family": "projection",
+      "webTestName": "read_state:updated partially projects unread when maxReadSeq stops before newer messages",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }],
+      "expected": { "messageUnread": 1, "activityUnread": 1, "firstUnreadMessageId": "message-2" }
+    },
+    {
+      "id": "unknown-cache-preserves-summary",
+      "family": "incomplete-cache",
+      "webTestName": "read_state:updated preserves unread summary when cache cannot prove projection",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }],
+      "expected": { "complete": false, "messageUnread": 2, "activityUnread": 2, "firstUnreadMessageId": "message-1" }
+    },
+    {
+      "id": "projection-incomplete-shape",
+      "family": "incomplete-cache",
+      "webTestName": "read-state projection reports incomplete shape when cache cannot prove projection",
+      "actions": [{ "type": "applyReadStateProjection", "maxReadSeq": 1, "readStateVersion": 1 }],
+      "expected": { "complete": false, "unreadCount": 0, "hasMention": false, "firstUnreadMessageId": null, "firstMentionMessageId": null }
+    },
+    {
+      "id": "fact-projects-later-hydration",
+      "family": "durable-fact",
+      "webTestName": "read-state fact projects later message hydration without reverting Activity",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "batchAddMessages", "seqs": [1, 2] }],
+      "expected": { "messageUnread": 1, "activityUnread": 1, "firstUnreadMessageId": "message-2" }
+    },
+    {
+      "id": "loaded-tail-after-cursor-gap-preserves-summary",
+      "family": "incomplete-cache",
+      "webTestName": "read_state:updated preserves unread summary when loaded tail starts after the cursor gap",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [5] }],
+      "expected": { "complete": false, "messageUnread": 2, "activityUnread": 2 }
+    },
+    {
+      "id": "has-newer-preserves-summary",
+      "family": "incomplete-cache",
+      "webTestName": "read_state:updated preserves unread summary while newer history is missing",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1, 2], "hasNewer": true }],
+      "expected": { "complete": false, "messageUnread": 2, "activityUnread": 2 }
+    },
+    {
+      "id": "known-gap-preserves-summary",
+      "family": "incomplete-cache",
+      "webTestName": "read_state:updated preserves unread summary across a known sequence gap",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1, 3], "hasGap": true }],
+      "expected": { "complete": false, "messageUnread": 2, "activityUnread": 2, "firstUnreadMessageId": "message-2" }
+    },
+    {
+      "id": "known-gap-heal-reprojects-fact",
+      "family": "gap-heal",
+      "webTestName": "read_state:updated reprojects accepted fact after known sequence gap heals",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1, 3], "hasGap": true }, { "type": "healGap", "cachedSeqs": [1, 2, 3] }],
+      "expected": { "complete": true, "messageUnread": 2, "activityUnread": 2, "firstUnreadMessageId": "message-2" }
+    },
+    {
+      "id": "live-gap-transition-preserves-unread",
+      "family": "live-gap",
+      "webTestName": "addMessage preserves unread when a live gap transition makes the window incomplete",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1] }, { "type": "addMessage", "seq": 3 }],
+      "expected": { "windowHasGap": true, "storedMetaHasGap": true, "messageUnread": 1 }
+    },
+    {
+      "id": "late-live-message-reprojects-fact",
+      "family": "live-message",
+      "webTestName": "read_state:updated reprojects accepted fact for a later single live message",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "addMessage", "seq": 2 }],
+      "expected": { "messageUnread": 1, "activityUnread": 1, "firstUnreadMessageId": "message-2" }
+    },
+    {
+      "id": "late-live-covered-by-cursor-stays-read",
+      "family": "live-message",
+      "webTestName": "read_state:updated keeps a late live message read when it is covered by accepted cursor",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 3, "readStateVersion": 1, "cachedSeqs": [1] }, { "type": "addMessage", "seq": 2 }],
+      "expected": { "messageUnread": 0, "activityUnread": 0 }
+    },
+    {
+      "id": "summary-predates-request-applies",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts applies server summary when accepted projection predates the request",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 4, "messageMention": true, "activityUnread": 1, "activityMention": false }
+    },
+    {
+      "id": "summary-no-accepted-fact-applies",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts applies server summary when no accepted read state exists",
+      "actions": [{ "type": "loadUnreadCounts", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 4, "messageMention": true }
+    },
+    {
+      "id": "summary-no-current-server-noop",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts is a no-op without a current server",
+      "actions": [{ "type": "loadUnreadCounts", "currentServer": null }],
+      "expected": { "requestCount": 0 }
+    },
+    {
+      "id": "summary-accepted-fact-before-request-applies",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts applies server summary when accepted read state predates the request",
+      "actions": [{ "type": "consumeReadStateUpdate", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 4, "messageMention": true }
+    },
+    {
+      "id": "summary-accepted-fact-before-request-complete-cache-applies",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts applies server summary when accepted read state predates the request with complete cache",
+      "actions": [{ "type": "consumeReadStateUpdate", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1, 2] }, { "type": "loadUnreadCounts", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 4, "messageMention": true }
+    },
+    {
+      "id": "inflight-summary-complete-cache-keeps-newer-fact",
+      "family": "summary-generation",
+      "webTestName": "read_state:updated prevents an in-flight unread summary from rolling back a newer accepted fact",
+      "actions": [{ "type": "loadUnreadCounts:start" }, { "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts:resolve", "unreadCount": 2, "hasMention": true }],
+      "expected": { "messageUnread": 1, "messageMention": false, "activityUnread": 1, "activityMention": false }
+    },
+    {
+      "id": "inflight-summary-complete-cache-reprojects",
+      "family": "summary-generation",
+      "webTestName": "loadUnreadCounts reprojects a complete cache when accepted read state changes during request",
+      "actions": [{ "type": "loadUnreadCounts:start" }, { "type": "consumeReadStateUpdate", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts:resolve", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 1, "messageMention": false }
+    },
+    {
+      "id": "inflight-summary-incomplete-cache-preserves-current-unread",
+      "family": "summary-generation",
+      "webTestName": "read_state:updated preserves current unread summary when in-flight summary races an incomplete cache",
+      "actions": [{ "type": "loadUnreadCounts:start" }, { "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts:resolve", "unreadCount": 4, "hasMention": true }],
+      "expected": { "messageUnread": 2, "messageMention": false, "activityUnread": 2, "activityMention": false }
+    },
+    {
+      "id": "inflight-summary-incomplete-cache-preserves-current-mention",
+      "family": "summary-generation",
+      "webTestName": "read_state:updated preserves current mention when in-flight summary races an incomplete cache",
+      "actions": [{ "type": "loadUnreadCounts:start" }, { "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }, { "type": "loadUnreadCounts:resolve", "unreadCount": 4, "hasMention": false }],
+      "expected": { "messageUnread": 2, "messageMention": true, "activityUnread": 2, "activityMention": true }
+    },
+    {
+      "id": "self-authored-user-excluded-agent-same-id-included",
+      "family": "projection",
+      "webTestName": "read_state:updated excludes self-authored messages from projected unread",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "cachedSeqs": [1, 2, 3, 4] }],
+      "expected": { "messageUnread": 2, "activityUnread": 2, "firstUnreadMessageId": "message-agent-same-id" }
+    },
+    {
+      "id": "only-current-user-mentions-project",
+      "family": "projection",
+      "webTestName": "read_state:updated projects only current-user mentions from unread cached messages",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1 }],
+      "expected": { "messageUnread": 3, "messageMention": true, "activityMention": true, "firstMentionMessageId": "message-current-user" }
+    },
+    {
+      "id": "no-current-user-clears-mention-projection",
+      "family": "projection",
+      "webTestName": "read_state:updated clears mention projection when no current user is known",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 1, "readStateVersion": 1, "currentUserId": null }],
+      "expected": { "messageUnread": 1, "messageMention": false, "activityMention": false, "firstMentionMessageId": null }
+    },
+    {
+      "id": "higher-version-mark-unread-rewind-applies",
+      "family": "acceptance",
+      "webTestName": "read_state:updated applies higher-version mark-unread cursor rewind",
+      "actions": [{ "type": "read_state:updated", "maxReadSeq": 42, "readStateVersion": 1 }, { "type": "read_state:updated", "maxReadSeq": 41, "readStateVersion": 2 }],
+      "expected": { "messageUnread": 1, "activityUnread": 1, "firstUnreadMessageId": "message-42" }
+    },
+    {
+      "id": "bulk-targeted-followed-thread-only",
+      "family": "bulk",
+      "webTestName": "read_state:updated_bulk only updates the targeted followed thread projection",
+      "actions": [{ "type": "read_state:updated_bulk", "scopes": ["thread-target"] }],
+      "expected": { "targetThreadUnread": 1, "otherThreadUnread": 7 }
+    },
+    {
+      "id": "thread-local-clear-target-only",
+      "family": "thread-local",
+      "webTestName": "thread local clear only clears the targeted followed thread",
+      "actions": [{ "type": "clearThreadUnreadLocally", "threadChannelId": "thread-target" }],
+      "expected": { "targetThreadUnread": 0, "otherThreadUnread": 5 }
+    },
+    {
+      "id": "thread-local-clear-noop-when-zero",
+      "family": "thread-local",
+      "webTestName": "thread local clear is a no-op when the target has no unread state",
+      "actions": [{ "type": "clearThreadUnreadLocally", "threadChannelId": "thread-target" }],
+      "expected": { "stateReferenceStable": true }
+    },
+    {
+      "id": "ignore-other-server-and-malformed-payloads",
+      "family": "normalization",
+      "webTestName": "read_state:updated ignores other-server and malformed payloads",
+      "actions": [{ "type": "read_state:updated", "serverId": "server-other" }, { "type": "read_state:updated", "missing": "readStateVersion" }],
+      "expected": { "messageUnread": 2, "activityUnread": 2 }
+    },
+    {
+      "id": "single-normalizer-rejects-malformed",
+      "family": "normalization",
+      "webTestName": "read-state normalizers reject malformed single-update payloads",
+      "actions": [{ "type": "normalizeReadStateUpdated", "invalidPayloadCount": 13 }],
+      "expected": { "invalidResult": null, "validZeroAccepted": true }
+    },
+    {
+      "id": "bulk-normalizer-filters-invalid-scopes",
+      "family": "normalization",
+      "webTestName": "read-state bulk normalizer filters invalid scopes and rejects invalid envelopes",
+      "actions": [{ "type": "normalizeReadStateUpdatedBulk", "validScopeCount": 1 }],
+      "expected": { "normalizedScopeIds": ["channel-1"] }
+    },
+    {
+      "id": "consumer-monotonic-outcomes",
+      "family": "acceptance",
+      "webTestName": "read-state consumer reports exact monotonic outcomes",
+      "actions": [
+        { "type": "consumeReadStateUpdate", "maxReadSeq": 10, "readStateVersion": 1 },
+        { "type": "consumeReadStateUpdate", "maxReadSeq": 10, "readStateVersion": 1 },
+        { "type": "consumeReadStateUpdate", "maxReadSeq": 9, "readStateVersion": 2 },
+        { "type": "consumeReadStateUpdate", "maxReadSeq": 10, "readStateVersion": 3 },
+        { "type": "consumeReadStateUpdate", "maxReadSeq": 11, "readStateVersion": 4 }
+      ],
+      "expected": { "outcomes": ["accepted", "stale", "accepted", "accepted", "accepted"] }
+    },
+    {
+      "id": "generation-predicate-changed-after-ledger",
+      "family": "summary-generation",
+      "webTestName": "read-state generation predicate reports only scopes changed after the captured ledger",
+      "actions": [{ "type": "hasAcceptedReadStateChangedAfter" }],
+      "expected": { "nullServerChanged": false, "missingScopeChanged": false, "acceptedChanged": true, "staleChanged": false, "newerChanged": true }
+    },
+    {
+      "id": "server-reset-clears-watermarks",
+      "family": "reset",
+      "webTestName": "server reset clears accepted read-state watermarks",
+      "actions": [{ "type": "consumeReadStateUpdate", "readStateVersion": 2 }, { "type": "triggerServerReset" }, { "type": "consumeReadStateUpdate", "readStateVersion": 1 }],
+      "expected": { "postResetOutcome": "accepted" }
+    }
+  ]
+}

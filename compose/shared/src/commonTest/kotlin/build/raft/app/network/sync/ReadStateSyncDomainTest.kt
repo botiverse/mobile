@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 
 class ReadStateSyncDomainTest {
     @Test
-    fun reducerSeparatesVersionStalenessFromWatermarkRegression() {
+    fun reducerUsesVersionAsTheOnlyAcceptanceAuthority() {
         val current = ReadStateSyncState(readStateVersion = 4, maxReadSeq = 40)
 
         val stale =
@@ -16,41 +16,41 @@ class ReadStateSyncDomainTest {
         assertEquals(ReadStateSyncApplyResult.Stale, stale.result)
         assertEquals(current, stale.state)
 
-        val regressed =
+        val rewind =
             reduceReadStateSyncState(
                 current,
                 ReadStateSyncEvent(readStateVersion = 5, maxReadSeq = 20)
             )
-        assertEquals(ReadStateSyncApplyResult.Regressed, regressed.result)
-        assertEquals(ReadStateSyncState(readStateVersion = 5, maxReadSeq = 40), regressed.state)
+        assertEquals(ReadStateSyncApplyResult.Accepted, rewind.result)
+        assertEquals(ReadStateSyncState(readStateVersion = 5, maxReadSeq = 20), rewind.state)
 
         val olderVersionAfterRegression =
             reduceReadStateSyncState(
-                regressed.state,
+                rewind.state,
                 ReadStateSyncEvent(readStateVersion = 4, maxReadSeq = 90)
             )
         assertEquals(ReadStateSyncApplyResult.Stale, olderVersionAfterRegression.result)
-        assertEquals(regressed.state, olderVersionAfterRegression.state)
+        assertEquals(rewind.state, olderVersionAfterRegression.state)
 
         val equalWatermark =
             reduceReadStateSyncState(
-                regressed.state,
-                ReadStateSyncEvent(readStateVersion = 6, maxReadSeq = 40)
+                rewind.state,
+                ReadStateSyncEvent(readStateVersion = 6, maxReadSeq = 20)
             )
-        assertEquals(ReadStateSyncApplyResult.Advanced, equalWatermark.result)
-        assertEquals(ReadStateSyncState(readStateVersion = 6, maxReadSeq = 40), equalWatermark.state)
+        assertEquals(ReadStateSyncApplyResult.Accepted, equalWatermark.result)
+        assertEquals(ReadStateSyncState(readStateVersion = 6, maxReadSeq = 20), equalWatermark.state)
 
         val advanced =
             reduceReadStateSyncState(
                 equalWatermark.state,
                 ReadStateSyncEvent(readStateVersion = 7, maxReadSeq = 60)
             )
-        assertEquals(ReadStateSyncApplyResult.Advanced, advanced.result)
+        assertEquals(ReadStateSyncApplyResult.Accepted, advanced.result)
         assertEquals(ReadStateSyncState(readStateVersion = 7, maxReadSeq = 60), advanced.state)
     }
 
     @Test
-    fun syncCoreUsesVersionAsSparseFrameWatermarkAndKeepsMaxReadSeqMonotonic() {
+    fun syncCoreKeepsWireVersionAuthorityIndependentFromFrameSequence() {
         val core = createSyncCore(SyncCoreConfig(domains = listOf(readStateSyncDomain())))
 
         assertEquals(
@@ -68,14 +68,29 @@ class ReadStateSyncDomainTest {
             READ_STATE_SYNC_DOMAIN,
             SyncFrame(
                 scopeId = "server-1:channel-1",
-                seq = 3,
+                seq = 99,
                 event = ReadStateSyncEvent(readStateVersion = 3, maxReadSeq = 10)
             )
         )
 
         assertEquals(
-            ReadStateSyncState(readStateVersion = 3, maxReadSeq = 20),
+            ReadStateSyncState(readStateVersion = 3, maxReadSeq = 10),
             core.state(READ_STATE_SYNC_DOMAIN, "server-1:channel-1")
         )
     }
 }
+
+private const val READ_STATE_SYNC_DOMAIN = "read_state"
+
+private fun readStateSyncDomain(): SyncDomainConfig =
+    SyncDomainConfig(
+        name = READ_STATE_SYNC_DOMAIN,
+        density = SyncDensity.Sparse,
+        initialState = { ReadStateSyncState() },
+        fold = { state, event, _ ->
+            val current = state as? ReadStateSyncState ?: ReadStateSyncState()
+            val update = event as? ReadStateSyncEvent ?: return@SyncDomainConfig current
+            reduceReadStateSyncState(current, update).state
+        },
+        fromSnapshot = { snapshot -> snapshot.state as? ReadStateSyncState ?: ReadStateSyncState() }
+    )

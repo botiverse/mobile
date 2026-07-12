@@ -8,6 +8,8 @@ on:
       - "scripts/check_commonmain_map_compat.sh"
       - "scripts/check_auth_session_writes.sh"
       - "scripts/check_attachment_mapper_formatting.sh"
+      - "scripts/check_read_state_behavior_vector.sh"
+      - "scripts/check_read_state_sync_domain_registration.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -25,6 +27,8 @@ on:
       - "scripts/check_commonmain_map_compat.sh"
       - "scripts/check_auth_session_writes.sh"
       - "scripts/check_attachment_mapper_formatting.sh"
+      - "scripts/check_read_state_behavior_vector.sh"
+      - "scripts/check_read_state_sync_domain_registration.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -389,6 +393,16 @@ jobs:
       - name: Guard attachment mapper raw-size boundary
         shell: bash
         run: scripts/check_attachment_mapper_formatting.sh
+
+      - name: Guard Web/mobile read-state authority vector
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.SLOCK_SOURCE_REPO_TOKEN }}
+        run: scripts/check_read_state_behavior_vector.sh
+
+      - name: Guard read-state SyncCore registration boundary
+        shell: bash
+        run: scripts/check_read_state_sync_domain_registration.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5
