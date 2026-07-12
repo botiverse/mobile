@@ -1,10 +1,13 @@
 /*
  * T-wrapper canonical fact codec — DoD ⑤ codec-layer gates (RFC 043 §9.9, form A).
  *
- * Driver-free (commonTest). Covers: full-field round-trip (= the (甲) manifest→envelope reverse-closure
- * proof — a dropped field would lose its distinct value), (乙) codec-layer resolved three-state
+ * Driver-free (commonTest). Covers: full-field round-trip identity, (乙) codec-layer resolved three-state
  * (nullable null/value + list empty/non-empty byte-faithful, no explicitNulls=false flattening),
  * ③ golden-bytes pin (write-drift guard), and per-row fail-closed decode (poison-gate input).
+ *
+ * The (甲) MECHANICAL manifest→envelope reverse-closure is a separate androidUnitTest
+ * ([CanonicalFactEnvelopeManifestGateTest]) — it needs the SHA-pinned manifest + reflection, and a
+ * hand-built round-trip cannot prove the envelope covers a manifest field nobody populated (AD2).
  *
  * The store-level gates (① projection-tamper→restore-unchanged, ② columns==projector(decode), and the
  * (乙) continuation layer) live in the androidUnitTest store suite — they need the real driver.
@@ -53,11 +56,11 @@ class CanonicalFactCodecTest {
     )
 
     @Test
-    fun fullFieldRoundTripIsIdentity_reverseClosureProof() {
+    fun fullFieldRoundTripIsIdentity() {
         val row = fullyPopulatedRow()
         val restored = decodeCanonicalFact(encodeCanonicalFact(row))
-        // Full structural equality: if the envelope omitted ANY canonical field or nested field, the
-        // distinct value above would not survive — this IS the (甲) manifest→envelope reverse-closure gate.
+        // Every populated canonical + nested field survives encode→decode. (Envelope↔manifest COMPLETENESS
+        // is the separate mechanical gate CanonicalFactEnvelopeManifestGateTest, not this hand-built row.)
         assertEquals(row, restored)
     }
 
