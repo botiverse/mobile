@@ -25,6 +25,7 @@ class ProjectionRetirementBoundaryTest {
                 "conversationHeaderEntryFrom",
                 "toConversationHeaderEntry",
                 "private data class AgentActivityProjection",
+                "internal fun ThreadHeaderProjectionInput.displayModel(",
             )
         retiredTokens.forEach { token ->
             productionSources.forEach { (path, source) ->
@@ -41,7 +42,7 @@ class ProjectionRetirementBoundaryTest {
         requireLocator(
             productionSources,
             path = "build/raft/app/SharedConversationHeaderProjection.kt",
-            locator = "internal fun ThreadHeaderProjectionInput.displayModel(\n    projection: SharedConversationDirectoryProjection?,\n    contentPayload: KuiklyThreadScreenPayload",
+            locator = "fun displayModel(\n        projection: SharedConversationDirectoryProjection?,\n        contentPayload: KuiklyThreadScreenPayload",
             violations = violations,
         )
         requireLocator(
@@ -53,7 +54,7 @@ class ProjectionRetirementBoundaryTest {
         requireUniqueCallsiteLocator(
             productionSources,
             path = "build/raft/app/ThreadPage.kt",
-            locator = "headerProjectionInput.displayModel(stableHeaderProjection)",
+            locator = "headerProjectionInput.displayModel(stableHeaderProjection, payload)",
             violations = violations,
         )
         requireUniqueCallsiteLocator(

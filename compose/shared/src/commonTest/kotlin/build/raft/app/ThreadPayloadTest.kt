@@ -2105,8 +2105,8 @@ class ThreadPayloadTest {
 
         val routePayload = loadedPayload.threadHeaderProjectionRoutePayload()
         val input = routePayload.threadHeaderProjectionInput()
-        val displayWithProjection = input.displayModel(projection)
-        val displayWithoutProjection = input.displayModel(null)
+        val displayWithProjection = input.displayModel(projection, routePayload)
+        val displayWithoutProjection = input.displayModel(null, routePayload)
 
         assertEquals(listOf("channel-1", "channel-1"), input.lookupIds)
         assertEquals("", routePayload.title)
@@ -2227,7 +2227,7 @@ class ThreadPayloadTest {
             )
 
         val stableProjection = input.stableProjection(current = null, previous = acceptedProjection)
-        val headerDisplay = input.displayModel(stableProjection)
+        val headerDisplay = input.displayModel(stableProjection, routePayload)
 
         assertEquals(acceptedProjection, stableProjection)
         assertEquals("raft-mobile", headerDisplay.title)
@@ -2266,7 +2266,7 @@ class ThreadPayloadTest {
             )
 
         val stableProjection = input.stableProjection(current = null, previous = acceptedProjection)
-        val headerDisplay = input.displayModel(stableProjection)
+        val headerDisplay = input.displayModel(stableProjection, routePayload)
 
         assertEquals(acceptedProjection, stableProjection)
         assertEquals("artin", headerDisplay.title)
