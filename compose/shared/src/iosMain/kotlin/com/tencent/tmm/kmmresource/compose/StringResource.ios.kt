@@ -4,6 +4,7 @@
 package com.tencent.tmm.kmmresource.compose
 
 import build.raft.app.KmmResourceLocaleRuntime
+import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -24,24 +25,30 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 // interface member (real localization), not the compose extension.
 @Composable
 actual fun stringResource(resource: StringResource): String {
-    applyRuntimeLocale()
-    return StringDesc.Resource(resource).localized()
+    val locale by KmmResourceLocaleRuntime.locale.collectAsState()
+    return localized(locale, StringDesc.Resource(resource))
 }
 
 @Composable
 actual fun stringResource(resource: StringResource, vararg args: Any): String {
-    applyRuntimeLocale()
-    return StringDesc.ResourceFormatted(resource, args.toList()).localized()
+    val locale by KmmResourceLocaleRuntime.locale.collectAsState()
+    return localized(locale, StringDesc.ResourceFormatted(resource, args.toList()))
 }
 
 @Composable
 actual fun stringResource(resource: PluralsResource, quantity: Int): String {
-    applyRuntimeLocale()
-    return StringDesc.Plural(resource, quantity).localized()
+    val locale by KmmResourceLocaleRuntime.locale.collectAsState()
+    return localized(locale, StringDesc.Plural(resource, quantity))
 }
 
-@Composable
-private fun applyRuntimeLocale() {
-    val locale by KmmResourceLocaleRuntime.locale.collectAsState()
+/**
+ * The Apple KmmResource implementation stores [StringDesc.localeType] in a
+ * Kotlin/Native `@ThreadLocal`. Keep the assignment and lookup in one ordinary
+ * synchronous call: a separate Unit-returning composable may be skipped while
+ * a retained child composition resumes on a thread whose locale is still
+ * `System`, producing mixed-language content in the same screen.
+ */
+private fun localized(locale: AppLocale?, desc: StringDesc): String {
     locale?.let { StringDesc.localeType = it.stringDescLocaleType }
+    return desc.localized()
 }
