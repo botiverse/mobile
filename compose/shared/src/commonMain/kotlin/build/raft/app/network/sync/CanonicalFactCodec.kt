@@ -14,9 +14,12 @@ import kotlinx.serialization.json.JsonElement
  *
  * This is the restore/continuation SOLE source of truth. It is a DEDICATED versioned envelope
  * ([CanonicalMessagePersistedV1]) — NOT a bare serialization of the fold domain [CanonicalMessageRow]
- * (which carries value-class ids + a raw JsonElement). Decoupling is the point: a fold-side field rename
- * cannot silently reshape stored bytes; the mapping functions would fail to compile, and the golden-bytes
- * pin ([CanonicalFactCodecTest]) fails on any write drift while the `version` field guards read-old.
+ * (which carries value-class ids + a raw JsonElement). Decoupling means the stored shape only changes with
+ * an explicit envelope edit. Drift is caught NOT by the compiler — a new default-valued canonical field
+ * compiles fine and would silently drop (named-arg mapping is not exhaustive) — but by the GATE TRIANGLE:
+ * G6 pins fold-row == manifest, the (甲) gate ([CanonicalFactEnvelopeManifestGateTest]) pins
+ * envelope == manifest, so transitively fold-row == envelope. The golden-bytes pin catches write drift and
+ * the `version` field guards read-old.
  *
  * The codec stores RESOLVED post-state only, never presence (§5.3): presence (absent) is consumed in the
  * fold, so a resolved row has only nullable null/value + list empty/non-empty. `explicitNulls = true`
@@ -109,7 +112,8 @@ data class CanonicalConversationContextV1(
     val parentMessageId: String? = null,
 )
 
-// ── domain <-> envelope (total field mapping; a missing field fails to compile — the drift guard) ──
+// ── domain <-> envelope (total field mapping; completeness is enforced by the gate triangle G6 + (甲),
+//    NOT the compiler — a new default-valued field would compile and silently drop) ──
 
 fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = CanonicalMessagePersistedV1(
     id = id.value,
