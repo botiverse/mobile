@@ -18,6 +18,11 @@ data class PerReceiverStateVersionDecision(
     val incomingVersion: Long
 )
 
+data class PerReceiverReadStateCheckpoint(
+    val version: Long = 0L,
+    val maxReadSeq: Long = 0L
+)
+
 /**
  * Version-gate for RFC 041 per-receiver state pushes.
  *
@@ -81,6 +86,42 @@ class PerReceiverStateVersionStore(
     ) {
         store.putString(key(serverId, memberId, scope, scopeId), acceptedVersion.toString())
     }
+
+    internal fun readReadStateCheckpoint(
+        serverId: ServerId,
+        memberId: MemberId,
+        scopeId: ChannelId
+    ): PerReceiverReadStateCheckpoint =
+        PerReceiverReadStateCheckpoint(
+            version = readVersion(serverId, memberId, PerReceiverStateScope.ReadState, scopeId),
+            maxReadSeq =
+                store.getString(readStateMaxSeqKey(serverId, memberId, scopeId))
+                    ?.toLongOrNull()
+                    ?.coerceAtLeast(0L)
+                    ?: 0L
+        )
+
+    internal fun writeReadStateCheckpoint(
+        serverId: ServerId,
+        memberId: MemberId,
+        scopeId: ChannelId,
+        checkpoint: PerReceiverReadStateCheckpoint
+    ) {
+        writeAcceptedVersion(
+            serverId = serverId,
+            memberId = memberId,
+            scope = PerReceiverStateScope.ReadState,
+            acceptedVersion = checkpoint.version,
+            scopeId = scopeId
+        )
+        store.putString(
+            readStateMaxSeqKey(serverId, memberId, scopeId),
+            checkpoint.maxReadSeq.coerceAtLeast(0L).toString()
+        )
+    }
+
+    private fun readStateMaxSeqKey(serverId: ServerId, memberId: MemberId, scopeId: ChannelId): String =
+        key(serverId, memberId, PerReceiverStateScope.ReadState, scopeId) + ".maxReadSeq"
 
     private fun key(
         serverId: ServerId,

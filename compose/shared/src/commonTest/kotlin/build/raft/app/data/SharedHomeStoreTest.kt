@@ -3960,6 +3960,246 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun webReadStateSequenceKeepsBackgroundServerCountProjectionAligned() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val store =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            serverUnreadCounts = mapOf("server-1" to 0, "server-2" to 3)
+                        )
+                    ),
+                scope = scope,
+                perReceiverStateVersionStore = versionStore
+            )
+        store.accept(SharedHomeIntent.Start)
+        val visibleBefore = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        val otherMember = sampleMember().copy(id = MemberId("member-2"), displayName = "Cindy")
+
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("background-101"),
+                            threadId = ThreadId("channel-b"),
+                            channelId = ChannelId("channel-b"),
+                            seq = 101,
+                            author = otherMember,
+                            timestampLabel = "12:01",
+                            body = "background update"
+                        )
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("background-102"),
+                            threadId = ThreadId("channel-b"),
+                            channelId = ChannelId("channel-b"),
+                            seq = 102,
+                            author = otherMember,
+                            timestampLabel = "12:02",
+                            body = "later background update"
+                        )
+                    )
+            )
+        )
+
+        // Cross-client count vector, aligned with Web
+        // packages/web/src/store/readStateSync.ts::consumeReadStateUpdate:
+        // hydrated 3 + seq 101 + seq 102 = 5.
+        assertEquals(5, store.state.value.serverUnreadCounts["server-2"])
+        assertEquals(visibleBefore, (store.state.value.content as SharedHomeContentState.Content).snapshot)
+
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-2"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-b"),
+                                    maxReadSeq = 101,
+                                    readStateVersion = 5
+                                )
+                            )
+                    )
+            )
+        )
+        // Partial watermark clears seq 101 only; seq 102 remains unread.
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        // Higher version with a regressed watermark is remembered but must
+        // not clear the optimistic unread. A later lower version is stale,
+        // even when it claims a larger watermark.
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-2"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-b"),
+                                    maxReadSeq = 80,
+                                    readStateVersion = 7
+                                )
+                            )
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-2"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-b"),
+                                    maxReadSeq = 200,
+                                    readStateVersion = 6
+                                )
+                            )
+                    )
+            )
+        )
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+        assertEquals(7, versionStore.readVersion(ServerId("server-2"), MemberId("user-1"), PerReceiverStateScope.ReadState, ChannelId("channel-b")))
+
+        // A second scope is independent. Clearing channel-b at the next
+        // accepted version leaves channel-c's optimistic unread intact.
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("background-c-1"),
+                            threadId = ThreadId("channel-c"),
+                            channelId = ChannelId("channel-c"),
+                            seq = 1,
+                            author = otherMember,
+                            timestampLabel = "12:03",
+                            body = "independent scope"
+                        )
+                    )
+            )
+        )
+        assertEquals(5, store.state.value.serverUnreadCounts["server-2"])
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-2"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-b"),
+                                    maxReadSeq = 102,
+                                    readStateVersion = 8
+                                )
+                            )
+                    )
+            )
+        )
+        assertEquals(4, store.state.value.serverUnreadCounts["server-2"])
+
+        // seq=null is not provably covered by any watermark. Keep it until
+        // canonical refresh instead of silently undercounting.
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("background-unknown-seq"),
+                            threadId = ThreadId("channel-d"),
+                            channelId = ChannelId("channel-d"),
+                            seq = null,
+                            author = otherMember,
+                            timestampLabel = "12:04",
+                            body = "unknown seq"
+                        )
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    PerReceiverReadStateChanged(
+                        serverId = ServerId("server-2"),
+                        scopes =
+                            listOf(
+                                PerReceiverReadStateScope(
+                                    scopeId = ChannelId("channel-d"),
+                                    maxReadSeq = 999,
+                                    readStateVersion = 1
+                                )
+                            )
+                    )
+            )
+        )
+        assertEquals(5, store.state.value.serverUnreadCounts["server-2"])
+
+        // A canonical unread-summary refresh replaces the count-only delta.
+        store.accept(SharedHomeIntent.Refresh)
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
+
+        // The accepted checkpoint survives a store recreation: an old
+        // message replay below maxReadSeq does not recreate unread count.
+        val recreatedScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val recreated =
+            SharedHomeStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                dataSource =
+                    sourceWithSnapshot(
+                        sampleHome(ServerId("server-1")).copy(
+                            serverUnreadCounts = mapOf("server-1" to 0, "server-2" to 3)
+                        )
+                    ),
+                scope = recreatedScope,
+                perReceiverStateVersionStore = versionStore
+            )
+        recreated.accept(SharedHomeIntent.Start)
+        recreated.accept(
+            SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
+                serverId = "server-2",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("background-replayed-90"),
+                            threadId = ThreadId("channel-b"),
+                            channelId = ChannelId("channel-b"),
+                            seq = 90,
+                            author = otherMember,
+                            timestampLabel = "11:59",
+                            body = "old replay"
+                        )
+                    )
+            )
+        )
+        assertEquals(3, recreated.state.value.serverUnreadCounts["server-2"])
+        scope.cancel()
+        recreatedScope.cancel()
+    }
+
+    @Test
     fun realtimeNotificationPrefsEventAppliesMuteThroughVersionGate() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())

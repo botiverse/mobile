@@ -3413,6 +3413,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 applyHomeShell = { serverId, event ->
                     homeShellStore.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(serverId, event))
                 },
+                applyHomeUnreadProjection = { serverId, event ->
+                    homeShellStore.dispatch(
+                        SharedHomeShellIntent.ApplyBackgroundServerUnreadEvent(serverId, event)
+                    )
+                },
                 applySettings = { serverId, event ->
                     settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
                 },
@@ -3524,10 +3529,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
                     val activeSelectedServerId = selectedServerStore.selectedServerId.value
                     if (!shouldRouteRealtimeEventToShell(activeSelectedServerId, serverId)) {
-                        bridge.log(
-                            "shared_realtime_event_skip reason=server_mismatch " +
-                                "eventServerId=$serverId shellServerId=${activeSelectedServerId.orEmpty()}"
-                        )
+                        if (shouldProjectBackgroundServerUnread(latestReadySession, activeSelectedServerId, serverId)) {
+                            appShellRealtimeDomainEventOwner.acceptHomeUnreadProjection(
+                                serverId,
+                                event,
+                                source = "app_shell_background_server"
+                            )
+                        } else {
+                            bridge.log(
+                                "shared_realtime_event_skip reason=server_mismatch " +
+                                    "eventServerId=$serverId shellServerId=${activeSelectedServerId.orEmpty()}"
+                            )
+                        }
                         return@launch
                     }
                     if (
@@ -17378,6 +17391,17 @@ internal fun shouldRouteRealtimeEventToShell(shellServerId: String?, eventServer
     val shellServer = shellServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
     val eventServer = eventServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
     return shellServer == eventServer
+}
+
+internal fun shouldProjectBackgroundServerUnread(
+    session: StoredAuthSession?,
+    shellServerId: String?,
+    eventServerId: String?
+): Boolean {
+    val shellServer = shellServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
+    val eventServer = eventServerId?.trim().takeUnless { it.isNullOrBlank() } ?: return false
+    if (shellServer == eventServer) return false
+    return session?.servers?.any { it.id == eventServer } == true
 }
 
 private fun RealtimeEvent.serverIdHint(): ServerId? =

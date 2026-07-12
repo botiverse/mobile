@@ -129,6 +129,31 @@ class PerReceiverStateVersionStoreTest {
     }
 
     @Test
+    fun persistsReadStateVersionAndWatermarkCheckpointPerServerScope() {
+        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val member = MemberId("member-1")
+        val channel = ChannelId("channel-shared-id")
+        val serverA = ServerId("server-a")
+        val serverB = ServerId("server-b")
+
+        store.writeReadStateCheckpoint(
+            serverId = serverA,
+            memberId = member,
+            scopeId = channel,
+            checkpoint = PerReceiverReadStateCheckpoint(version = 7, maxReadSeq = 101)
+        )
+
+        assertEquals(
+            PerReceiverReadStateCheckpoint(version = 7, maxReadSeq = 101),
+            store.readReadStateCheckpoint(serverA, member, channel)
+        )
+        assertEquals(
+            PerReceiverReadStateCheckpoint(),
+            store.readReadStateCheckpoint(serverB, member, channel)
+        )
+    }
+
+    @Test
     fun doesNotShareRealtimeSeqCursorKeysOrSemantics() {
         val keyValueStore = InMemorySlockKeyValueStore()
         val versionStore = PerReceiverStateVersionStore(keyValueStore)

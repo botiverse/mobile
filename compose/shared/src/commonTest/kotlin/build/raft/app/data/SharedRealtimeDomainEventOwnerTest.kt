@@ -123,6 +123,47 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
+    fun backgroundUnreadAcceptUsesSharedDedupWithoutTouchingFullDomainSinks() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val unreadEvents = mutableListOf<RealtimeEventRecord>()
+        val homeEvents = mutableListOf<RealtimeEventRecord>()
+        val settingsEvents = mutableListOf<RealtimeEventRecord>()
+        val event =
+            MessageNew(
+                Message(
+                    id = MessageId("message-background"),
+                    threadId = ThreadId("channel-b"),
+                    channelId = ChannelId("channel-b"),
+                    seq = 9,
+                    author =
+                        MemberProfile(
+                            id = MemberId("member-2"),
+                            displayName = "Cindy",
+                            handle = "cindy",
+                            kind = MemberKind.Human,
+                            presence = Presence.Active
+                        ),
+                    timestampLabel = "12:00",
+                    body = "background"
+                )
+            )
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, accepted -> homeEvents += RealtimeEventRecord(serverId, accepted) },
+                applyHomeUnreadProjection = { serverId, accepted -> unreadEvents += RealtimeEventRecord(serverId, accepted) },
+                applySettings = { serverId, accepted -> settingsEvents += RealtimeEventRecord(serverId, accepted) }
+            )
+        )
+
+        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
+        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
+
+        assertEquals(listOf(RealtimeEventRecord("server-2", event)), unreadEvents)
+        assertEquals(emptyList(), homeEvents)
+        assertEquals(emptyList(), settingsEvents)
+    }
+
+    @Test
     fun agentPresenceUpdatesActivitySinkWithoutRefreshingMemberDetail() {
         val owner = SharedRealtimeDomainEventOwner()
         val activityEvents = mutableListOf<MemberPresenceUpdated>()
