@@ -179,6 +179,27 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeServerSwitcherUsesServerAvatarFallbackForUrlAndBlankSources() {
+        val withUrl =
+            SlockServerSwitcherItem(
+                id = "server-1",
+                name = "Raft",
+                avatarUrl = "https://cdn.raft.build/server.png"
+            ).toServerSwitcherAvatarPresentation()
+        val withoutUrl =
+            SlockServerSwitcherItem(
+                id = "server-2",
+                name = "Botiverse",
+                avatarUrl = " "
+            ).toServerSwitcherAvatarPresentation()
+
+        assertEquals("https://cdn.raft.build/server.png", withUrl.avatarWireValue)
+        assertEquals("R", withUrl.fallbackLabel)
+        assertEquals(null, withoutUrl.avatarWireValue)
+        assertEquals("B", withoutUrl.fallbackLabel)
+    }
+
+    @Test
     fun homeServerSwitcherCommunityActionsFollowJoinedSlugsIndependently() {
         val labels = SlockHomeShellLabels()
 

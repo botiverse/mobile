@@ -2208,8 +2208,24 @@ class KmpVisualScreenshotCaptureTest {
                 .put(
                     "servers",
                     JSONArray()
-                        .put(server("srv_design", "Slock Design", "slock-design", 24))
-                        .put(server("srv_android", "Android Artifacts", "android-artifacts", 12))
+                        .put(
+                            server(
+                                "srv_design",
+                                "Slock Design",
+                                "slock-design",
+                                24,
+                                avatarUrl = "https://avatars.githubusercontent.com/u/9919?s=64&v=4"
+                            )
+                        )
+                        .put(
+                            server(
+                                "srv_android",
+                                "Android Artifacts",
+                                "android-artifacts",
+                                12,
+                                avatarUrl = "https://invalid.invalid/server-avatar.png"
+                            )
+                        )
                         .put(server("srv_feedback", "Feedback", "feedback", 3))
                 )
                 .put(
@@ -2229,12 +2245,19 @@ class KmpVisualScreenshotCaptureTest {
             .put("payload", payload.toString())
     }
 
-    private fun server(id: String, name: String, slug: String, unreadCount: Int): JSONObject =
+    private fun server(
+        id: String,
+        name: String,
+        slug: String,
+        unreadCount: Int,
+        avatarUrl: String? = null
+    ): JSONObject =
         JSONObject()
             .put("id", id)
             .put("name", name)
             .put("slug", slug)
             .put("unreadCount", unreadCount)
+            .also { server -> avatarUrl?.let { server.put("avatarUrl", it) } }
 
     private fun createAgentDialogPageData(
         runtime: String,
