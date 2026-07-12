@@ -6665,6 +6665,57 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadFollowActionRequiresPersistedMessage() {
+        val replyMetadata =
+            ThreadReplyMetadata(
+                parentMessageId = "message-1",
+                threadChannelId = "thread-1",
+                replyCount = 2,
+                unreadReplyCount = 0,
+                firstUnreadReplyMessageId = null,
+                isThreadFollowed = false
+            )
+        val pendingContext =
+            KuiklyThreadPendingSendContext(
+                channelId = "channel-1",
+                body = "Pending message"
+            )
+
+        assertTrue(
+            shouldShowThreadFollowAction(
+                message = KuiklyThreadMessageItem(id = "message-1", authorId = "author-1", authorName = "Author"),
+                replyMetadata = replyMetadata
+            )
+        )
+        assertFalse(
+            shouldShowThreadFollowAction(
+                message =
+                    KuiklyThreadMessageItem(
+                        id = "local-sending",
+                        authorId = "author-1",
+                        authorName = "Author",
+                        deliveryState = ThreadMessageDeliverySending,
+                        pendingSendContext = pendingContext
+                    ),
+                replyMetadata = replyMetadata.copy(parentMessageId = "local-sending")
+            )
+        )
+        assertFalse(
+            shouldShowThreadFollowAction(
+                message =
+                    KuiklyThreadMessageItem(
+                        id = "local-failed",
+                        authorId = "author-1",
+                        authorName = "Author",
+                        deliveryState = ThreadMessageDeliveryFailed,
+                        pendingSendContext = pendingContext
+                    ),
+                replyMetadata = replyMetadata.copy(parentMessageId = "local-failed")
+            )
+        )
+    }
+
+    @Test
     fun savedBadgeQualifiesAsThreadFooterMeta() {
         val message =
             KuiklyThreadMessageItem(
