@@ -5125,6 +5125,9 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         assertNull(dataSource.cachedPayload("channel-1"))
+        assertEquals("no_permission", store.state.value.payload.status)
+        assertEquals("thread_forbidden", store.state.value.payload.errorCode)
+        assertTrue(store.state.value.payload.messages.isEmpty())
         scope.cancel()
     }
 
