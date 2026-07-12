@@ -6144,7 +6144,7 @@ private fun SettingsMessageAlignmentCard(
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
     SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
         SettingsSegmentedControlField(
-            detail = snapshot.messageAlignmentPreference.detail,
+            detail = stringResource(MR.strings.settings_message_alignment_detail),
             selectedValue = selectedKey.ifBlank { "left" },
             options =
                 listOf(
@@ -6169,7 +6169,7 @@ private fun SettingsCompactMessagesCard(
     val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
     val preference = snapshot.compactConsecutiveMessages
     SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_compact_detail))
         Row(
             modifier =
                 Modifier
@@ -6183,7 +6183,7 @@ private fun SettingsCompactMessagesCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6221,8 +6221,8 @@ private fun SettingsLongMessageCollapseCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.inProgress
     val preference = snapshot.longMessageCollapse
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = "Collapse long messages") {
-        SettingsFormDetailText(preference.detail)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = stringResource(MR.strings.settings_mobile_long_message_collapse)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_long_message_collapse_detail))
         Row(
             modifier =
                 Modifier
@@ -6236,12 +6236,17 @@ private fun SettingsLongMessageCollapseCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    text = if (preference.enabled) "Preview the first 8 lines" else "Show full messages",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_long_message_collapse_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_long_message_collapse_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -6266,7 +6271,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
     val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
     val preference = snapshot.activityTaskStatusBadges
     SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_activity_task_badges_detail))
         Row(
             modifier =
                 Modifier
@@ -6280,7 +6285,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6319,7 +6324,7 @@ private fun SettingsComposerSendKeyCard(
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
     SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_composer_key_detail))
         Row(
             modifier =
                 Modifier
@@ -6333,7 +6338,12 @@ private fun SettingsComposerSendKeyCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_composer_key_send)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_composer_key_new_line)
+                        },
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6371,7 +6381,7 @@ private fun SettingsThreadRowAffordancesCard(
 ) {
     val preference = snapshot.threadRowAffordances
     SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_mobile_message_row_actions)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_message_row_actions_detail))
         preference.options.forEach { option ->
             val affordance = ThreadRowAffordancePreference.fromStorageKey(option.key) ?: return@forEach
             val enabled = option.key in preference.selectedKeys
@@ -6392,7 +6402,7 @@ private fun SettingsThreadRowAffordancesCard(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = option.label,
+                        text = affordance.settingsTitle(),
                         style = SlockType.Button.copy(color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -6417,6 +6427,21 @@ private fun SettingsThreadRowAffordancesCard(
         }
     }
 }
+
+@Composable
+private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
+    if (enabled) {
+        stringResource(MR.strings.settings_mobile_status_enabled)
+    } else {
+        stringResource(MR.strings.settings_state_off)
+    }
+
+@Composable
+private fun ThreadRowAffordancePreference.settingsTitle(): String =
+    when (this) {
+        ThreadRowAffordancePreference.Reactions -> stringResource(MR.strings.settings_mobile_reactions)
+        ThreadRowAffordancePreference.Saved -> stringResource(MR.strings.settings_mobile_saved)
+    }
 
 @Composable
 private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): String =
@@ -6444,7 +6469,7 @@ private fun SettingsImageAnnotationCard(
     val busy = actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.inProgress
     val preference = snapshot.imageAnnotation
     SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = stringResource(MR.strings.settings_mobile_image_annotation)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_image_annotation_detail))
         Row(
             modifier =
                 Modifier
@@ -6458,7 +6483,7 @@ private fun SettingsImageAnnotationCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
