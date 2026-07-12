@@ -7,6 +7,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 /**
  * DoD ⑤ gate (甲) — MECHANICAL manifest→envelope reverse-closure for the T-wrapper canonical fact BLOB.
@@ -48,6 +50,19 @@ class CanonicalFactEnvelopeManifestGateTest {
         // Same reviewed manifest head as G6 (#4589 @252dfebf); if it drifts, re-review both gates.
         val sha = MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) }
         assertEquals("f974c41d75acb813d2dba3246a011819a9d290442091982ca70e7622e7381340", sha)
+    }
+
+    @Test
+    fun gateIsNonVacuousExactEquality_redSpecimen() {
+        // Mandatory RED specimen (赵): prove the reverse-closure gate can actually go red, and is not a
+        // false-green when the manifest fails to load. (1) the canonical set is the pinned 19 — an empty
+        // set (resource missing / parse error) would false-green an equality against an also-empty side.
+        val canonical = canonicalFieldNames()
+        assertEquals(19, canonical.size, "manifest canonical set must be the pinned 19 (10 required + 9 aggregate)")
+        // (2) exact equality, not subset: a field MISSING from one side OR an EXTRA field both diverge —
+        // so the gate cannot pass on a partial match (the drift (甲) exists to catch).
+        assertNotEquals(canonical, canonical - canonical.first(), "a missing canonical field must diverge")
+        assertNotEquals(canonical, canonical + "phantomCanonicalField", "an extra field must diverge")
     }
 
     @Test
