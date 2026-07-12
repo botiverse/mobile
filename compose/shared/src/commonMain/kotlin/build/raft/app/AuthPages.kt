@@ -18,6 +18,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.data.SharedSettingsApiEnvironmentRequest
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
@@ -73,13 +74,13 @@ import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.launch
 
 const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
-const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
-const val AUTH_DEVELOPER_PAGE = "compose_auth_developer"
+const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
@@ -160,19 +161,11 @@ internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() 
     }
 }
 
-@Page(AUTH_DIAGNOSTICS_PAGE, supportInLocal = true)
-internal class ComposeAuthDiagnosticsPage : build.raft.app.base.BasePager() {
+@Page(AUTH_ABOUT_PAGE, supportInLocal = true)
+internal class ComposeAuthAboutPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { AuthDiagnosticsScreen() }
-    }
-}
-
-@Page(AUTH_DEVELOPER_PAGE, supportInLocal = true)
-internal class ComposeAuthDeveloperPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthDeveloperScreen() }
+        setContent { AuthAboutScreen() }
     }
 }
 
@@ -335,7 +328,7 @@ private fun LoginScreen() {
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
         onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
         onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
 
@@ -591,7 +584,7 @@ private fun RegisterScreen() {
             }
         },
         onBackToSignIn = { pager.closeAuthSubPage() },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
 
@@ -661,37 +654,63 @@ private fun ForgotPasswordScreen() {
             }
         },
         onBackToSignIn = { pager.closeAuthSubPage() },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
 
+private enum class AuthAboutDestination {
+    About,
+    ApiEnvironment,
+    Diagnostics
+}
+
 @Composable
-private fun AuthDeveloperScreen() {
+private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAboutDestination.About) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
-    val settingsDataSource =
+    val settingsCapabilities =
         remember(bridge, bridgeCallScope) {
+            BridgeSettingsPlatformCapabilities(
+                bridge,
+                bridgeCallScope.kuiklyBridgeCallContext()
+            )
+        }
+    val settingsDataSource =
+        remember(sharedStores, settingsCapabilities) {
             SharedSettingsDataSource(
                 sessionStore = sharedStores.authStore,
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities =
-                    BridgeSettingsPlatformCapabilities(
-                        bridge,
-                        bridgeCallScope.kuiklyBridgeCallContext()
-                    ),
+                platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") }
             )
         }
-    var state by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }
+    var aboutState by remember { mutableStateOf<ScreenLoadState<SharedSettingsAboutSnapshot>>(ScreenLoadState.Loading) }
+    var developerState by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }
+    var diagnosticsState by remember { mutableStateOf<ScreenLoadState<build.raft.app.data.SharedSettingsDiagnosticsSnapshot>>(ScreenLoadState.Loading) }
     var actionState by remember { mutableStateOf<SharedSettingsActionState?>(null) }
     var reloadToken by remember { mutableStateOf(0) }
-    var pendingEnvironment by remember { mutableStateOf<String?>(null) }
+    var destination by remember { mutableStateOf(initialDestination) }
+    var pendingEnvironment by remember { mutableStateOf<SharedSettingsApiEnvironmentRequest?>(null) }
 
     LaunchedEffect(settingsDataSource, reloadToken) {
-        state =
+        aboutState =
+            when (val result = settingsDataSource.loadAbout()) {
+                is DataResult.Content -> ScreenLoadState.Content(result.data)
+                is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
+                is DataResult.Error -> ScreenLoadState.Error(result.error)
+                is DataResult.NoPermission -> ScreenLoadState.NoPermission(result.blocker)
+            }
+        developerState =
             when (val result = settingsDataSource.loadDeveloper()) {
+                is DataResult.Content -> ScreenLoadState.Content(result.data)
+                is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
+                is DataResult.Error -> ScreenLoadState.Error(result.error)
+                is DataResult.NoPermission -> ScreenLoadState.NoPermission(result.blocker)
+            }
+        diagnosticsState =
+            when (val result = settingsDataSource.loadDiagnostics()) {
                 is DataResult.Content -> ScreenLoadState.Content(result.data)
                 is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
                 is DataResult.Error -> ScreenLoadState.Error(result.error)
@@ -700,10 +719,10 @@ private fun AuthDeveloperScreen() {
     }
 
     LaunchedEffect(pendingEnvironment) {
-        val key = pendingEnvironment ?: return@LaunchedEffect
-        actionState = SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, key, inProgress = true)
-        state =
-            when (val result = settingsDataSource.setApiEnvironment(key)) {
+        val request = pendingEnvironment ?: return@LaunchedEffect
+        actionState = SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, request.key, inProgress = true)
+        developerState =
+            when (val result = settingsDataSource.saveApiEnvironment(request)) {
                 is DataResult.Content -> ScreenLoadState.Content(result.data)
                 is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
                 is DataResult.Error -> ScreenLoadState.Error(result.error)
@@ -713,331 +732,153 @@ private fun AuthDeveloperScreen() {
         pendingEnvironment = null
     }
 
-    SharedSettingsDeveloperContent(
-        state = state,
-        actionState = actionState,
-        onOpenApiEnvironment = {
-            val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
-            pendingEnvironment = snapshot?.options?.firstOrNull { it.key != snapshot.environmentKey }?.key
-        },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
-        onOpenRouter = { pager.openAuthPage("router") }
-    )
-}
-
-private data class AuthDiagnosticsUiState(
-    val loading: Boolean = true,
-    val about: SharedSettingsAboutSnapshot? = null,
-    val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
-    val errorMessage: String? = null,
-    val reporting: Boolean = false,
-    val reportTicketId: String? = null,
-    val reportErrorMessage: String? = null,
-    val reportFallbackShared: Boolean = false
-)
-
-@Composable
-private fun AuthDiagnosticsScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val bridgeCallScope = rememberCoroutineScope()
-    val settingsCapabilities =
-        remember(bridge, bridgeCallScope) {
-            BridgeSettingsPlatformCapabilities(bridge, bridgeCallScope.kuiklyBridgeCallContext())
-        }
-    val settingsDataSource =
-        remember {
-            SharedSettingsDataSource(
-                sessionStore = sharedStores.authStore,
-                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
-                platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("compose_auth_diagnostics $message") }
-            )
-        }
-    var refreshNonce by remember { mutableStateOf(0) }
-    var copyNonce by remember { mutableStateOf(0) }
-    var shareNonce by remember { mutableStateOf(0) }
-    var reportNonce by remember { mutableStateOf(0) }
-    var state by remember { mutableStateOf(AuthDiagnosticsUiState()) }
-
-    LaunchedEffect(refreshNonce) {
-        state = state.copy(loading = true, errorMessage = null)
-        val aboutResult = runCatchingPreservingCancellation { settingsDataSource.loadAbout() }.getOrElse {
-            DataResult.Error(build.raft.app.data.ScreenError("settings_about_exception"))
-        }
-        val diagnosticsResult = runCatchingPreservingCancellation { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
-            DataResult.Error(build.raft.app.data.ScreenError("settings_diagnostics_exception"))
-        }
-        state =
-            AuthDiagnosticsUiState(
-                loading = false,
-                about = (aboutResult as? DataResult.Content)?.data,
-                entries = (diagnosticsResult as? DataResult.Content)?.data?.entries.orEmpty(),
-                errorMessage =
-                    listOf(
-                        aboutResult.authDiagnosticsErrorLabel("about"),
-                        diagnosticsResult.authDiagnosticsErrorLabel("diagnostics")
-                    ).filterNotNull().joinToString("; ").takeIf { it.isNotBlank() }
-            )
-    }
-
-    LaunchedEffect(copyNonce) {
-        if (copyNonce > 0) {
-            settingsCapabilities.bridgeCopyToClipboard(
-                buildAuthDiagnosticsExportText(
-                    about = state.about,
-                    entries = state.entries,
-                    errorMessage = state.errorMessage
-                )
-            )
-            bridge.toast("Diagnostics copied")
-        }
-    }
-
-    LaunchedEffect(shareNonce) {
-        if (shareNonce > 0 && !settingsCapabilities.shareDiagnostics()) {
-            bridge.toast("Unable to open diagnostics share sheet")
-        }
-    }
-
-    LaunchedEffect(reportNonce) {
-        if (reportNonce == 0) return@LaunchedEffect
-        val exportText =
-            buildAuthDiagnosticsExportText(
-                about = state.about,
-                entries = state.entries,
-                errorMessage = state.errorMessage
-            )
-        state = state.copy(
-            reporting = true,
-            reportTicketId = null,
-            reportErrorMessage = null,
-            reportFallbackShared = false
-        )
-        when (
-            val result =
-                settingsCapabilities.submitQuiverFeedback(
-                    message = buildSignedOutAuthDiagnosticsFeedbackMessage(state.about),
-                    attachments = emptyList()
-                )
-        ) {
-            is DataResult.Content -> {
-                state = state.copy(reporting = false, reportTicketId = result.data.ticketId)
-                bridge.toast("Report submitted; ticket reference copied")
-            }
-            else -> {
-                settingsCapabilities.bridgeCopyToClipboard(exportText)
-                val shared = settingsCapabilities.shareDiagnostics()
-                state =
-                    state.copy(
-                        reporting = false,
-                        reportErrorMessage = result.authDiagnosticsErrorLabel("feedback") ?: "feedback unavailable",
-                        reportFallbackShared = shared
-                    )
-                bridge.toast(
-                    if (shared) "Report failed; diagnostics copied and ready to share"
-                    else "Report failed; diagnostics copied"
-                )
-            }
-        }
-    }
-
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
-            title = stringResource(MR.strings.auth_diagnostics_title),
-            subtitle = stringResource(MR.strings.auth_diagnostics_label),
-            iconName = SlockLucideIconName.Activity,
+            title =
+                when (destination) {
+                    AuthAboutDestination.About -> stringResource(MR.strings.settings_about_title)
+                    AuthAboutDestination.ApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
+                    AuthAboutDestination.Diagnostics -> stringResource(MR.strings.settings_diagnostics_title)
+                },
+            subtitle =
+                when (destination) {
+                    AuthAboutDestination.About -> stringResource(MR.strings.settings_about_subtitle)
+                    AuthAboutDestination.ApiEnvironment -> stringResource(MR.strings.settings_developer_environment_detail)
+                    AuthAboutDestination.Diagnostics -> stringResource(MR.strings.settings_developer_diagnostics_detail)
+                },
+            iconName =
+                when (destination) {
+                    AuthAboutDestination.About -> SlockLucideIconName.BadgeInfo
+                    AuthAboutDestination.ApiEnvironment -> SlockLucideIconName.Server
+                    AuthAboutDestination.Diagnostics -> SlockLucideIconName.ClipboardList
+                },
             leadingContent = {
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+                    onClick = {
+                        if (destination != AuthAboutDestination.About && initialDestination == AuthAboutDestination.About) {
+                            destination = AuthAboutDestination.About
+                        } else {
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        }
+                    },
                     size = 30.dp,
                     shadowOffset = 2.dp
                 )
-            },
-            trailingContent = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Copy,
-                        onClick = { copyNonce += 1 },
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Share,
-                        onClick = { shareNonce += 1 },
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.RefreshCw,
-                        onClick = { refreshNonce += 1 },
-                        enabled = !state.loading,
-                        size = 30.dp,
-                        shadowOffset = 2.dp
-                    )
-                }
             }
         )
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        SlockBrutalActionButton(
-                            label = stringResource(MR.strings.auth_action_copy),
-                            leadingIcon = SlockLucideIconName.Copy,
-                            onClick = { copyNonce += 1 },
-                            backgroundColor = SlockColor.BrandYellow,
-                            minWidth = 94.dp
+        when (destination) {
+            AuthAboutDestination.About ->
+                SharedSettingsAboutContent(
+                    state = aboutState,
+                    fallback = SharedSettingsAboutSnapshot(sessionStatusLabel = stringResource(MR.strings.settings_about_state_signed_out)),
+                    developerState = developerState,
+                    updateCheck = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.updateCheck,
+                    actionState = actionState,
+                    onCopyBuild = { value -> settingsCapabilities.bridgeCopyToClipboard(value) },
+                    webUrl = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl.orEmpty(),
+                    onOpenSlock = settingsCapabilities::openUrl,
+                    onCheckQuiverUpdate = {
+                        bridgeCallScope.launch {
+                            developerState =
+                                when (val result = settingsDataSource.checkQuiverUpdate()) {
+                                    is DataResult.Content -> ScreenLoadState.Content(result.data)
+                                    is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
+                                    is DataResult.Error -> ScreenLoadState.Error(result.error)
+                                    is DataResult.NoPermission -> ScreenLoadState.NoPermission(result.blocker)
+                                }
+                        }
+                    },
+                    onOpenSourceLicenses = { bridge.toast("Open source licenses are available after sign in") },
+                    onCopyEnvironmentInfo = {
+                        val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
+                        settingsCapabilities.bridgeCopyToClipboard(
+                            listOfNotNull(
+                                about?.appName,
+                                about?.versionLabel,
+                                about?.buildLabel,
+                                (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.apiBaseUrl
+                            ).filter { it.isNotBlank() }.joinToString("\n")
                         )
-                        SlockBrutalActionButton(
-                            label = if (state.loading) "Loading" else "Refresh",
-                            leadingIcon = SlockLucideIconName.RefreshCw,
-                            onClick = { refreshNonce += 1 },
-                            enabled = !state.loading,
-                            minWidth = 104.dp
-                        )
-                    }
-                    SlockBrutalActionButton(
-                        label = if (state.reporting) "Reporting" else "Report",
-                        leadingIcon = SlockLucideIconName.MessageSquarePlus,
-                        onClick = { reportNonce += 1 },
-                        enabled = !state.loading && !state.reporting,
-                        backgroundColor = SlockColor.AccentCyan,
-                        minWidth = 100.dp
-                    )
-                }
-            }
-            state.reportTicketId?.let { ticketId ->
-                item {
-                    AuthDiagnosticsPanel("Report submitted") {
-                        AuthDiagnosticsValue("Ticket", ticketId)
-                        AuthDiagnosticsValue("Copy", "Ticket reference copied to clipboard")
-                    }
-                }
-            }
-            state.reportErrorMessage?.let { error ->
-                item {
-                    AuthDiagnosticsPanel("Report fallback") {
-                        AuthDiagnosticsValue("Error", error)
-                        AuthDiagnosticsValue(
-                            "Diagnostics",
-                            if (state.reportFallbackShared) {
-                                "Copied to clipboard and share sheet opened"
-                            } else {
-                                "Copied to clipboard"
+                    },
+                    onOpenApiEnvironment = { destination = AuthAboutDestination.ApiEnvironment },
+                    onOpenDiagnostics = { destination = AuthAboutDestination.Diagnostics }
+                )
+            AuthAboutDestination.ApiEnvironment ->
+                SharedSettingsApiEnvironmentContent(
+                    state = developerState,
+                    actionState = actionState,
+                    onSaveApiEnvironment = { request -> pendingEnvironment = request }
+                )
+            AuthAboutDestination.Diagnostics ->
+                SharedSettingsDiagnosticsContent(
+                    state = diagnosticsState,
+                    actionState = actionState,
+                    onCopyLogs = {
+                        bridgeCallScope.launch { settingsCapabilities.copyDiagnostics() }
+                    },
+                    onShareLogs = {
+                        bridgeCallScope.launch { settingsCapabilities.shareDiagnostics() }
+                    },
+                    onSetProfilerEnabled = { enabled ->
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.setRecompositionProfilerEnabled(enabled).toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onStartProfiler = {
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.startRecompositionProfiler().toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onStopProfiler = {
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.stopRecompositionProfiler().toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onResetProfiler = {
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.resetRecompositionProfiler().toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onRefreshProfilerReport = {
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.refreshRecompositionProfilerReport().toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onExportProfilerReport = {
+                        bridgeCallScope.launch {
+                            diagnosticsState = settingsDataSource.exportRecompositionProfilerReport().toDiagnosticsScreenLoadState()
+                        }
+                    },
+                    onSendFeedback = {
+                        bridgeCallScope.launch {
+                            val about = (aboutState as? ScreenLoadState.Content<SharedSettingsAboutSnapshot>)?.data
+                            when (
+                                val result = settingsCapabilities.submitQuiverFeedback(
+                                    message = buildSignedOutAuthDiagnosticsFeedbackMessage(about),
+                                    attachments = emptyList()
+                                )
+                            ) {
+                                is DataResult.Content -> bridge.toast("Report submitted: ${result.data.ticketId}")
+                                else -> {
+                                    settingsCapabilities.copyDiagnostics()
+                                    settingsCapabilities.shareDiagnostics()
+                                    bridge.toast("Report failed; diagnostics copied")
+                                }
                             }
-                        )
-                    }
-                }
-            }
-            state.errorMessage?.let { error ->
-                item {
-                    AuthDiagnosticsPanel("Load status") {
-                        AuthDiagnosticsValue("Error", error)
-                    }
-                }
-            }
-            item {
-                AuthDiagnosticsPanel("Environment") {
-                    val about = state.about
-                    AuthDiagnosticsValue("App", about?.appName.orEmpty().ifBlank { "Raft" })
-                    AuthDiagnosticsValue("Version", about?.versionLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Build", about?.buildLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Source", about?.sourceLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Package", about?.packageName.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Platform", about?.platformLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Device", about?.deviceLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Session", about?.sessionStatusLabel.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("Server", about?.selectedServerLabel.orEmpty().ifBlank { "Unknown" })
-                }
-            }
-            item {
-                AuthDiagnosticsPanel("Recent logs") {
-                    if (state.entries.isEmpty()) {
-                        AuthDiagnosticsValue("Log", if (state.loading) "Loading" else "No recent entries")
-                    } else {
-                        state.entries.takeLast(80).forEach { entry ->
-                            AuthDiagnosticsLogEntry(entry)
                         }
                     }
-                }
-            }
-            item { Spacer(Modifier.height(20.dp)) }
+                )
         }
     }
 }
 
-@Composable
-private fun AuthDiagnosticsPanel(title: String, content: @Composable () -> Unit) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = title.uppercase(),
-            style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        content()
-    }
-}
-
-@Composable
-private fun AuthDiagnosticsValue(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label,
-            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 11.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = value,
-            style = SlockType.Body.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
-        )
-    }
-}
-
-@Composable
-private fun AuthDiagnosticsLogEntry(entry: SharedSettingsDiagnosticsEntry) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = "${entry.timestampLabel} ${entry.tag}",
-            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 14.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = entry.message,
-            style = SlockType.Body.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp)
-        )
-    }
-}
-
-private fun <T> DataResult<T>.authDiagnosticsErrorLabel(label: String): String? =
+private fun DataResult<build.raft.app.data.SharedSettingsDiagnosticsSnapshot>.toDiagnosticsScreenLoadState(): ScreenLoadState<build.raft.app.data.SharedSettingsDiagnosticsSnapshot> =
     when (this) {
-        is DataResult.Content -> null
-        is DataResult.Empty -> "$label empty: ${reason.name}"
-        is DataResult.Error -> "$label error: ${error.code}"
-        is DataResult.NoPermission -> "$label blocked: ${blocker.code}"
+        is DataResult.Content -> ScreenLoadState.Content(data)
+        is DataResult.Empty -> ScreenLoadState.Empty(reason)
+        is DataResult.Error -> ScreenLoadState.Error(error)
+        is DataResult.NoPermission -> ScreenLoadState.NoPermission(blocker)
     }
 
 internal fun buildAuthDiagnosticsExportText(
