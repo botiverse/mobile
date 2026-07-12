@@ -6,16 +6,16 @@
 #import <MMKV/MMKV.h>
 #import <OpenKuiklyIOSRender/NSObject+KR.h>
 
-#if __has_include("SlockIosBuildMetadata.h")
-#import "SlockIosBuildMetadata.h"
+#if __has_include("RaftIosBuildMetadata.h")
+#import "RaftIosBuildMetadata.h"
 #endif
 
-#ifndef SLOCK_IOS_BUILD_TIME
-#define SLOCK_IOS_BUILD_TIME @""
+#ifndef RAFT_IOS_BUILD_TIME
+#define RAFT_IOS_BUILD_TIME @""
 #endif
 
-#ifndef SLOCK_IOS_GIT_COMMIT
-#define SLOCK_IOS_GIT_COMMIT @""
+#ifndef RAFT_IOS_GIT_COMMIT
+#define RAFT_IOS_GIT_COMMIT @""
 #endif
 
 static NSString *const SlockBridgeDefaultLogTag = @"SlockKuikly";
@@ -70,11 +70,11 @@ static NSString *SlockBridgeString(id value) {
 }
 
 static NSString *SlockBridgeBuildTime(void) {
-    return SlockBridgeString(SLOCK_IOS_BUILD_TIME);
+    return SlockBridgeString(RAFT_IOS_BUILD_TIME);
 }
 
 static NSString *SlockBridgeGitCommit(void) {
-    return SlockBridgeString(SLOCK_IOS_GIT_COMMIT);
+    return SlockBridgeString(RAFT_IOS_GIT_COMMIT);
 }
 
 static NSDictionary *SlockDiagnosticsCurrentEnvironmentAbout(void) {

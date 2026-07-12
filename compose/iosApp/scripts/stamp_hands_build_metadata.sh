@@ -7,7 +7,7 @@ if [ -z "${TARGET_BUILD_DIR:-}" ] || [ -z "${INFOPLIST_PATH:-}" ] || [ ! -f "${p
   exit 0
 fi
 
-git_commit="${SLOCK_GIT_COMMIT:-${GITHUB_SHA:-}}"
+git_commit="${RAFT_GIT_COMMIT:-${GITHUB_SHA:-}}"
 if [ -z "${git_commit}" ]; then
   git_commit="$(git -C "${SRCROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
 fi
@@ -22,9 +22,9 @@ plist_buddy="/usr/libexec/PlistBuddy"
 "${plist_buddy}" -c "Set :HandsBuildCommit ${git_commit}" "${plist_path}" 2>/dev/null \
   || "${plist_buddy}" -c "Add :HandsBuildCommit string ${git_commit}" "${plist_path}"
 
-if [ -n "${SLOCK_IOS_VERSION_NAME:-}" ]; then
-  "${plist_buddy}" -c "Set :CFBundleShortVersionString ${SLOCK_IOS_VERSION_NAME}" "${plist_path}"
+if [ -n "${RAFT_IOS_VERSION_NAME:-}" ]; then
+  "${plist_buddy}" -c "Set :CFBundleShortVersionString ${RAFT_IOS_VERSION_NAME}" "${plist_path}"
 fi
-if [ -n "${SLOCK_IOS_VERSION_CODE:-}" ]; then
-  "${plist_buddy}" -c "Set :CFBundleVersion ${SLOCK_IOS_VERSION_CODE}" "${plist_path}"
+if [ -n "${RAFT_IOS_VERSION_CODE:-}" ]; then
+  "${plist_buddy}" -c "Set :CFBundleVersion ${RAFT_IOS_VERSION_CODE}" "${plist_path}"
 fi

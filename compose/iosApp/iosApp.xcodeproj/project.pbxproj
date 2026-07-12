@@ -466,11 +466,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/SlockIosBuildMetadata.h",
+				"$(DERIVED_FILE_DIR)/RaftIosBuildMetadata.h",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/scripts/generate_slock_build_metadata.sh\"\n";
+			shellScript = "\"${SRCROOT}/scripts/generate_raft_build_metadata.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		D4C7A0122E15000100C0DE01 /* Stamp Hands Build Metadata */ = {
