@@ -84,10 +84,3 @@ int mmkv_c_remove_value_for_key(signed long handle, const char *key) {
     }
     return mmkv->removeValueForKey(key) ? 1 : 0;
 }
-
-void mmkv_c_sync(signed long handle) {
-    MMKV *mmkv = mmkvFromHandle(handle);
-    if (mmkv != nullptr) {
-        mmkv->sync();
-    }
-}

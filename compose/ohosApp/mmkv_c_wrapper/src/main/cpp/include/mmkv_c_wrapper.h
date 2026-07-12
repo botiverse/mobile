@@ -11,7 +11,6 @@ int mmkv_c_set_string(signed long handle, const char *key, const char *value);
 char *mmkv_c_get_string(signed long handle, const char *key);
 int mmkv_c_contains_key(signed long handle, const char *key);
 int mmkv_c_remove_value_for_key(signed long handle, const char *key);
-void mmkv_c_sync(signed long handle);
 
 #ifdef __cplusplus
 }

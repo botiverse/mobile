@@ -93,6 +93,9 @@ fun verifyOhosBridgeNativeContracts(outputDirectory: String) {
     }) {
         "OHOS bridge library leaves sqlite3_db_config unresolved"
     }
+    check(symbols.lineSequence().none { "mmkv_c_sync" in it }) {
+        "OHOS bridge library must not force synchronous MMKV flushes from generic key-value writes"
+    }
 
     val dynamicSection = runAndCapture(readelf, "-d", library.absolutePath)
     check("libmmkv_c_wrapper.so" in dynamicSection) {
