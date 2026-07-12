@@ -1,6 +1,8 @@
 package build.raft.app.base
 
+import build.raft.app.flushSlockPlatformLogsForTest
 import build.raft.app.installSlockPlatformLogSink
+import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +30,7 @@ class BridgeModuleLogTest {
     }
 
     @Test
-    fun logNeverTouchesTheBridge() {
+    fun logNeverTouchesTheBridge() = runBlocking {
         installCapture()
         // A bare module: no pager injected, no native side, no context thread.
         // Any callNativeMethod would blow up (and on-device would be the exact
@@ -39,6 +41,7 @@ class BridgeModuleLogTest {
         module.log(BridgeLogLevel.Warn, "warned")
         module.logError("boom")
         module.logDebug("dbg")
+        flushSlockPlatformLogsForTest()
 
         assertEquals(
             listOf(
@@ -52,13 +55,14 @@ class BridgeModuleLogTest {
     }
 
     @Test
-    fun logLevelsMapOneToOne() {
+    fun logLevelsMapOneToOne() = runBlocking {
         installCapture()
         val module = BridgeModule()
 
         BridgeLogLevel.entries.forEach { level ->
             module.log(level, "m-${level.wireValue}")
         }
+        flushSlockPlatformLogsForTest()
 
         assertEquals(
             BridgeLogLevel.entries.map { it.wireValue },

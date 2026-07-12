@@ -4,6 +4,11 @@ internal expect fun slockPlatformSupportsKuiklyPullToRefreshItem(): Boolean
 
 internal expect fun slockPlatformUsesNativeLucideIconRotation(): Boolean
 
+// OHOS child Kuikly pages pay a measurable per-controller cold-start cost.
+// The shell may precreate hidden placeholder controllers after Home is ready;
+// Android/iOS keep demand mounting until their own device evidence needs it.
+internal expect fun slockPlatformPrewarmsAppShellChildPages(): Boolean
+
 // task #556 phase 2: Android's video host renders Media3 PlayerView's
 // built-in controller (tap-to-show play/pause, drag seek, ±10s, fullscreen),
 // so the shared minimal controls must stay out of its way there. iOS/OHOS

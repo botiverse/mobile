@@ -118,6 +118,31 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun createAndInviteModalStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.channel_create_title,
+            MR.strings.common_optional_suffix,
+            MR.strings.channel_create_label_visibility,
+            MR.strings.channel_create_placeholder_member_search,
+            MR.strings.channel_create_action_create,
+            MR.strings.agent_invite_title,
+            MR.strings.agent_invite_hint_join_link,
+            MR.strings.agent_invite_action_send,
+            MR.strings.agent_create_title,
+            MR.strings.agent_create_placeholder_description,
+            MR.strings.agent_create_error_limit,
+            MR.strings.agent_create_hint_provider,
+            MR.strings.agent_create_error_name_characters,
+            MR.strings.agent_create_action_add_env_var
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "create/invite modal resources must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun memberDetailActionAndStateResourcesAreGenerated() {
         listOf(
             MR.strings.member_tab_activity,
@@ -129,7 +154,6 @@ class KmmResourceI18nTest {
             MR.strings.member_action_delete_agent,
             MR.strings.member_action_restart_session,
             MR.strings.member_state_profile_loading,
-            MR.strings.member_state_private_hidden,
             MR.strings.member_state_workspace_loading,
             MR.strings.member_state_no_connected_apps,
             MR.strings.member_section_activity_diagnostics,
@@ -302,6 +326,113 @@ class KmmResourceI18nTest {
         assertTrue(
             MR.strings.settings_about_open_web_detail.format(listOf("https://app.raft.build")) is ResourceFormattedStringDesc
         )
+    }
+
+    @Test
+    fun storageAndDiagnosticsFeedbackResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_storage_total_title,
+            MR.strings.settings_storage_refresh,
+            MR.strings.settings_storage_safe_clear_note,
+            MR.strings.settings_storage_row_database,
+            MR.strings.settings_storage_row_database_detail,
+            MR.strings.settings_storage_row_image_cache,
+            MR.strings.settings_storage_row_image_cache_detail,
+            MR.strings.settings_storage_row_downloads,
+            MR.strings.settings_storage_row_downloads_detail,
+            MR.strings.settings_storage_row_temporary,
+            MR.strings.settings_storage_row_temporary_detail,
+            MR.strings.settings_storage_ohos_database_detail,
+            MR.strings.settings_storage_ohos_image_cache_detail,
+            MR.strings.settings_storage_ohos_temporary_detail,
+            MR.strings.settings_storage_feedback_image_cleared,
+            MR.strings.settings_storage_feedback_downloads_cleared,
+            MR.strings.settings_storage_feedback_temporary_cleared,
+            MR.strings.settings_diagnostics_feedback_channel_guidance,
+            MR.strings.settings_diagnostics_feedback_channel_recent,
+            MR.strings.settings_diagnostics_feedback_choose_channel,
+            MR.strings.settings_diagnostics_feedback_cannot_attach,
+            MR.strings.settings_diagnostics_feedback_preparing,
+            MR.strings.settings_diagnostics_feedback_upload_empty,
+            MR.strings.settings_diagnostics_feedback_draft_ready,
+            MR.strings.settings_diagnostics_feedback_upload_failed_prefix,
+            MR.strings.settings_diagnostics_feedback_composer_seed
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "storage and diagnostics feedback copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        assertTrue(
+            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(3)) is ResourceFormattedStringDesc
+        )
+    }
+
+    @Test
+    fun settingsRootNavigationStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_title,
+            MR.strings.settings_navigation_section_personal,
+            MR.strings.settings_navigation_section_workspace,
+            MR.strings.settings_navigation_section_about,
+            MR.strings.settings_account_title,
+            MR.strings.settings_account_subtitle,
+            MR.strings.settings_language_region_title,
+            MR.strings.settings_language_region_subtitle,
+            MR.strings.settings_appearance_title,
+            MR.strings.settings_appearance_subtitle,
+            MR.strings.settings_notifications_title,
+            MR.strings.settings_notifications_subtitle,
+            MR.strings.settings_mobile_title,
+            MR.strings.settings_mobile_subtitle,
+            MR.strings.settings_billing_title,
+            MR.strings.settings_billing_subtitle,
+            MR.strings.settings_computers_title,
+            MR.strings.settings_computers_subtitle,
+            MR.strings.settings_feedback_title,
+            MR.strings.settings_feedback_subtitle,
+            MR.strings.settings_release_notes_title,
+            MR.strings.settings_release_notes_subtitle,
+            MR.strings.settings_diagnostics_feedback_channel_title,
+            MR.strings.settings_diagnostics_feedback_channel_subtitle
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Settings root navigation copy must use KMM Resource strings"
+            )
+        }
+    }
+
+    @Test
+    fun settingsAccountStringResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_account_profile_section,
+            MR.strings.settings_account_display_name,
+            MR.strings.settings_account_verified,
+            MR.strings.settings_account_save_profile,
+            MR.strings.settings_account_connected_accounts,
+            MR.strings.settings_account_change_password,
+            MR.strings.settings_account_password_mismatch,
+            MR.strings.settings_account_session,
+            MR.strings.settings_account_logout_confirm
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "Account copy must use KMM Resource strings"
+            )
+        }
+
+        listOf(
+            MR.strings.settings_account_connected_as.format(listOf("artin@example.com")),
+            MR.strings.settings_account_provider_fallback.format(listOf(2)),
+            MR.strings.settings_account_provider_link_failed.format(listOf("oauth_failed")),
+            MR.strings.settings_account_avatar_upload_failed.format(listOf("upload_failed")),
+            MR.strings.settings_account_profile_save_failed.format(listOf("server_unavailable")),
+            MR.strings.settings_account_password_update_failed.format(listOf("invalid_password"))
+        ).forEach { desc ->
+            assertTrue(desc is ResourceFormattedStringDesc)
+        }
     }
 
     @Test
@@ -491,21 +622,36 @@ class KmmResourceI18nTest {
             MR.strings.settings_appearance_preview_message,
             MR.strings.settings_message_alignment_left,
             MR.strings.settings_message_alignment_right,
+            MR.strings.settings_message_alignment_detail,
             MR.strings.settings_mobile_compact_messages,
+            MR.strings.settings_mobile_compact_detail,
+            MR.strings.settings_mobile_status_enabled,
             MR.strings.settings_mobile_compact_enabled,
             MR.strings.settings_mobile_compact_disabled,
+            MR.strings.settings_mobile_long_message_collapse,
+            MR.strings.settings_mobile_long_message_collapse_detail,
+            MR.strings.settings_mobile_long_message_collapse_enabled,
+            MR.strings.settings_mobile_long_message_collapse_disabled,
             MR.strings.settings_mobile_activity_task_badges,
+            MR.strings.settings_mobile_activity_task_badges_detail,
             MR.strings.settings_mobile_activity_task_badges_enabled,
             MR.strings.settings_mobile_activity_task_badges_disabled,
             MR.strings.settings_mobile_composer_key,
+            MR.strings.settings_mobile_composer_key_detail,
+            MR.strings.settings_mobile_composer_key_send,
+            MR.strings.settings_mobile_composer_key_new_line,
             MR.strings.settings_mobile_composer_key_enabled,
             MR.strings.settings_mobile_composer_key_disabled,
             MR.strings.settings_mobile_message_row_actions,
+            MR.strings.settings_mobile_message_row_actions_detail,
+            MR.strings.settings_mobile_reactions,
+            MR.strings.settings_mobile_saved,
             MR.strings.settings_mobile_reactions_enabled,
             MR.strings.settings_mobile_reactions_disabled,
             MR.strings.settings_mobile_saved_enabled,
             MR.strings.settings_mobile_saved_disabled,
             MR.strings.settings_mobile_image_annotation,
+            MR.strings.settings_mobile_image_annotation_detail,
             MR.strings.settings_mobile_image_annotation_enabled,
             MR.strings.settings_mobile_image_annotation_disabled,
             MR.strings.settings_notifications_loading,
@@ -526,6 +672,78 @@ class KmmResourceI18nTest {
             assertTrue(
                 resource.desc() is ResourceStringDesc,
                 "settings mobile preference copy must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
+    fun settingsComputersProductionResourcesAreGenerated() {
+        listOf(
+            MR.strings.settings_computers_detail_subtitle,
+            MR.strings.settings_computers_add_computer,
+            MR.strings.settings_computers_detail_computer,
+            MR.strings.settings_computers_detail_loading,
+            MR.strings.settings_computers_detail_unavailable,
+            MR.strings.settings_computers_detail_no_access,
+            MR.strings.settings_computers_detail_error_load,
+            MR.strings.settings_computers_section_agents,
+            MR.strings.settings_computers_action_select,
+            MR.strings.settings_computers_action_create,
+            MR.strings.settings_computers_section_workspaces,
+            MR.strings.settings_computers_section_actions,
+            MR.strings.settings_computers_rotate_key_title,
+            MR.strings.settings_computers_rotate_key_detail,
+            MR.strings.settings_computers_rotate_key_action,
+            MR.strings.settings_computers_rotate_key_busy,
+            MR.strings.settings_computers_delete_title,
+            MR.strings.settings_computers_delete_detail,
+            MR.strings.settings_computers_delete_action,
+            MR.strings.settings_computers_delete_busy,
+            MR.strings.settings_computers_status_connected,
+            MR.strings.settings_computers_status_offline,
+            MR.strings.settings_computers_section_name,
+            MR.strings.settings_computers_label_name,
+            MR.strings.settings_computers_action_saving,
+            MR.strings.settings_computers_section_description,
+            MR.strings.settings_computers_label_description,
+            MR.strings.settings_computers_placeholder_description,
+            MR.strings.settings_computers_state_no_description,
+            MR.strings.settings_computers_section_info,
+            MR.strings.settings_computers_label_os,
+            MR.strings.settings_computers_label_version,
+            MR.strings.settings_computers_label_created,
+            MR.strings.settings_computers_label_runtimes,
+            MR.strings.settings_computers_state_unknown,
+            MR.strings.settings_computers_kind_computer,
+            MR.strings.settings_computers_kind_daemon,
+            MR.strings.settings_computers_error_title_cannot_delete,
+            MR.strings.settings_computers_error_title_request_rejected,
+            MR.strings.settings_computers_error_title_offline,
+            MR.strings.settings_computers_error_title_permission,
+            MR.strings.settings_computers_error_title_session,
+            MR.strings.settings_computers_error_title_action,
+            MR.strings.settings_computers_create_agent_error_empty,
+            MR.strings.settings_computers_create_agent_error_forbidden
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "settings computers static copy must produce ResourceStringDesc entries"
+            )
+        }
+
+        listOf(
+            MR.strings.settings_computers_workspace_modified.format(listOf("today")),
+            MR.strings.settings_computers_file_count_one.format(listOf(1)),
+            MR.strings.settings_computers_file_count_many.format(listOf(2)),
+            MR.strings.settings_computers_run_offline.format(listOf("computer")),
+            MR.strings.settings_computers_run_online.format(listOf("computer")),
+            MR.strings.settings_computers_run_version.format(listOf("computer", "1.0")),
+            MR.strings.settings_computers_create_agent_error_load_computers.format(listOf("code")),
+            MR.strings.settings_computers_create_agent_error_failed.format(listOf("code"))
+        ).forEach { desc ->
+            assertTrue(
+                desc is ResourceFormattedStringDesc,
+                "settings computers formatted copy must produce ResourceFormattedStringDesc entries"
             )
         }
     }

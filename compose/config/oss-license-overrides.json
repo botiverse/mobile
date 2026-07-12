@@ -44,7 +44,7 @@
       "displayName": "Hands Android SDK",
       "licenseName": "MIT License",
       "licenseUrl": "https://opensource.org/licenses/MIT",
-      "sourceUrl": "https://github.com/oranix-io/hands",
+      "sourceUrl": "https://github.com/botiverse/hands",
       "reason": "The artifact's POM declares MIT, but Gradle metadata can be preferred during artifact resolution; keep the Android package disclosure deterministic."
     },
     {

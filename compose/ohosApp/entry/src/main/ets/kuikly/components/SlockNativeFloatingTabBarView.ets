@@ -49,6 +49,16 @@ interface SlockHdsTabItem {
   enabled: boolean;
 }
 
+interface SlockHdsThemeOptions {
+  colorMode: ThemeColorMode;
+  enableThemeColorMode: boolean;
+}
+
+const kHdsLightThemeOptions: SlockHdsThemeOptions = {
+  colorMode: ThemeColorMode.LIGHT,
+  enableThemeColorMode: true,
+};
+
 @Observed
 export class SlockNativeFloatingTabBarView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockNativeFloatingTabBarView';
@@ -182,48 +192,50 @@ export struct SlockNativeFloatingTabBar {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      HdsTabs({
-        index: this.renderView.selectedIndex(),
-        controller: this.renderView.controller,
-        barPosition: kBottomBarPosition,
-      }) {
-        ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
-          TabContent() {
-            Column() {
-              Blank()
-                .width('100%')
-                .height(1)
+      WithTheme(kHdsLightThemeOptions) {
+        HdsTabs({
+          index: this.renderView.selectedIndex(),
+          controller: this.renderView.controller,
+          barPosition: kBottomBarPosition,
+        }) {
+          ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
+            TabContent() {
+              Column() {
+                Blank()
+                  .width('100%')
+                  .height(1)
+              }
             }
-          }
-          .tabBar(this.tabBarItem(item, index))
-        }, (item: SlockHdsTabItem) => item.key)
+            .tabBar(this.tabBarItem(item, index))
+          }, (item: SlockHdsTabItem) => item.key)
+        }
+        .vertical(false)
+        .barMode(BarMode.Fixed)
+        .scrollable(false)
+        .animationDuration(kAnimationDuration)
+        .barHeight(kDockHeight)
+        .barOverlap(true)
+        .barFloatingStyle({
+          barSideMargin: kDockSideMargin,
+          barBottomMargin: kDockBottomMargin,
+          adaptToHandedness: true,
+          thermoCtrl: true,
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE,
+          },
+        })
+        .onChange((index: number) => {
+          this.renderView.syncControllerIndex(index);
+        })
+        .onTabBarClick((index: number) => {
+          this.renderView.selectIndex(index);
+        })
+        .divider({ mode: DividerMode.NONE })
+        .width('100%')
+        .height(`${kDockHostHeight}vp`)
+        .backgroundColor('#00FFFFFF')
       }
-      .vertical(false)
-      .barMode(BarMode.Fixed)
-      .scrollable(false)
-      .animationDuration(kAnimationDuration)
-      .barHeight(kDockHeight)
-      .barOverlap(true)
-      .barFloatingStyle({
-        barSideMargin: kDockSideMargin,
-        barBottomMargin: kDockBottomMargin,
-        adaptToHandedness: true,
-        thermoCtrl: true,
-        systemMaterialEffect: {
-          materialType: hdsMaterial.MaterialType.ADAPTIVE,
-          materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE,
-        },
-      })
-      .onChange((index: number) => {
-        this.renderView.syncControllerIndex(index);
-      })
-      .onTabBarClick((index: number) => {
-        this.renderView.selectIndex(index);
-      })
-      .divider({ mode: DividerMode.NONE })
-      .width('100%')
-      .height(`${kDockHostHeight}vp`)
-      .backgroundColor('#00FFFFFF')
     }
     .width('100%')
     .height(`${kDockHostHeight}vp`)
@@ -253,9 +265,6 @@ export struct SlockNativeFloatingTabBar {
     .alignItems(HorizontalAlign.Center)
     .borderRadius(16)
     .backgroundColor('#00FFFFFF')
-    .onClick(() => {
-      this.renderView.selectIndex(index);
-    })
   }
 }
 

@@ -51,6 +51,18 @@ class AndroidShellWindowContractTest {
     }
 
     @Test
+    fun serverDocumentShellNeverFallsBackToDefaultTaskClear() {
+        val target = resolveAndroidShellLaunchTarget(
+            JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-2")
+        )
+
+        val taskLaunch = target.taskLaunchPlan(requestedTaskClear = true)
+
+        assertFalse(taskLaunch.clearTask)
+        assertEquals("server-shell:server-2", taskLaunch.documentShellId)
+    }
+
+    @Test
     fun pageDataRoundTripKeepsIdentityAndIntent() {
         val source = JSONObject().put("slockNotificationMessageId", "message-1")
         val target = AndroidShellLaunchTarget("shell-a", "server-a", documentShell = true)

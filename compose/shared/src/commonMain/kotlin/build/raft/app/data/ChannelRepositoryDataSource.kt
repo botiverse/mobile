@@ -17,11 +17,17 @@ private val channelRepositoryJson = Json {
     encodeDefaults = true
 }
 
-private suspend fun SlockNetworkClient.channels(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "channels")
+private suspend fun SlockNetworkClient.channels(
+    priority: DataRequestPriority,
+    serverId: ServerId? = null
+): HomeNetworkResponse =
+    request(priority, "channels", serverIdOverride = serverId)
 
-private suspend fun SlockNetworkClient.directMessages(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "channels/dm")
+private suspend fun SlockNetworkClient.directMessages(
+    priority: DataRequestPriority,
+    serverId: ServerId? = null
+): HomeNetworkResponse =
+    request(priority, "channels/dm", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "channels/unread")
@@ -104,6 +110,9 @@ class RealChannelRepository(
         currentContext() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        if (!name.isValidChannelName()) {
+            return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
+        }
         return executeChannel(
             emptyReason = EmptyReason.NoChannels,
             block = { networkClient.createChannel(DataRequestPriority.Foreground, buildCreateChannelBody(request)) },
@@ -213,7 +222,7 @@ class RealChannelRepository(
     private suspend fun fetchChannels(context: SharedChannelServerContext): DataResult<ChannelSnapshot> =
         executeChannel(
             emptyReason = EmptyReason.NoChannels,
-            block = { networkClient.channels(DataRequestPriority.Visible) },
+            block = { networkClient.channels(DataRequestPriority.Visible, context.server.id) },
             emptyWhen = { it.channels.isEmpty() },
             source = "home_channels",
             mapper = { bodyText ->
@@ -227,7 +236,7 @@ class RealChannelRepository(
     private suspend fun fetchDirectMessages(context: SharedChannelServerContext): DataResult<DirectMessageSnapshot> =
         executeChannel(
             emptyReason = EmptyReason.NoChannels,
-            block = { networkClient.directMessages(DataRequestPriority.Visible) },
+            block = { networkClient.directMessages(DataRequestPriority.Visible, context.server.id) },
             emptyWhen = { it.directMessages.isEmpty() },
             source = "home_direct_messages",
             mapper = { bodyText ->
@@ -395,9 +404,8 @@ private data class SharedChannelServerContext(
 )
 
 private fun StoredAuthSession.toChannelServerContext(serverId: ServerId): SharedChannelServerContext? {
-    val selectedId = currentServerId ?: return null
-    if (selectedId != serverId.value) return null
-    val server = servers.firstOrNull { it.id == selectedId }?.toServerSummary() ?: return null
+    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    val server = servers.firstOrNull { it.id == requestedId }?.toServerSummary() ?: return null
     return SharedChannelServerContext(session = this, server = server)
 }
 
@@ -420,11 +428,20 @@ private fun <T> HomeNetworkResponse.toChannelDataError(): DataResult<T> =
 private fun HomeNetworkResponse.channelErrorCode(fallback: String): String {
     val payload = bodyText ?: errorBodyText ?: return fallback
     return runCatching {
-        channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
-            .code
+        val errorBody = channelRepositoryJson.decodeFromString(ChannelErrorBody.serializer(), payload)
+        errorBody.code
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+            ?: errorBody.error.toChannelValidationErrorCode()
     }.getOrNull() ?: fallback
+}
+
+private fun String?.toChannelValidationErrorCode(): String? {
+    val normalized = this?.trim()?.lowercase().orEmpty()
+    return when {
+        "channel name must start with a letter" in normalized -> "channel_name_invalid"
+        else -> null
+    }
 }
 
 private fun List<String>.cleanCreateChannelIds(): List<String> =

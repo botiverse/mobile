@@ -24,6 +24,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
     private var appliedColor: String? = null
     private var appliedFill: String? = null
     private var appliedStrokeWidth: Float? = null
+    private var appliedVerticalOffsetDp: Float? = null
     private var appliedNativeSpinning: Boolean? = null
     private var appliedNativeRotationDegrees: Float? = null
 
@@ -38,6 +39,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         color: String,
         fill: String,
         strokeWidth: Float,
+        verticalOffsetDp: Float,
         nativeSpinning: Boolean,
         nativeRotationDegrees: Float?,
         force: Boolean = false
@@ -48,6 +50,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
                 appliedColor == color &&
                 appliedFill == fill &&
                 appliedStrokeWidth == strokeWidth &&
+                appliedVerticalOffsetDp == verticalOffsetDp &&
                 appliedNativeSpinning == nativeSpinning &&
                 appliedNativeRotationDegrees == nativeRotationDegrees
         ) {
@@ -57,6 +60,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
         appliedColor = color
         appliedFill = fill
         appliedStrokeWidth = strokeWidth
+        appliedVerticalOffsetDp = verticalOffsetDp
         appliedNativeSpinning = nativeSpinning
         appliedNativeRotationDegrees = nativeRotationDegrees
         getViewAttr().run {
@@ -64,6 +68,7 @@ internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Ev
             color(color)
             fill(fill)
             strokeWidth(strokeWidth)
+            verticalOffsetDp(verticalOffsetDp)
             spinning(nativeSpinning)
             nativeRotationDegrees?.let { rotationDegrees(it) }
         }
@@ -95,6 +100,11 @@ internal class SlockLucideIconAttr : Attr() {
         return this
     }
 
+    fun verticalOffsetDp(value: Float): SlockLucideIconAttr {
+        "verticalOffsetDp" with value
+        return this
+    }
+
     fun rotationDegrees(value: Float): SlockLucideIconAttr {
         "rotationDegrees" with value
         return this
@@ -114,6 +124,7 @@ internal fun SlockLucideIcon(
     color: String = SlockColor.TextBlackArgb,
     fill: String? = null,
     strokeWidth: Float? = null,
+    verticalOffsetDp: Float = 0f,
     spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
@@ -124,6 +135,7 @@ internal fun SlockLucideIcon(
         color = color,
         fill = fill,
         strokeWidth = strokeWidth,
+        verticalOffsetDp = verticalOffsetDp,
         spinning = spinning,
         rotationDegrees = rotationDegrees,
         rotationAnimationDurationSeconds = rotationAnimationDurationSeconds
@@ -138,6 +150,7 @@ internal fun SlockLucideIcon(
     color: String = SlockColor.TextBlackArgb,
     fill: String? = null,
     strokeWidth: Float? = null,
+    verticalOffsetDp: Float = 0f,
     spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
@@ -148,6 +161,7 @@ internal fun SlockLucideIcon(
         color = color,
         fill = fill,
         strokeWidth = strokeWidth,
+        verticalOffsetDp = verticalOffsetDp,
         spinning = spinning,
         rotationDegrees = rotationDegrees,
         rotationAnimationDurationSeconds = rotationAnimationDurationSeconds
@@ -161,6 +175,7 @@ internal fun SlockLucideIconByName(
     color: String = SlockColor.TextBlackArgb,
     fill: String? = null,
     strokeWidth: Float? = null,
+    verticalOffsetDp: Float = 0f,
     spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
@@ -200,13 +215,14 @@ internal fun SlockLucideIconByName(
             modifier
         }
     val updateIconAttrs =
-        remember(name, color, resolvedFill, resolvedStrokeWidth, nativeSpinning, nativeRotationDegrees) {
+        remember(name, color, resolvedFill, resolvedStrokeWidth, verticalOffsetDp, nativeSpinning, nativeRotationDegrees) {
             { view: SlockLucideIconView ->
                 view.applyIconAttrs(
                     name = name,
                     color = color,
                     fill = resolvedFill,
                     strokeWidth = resolvedStrokeWidth,
+                    verticalOffsetDp = verticalOffsetDp,
                     nativeSpinning = nativeSpinning,
                     nativeRotationDegrees = nativeRotationDegrees
                 )
@@ -221,6 +237,7 @@ internal fun SlockLucideIconByName(
                 color = color,
                 fill = resolvedFill,
                 strokeWidth = resolvedStrokeWidth,
+                verticalOffsetDp = verticalOffsetDp,
                 nativeSpinning = nativeSpinning,
                 nativeRotationDegrees = nativeRotationDegrees,
                 force = true

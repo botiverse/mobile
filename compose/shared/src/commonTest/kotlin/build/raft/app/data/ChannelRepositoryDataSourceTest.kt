@@ -96,6 +96,36 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
+    fun createChannelRejectsInvalidNameBeforeNetwork() = runBlocking {
+        val network = FakeChannelNetworkClient()
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.createChannel(CreateChannelRequest(name = "中文频道"))
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("channel_name_invalid", error.code)
+        assertEquals(false, error.retryable)
+        assertEquals(emptyList(), network.requests)
+    }
+
+    @Test
+    fun createChannelMapsServerNameValidationMessageToTypedCode() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseCode = 400,
+                responseBody =
+                    """{"error":"Channel name must start with a letter and can only contain letters, numbers, hyphens, and underscores"}"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result = repository.createChannel(CreateChannelRequest(name = "valid-name"))
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("channel_name_invalid", error.code)
+        assertEquals(false, error.retryable)
+    }
+
+    @Test
     fun channelCacheAllowsJoinedStateToBecomeFalse() = runBlocking {
         val network =
             FakeChannelNetworkClient(

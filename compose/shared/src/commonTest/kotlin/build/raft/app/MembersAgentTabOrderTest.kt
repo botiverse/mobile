@@ -1,10 +1,50 @@
 package build.raft.app
 
+import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 class MembersAgentTabOrderTest {
+
+    @Test
+    fun runtimeErrorBannerMatchesReactSharedPanelScope() {
+        val error = "Agent encountered an error"
+
+        assertEquals(
+            MembersAgentRuntimeErrorBannerState(errorText = error, showViewLogs = true),
+            membersAgentRuntimeErrorBannerState(
+                memberKind = MemberKind.Agent,
+                selectedTab = MembersAgentDetailTab.Profile,
+                runtimeErrorText = error
+            )
+        )
+        assertEquals(
+            MembersAgentRuntimeErrorBannerState(errorText = error, showViewLogs = false),
+            membersAgentRuntimeErrorBannerState(
+                memberKind = MemberKind.Agent,
+                selectedTab = MembersAgentDetailTab.Activity,
+                runtimeErrorText = error
+            )
+        )
+        assertEquals(
+            MembersAgentRuntimeErrorBannerState(errorText = error, showViewLogs = true),
+            membersAgentRuntimeErrorBannerState(
+                memberKind = MemberKind.Agent,
+                selectedTab = MembersAgentDetailTab.Chat,
+                runtimeErrorText = error
+            )
+        )
+        assertEquals(
+            null,
+            membersAgentRuntimeErrorBannerState(
+                memberKind = MemberKind.Human,
+                selectedTab = MembersAgentDetailTab.Profile,
+                runtimeErrorText = error
+            )
+        )
+    }
+
     @Test
     fun ordersAgentTabsFromReactSidebarOrderKeys() {
         val visibleTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)

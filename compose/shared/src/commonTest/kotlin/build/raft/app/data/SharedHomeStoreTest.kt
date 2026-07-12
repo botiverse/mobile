@@ -189,8 +189,8 @@ class SharedHomeStoreTest {
     @Test
     fun shellScopedHomeStoresKeepRuntimeServerSelectionsIndependent() = runBlocking {
         val processStore = InMemorySlockAuthSessionStore(sampleSession())
-        val runtimeA = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
-        val runtimeB = SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+        val runtimeA = SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
+        val runtimeB = SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
         val authA = SlockShellAuthSessionStore(processStore, runtimeA)
         val authB = SlockShellAuthSessionStore(processStore, runtimeB)
         val scopeA = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -318,7 +318,24 @@ class SharedHomeStoreTest {
                             lastMessageAt = "2026-07-01T00:00:00Z",
                             lastMessageSenderName = "Cached",
                             hasDraft = true,
-                            hasDraftKnown = true
+                            hasDraftKnown = true,
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(
+                                    activityMuted = true,
+                                    muteFromSeq = 9_223_372_036_854_775_000L,
+                                    activityMuteSupported = true
+                                )
+                        )
+                    ),
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Cached DM", "member-1", Presence.Active).copy(
+                            activityNotificationPreference =
+                                ChannelActivityNotificationPreference(
+                                    activityMuted = true,
+                                    muteFromSeq = 9_223_372_036_854_775_001L,
+                                    activityMuteSupported = true
+                                )
                         )
                     ),
                 sidebarOrder =
@@ -370,6 +387,14 @@ class SharedHomeStoreTest {
         assertEquals(0, hydratedContent.snapshot.channels.single().unreadCount)
         assertEquals(false, hydratedContent.snapshot.channels.single().hasDraft)
         assertEquals(null, hydratedContent.snapshot.channels.single().lastMessagePreview)
+        assertEquals(
+            ChannelActivityNotificationPreference.Unsupported,
+            hydratedContent.snapshot.channels.single().activityNotificationPreference
+        )
+        assertEquals(
+            ChannelActivityNotificationPreference.Unsupported,
+            hydratedContent.snapshot.directMessages.single().activityNotificationPreference
+        )
         assertEquals(emptyMap(), hydratedContent.snapshot.serverUnreadCounts)
         assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedChannelIds)
         assertEquals(listOf("channel-1"), hydratedContent.snapshot.sidebarOrder?.pinnedOrder)

@@ -6524,6 +6524,9 @@ class ThreadPayloadTest {
         assertEquals("att-1", attachments.first().id)
         assertEquals("report.pdf", attachments.first().fileName)
         assertEquals("application/pdf", attachments.first().mimeType)
+        assertEquals(12288L, attachments.first().sizeBytes)
+        assertEquals("", attachments.first().sizeLabel)
+        assertEquals("12.0 KB", attachments.first().displaySizeLabel())
     }
 
     @Test
@@ -6624,11 +6627,12 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadMessageSavedBadgeIsHiddenByDefault() {
-        assertFalse(
+    fun threadMessageSavedBadgeTracksSavedStateIndependentlyOfRowActionPreferences() {
+        assertEquals(SlockColor.AccentOrange.copy(alpha = 0.15f), ThreadMessageSavedBadgeColor)
+        assertEquals(SlockColor.AccentOrangeArgb, ThreadMessageSavedBadgeIconColorArgb)
+        assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = false,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = true
@@ -6637,7 +6641,6 @@ class ThreadPayloadTest {
         assertFalse(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = false
@@ -6646,7 +6649,6 @@ class ThreadPayloadTest {
         assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = false,
                 isSaved = true
@@ -6655,7 +6657,6 @@ class ThreadPayloadTest {
         assertFalse(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,
-                showInlineSaveAction = true,
                 richContentEnabled = true,
                 hasLocalSendState = true,
                 isSaved = true

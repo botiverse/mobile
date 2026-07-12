@@ -65,26 +65,100 @@ internal class SlockShellScopedStoreCache<Value>(
         get() = synchronized(lock) { values.size }
 }
 
-internal class SlockShellStoreRuntime internal constructor(
-    val scope: SlockShellStoreScope
+internal data class SelectedServerSelection(
+    val serverId: String?,
+    val serverSlug: String?
+)
+
+internal class SelectedServerStore internal constructor(
+    val scope: SlockShellStoreScope,
+    private val mutex: Mutex = Mutex()
 ) {
-    private val _currentServerId = MutableStateFlow(scope.initialServerId)
-    val currentServerId: StateFlow<String?> = _currentServerId.asStateFlow()
+    private val requestedInitialServerId = scope.initialServerId
+    private var ownerUserId: String? = null
+    private var selectedServerSlug: String? = null
+    private var selectionInitialized: Boolean = requestedInitialServerId != null
+    private val _selectedServerId = MutableStateFlow(requestedInitialServerId)
+    val selectedServerId: StateFlow<String?> = _selectedServerId.asStateFlow()
+
+    // Compatibility alias while call sites migrate to the explicit selection store.
+    val currentServerId: StateFlow<String?> = selectedServerId
 
     private val _disposed = MutableStateFlow(false)
     val disposed: StateFlow<Boolean> = _disposed.asStateFlow()
 
-    internal fun updateServer(serverId: String?) {
-        _currentServerId.value = serverId?.trim()?.takeIf { it.isNotBlank() }
+    fun isSelected(serverId: String?): Boolean {
+        val normalized = serverId?.trim()?.takeIf { it.isNotBlank() }
+        return normalized != null && selectedServerId.value == normalized
     }
+
+    internal suspend fun select(serverId: String?, serverSlug: String?): SelectedServerSelection =
+        mutex.withLock {
+            val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
+            selectionInitialized = true
+            _selectedServerId.value = normalizedServerId
+            selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
+            selection()
+        }
+
+    internal suspend fun reconcile(session: StoredAuthSession): SelectedServerSelection =
+        mutex.withLock {
+            if (ownerUserId != session.user.id) {
+                ownerUserId = session.user.id
+                val initialSelection =
+                    requestedInitialServerId
+                        ?.takeIf { requested -> session.servers.any { it.id == requested } }
+                _selectedServerId.value = initialSelection ?: session.selectedServerId
+                selectedServerSlug =
+                    session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
+                        ?: session.selectedServerSlug
+                selectionInitialized = true
+            } else if (!selectionInitialized) {
+                _selectedServerId.value = session.selectedServerId
+                selectedServerSlug = session.selectedServerSlug
+                selectionInitialized = true
+            } else if (selectedServerId.value != null && session.servers.none { it.id == selectedServerId.value }) {
+                // Losing the selected membership does not authorize inheriting another
+                // shell's process last-used server.
+                _selectedServerId.value = null
+                selectedServerSlug = null
+            } else if (selectedServerSlug == null) {
+                selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId.value }?.slug
+            }
+            selection()
+        }
+
+    internal suspend fun clearSelection() {
+        mutex.withLock {
+            ownerUserId = null
+            _selectedServerId.value = requestedInitialServerId
+            selectedServerSlug = null
+            selectionInitialized = requestedInitialServerId != null
+        }
+    }
+
+    internal suspend fun clearActiveSelection() {
+        mutex.withLock {
+            ownerUserId = null
+            _selectedServerId.value = null
+            selectedServerSlug = null
+            selectionInitialized = false
+        }
+    }
+
+    private fun selection(): SelectedServerSelection =
+        SelectedServerSelection(
+            serverId = selectedServerId.value,
+            serverSlug = selectedServerSlug
+        )
 
     internal fun dispose() {
         _disposed.value = true
     }
 }
 
-internal fun SlockShellScopedStoreCache<SlockShellStoreRuntime>.clearActiveServerSelections() {
-    entries().forEach { (_, runtime) -> runtime.updateServer(null) }
+internal suspend fun SlockShellScopedStoreCache<SelectedServerStore>.clearActiveServerSelections() {
+    entries().forEach { (_, runtime) -> runtime.clearActiveSelection() }
 }
 
 /**
@@ -96,19 +170,12 @@ internal fun SlockShellScopedStoreCache<SlockShellStoreRuntime>.clearActiveServe
  */
 internal class SlockShellAuthSessionStore(
     private val delegate: SlockAuthSessionStore,
-    private val runtime: SlockShellStoreRuntime,
-    private val onProcessSessionCleared: () -> Unit = {}
+    private val selectedServerStore: SelectedServerStore,
+    private val onProcessSessionCleared: suspend () -> Unit = {}
 ) : SlockAuthSessionStore {
-    private val mutex = Mutex()
-    private val requestedInitialServerId = runtime.scope.initialServerId
-    private var ownerUserId: String? = null
-    private var selectedServerId: String? = requestedInitialServerId
-    private var selectedServerSlug: String? = null
-    private var selectionInitialized: Boolean = requestedInitialServerId != null
-
     override suspend fun readSession(): StoredAuthSession? {
         val session = delegate.readSession() ?: return null
-        val selection = resolveSelection(session)
+        val selection = selectedServerStore.reconcile(session)
         return session.copy(
             selectedServerId = selection.serverId,
             selectedServerSlug = selection.serverSlug,
@@ -134,7 +201,7 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
-        resolveSelection(session)
+        selectedServerStore.reconcile(session)
         delegate.replaceAuthenticatedSessionPreservingSelection(session)
     }
 
@@ -169,11 +236,11 @@ internal class SlockShellAuthSessionStore(
                 selectedServerSlug = processSession.selectedServerSlug
             )
         }
-        delegate.readSession()?.let { resolveSelection(it) }
+        delegate.readSession()?.let { selectedServerStore.reconcile(it) }
     }
 
     private suspend fun StoredAuthSession.withShellSelection(): StoredAuthSession {
-        val selection = resolveSelection(this)
+        val selection = selectedServerStore.reconcile(this)
         return copy(
             selectedServerId = selection.serverId,
             selectedServerSlug = selection.serverSlug,
@@ -182,63 +249,14 @@ internal class SlockShellAuthSessionStore(
     }
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotBlank() }
-        mutex.withLock {
-            selectionInitialized = true
-            selectedServerId = normalizedServerId
-            selectedServerSlug = serverSlug?.trim()?.takeIf { it.isNotBlank() }
-        }
-        runtime.updateServer(normalizedServerId)
+        val selection = selectedServerStore.select(serverId, serverSlug)
         // The process-level value is intentionally only the next-launch default.
-        delegate.updateSelectedServer(normalizedServerId, serverSlug)
+        delegate.updateSelectedServer(selection.serverId, selection.serverSlug)
     }
 
     override suspend fun clearSession(reason: String, source: String) {
-        mutex.withLock {
-            ownerUserId = null
-            selectedServerId = requestedInitialServerId
-            selectedServerSlug = null
-            selectionInitialized = requestedInitialServerId != null
-        }
-        runtime.updateServer(null)
+        selectedServerStore.clearSelection()
         delegate.clearSession(reason, source)
         onProcessSessionCleared()
     }
-
-    private suspend fun resolveSelection(session: StoredAuthSession): ShellServerSelection =
-        mutex.withLock {
-            if (ownerUserId != session.user.id) {
-                ownerUserId = session.user.id
-                val initialSelection =
-                    requestedInitialServerId
-                        ?.takeIf { requested -> session.servers.any { it.id == requested } }
-                selectedServerId = initialSelection ?: session.selectedServerId
-                selectedServerSlug =
-                    session.servers.firstOrNull { it.id == selectedServerId }?.slug
-                        ?: session.selectedServerSlug
-                selectionInitialized = true
-            } else if (!selectionInitialized) {
-                selectedServerId = session.selectedServerId
-                selectedServerSlug = session.selectedServerSlug
-                selectionInitialized = true
-            } else if (selectedServerId != null && session.servers.none { it.id == selectedServerId }) {
-                // Losing the currently selected membership/server is not a request to
-                // inherit another shell's process last-used server. The shell has no
-                // selection until its own navigation selects one explicitly.
-                selectedServerId = null
-                selectedServerSlug = null
-            } else if (selectedServerSlug == null) {
-                selectedServerSlug = session.servers.firstOrNull { it.id == selectedServerId }?.slug
-            }
-            runtime.updateServer(selectedServerId)
-            ShellServerSelection(
-                serverId = selectedServerId,
-                serverSlug = selectedServerSlug
-            )
-        }
-
-    private data class ShellServerSelection(
-        val serverId: String?,
-        val serverSlug: String?
-    )
 }

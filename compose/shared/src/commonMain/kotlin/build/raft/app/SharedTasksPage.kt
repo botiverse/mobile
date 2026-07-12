@@ -1504,19 +1504,20 @@ private fun TasksCreateDialog(
     val anyNonBlank = titles.any { it.isNotBlank() }
     Modal(onWillDismiss = { onDismiss() }) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SlockColor.ShadowBlack.copy(alpha = 0.4f))
-                .clickable(onClick = onDismiss),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
+            SlockModalDismissBarrier(
+                overlayAlpha = 0.4f,
+                onDismiss = onDismiss
+            )
             Column(
                 modifier = Modifier
                     .padding(SlockSpacing.Md)
                     .widthIn(min = 280.dp, max = 360.dp)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(enabled = false, onClick = {})
+                    .slockFloatingContentClickTarget()
                     .padding(SlockSpacing.Md),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {

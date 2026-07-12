@@ -250,11 +250,14 @@ private fun SlockUnifiedDialogSurface(
     Box(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
-                .clickable(enabled = dismissEnabled, onClick = onDismiss),
+                .fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        SlockModalDismissBarrier(
+            overlayAlpha = overlayAlpha,
+            onDismiss = onDismiss,
+            dismissEnabled = dismissEnabled
+        )
         Box(
             modifier =
                 modifier
@@ -262,7 +265,7 @@ private fun SlockUnifiedDialogSurface(
                     .padding(bottom = hostBottomInset)
                     .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                     .widthIn(min = minWidth, max = maxWidth)
-                    .clickable(onClick = {})
+                    .slockFloatingContentClickTarget()
         ) {
             Box(
                 modifier =

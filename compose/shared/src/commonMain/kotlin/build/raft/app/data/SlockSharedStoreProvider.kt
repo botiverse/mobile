@@ -8,12 +8,14 @@ import build.raft.app.SharedThreadMessageStore
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.SlockPixelAvatarRuntime
 import build.raft.app.data.realtime.MessageSeqEnvelope
+import build.raft.app.data.realtime.MessageShadowObserver
 import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
 import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.refreshPixelAvatarsFromWeb
+import build.raft.app.slockLogError
 import build.raft.app.slockLogInfo
 import build.raft.app.slockLogWarn
 import build.raft.app.model.AgentCreated
@@ -36,12 +38,14 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
+import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -66,6 +70,11 @@ private fun sharedInfoLogger(tag: String, prefix: String = ""): (String) -> Unit
 private fun sharedWarnLogger(tag: String, prefix: String = ""): (String) -> Unit =
     { message ->
         slockLogWarn(tag, if (prefix.isBlank()) message else "$prefix $message")
+    }
+
+private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Unit =
+    { message ->
+        slockLogError(tag, if (prefix.isBlank()) message else "$prefix $message")
     }
 
 internal class SlockSharedStoreProvider private constructor(
@@ -99,7 +108,7 @@ internal class SlockSharedStoreProvider private constructor(
     private val homeActivityStoreScope: CoroutineScope,
     val threadSendScope: CoroutineScope
 ) {
-    private val shellRuntimes = SlockShellScopedStoreCache<SlockShellStoreRuntime>()
+    private val selectedServerStores = SlockShellScopedStoreCache<SelectedServerStore>()
     private val shellAuthStores = SlockShellScopedStoreCache<SlockShellAuthSessionStore>()
     private val shellNetworkClients = SlockShellScopedStoreCache<SlockNetworkClient>()
     private val shellServerMembersStores = SlockShellScopedStoreCache<SharedServerMembersStore>()
@@ -113,6 +122,29 @@ internal class SlockSharedStoreProvider private constructor(
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
+
+    /**
+     * Server feature-flag evaluation (sync-core rollout gate). Prefetched per shell when its selected
+     * server changes (see [selectedServerStore]) — this is what makes `sync_core_messages_v0` traffic
+     * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
+     */
+    val serverFeatureFlags: SharedServerFeatureFlags =
+        SharedServerFeatureFlags(
+            api = SlockFeatureFlagsNetworkApi(networkClient),
+            diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
+        )
+
+    /**
+     * Flag-gated sync-core shadow-compare observer injected into [RealtimeEventMapper]. Off by default
+     * (`sync_core_messages_v0`), so it is a single flag lookup on the hot path until the rollout enables it;
+     * when on, it re-projects each message through the canonical pipeline and emits divergence diagnostics
+     * without touching the store. A provider-level singleton so all mapper instances share one gate.
+     */
+    val messageShadowObserver: MessageShadowObserver =
+        SyncCoreMessageShadowObserver(
+            featureFlags = serverFeatureFlags,
+            diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
+        )
 
     init {
         threadSendScope.launch {
@@ -134,13 +166,31 @@ internal class SlockSharedStoreProvider private constructor(
     fun sharedHomeStore(scope: SlockShellStoreScope): SharedHomeStore? =
         homeStores.get(scope)
 
-    fun shellRuntime(scope: SlockShellStoreScope): SlockShellStoreRuntime =
-        shellRuntimes.getOrPut(scope) { SlockShellStoreRuntime(scope) }
+    fun selectedServerStore(scope: SlockShellStoreScope): SelectedServerStore =
+        selectedServerStores.getOrPut(scope) {
+            SelectedServerStore(scope).also { selectionStore ->
+                // Prefetch registered server feature flags whenever this shell selects a server.
+                // StateFlow conflates to distinct values, so this evaluates once per server change.
+                // The collector lives on threadSendScope (not the shell scope), so cancel it when the
+                // store is disposed, or it would outlive an evicted shell selection store.
+                threadSendScope.launch {
+                    val prefetching = launch {
+                        selectionStore.currentServerId.collect { serverId ->
+                            if (!serverId.isNullOrBlank()) {
+                                runCatching { serverFeatureFlags.prefetch(ServerId(serverId)) }
+                            }
+                        }
+                    }
+                    selectionStore.disposed.first { it }
+                    prefetching.cancel()
+                }
+            }
+        }
 
     fun scopesForServer(serverId: String): List<SlockShellStoreScope> {
         val normalizedServerId = serverId.trim().takeIf { it.isNotBlank() } ?: return emptyList()
-        return shellRuntimes.entries().mapNotNull { (scope, runtime) ->
-            scope.takeIf { runtime.currentServerId.value == normalizedServerId && !runtime.disposed.value }
+        return selectedServerStores.entries().mapNotNull { (scope, selectionStore) ->
+            scope.takeIf { selectionStore.isSelected(normalizedServerId) && !selectionStore.disposed.value }
         }
     }
 
@@ -148,7 +198,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellAuthStores.getOrPut(scope) {
             SlockShellAuthSessionStore(
                 delegate = authStore,
-                runtime = shellRuntime(scope),
+                selectedServerStore = selectedServerStore(scope),
                 onProcessSessionCleared = ::clearActiveShellServerSelections
             )
         }
@@ -365,13 +415,25 @@ internal class SlockSharedStoreProvider private constructor(
         }
     }
 
-    private fun clearActiveShellServerSelections() {
-        shellRuntimes.clearActiveServerSelections()
+    private suspend fun clearActiveShellServerSelections() {
+        // A queued invalidation can resume after a new login. In that case the
+        // process session is authoritative and the stale logout must not clear
+        // the newly reconciled shell selections.
+        if (authStore.readSession() != null) return
+        selectedServerStores.clearActiveServerSelections()
+        // Close the remaining check/clear race: if login completed while the
+        // fan-out was clearing stores, immediately reconcile every live shell
+        // from the new process session.
+        authStore.readSession()?.let { restoredSession ->
+            selectedServerStores.entries().forEach { (_, selectionStore) ->
+                selectionStore.reconcile(restoredSession)
+            }
+        }
     }
 
     fun releaseShellStoreScope(scope: SlockShellStoreScope) {
         if (scope == SlockShellStoreScope.Legacy) return
-        shellRuntimes.get(scope)?.dispose()
+        selectedServerStores.get(scope)?.dispose()
         homeStores.remove(scope)?.clear()
         homeActivityStores.remove(scope)?.clear()
         homeStoreScopes.remove(scope)?.cancel()
@@ -382,7 +444,7 @@ internal class SlockSharedStoreProvider private constructor(
         shellRealtimeDomainEventOwners.remove(scope)
         shellAgentDetailStores.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
-        shellRuntimes.remove(scope)
+        selectedServerStores.remove(scope)
     }
 
     fun installAuthSessionClearNotifyBridge(logger: (String) -> Unit) {
@@ -565,13 +627,15 @@ internal class SlockSharedStoreProvider private constructor(
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist")
+                        diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
+                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 homeIdentityPersistSlice =
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
-                        diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist")
+                        diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist"),
+                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist")
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,

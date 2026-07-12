@@ -370,7 +370,7 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
             )
         } else if (optional) {
             Text(
-                text = "optional",
+                text = stringResource(MR.strings.common_optional_suffix),
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.SlockBrutalActionButton
 import build.raft.app.components.SlockBrutalIconButton
+import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
@@ -77,6 +78,7 @@ internal data class KuiklyThreadFileItem(
     val channelId: String = "",
     val name: String,
     val sizeLabel: String = "",
+    val sizeBytes: Long = 0L,
     val createdAtLabel: String = "",
     val sourceLabel: String = "",
     val sourceType: String = "",
@@ -330,7 +332,7 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        item.sizeLabel.takeIf { it.isNotBlank() }?.let { label ->
+        item.displaySizeLabel().takeIf { it.isNotBlank() }?.let { label ->
             Text(
                 text = label,
                 style = SlockType.Input.copy(
@@ -368,6 +370,9 @@ private fun ThreadFileMetaLine(item: KuiklyThreadFileItem) {
         }
     }
 }
+
+internal fun KuiklyThreadFileItem.displaySizeLabel(): String =
+    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 internal fun KuiklyThreadFileItem.threadFileHasSourceTarget(): Boolean =
     threadFileSourceFocusMessageId() != null

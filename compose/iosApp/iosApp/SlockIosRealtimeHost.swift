@@ -321,15 +321,23 @@ final class SlockIosRealtimeHost: NSObject {
     @objc private func appDidBecomeActive() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.sendAppLifecycle(event: "show")
             if self.state == .disconnected, let params = self.connectParams {
                 self.openSocket(params: params)
             }
+            SlockHostVisibilityKt.updateSlockHostVisibility(
+                shellInstanceId: "legacy-app-shell",
+                visible: true
+            )
+            self.sendAppLifecycle(event: "show")
         }
     }
 
     @objc private func appWillResignActive() {
         queue.async { [weak self] in
+            SlockHostVisibilityKt.updateSlockHostVisibility(
+                shellInstanceId: "legacy-app-shell",
+                visible: false
+            )
             self?.sendAppLifecycle(event: "hide")
             self?.disconnectLocked(reason: "background", keepSession: true)
         }

@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.ComposeView
@@ -26,11 +27,15 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     private var tint: Color = Color.Black
     private var fillTint: Color? = null
     private var strokeWidthOverride: Float? = null
+    private var verticalOffsetPx: Float = 0f
     private var renderedVectorKey: IconVectorKey? = null
     private var renderedVector: ImageVector? by mutableStateOf<ImageVector?>(null)
     private var renderedTint: Color by mutableStateOf(Color.Black)
+    private var renderedVerticalOffsetPx: Float by mutableStateOf(0f)
 
     init {
+        clipChildren = false
+        clipToPadding = false
         addView(
                 composeView,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
@@ -38,7 +43,7 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         composeView.setContent {
             val vector = renderedVector
             if (vector != null) {
-                LucideVectorIcon(vector = vector, tint = renderedTint)
+                LucideVectorIcon(vector = vector, tint = renderedTint, verticalOffsetPx = renderedVerticalOffsetPx)
             }
         }
         renderIcon()
@@ -51,6 +56,7 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     PROP_COLOR -> updateTint(parseColor(propValue))
                     PROP_FILL -> updateFillTint(parseOptionalColor(propValue))
                     PROP_STROKE_WIDTH -> updateStrokeWidth(parseStrokeWidth(propValue))
+                    PROP_VERTICAL_OFFSET_DP -> updateVerticalOffset(parseVerticalOffset(propValue))
                     else -> return super.setProp(propKey, propValue)
                 }
         if (changed) {
@@ -66,6 +72,7 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     PROP_COLOR -> updateTint(Color.Black)
                     PROP_FILL -> updateFillTint(null)
                     PROP_STROKE_WIDTH -> updateStrokeWidth(null)
+                    PROP_VERTICAL_OFFSET_DP -> updateVerticalOffset(0f)
                     else -> return super.resetProp(propKey)
                 }
         if (changed) {
@@ -103,6 +110,16 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
             return false
         }
         strokeWidthOverride = next
+        return true
+    }
+
+    private fun updateVerticalOffset(nextDp: Float): Boolean {
+        val nextPx = nextDp * resources.displayMetrics.density
+        if (verticalOffsetPx == nextPx) {
+            return false
+        }
+        verticalOffsetPx = nextPx
+        renderedVerticalOffsetPx = nextPx
         return true
     }
 
@@ -159,12 +176,12 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     .build()
 
     @Composable
-    private fun LucideVectorIcon(vector: ImageVector, tint: Color) {
+    private fun LucideVectorIcon(vector: ImageVector, tint: Color, verticalOffsetPx: Float) {
         Icon(
                 imageVector = vector,
                 contentDescription = null,
                 tint = tint,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize().graphicsLayer { translationY = verticalOffsetPx }
         )
     }
 
@@ -192,6 +209,13 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         }?.takeIf { it > 0f }
     }
 
+    private fun parseVerticalOffset(value: Any): Float =
+            when (value) {
+                is Number -> value.toFloat()
+                is String -> value.toFloatOrNull() ?: 0f
+                else -> 0f
+            }
+
     private fun String.toIconKey(): String =
             trim()
                     .replace(Regex("([a-z0-9])([A-Z])"), "$1-$2")
@@ -210,5 +234,6 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         private const val PROP_COLOR = "color"
         private const val PROP_FILL = "fill"
         private const val PROP_STROKE_WIDTH = "strokeWidth"
+        private const val PROP_VERTICAL_OFFSET_DP = "verticalOffsetDp"
     }
 }

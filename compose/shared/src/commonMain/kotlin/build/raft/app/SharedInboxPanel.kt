@@ -153,11 +153,20 @@ internal fun SharedHomeActivityScreen(
                 warningLogger = { message -> bridge.log("shared_activity_member_warning $message") }
             )
         }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val replyThreadPrewarmDataSource =
-        remember(authStore, networkClient, conversationRepository, sharedStores.threadMessageStore, sharedStores.threadPayloadStore) {
+        remember(
+            authStore,
+            selectedServerStore,
+            networkClient,
+            conversationRepository,
+            sharedStores.threadMessageStore,
+            sharedStores.threadPayloadStore
+        ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
@@ -860,7 +869,12 @@ private fun SharedActivityRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (item.kind == InboxItemKind.Thread) {
-                        SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                        SlockLucideIcon(
+                            SlockLucideIconName.MessageSquare,
+                            modifier = Modifier.size(13.dp),
+                            color = "#FFFF4B9B",
+                            verticalOffsetDp = 2f
+                        )
                     }
                     val primaryPreview = item.primaryActivityPreviewText(
                         senderProfiles = senderProfiles,

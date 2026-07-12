@@ -1314,12 +1314,12 @@ class SharedActivityStoreTest {
         val authA =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-a", "server-1"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-a", "server-1"))
             )
         val authB =
             SlockShellAuthSessionStore(
                 processStore,
-                SlockShellStoreRuntime(SlockShellStoreScope.create("shell-b", "server-2"))
+                SelectedServerStore(SlockShellStoreScope.create("shell-b", "server-2"))
             )
         val inboxA = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
         val inboxB = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))

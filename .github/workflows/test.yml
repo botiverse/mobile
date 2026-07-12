@@ -7,6 +7,7 @@ on:
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
       - "scripts/check_auth_session_writes.sh"
+      - "scripts/check_attachment_mapper_formatting.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -23,6 +24,7 @@ on:
       - "compose/**"
       - "scripts/check_commonmain_map_compat.sh"
       - "scripts/check_auth_session_writes.sh"
+      - "scripts/check_attachment_mapper_formatting.sh"
       - "scripts/build_kuikly_fork.sh"
       - "scripts/prepare_*.sh"
       - "third_party/kuikly-ui"
@@ -383,6 +385,10 @@ jobs:
         run: |
           scripts/check_auth_session_writes.sh --self-test
           scripts/check_auth_session_writes.sh
+
+      - name: Guard attachment mapper raw-size boundary
+        shell: bash
+        run: scripts/check_attachment_mapper_formatting.sh
 
       - name: Set up JDK
         uses: actions/setup-java@v5

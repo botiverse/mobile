@@ -38,24 +38,7 @@ internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
     try {
         VBTransportInitHelper.init(
             VBTransportInitConfig(
-                logImpl =
-                    object : IVBPBLog {
-                        override fun d(tag: String?, content: String?) = Unit
-                        override fun i(tag: String?, content: String?) {
-                            warningLogger(
-                                "slock_networkkmm_info tag=${tag.orEmpty()} " +
-                                    content.orEmpty().toSafeNetworkKmmLogMessage()
-                            )
-                        }
-
-                        override fun e(tag: String?, content: String?, throwable: Throwable?) {
-                            warningLogger(
-                                "slock_networkkmm_error tag=${tag.orEmpty()} " +
-                                    content.orEmpty().toSafeNetworkKmmLogMessage() +
-                                    throwable?.let { " ${it.safeDiagnosticsSummary()}" }.orEmpty()
-                            )
-                        }
-                    }
+                logImpl = createNetworkKmmLog(warningLogger)
             )
         )
         networkKmmInitialized = true
@@ -63,6 +46,21 @@ internal fun ensureNetworkKmmInitialized(warningLogger: (String) -> Unit) {
         warningLogger("slock_networkkmm_init_failed ${error.safeDiagnosticsSummary()}")
     }
 }
+
+internal fun createNetworkKmmLog(warningLogger: (String) -> Unit): IVBPBLog =
+    object : IVBPBLog {
+        override fun d(tag: String?, content: String?) = Unit
+
+        override fun i(tag: String?, content: String?) = Unit
+
+        override fun e(tag: String?, content: String?, throwable: Throwable?) {
+            warningLogger(
+                "slock_networkkmm_error tag=${tag.orEmpty()} " +
+                    content.orEmpty().toSafeNetworkKmmLogMessage() +
+                    throwable?.let { " ${it.safeDiagnosticsSummary()}" }.orEmpty()
+            )
+        }
+    }
 
 internal class NetworkKmmSlockHttpExecutor(
     private val warningLogger: (String) -> Unit = {}

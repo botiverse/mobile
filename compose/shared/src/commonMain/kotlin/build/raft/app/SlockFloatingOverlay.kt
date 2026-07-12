@@ -193,6 +193,28 @@ internal fun Modifier.slockFloatingContentClickTarget(): Modifier =
 private fun Modifier.slockFloatingContentPointerBarrier(): Modifier =
     slockNativeDispatchCapture()
 
+/**
+ * Full-screen native dispatch boundary for a modal surface. Keep it as a
+ * sibling behind dialog content: applying capture to a parent container
+ * prevents native siblings from seeing the gesture, but it also prevents
+ * descendant Compose controls from receiving that gesture on Android.
+ */
+@Composable
+internal fun SlockModalDismissBarrier(
+    overlayAlpha: Float,
+    onDismiss: () -> Unit,
+    dismissEnabled: Boolean = true
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.TextBlack.copy(alpha = overlayAlpha))
+                .slockNativeDispatchCapture()
+                .clickable(enabled = dismissEnabled, onClick = onDismiss)
+    )
+}
+
 @Composable
 private fun SlockFloatingOverlayDismissBarrier(
     dismissClickableActive: Boolean,

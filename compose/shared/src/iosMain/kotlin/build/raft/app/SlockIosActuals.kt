@@ -8,7 +8,12 @@ internal actual fun logPixelAvatarDrawCache(message: String) {
 
 internal actual fun isSlockNativePixelAvatarViewSupported(): Boolean = false
 
-internal actual fun slockPlatformLog(level: SlockLogLevel, tag: String, message: String) {
+internal actual fun slockPlatformLog(
+    level: SlockLogLevel,
+    tag: String,
+    message: String,
+    timestampMillis: Long
+) {
     NSNotificationCenter.defaultCenter.postNotificationName(
         aName = SlockIosSharedLogNotificationName,
         `object` = null,
@@ -16,7 +21,8 @@ internal actual fun slockPlatformLog(level: SlockLogLevel, tag: String, message:
             mapOf(
                 "level" to level.wireValue,
                 "tag" to tag,
-                "message" to message
+                "message" to message,
+                "timestampMillis" to timestampMillis
             )
     )
     println("[$tag][${level.name}] $message")

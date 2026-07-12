@@ -1,10 +1,20 @@
 package build.raft.app.shared
 
+import androidx.activity.result.contract.ActivityResultContracts
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockKuiklyPickedAttachmentTest {
+    @Test
+    fun mediaAttachmentPickerAllowsImagesAndVideos() {
+        assertSame(
+                ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+                threadMediaAttachmentPickerRequest().mediaType
+        )
+    }
+
     @Test
     fun pickedAttachmentCacheNameSanitizesUnsafePathSegments() {
         val name =

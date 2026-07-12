@@ -1,10 +1,8 @@
 package build.raft.app.data
 
 /**
- * Single canonical byte-size formatter shared by every parser that converts a
- * `sizeBytes: Long` wire field into the `Attachment.sizeLabel` / file meta
- * label shown in the UI. Keep this internal: it is an implementation detail
- * of the shared parsers, not part of the public domain model.
+ * Single canonical byte-size formatter used at UI/presentation assembly boundaries.
+ * Wire/domain mappers preserve raw `sizeBytes` and must not call this formatter.
  *
  * `0` (or negative) renders as the empty string — every call site currently
  * relies on that behaviour to skip "0 B" labels for missing sizes.

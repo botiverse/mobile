@@ -188,6 +188,7 @@ private const val HomeListMinBeyondBoundsItemCount = 6
 private const val HomeListMaxBeyondBoundsItemCount = 24
 private const val HomeListOverscanViewportFraction = 2f / 3f
 private const val HomeListRepresentativeRowStepDp = 34f
+private const val HomeListServerSwitchRampStep = 3
 private const val HomeServerSwitcherMaxBeyondBoundsItemCount = 6
 
 internal enum class HomeSidebarBadgeTone {
@@ -885,8 +886,9 @@ internal fun SlockStructuralHomeShell(
     pinnedMemberProfileResolver: (String) -> SlockHomePinnedMemberItem? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
+    listPositionServerId: String = currentServerId,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> }
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
@@ -1049,15 +1051,51 @@ internal fun SlockStructuralHomeShell(
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded
         )
+    val lazyKeyRegistry = remember { HomeSidebarLazyKeyRegistry() }
+    val pinnedLazyKeys =
+        lazyKeyRegistry.keysFor(
+            serverId = currentServerId,
+            section = "pinned",
+            identities = displayedPinned.map { it.key }
+        )
+    val jointChannelLazyKeys =
+        lazyKeyRegistry.keysFor(
+            serverId = currentServerId,
+            section = "joint",
+            identities = displayedJointChannels.map { it.id }
+        )
+    val channelLazyKeys =
+        lazyKeyRegistry.keysFor(
+            serverId = currentServerId,
+            section = "channel",
+            identities = displayedChannels.map { it.id }
+        )
+    val directMessageLazyKeys =
+        lazyKeyRegistry.keysFor(
+            serverId = currentServerId,
+            section = "dm",
+            identities = displayedDirectMessages.map { it.id }
+        )
     val listState =
         rememberLazyListState(
             initialFirstVisibleItemIndex = initialListPosition.firstVisibleItemIndex,
             initialFirstVisibleItemScrollOffset = initialListPosition.firstVisibleItemScrollOffset
         )
+    var listStateServerId by remember { mutableStateOf(listPositionServerId) }
+    var listPremeasureServerId by remember { mutableStateOf(currentServerId) }
+    var listPremeasureLimit by remember { mutableStateOf(Int.MAX_VALUE) }
     val captureRowAnchors = !listState.isScrollInProgress
     val latestOnListPositionSnapshot by rememberUpdatedState(onListPositionSnapshot)
-    DisposableEffect(listState) {
-        onDispose { latestOnListPositionSnapshot(listState.toAppShellLazyListPosition()) }
+    DisposableEffect(listState, currentServerId) {
+        val snapshotServerId = currentServerId
+        onDispose {
+            if (homeListStateOwnerMatches(snapshotServerId, listStateServerId)) {
+                latestOnListPositionSnapshot(
+                    snapshotServerId,
+                    listState.toAppShellLazyListPosition()
+                )
+            }
+        }
     }
     val listScope = rememberCoroutineScope()
     var pullRefreshActive by remember(currentServerId) { mutableStateOf(false) }
@@ -1160,11 +1198,50 @@ internal fun SlockStructuralHomeShell(
                     )
                 }
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    val homeBeyondBoundsItemCount =
+                    val targetHomeBeyondBoundsItemCount =
                         homeListBeyondBoundsItemCount(
                             itemCount = lazyItemCount,
                             viewportHeightDp = maxHeight.value
                         )
+                    val homeBeyondBoundsItemCount =
+                        if (listPremeasureServerId == currentServerId) {
+                            listPremeasureLimit.coerceAtMost(targetHomeBeyondBoundsItemCount)
+                        } else {
+                            HomeListMinBeyondBoundsItemCount.coerceAtMost(targetHomeBeyondBoundsItemCount)
+                        }
+                    LaunchedEffect(
+                        currentServerId,
+                        listPositionServerId,
+                        initialListPosition.firstVisibleItemIndex,
+                        initialListPosition.firstVisibleItemScrollOffset,
+                        targetHomeBeyondBoundsItemCount
+                    ) {
+                        if (listStateServerId != listPositionServerId) {
+                            latestOnListPositionSnapshot(
+                                listStateServerId,
+                                listState.toAppShellLazyListPosition()
+                            )
+                            listState.scrollToItem(
+                                initialListPosition.firstVisibleItemIndex,
+                                initialListPosition.firstVisibleItemScrollOffset
+                            )
+                            listStateServerId = listPositionServerId
+                        }
+                        if (listPremeasureServerId != currentServerId) {
+                            listPremeasureLimit = HomeListMinBeyondBoundsItemCount
+                            listPremeasureServerId = currentServerId
+                            while (listPremeasureLimit < targetHomeBeyondBoundsItemCount) {
+                                withFrameNanos { }
+                                listPremeasureLimit =
+                                    homeListNextServerSwitchBeyondBoundsItemCount(
+                                        current = listPremeasureLimit,
+                                        target = targetHomeBeyondBoundsItemCount
+                                    )
+                            }
+                        } else if (listPremeasureLimit != Int.MAX_VALUE) {
+                            listPremeasureLimit = targetHomeBeyondBoundsItemCount
+                        }
+                    }
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
                         LazyColumn(
                             state = listState,
@@ -1244,7 +1321,7 @@ internal fun SlockStructuralHomeShell(
                                     )
                                 }
                                 if (pinnedExpanded) {
-                                    items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].key}" }) { index ->
+                                    items(displayedPinned.size, key = { index -> pinnedLazyKeys[index] }) { index ->
                                         val pinnedRow = displayedPinned[index]
                                         val pinned = pinnedRow.conversation
                                         val pinnedMember = pinnedRow.member
@@ -1288,6 +1365,7 @@ internal fun SlockStructuralHomeShell(
                                         if (isDirectMessage) {
                                             val badgeProjection = pinned?.homeConversationBadgeProjection()
                                             DirectMessageRow(
+                                                interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
                                                 name = pinned?.name ?: pinnedMember?.name.orEmpty(),
                                                 description = pinned?.description ?: pinnedMember?.description,
                                                 avatarLabel = pinned?.avatarLabel ?: pinnedMember?.avatarLabel.orEmpty(),
@@ -1322,6 +1400,7 @@ internal fun SlockStructuralHomeShell(
                                         } else if (pinned != null) {
                                             val badgeProjection = pinned.homeConversationBadgeProjection()
                                             ChannelRow(
+                                                interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
                                                 name = pinned.name,
                                                 symbol = pinned.homeChannelSymbol(),
                                                 joined = pinned.joined,
@@ -1356,7 +1435,7 @@ internal fun SlockStructuralHomeShell(
                                         )
                                     }
                                     if (jointChannelsExpanded) {
-                                        items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
+                                        items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
                                             val channel = displayedJointChannels[index]
                                             val badgeProjection = channel.homeConversationBadgeProjection()
                                             val jointInteractionState = when {
@@ -1365,6 +1444,7 @@ internal fun SlockStructuralHomeShell(
                                                 else -> ChannelRowInteractionState.Default
                                             }
                                             ChannelRow(
+                                                interactionIdentity = homeSidebarInteractionIdentity("joint", channel.id),
                                                 name = channel.name,
                                                 symbol = channel.homeChannelSymbol(),
                                                 joined = channel.joined,
@@ -1412,7 +1492,7 @@ internal fun SlockStructuralHomeShell(
                                         }
                                     }
                                     if (channelsExpanded) {
-                                        items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
+                                        items(displayedChannels.size, key = { index -> channelLazyKeys[index] }) { index ->
                                             val channel = displayedChannels[index]
                                             val badgeProjection = channel.homeConversationBadgeProjection()
                                             // #211 review (Cindy): selected wins over pressed.
@@ -1422,6 +1502,7 @@ internal fun SlockStructuralHomeShell(
                                                 else -> ChannelRowInteractionState.Default
                                             }
                                             ChannelRow(
+                                                interactionIdentity = homeSidebarInteractionIdentity("channel", channel.id),
                                                 name = channel.name,
                                                 symbol = channel.homeChannelSymbol(),
                                                 joined = channel.joined,
@@ -1473,7 +1554,7 @@ internal fun SlockStructuralHomeShell(
                             )
                         }
                         if (directMessagesExpanded) {
-                            items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
+                            items(displayedDirectMessages.size, key = { index -> directMessageLazyKeys[index] }) { index ->
                                 val dm = displayedDirectMessages[index]
                                 val badgeProjection = dm.homeConversationBadgeProjection()
                                 val dmInteractionState = when {
@@ -1482,6 +1563,7 @@ internal fun SlockStructuralHomeShell(
                                     else -> ChannelRowInteractionState.Default
                                 }
                                 DirectMessageRow(
+                                    interactionIdentity = homeSidebarInteractionIdentity("dm", dm.id),
                                     name = dm.name,
                                     description = dm.description,
                                     avatarLabel = dm.avatarLabel,
@@ -1803,6 +1885,49 @@ internal fun homeListBeyondBoundsItemCount(
         minimumValue = HomeListMinBeyondBoundsItemCount,
         maximumValue = boundedTarget
     )
+}
+
+internal fun homeListNextServerSwitchBeyondBoundsItemCount(current: Int, target: Int): Int =
+    (current.coerceAtLeast(HomeListMinBeyondBoundsItemCount) + HomeListServerSwitchRampStep)
+        .coerceAtMost(target.coerceAtLeast(HomeListMinBeyondBoundsItemCount))
+
+internal fun homeSidebarSlotKey(section: String, index: Int): String =
+    "home-$section-slot-$index"
+
+internal fun homeSidebarInteractionIdentity(section: String, identity: String): String =
+    "$section:$identity"
+
+internal fun homeListStateOwnerMatches(snapshotServerId: String?, listStateServerId: String?): Boolean =
+    snapshotServerId?.trim()?.takeIf { it.isNotEmpty() } ==
+        listStateServerId?.trim()?.takeIf { it.isNotEmpty() }
+
+internal class HomeSidebarLazyKeyRegistry {
+    private data class SectionKeys(
+        val serverId: String,
+        val keysByIdentity: Map<String, String>
+    )
+
+    private val sectionKeys = mutableMapOf<String, SectionKeys>()
+
+    fun keysFor(serverId: String, section: String, identities: List<String>): List<String> {
+        val normalizedServerId = serverId.trim()
+        val previous = sectionKeys[section]
+        val keys =
+            if (previous == null || previous.serverId != normalizedServerId) {
+                identities.mapIndexed { index, _ -> homeSidebarSlotKey(section, index) }
+            } else {
+                identities.map { identity ->
+                    previous.keysByIdentity[identity]
+                        ?: "home-$section-identity-$identity"
+                }
+            }
+        sectionKeys[section] =
+            SectionKeys(
+                serverId = normalizedServerId,
+                keysByIdentity = identities.zip(keys).toMap()
+            )
+        return keys
+    }
 }
 
 internal fun homeServerSwitcherBeyondBoundsItemCount(itemCount: Int): Int =
@@ -3387,12 +3512,12 @@ private fun homeRowLongPressAnchor(
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPrefix: String? = null, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, joined: Boolean = true, interactionIdentity: String = "channel:$symbol:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null, dragEnabled: Boolean = false, dragOffsetY: Float = 0f, onDragStart: (() -> Unit)? = null, onDragMove: ((Float) -> Unit)? = null, onDragEnd: (() -> Unit)? = null, onDragCancel: (() -> Unit)? = null, rowDragEnabled: Boolean = false) {
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
     // selected row keeps its white brutal-shadow treatment on hover.
-    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
     val pressed = interactionState == ChannelRowInteractionState.Pressed
@@ -3419,8 +3544,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
     }
     val titleColor = homeConversationTitleColor(muted = muted, joined = joined)
     val mutedIndicatorIcon = homeConversationMutedIndicatorIcon(muted)
-    val rowTopLeft = remember { SlockMutableOffsetRef() }
-    var captureAnchorForPress by remember { mutableStateOf(false) }
+    val rowTopLeft = remember(interactionIdentity) { SlockMutableOffsetRef() }
+    var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
@@ -3432,7 +3557,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
     val currentOnDragCancel by rememberUpdatedState(onDragCancel)
     val rowDragModifier =
         if (rowDragEnabled && dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
-            Modifier.pointerInput(name, rowDragEnabled, dragEnabled) {
+            Modifier.pointerInput(interactionIdentity, rowDragEnabled, dragEnabled) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = { currentOnDragStart?.invoke() },
                     onDragEnd = { currentOnDragEnd?.invoke() },
@@ -3447,7 +3572,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
         }
     val dragHandleModifier =
         if (dragEnabled && onDragStart != null && onDragMove != null && onDragEnd != null) {
-            Modifier.pointerInput(name, dragEnabled) {
+            Modifier.pointerInput(interactionIdentity, dragEnabled) {
                 // Sort mode is explicit, so the handle drags immediately —
                 // no long-press gate (task #356: the v2 long-press-drag felt stuck).
                 detectDragGestures(
@@ -3462,7 +3587,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, positionPref
         } else {
             Modifier
         }
-    val rowClickIdentity = "channel:$symbol:$name:${avatarWireValue.orEmpty()}:$badge:$joined"
+    val rowClickIdentity = interactionIdentity
     val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
         if (onLongPress != null) {
             Modifier.pointerInput(rowClickIdentity, true) {
@@ -3925,8 +4050,8 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
-    val hoverInteractionSource = remember { MutableInteractionSource() }
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, peerType: String? = null, memberId: String? = null, agentStatusResolver: SlockAgentStatusResolver = EmptySlockAgentStatusResolver, memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver, badge: String? = null, badgeTone: HomeSidebarBadgeTone = HomeSidebarBadgeTone.Loud, hasDraft: Boolean = false, muted: Boolean = false, interactionIdentity: String = "dm:${memberId.orEmpty()}:$name", interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, captureLongPressAnchor: Boolean = true, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+    val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
     val pressed = interactionState == ChannelRowInteractionState.Pressed
@@ -3953,14 +4078,14 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    val rowTopLeft = remember { SlockMutableOffsetRef() }
-    var captureAnchorForPress by remember { mutableStateOf(false) }
+    val rowTopLeft = remember(interactionIdentity) { SlockMutableOffsetRef() }
+    var captureAnchorForPress by remember(interactionIdentity) { mutableStateOf(false) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val currentOnPress by rememberUpdatedState(onPress)
     val currentOnPressEnd by rememberUpdatedState(onPressEnd)
-    val rowClickIdentity = "dm:${memberId.orEmpty()}:$name:${avatarWireValue.orEmpty()}:$badge"
+    val rowClickIdentity = interactionIdentity
     val clickModifier = remember(rowClickIdentity, onClick != null, onLongPress != null) {
         if (onLongPress != null) {
             Modifier.pointerInput(rowClickIdentity, true) {

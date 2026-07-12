@@ -67,14 +67,14 @@ class SettingsHomePageAuthGateTest {
     }
 
     @Test
-    fun sessionChangeDifferentIdentityUsesFullRestoreIntent() {
+    fun selectedServerChangeDoesNotMasqueradeAsIdentityChange() {
         val current = storedSession(userId = "user-1", selectedServerId = "server-1")
         val cached = storedSession(userId = "user-1", selectedServerId = "server-2")
 
         val identityChanged = appShellSessionIdentityChanged(cached, current)
 
-        assertTrue(identityChanged)
-        assertEquals(SharedAuthGateIntent.Restore, appShellSessionChangeRestoreIntent(identityChanged))
+        assertFalse(identityChanged)
+        assertEquals(SharedAuthGateIntent.RefreshSilently, appShellSessionChangeRestoreIntent(identityChanged))
     }
 
     private fun storedSession(

@@ -102,7 +102,8 @@ class SqlDelightComposeLocalDataStoreTest {
                                         id = AttachmentId("attachment-1"),
                                         name = "trace.txt",
                                         mimeType = "text/plain",
-                                        sizeLabel = "12 KB"
+                                        sizeLabel = "",
+                                        sizeBytes = 12_288L,
                                     )
                                 ),
                             deliveryState = MessageDeliveryState.Sent,
@@ -135,6 +136,8 @@ class SqlDelightComposeLocalDataStoreTest {
         assertEquals(1, reaction?.count)
         assertEquals(listOf("user-1"), reaction?.reactorIds)
         assertEquals("trace.txt", message.attachments.single().name)
+        assertEquals(12_288L, message.attachments.single().sizeBytes)
+        assertEquals("", message.attachments.single().sizeLabel)
         assertEquals("wire local-first thread cache", message.task?.title)
         assertEquals(TaskStatus.InReview, message.task?.status)
         assertEquals(false, message.task?.canClaim)

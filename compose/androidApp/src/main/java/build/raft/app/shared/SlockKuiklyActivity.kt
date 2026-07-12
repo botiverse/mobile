@@ -246,7 +246,9 @@ open class SlockKuiklyActivity :
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
-        androidShellLaunchTarget?.shellInstanceId ?: "activity-${System.identityHashCode(this)}"
+        androidShellLaunchTarget?.shellInstanceId
+            ?: pageSpec?.pageData?.shellInstanceId?.trim()?.takeIf(String::isNotBlank)
+            ?: "legacy-app-shell"
     }
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     private val kuiklySystemBackCallback =
@@ -372,7 +374,9 @@ open class SlockKuiklyActivity :
     }
 
     override fun onPause() {
-        AndroidAppScopeRealtimeOwner.onAppHidden(
+        AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
+            context = applicationContext,
+            visibility = AndroidHostVisibility.Hidden,
             shellInstanceId = realtimeVisibilityOwnerId,
             source = "activity_on_pause"
         )
@@ -385,9 +389,9 @@ open class SlockKuiklyActivity :
         suppressVisualKeyboard()
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
-        sendAppShellLifecycleEvent("resume")
-        AndroidAppScopeRealtimeOwner.onAppShown(
+        AndroidAppScopeRealtimeOwner.onHostVisibilityChanged(
             context = applicationContext,
+            visibility = AndroidHostVisibility.Visible,
             shellInstanceId = realtimeVisibilityOwnerId,
             source = "activity_on_resume"
         )
@@ -665,9 +669,7 @@ open class SlockKuiklyActivity :
                 PendingThreadAttachmentUpload(channelId = channelId, callback = callback)
         runCatching {
                     if (imageOnly) {
-                        threadImageAttachmentPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        threadImageAttachmentPickerLauncher.launch(threadMediaAttachmentPickerRequest())
                     } else {
                         threadFileAttachmentPickerLauncher.launch(arrayOf("*/*"))
                     }
@@ -1174,23 +1176,6 @@ open class SlockKuiklyActivity :
         )
     }
 
-    private fun sendAppShellLifecycleEvent(event: String) {
-        val pageName = pageSpec?.pageName ?: return
-        if (pageName != PAGE_APP_SHELL && pageName != PAGE_THREAD) return
-        AndroidAppScopeRealtimeOwner.publishCurrentNetworkStatus(
-                applicationContext,
-                source = "app_shell_lifecycle_$event"
-        )
-        postAndroidAppScopeEvent(
-                eventName = SlockRealtimeNotifyContract.EventName,
-                eventData =
-                        JSONObject()
-                                .put("action", "appLifecycle")
-                                .put("event", event)
-                                .put("pageName", pageName)
-        )
-    }
-
     companion object {
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
@@ -1553,6 +1538,9 @@ internal fun safePickedThreadAttachmentFileName(
             }
     return "picked-$nowMillis-$nanoTime-$withExtension"
 }
+
+internal fun threadMediaAttachmentPickerRequest(): PickVisualMediaRequest =
+        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
 
 private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     override fun openPage(context: Context, pageName: String, pageData: JSONObject) {

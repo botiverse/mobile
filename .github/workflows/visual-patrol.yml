@@ -1,0 +1,129 @@
+name: Visual Patrol (daily drift → issues)
+
+# Daily visual-drift inspection. Reads the nightly visual-testing analysis and files
+# a GitHub issue per NEW drift (deduped by caseId + perceptual fingerprint), so the
+# morning has a triaged queue. See docs/visual-patrol.md.
+#
+# SAFETY: dry-run by default. A run only files real issues when it is LIVE, which
+# requires BOTH an explicit opt-in:
+#   - manual dispatch with dry_run=false, OR
+#   - the repo variable VISUAL_PATROL_LIVE == "true" (for the scheduled run).
+# Merging this workflow therefore does NOT start filing issues on its own.
+
+on:
+  workflow_dispatch:
+    inputs:
+      comparison:
+        description: "Analysis comparison to inspect"
+        type: choice
+        options: [react__android, android__ios, react__ios]
+        default: react__android
+      threshold:
+        description: "Minimum severity to file"
+        type: choice
+        options: [medium, high, critical]
+        default: medium
+      cap:
+        description: "Max issues to file this run"
+        default: "10"
+      dry_run:
+        description: "Dry run (print only, create nothing)"
+        type: boolean
+        default: true
+  schedule:
+    # A bit after the nightly capture+analysis lands on gh-pages.
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: visual-patrol-${{ github.event.inputs.comparison || 'react__android' }}
+  cancel-in-progress: false
+
+jobs:
+  patrol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # need origin/gh-pages for the analysis + issue dedup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Resolve live/dry-run
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ github.event.inputs.dry_run }}" = "false" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          else
+            # Scheduled: only live when the repo variable is explicitly set true.
+            [ "${{ vars.VISUAL_PATROL_LIVE }}" = "true" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run visual patrol
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/visual_patrol.mjs \
+            --analysis gh-pages \
+            --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
+            --threshold "${{ github.event.inputs.threshold || 'medium' }}" \
+            --cap "${{ github.event.inputs.cap || '10' }}" \
+            --repo "${{ github.repository }}" \
+            ${{ steps.mode.outputs.live }} | tee patrol-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-patrol-report
+          path: patrol-report.json
+
+  # After filing, adversarially verify each open drift issue with a 3x M3 panel:
+  # majority "real problem" -> label `verified` (enters the fix queue); otherwise the
+  # issue is closed as an auto-triaged false positive. Runs in the same live/dry-run
+  # mode as the patrol. Needs the M3 credential (same PI_API_KEY as nightly analysis).
+  verify:
+    needs: patrol
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # need origin/gh-pages for the analysis context
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install M3 SDK (pi-ai)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.SLOCK_GITHUB_PACKAGES_TOKEN || secrets.GITHUB_PACKAGES_TOKEN || github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/m3" && cd "$RUNNER_TEMP/m3"
+          echo '{"name":"m3","private":true}' > package.json
+          # @earendil-works is published to GitHub Packages; fall back to the public registry.
+          printf '@earendil-works:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
+          npm i @earendil-works/pi-ai@0.80.3 --no-audit --no-fund \
+            || npm i @earendil-works/pi-ai@0.80.3 --registry=https://registry.npmjs.org --no-audit --no-fund
+      - name: Resolve live/dry-run
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ github.event.inputs.dry_run }}" = "false" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          else
+            [ "${{ vars.VISUAL_PATROL_LIVE }}" = "true" ] && echo "live=--live" >> "$GITHUB_OUTPUT" || echo "live=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Verify drift issues (3x M3 adversarial panel)
+        env:
+          PI_API_KEY: ${{ secrets.PI_API_KEY }}
+          SLOCK_PI_AI_MODULE: ${{ runner.temp }}/m3/node_modules/@earendil-works/pi-ai/dist/providers/all.js
+        run: |
+          if [ -z "$PI_API_KEY" ]; then echo "no PI_API_KEY; skipping verify stage"; exit 0; fi
+          export MINIMAX_API_KEY="$PI_API_KEY"
+          node scripts/patrol/verify_issues.mjs \
+            --repo "${{ github.repository }}" \
+            --comparison "${{ github.event.inputs.comparison || 'react__android' }}" \
+            ${{ steps.mode.outputs.live }} | tee verify-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patrol-verify-report
+          path: verify-report.json

@@ -4,12 +4,14 @@ import kotlinx.serialization.Serializable
 
 internal fun createSharedActivityPersistSlice(
     storage: MviPersistStorage,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    failureLogger: (String) -> Unit = diagnosticsLogger
 ): MviPersistSlice<SharedActivityState, SharedActivityIntent> =
     MviPersistMiddleware(
         storage = storage,
         spec = SharedActivityPersistSpec,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        failureLogger = failureLogger
     )
 
 private object SharedActivityPersistSpec :

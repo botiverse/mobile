@@ -1,15 +1,18 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ServerId
 
 internal fun createSharedHomeIdentityPersistSlice(
     storage: MviPersistStorage,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    failureLogger: (String) -> Unit = diagnosticsLogger
 ): MviPersistSlice<SharedHomeState, SharedHomeIntent> =
     MviPersistMiddleware(
         storage = storage,
         spec = SharedHomeIdentityPersistSpec,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        failureLogger = failureLogger
     )
 
 private object SharedHomeIdentityPersistSpec :
@@ -110,7 +113,8 @@ private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =
         lastMessageSenderName = null,
         presenceMemberId = null,
         hasDraft = false,
-        hasDraftKnown = false
+        hasDraftKnown = false,
+        activityNotificationPreference = ChannelActivityNotificationPreference.Unsupported
     )
 
 private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessageRow =
@@ -126,7 +130,8 @@ private fun HomeDirectMessageRow.pruneForHomeIdentityPersist(): HomeDirectMessag
         lastMessageSenderName = null,
         presenceMemberId = null,
         hasDraft = false,
-        hasDraftKnown = false
+        hasDraftKnown = false,
+        activityNotificationPreference = ChannelActivityNotificationPreference.Unsupported
     )
 
 private fun SharedHomeContentState.homeSessionOrNull(): StoredAuthSession? =

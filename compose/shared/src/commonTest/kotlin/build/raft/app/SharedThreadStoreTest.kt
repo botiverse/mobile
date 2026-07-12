@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SelectedServerStore
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.AgentActivitySnapshot
 import build.raft.app.data.AgentDetailSnapshot
@@ -434,6 +436,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-test", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -484,6 +488,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-success", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -535,6 +541,8 @@ class SharedThreadStoreTest {
             SharedThreadDataSource(
                 networkApi = FakeThreadApi(),
                 sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                selectedServerStore =
+                    SelectedServerStore(SlockShellStoreScope.create("thread-prewarm-marker", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore
             )
@@ -4858,6 +4866,74 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startWithZeroReplyTaskDoesNotWaitIndefinitelyForOriginContext() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val diagnostics = mutableListOf<String>()
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Empty(EmptyReason.NoMessages),
+                messageContextDelayMillis = 5_000L,
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-task-600"),
+                            changed = true,
+                            parentMessageId = MessageId("task-message-600"),
+                            replyCount = 0
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                diagnosticsLogger = diagnostics::add
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                diagnosticsLogger = diagnostics::add
+            )
+        val initialPayload =
+            basePayload().replyThreadLoadingPayload(
+                parentMessageId = "task-message-600",
+                parentChannelId = "channel-1",
+                threadChannelId = null
+            ).copy(originStatus = "loading")
+
+        withTimeout(2_000L) {
+            store.accept(SharedThreadIntent.Start(initialPayload))
+        }
+
+        val payload = store.state.value.payload
+        assertEquals("empty", payload.status)
+        assertEquals("thread-task-600", payload.sourceThreadId)
+        assertEquals("thread-task-600", payload.streamChannelId)
+        assertEquals("thread-task-600", payload.resolveThreadComposer().streamChannelId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals(null, payload.originMessage)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("task-message-600")),
+            repository.getReplyThreadRequests
+        )
+        assertEquals(listOf(MessageId("task-message-600")), repository.getMessageContextRequests)
+        assertTrue(diagnostics.any { it.startsWith("thread_parent_context_grace_expired ") })
+        assertTrue(
+            diagnostics.any {
+                it.contains("thread_refresh_result") &&
+                    it.contains("threadId=") &&
+                    it.contains("result=content") &&
+                    it.contains("originStatus=missing")
+            }
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun refreshWithUnchangedSnapshotKeepsTimelineList() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -6003,7 +6079,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadAllMarksChannel() = runBlocking {
+    fun visibleReadMarksChannel() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
@@ -6015,15 +6091,39 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.MarkVisibleReadAll)
-        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(SharedThreadIntent.MarkVisibleRead)
+        store.accept(SharedThreadIntent.MarkVisibleRead)
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         scope.cancel()
     }
 
     @Test
-    fun visibleReadAllCoalescesImmediateSameChannelCompletion() = runBlocking {
+    fun visibleReadUsesLatestSeqWhenAvailable() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            )
+        val payload =
+            contentPayload("cached body").let { content ->
+                content.copy(messages = content.messages.map { message -> message.copy(seq = 10L) })
+            }
+        dataSource.cachePayload(payload)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleRead)
+
+        assertEquals(listOf("channel-1" to 10L), api.readSeqRequests)
+        assertTrue(api.readAllChannels.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReadCoalescesImmediateSameChannelCompletion() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
         val dataSource =
@@ -6035,7 +6135,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -6051,7 +6151,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(SharedThreadIntent.MarkVisibleRead)
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
         scope.cancel()
@@ -6126,7 +6226,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun visibleReadAllCoalescesInFlightBurstToLatestMarker() = runBlocking {
+    fun visibleReadCoalescesInFlightBurstToLatestMarker() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
             FakeThreadApi(failChannelMessages = true).also {
@@ -6142,7 +6242,7 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -6158,7 +6258,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead)
         store.accept(
             SharedThreadIntent.ApplyRealtimeEvent(
                 MessageNew(
@@ -6174,11 +6274,12 @@ class SharedThreadStoreTest {
                 )
             )
         )
-        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        store.dispatch(SharedThreadIntent.MarkVisibleRead)
 
         delay(120L)
 
-        assertEquals(listOf("channel-1", "channel-1"), api.readAllChannels)
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
         assertEquals(1, api.maxConcurrentReadAllCalls)
         scope.cancel()
     }
@@ -7390,6 +7491,7 @@ class SharedThreadStoreTest {
         var failReadAll: Boolean = false
         var readAllDelayMillis: Long = 0L
         val readAllChannels: MutableList<String> = mutableListOf()
+        val readSeqRequests: MutableList<Pair<String, Long>> = mutableListOf()
         var activeReadAllCalls: Int = 0
         var maxConcurrentReadAllCalls: Int = 0
         val beforeSeqs: MutableList<Long> = mutableListOf()
@@ -7498,6 +7600,11 @@ class SharedThreadStoreTest {
             } finally {
                 activeReadAllCalls -= 1
             }
+        }
+
+        override suspend fun markChannelReadToSeq(channelId: String, seq: Long): HomeNetworkResponse {
+            readSeqRequests += channelId to seq
+            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true,"seq":$seq}""")
         }
 
         override suspend fun saveMessage(messageId: String): HomeNetworkResponse {
@@ -7873,6 +7980,7 @@ class SharedThreadStoreTest {
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> =
             DataResult.Error(ScreenError(code = "message_context_not_configured", retryable = false)),
+        var messageContextDelayMillis: Long = 0L,
         var createThreadResult: DataResult<ThreadActionResult> =
             DataResult.Content(
                 ThreadActionResult(
@@ -7964,6 +8072,9 @@ class SharedThreadStoreTest {
         override suspend fun getMessageContext(messageId: MessageId, channelId: ChannelId?): DataResult<ThreadSnapshot> {
             getMessageContextRequests += messageId
             getMessageContextChannelIdRequests += channelId
+            if (messageContextDelayMillis > 0L) {
+                delay(messageContextDelayMillis)
+            }
             return messageContextResult
         }
 

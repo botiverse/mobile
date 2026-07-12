@@ -33,6 +33,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -70,10 +71,28 @@ class SlockAppShellTest {
                     )
             )
 
-        assertFalse(notificationLaunchHomeContentReady(null, "server-b"))
-        assertFalse(notificationLaunchHomeContentReady(content("server-a", "server-b"), "server-b"))
-        assertFalse(notificationLaunchHomeContentReady(content("server-b", "server-a"), "server-b"))
-        assertTrue(notificationLaunchHomeContentReady(content("server-b", "server-b"), "server-b"))
+        assertFalse(notificationLaunchHomeContentReady(null, "server-b", selectedServerId = "server-b"))
+        assertFalse(
+            notificationLaunchHomeContentReady(
+                content("server-a", "server-b"),
+                "server-b",
+                selectedServerId = "server-b"
+            )
+        )
+        assertFalse(
+            notificationLaunchHomeContentReady(
+                content("server-b", "server-a"),
+                "server-b",
+                selectedServerId = "server-a"
+            )
+        )
+        assertTrue(
+            notificationLaunchHomeContentReady(
+                content("server-b", "server-b"),
+                "server-b",
+                selectedServerId = "server-b"
+            )
+        )
     }
 
     @Test
@@ -254,6 +273,33 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun appShellChildPagePrewarmSkipsActiveRetainedAndAlreadyPrewarmedTabs() {
+        assertEquals(
+            listOf("settings", "tasks", "members"),
+            appShellChildPagePrewarmOrder(
+                activeChildTab = "home",
+                retainedTabs = setOf("home"),
+                prewarmedTabs = emptySet()
+            )
+        )
+        assertEquals(
+            listOf("members"),
+            appShellChildPagePrewarmOrder(
+                activeChildTab = "tasks",
+                retainedTabs = setOf("home", "settings"),
+                prewarmedTabs = setOf("tasks")
+            )
+        )
+    }
+
+    @Test
+    fun appShellChildPagePrewarmUsesPlaceholderUntilTabIsActiveOrRetained() {
+        assertFalse(appShellChildPageRendersContent(active = false, retained = false))
+        assertTrue(appShellChildPageRendersContent(active = true, retained = false))
+        assertTrue(appShellChildPageRendersContent(active = false, retained = true))
+    }
+
+    @Test
     fun retainedHomeSecondaryDestinationKeepsOnlyActiveKnownDestination() {
         assertEquals(null, retainedHomeSecondaryDestination(null))
         assertEquals("search", retainedHomeSecondaryDestination("search"))
@@ -273,6 +319,13 @@ class SlockAppShellTest {
     @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("unknown"))
+    }
+
+    @Test
+    fun appShellTabSelectionIgnoresNativeDuplicateAndCurrentTabTaps() {
+        assertFalse(shouldHandleAppShellTabSelection(currentTab = "settings", nextTab = "settings"))
+        assertFalse(shouldHandleAppShellTabSelection(currentTab = "unknown", nextTab = "home"))
+        assertTrue(shouldHandleAppShellTabSelection(currentTab = "home", nextTab = "settings"))
     }
 
     @Test
@@ -356,35 +409,92 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun appShellLazyListPositionForServerIgnoresOtherServerSnapshot() {
+    fun appShellLazyListPositionsKeepServersIndependent() {
+        val serverAPosition =
+            AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)
+        val serverBPosition =
+            AppShellLazyListPosition(firstVisibleItemIndex = 11, firstVisibleItemScrollOffset = 7)
         val saved =
-            appShellServerScopedLazyListPosition(
-                serverId = "server-a",
-                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24)
-            )
+            AppShellServerLazyListPositions()
+                .withPosition(serverId = "server-a", listPosition = serverAPosition)
+                .withPosition(serverId = "server-b", listPosition = serverBPosition)
 
         assertEquals(
-            AppShellLazyListPosition(firstVisibleItemIndex = 5, firstVisibleItemScrollOffset = 24),
-            appShellLazyListPositionForServer(currentServerId = "server-a", savedPosition = saved)
+            serverAPosition,
+            appShellLazyListPositionForServer(currentServerId = "server-a", savedPositions = saved)
+        )
+        assertEquals(
+            serverBPosition,
+            appShellLazyListPositionForServer(currentServerId = "server-b", savedPositions = saved)
         )
         assertEquals(
             AppShellLazyListPosition(),
-            appShellLazyListPositionForServer(currentServerId = "server-b", savedPosition = saved)
-        )
-        assertEquals(
-            AppShellLazyListPosition(),
-            appShellLazyListPositionForServer(currentServerId = "", savedPosition = saved)
+            appShellLazyListPositionForServer(currentServerId = "", savedPositions = saved)
         )
     }
 
     @Test
-    fun appShellServerScopedLazyListPositionNormalizesBlankServerId() {
+    fun appShellHomeListServerFollowsRenderedContentUntilTargetArrives() {
         assertEquals(
-            AppShellServerScopedLazyListPosition(
-                serverId = null,
-                listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
-            ),
-            appShellServerScopedLazyListPosition(
+            "server-a",
+            appShellHomeListServerId(
+                renderedServerId = "server-a",
+                readyServerId = "server-b"
+            )
+        )
+        assertEquals(
+            "server-b",
+            appShellHomeListServerId(
+                renderedServerId = null,
+                readyServerId = "server-b"
+            )
+        )
+        assertEquals(null, appShellHomeListServerId(renderedServerId = " ", readyServerId = ""))
+    }
+
+    @Test
+    fun homeServerSwitchPremeasureRampsInSmallFrameSizedSteps() {
+        assertEquals(9, homeListNextServerSwitchBeyondBoundsItemCount(current = 6, target = 24))
+        assertEquals(15, homeListNextServerSwitchBeyondBoundsItemCount(current = 12, target = 15))
+        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
+    }
+
+    @Test
+    fun homeSidebarLazyKeysReuseSlotsAcrossServersAndFollowIdentityWithinServer() {
+        val registry = HomeSidebarLazyKeyRegistry()
+
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-slot-1"),
+            registry.keysFor("server-a", "channel", listOf("a", "b"))
+        )
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-slot-1"),
+            registry.keysFor("server-b", "channel", listOf("x", "y"))
+        )
+        assertEquals(
+            listOf("home-channel-identity-z", "home-channel-slot-1", "home-channel-slot-0"),
+            registry.keysFor("server-b", "channel", listOf("z", "y", "x"))
+        )
+        assertEquals(
+            listOf("home-channel-slot-0", "home-channel-identity-z"),
+            registry.keysFor("server-b", "channel", listOf("x", "z"))
+        )
+        assertNotEquals(homeSidebarSlotKey("channel", 0), homeSidebarSlotKey("dm", 0))
+    }
+
+    @Test
+    fun homeListStateSnapshotOnlyPersistsForCurrentOwner() {
+        assertTrue(homeListStateOwnerMatches("server-a", "server-a"))
+        assertFalse(homeListStateOwnerMatches("server-a", "server-b"))
+        assertFalse(homeListStateOwnerMatches("server-a", null))
+    }
+
+    @Test
+    fun appShellServerLazyListPositionsIgnoreBlankServerId() {
+        val positions = AppShellServerLazyListPositions()
+        assertEquals(
+            positions,
+            positions.withPosition(
                 serverId = "  ",
                 listPosition = AppShellLazyListPosition(firstVisibleItemIndex = 2, firstVisibleItemScrollOffset = 8)
             )

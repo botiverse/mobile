@@ -54,7 +54,9 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.SlockIntegrationsActionsPushApiClient
 import build.raft.app.data.SlockIntegrationsActionsPushNetworkApi
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.isSlockHostVisible
 import build.raft.app.data.realtime.RealtimeRoutePolicy
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.data.slockSharedPreferenceStore
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedComputersIntent
@@ -259,9 +261,6 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
-private const val ThreadLifecycleAction = "appLifecycle"
-private const val ThreadLifecycleResume = "resume"
-private const val ThreadLifecycleShow = "show"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 4
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -992,6 +991,7 @@ private fun buildThreadPendingSendMessage(
                     name = attachment.fileName,
                     mimeType = attachment.mimeType.orEmpty(),
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     thumbnailUrl = attachment.previewUri
                 )
             },
@@ -1054,6 +1054,7 @@ internal data class KuiklyThreadAttachmentItem(
     val name: String,
     val mimeType: String = "",
     val sizeLabel: String = "",
+    val sizeBytes: Long = 0L,
     val thumbnailUrl: String? = null,
     val commentCount: Int = 0
 )
@@ -1812,6 +1813,7 @@ private fun ThreadPageScreen() {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
+                selectedServerStore = sharedStores.selectedServerStore(storeScope),
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore,
                 conversationRepository =
@@ -2827,7 +2829,8 @@ internal fun SharedThreadRouteContent(
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val realtimeEvents = remember(eventBus) { KuiklyRealtimeEvents(eventBus) }
-    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val realtimeEventMapper =
+        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val incomingRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -3029,6 +3032,9 @@ internal fun SharedThreadRouteContent(
             ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
     var threadLifecycleSeen by remember(threadInstanceKey) { mutableStateOf(false) }
+    var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
+        mutableStateOf(isSlockHostVisible(storeScope.shellInstanceId))
+    }
     DisposableEffect(
         realtimeEvents,
         currentSession?.currentServerId,
@@ -3572,12 +3578,26 @@ internal fun SharedThreadRouteContent(
                 val eventDataSnapshot = eventData.toString()
                 coroutineScope.launch {
                     val lifecycleData = JSONObject(eventDataSnapshot)
-                    if (lifecycleData.optString("action") != ThreadLifecycleAction) {
+                    if (lifecycleData.optString(SlockRealtimeNotifyContract.KeyAction) != SlockRealtimeNotifyContract.ActionAppLifecycle) {
                         return@launch
                     }
-                    val event = lifecycleData.optString("event")
-                    val pageName = lifecycleData.optString("pageName")
-                    if (pageName == THREAD_PAGE && (event == ThreadLifecycleResume || event == ThreadLifecycleShow)) {
+                    val event = lifecycleData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                    val pageName = lifecycleData.optString(SlockRealtimeNotifyContract.KeyPageName)
+                    if (!threadLifecycleEventTargetsThread(pageName)) {
+                        return@launch
+                    }
+                    if (!appLifecycleEventTargetsShell(
+                            eventShellInstanceId = lifecycleData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                            routeShellInstanceId = storeScope.shellInstanceId
+                        )
+                    ) {
+                        return@launch
+                    }
+                    threadHostForeground = isSlockHostVisible(storeScope.shellInstanceId)
+                    if (
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                        event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                    ) {
                         if (threadLifecycleSeen && active) {
                             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
                             // Foreground reconciliation: local joined-room state may
@@ -4092,7 +4112,7 @@ internal fun SharedThreadRouteContent(
     fun openComposerAttachmentPreview(attachmentId: String) {
         val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
         val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = listOf(attachment.sizeLabel, attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
         if (!attachment.isReadyThreadAttachmentForSend()) {
             pager.openSlockFilePreviewPage(
                 SlockFilePreviewPayload(
@@ -4131,6 +4151,7 @@ internal fun SharedThreadRouteContent(
                 name = name,
                 mimeType = attachment.mimeType.orEmpty(),
                 sizeLabel = attachment.sizeLabel,
+                sizeBytes = attachment.sizeBytes,
                 thumbnailUrl = attachment.previewUri
         )
         val composerImageGroup = currentComposerPayload().pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
@@ -4194,7 +4215,7 @@ internal fun SharedThreadRouteContent(
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
-    val visibleReadAllMarkerKey =
+    val visibleReadMarkerKey =
         remember(
             renderedThread.sourceThreadId,
             renderedTimelineSlice.status,
@@ -4202,11 +4223,17 @@ internal fun SharedThreadRouteContent(
             renderedTimelineSlice.messages.lastOrNull()?.id,
             renderedTimelineSlice.messages.lastOrNull()?.seq
         ) {
-            renderedTimelineSlice.visibleReadAllMarkerKey(renderedThread.sourceThreadId)
-        }
-    LaunchedEffect(visibleReadAllMarkerKey) {
-        if (visibleReadAllMarkerKey != null) {
-            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+            renderedTimelineSlice.visibleReadMarkerKey(renderedThread.sourceThreadId)
+    }
+    LaunchedEffect(visibleReadMarkerKey, active, threadHostForeground) {
+        if (shouldMarkThreadVisibleRead(
+                routeActive = active,
+                observedHostForeground = threadHostForeground,
+                currentHostVisibility = isSlockHostVisible(storeScope.shellInstanceId),
+                markerKey = visibleReadMarkerKey
+            )
+        ) {
+            threadViewModel.dispatch(SharedThreadIntent.MarkVisibleRead)
         }
     }
     fun sendPendingLocalMessage(
@@ -4470,7 +4497,8 @@ internal fun SharedThreadRouteContent(
                     SharedThreadComposerAttachment(
                         id = file.id,
                         fileName = file.fileName,
-                        sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        sizeLabel = "",
+                        sizeBytes = file.sizeBytes ?: 0L,
                         mimeType = file.mimeType?.takeIf { it.isNotBlank() },
                         previewUri = file.composerLocalPreviewUri(),
                         status = "uploading"
@@ -4513,6 +4541,7 @@ internal fun SharedThreadRouteContent(
                                             id = attachment.id.value,
                                             fileName = attachment.name,
                                             sizeLabel = attachment.sizeLabel,
+                                            sizeBytes = attachment.sizeBytes,
                                             mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
                                             previewUri = previewUri,
                                             status = "ready"
@@ -6722,6 +6751,7 @@ private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId
                     id = item.attachmentId,
                     name = item.name,
                     mimeType = item.mimeType,
+                    sizeBytes = item.sizeBytes,
                     sizeLabel = item.sizeLabel,
                     thumbnailUrl = item.thumbnailUrl
                 )
@@ -6736,6 +6766,7 @@ private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String):
             id = item.attachmentId,
             name = item.name,
             mimeType = item.mimeType,
+            sizeBytes = item.sizeBytes,
             sizeLabel = item.sizeLabel,
             thumbnailUrl = item.thumbnailUrl
         )
@@ -6759,6 +6790,7 @@ internal fun List<KuiklyPendingAttachmentItem>.composerPendingImageAttachmentGro
                     name = attachment.fileName.ifBlank { "Attachment" },
                     mimeType = attachment.mimeType.orEmpty(),
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     thumbnailUrl = attachment.previewUri
                 )
             }
@@ -7226,6 +7258,7 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
     }
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_SAVED = "saved"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_DELETED_HUMAN = "deleted_human"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_SHARE_SELECTION = "share_selection"
@@ -7252,6 +7285,17 @@ internal fun threadVisualFixture(
 ): KuiklyThreadScreenPayload {
     val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
     return when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_SAVED -> {
+            val base = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, resolvedInstanceId)
+            base.copy(
+                showMessageSaveAction = true,
+                showInlineSaveAction = false,
+                messages =
+                    base.messages.mapIndexed { index, message ->
+                        if (index == 0) message.copy(isSaved = true) else message
+                    }
+            )
+        }
         THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT ->
             KuiklyThreadScreenPayload(
                 instanceId = resolvedInstanceId,
@@ -8138,6 +8182,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                 id = attachment.id,
                 fileName = attachment.fileName,
                 sizeLabel = attachment.sizeLabel,
+                sizeBytes = attachment.sizeBytes,
                 mimeType = attachment.mimeType,
                 previewUri = attachment.previewUri,
                 status = attachment.status,
@@ -8158,6 +8203,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                     id = attachment.id,
                     fileName = attachment.fileName,
                     sizeLabel = attachment.sizeLabel,
+                    sizeBytes = attachment.sizeBytes,
                     mimeType = attachment.mimeType,
                     previewUri = attachment.previewUri,
                     status = attachment.status,
@@ -12295,9 +12341,20 @@ internal fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
             "${reaction.emoji}:${reaction.count}:${reaction.selected}"
         }
 
-internal fun KuiklyThreadScreenPayload.visibleReadAllMarkerKey(): String? {
-    return toThreadTimelineSlice().visibleReadAllMarkerKey(sourceThreadId)
+internal fun KuiklyThreadScreenPayload.visibleReadMarkerKey(): String? {
+    return toThreadTimelineSlice().visibleReadMarkerKey(sourceThreadId)
 }
+
+internal fun shouldMarkThreadVisibleRead(
+    routeActive: Boolean,
+    observedHostForeground: Boolean,
+    currentHostVisibility: Boolean,
+    markerKey: String?
+): Boolean =
+    routeActive && observedHostForeground && currentHostVisibility && markerKey != null
+
+internal fun threadLifecycleEventTargetsThread(pageName: String): Boolean =
+    pageName == THREAD_PAGE || pageName == SLOCK_APP_SHELL_PAGE
 
 internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
     SlockTimeContext(
@@ -12871,7 +12928,6 @@ private fun ThreadMessageCard(
     val showSavedBadge =
         shouldShowThreadMessageSavedBadge(
             showSaveAction = showSaveAction,
-            showInlineSaveAction = showInlineSaveAction,
             richContentEnabled = richContentEnabled,
             hasLocalSendState = message.hasLocalSendState(),
             isSaved = message.isSaved
@@ -13023,8 +13079,7 @@ private fun ThreadMessageCard(
                         } else if (richContentEnabled && forwardBundle != null) {
                             ThreadForwardBundleCard(
                                 bundle = forwardBundle,
-                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                onOpen = { onOpenForwardBundle(forwardBundle) }
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {
@@ -13218,16 +13273,17 @@ internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
 
 internal fun shouldShowThreadMessageSavedBadge(
     showSaveAction: Boolean,
-    showInlineSaveAction: Boolean,
     richContentEnabled: Boolean,
     hasLocalSendState: Boolean,
     isSaved: Boolean
 ): Boolean =
     showSaveAction &&
-        showInlineSaveAction &&
         richContentEnabled &&
         !hasLocalSendState &&
         isSaved
+
+internal val ThreadMessageSavedBadgeColor = SlockColor.AccentOrange.copy(alpha = 0.15f)
+internal const val ThreadMessageSavedBadgeIconColorArgb = SlockColor.AccentOrangeArgb
 
 @Composable
 private fun ThreadMessageSelectionToggle(
@@ -14515,7 +14571,9 @@ private fun ThreadMessageFooterMeta(
                 label = stringResource(MR.strings.thread_label_saved),
                 iconName = SlockLucideIconName.Bookmark,
                 iconSize = 11.dp,
-                color = SlockColor.BrandYellow,
+                iconColorArgb = ThreadMessageSavedBadgeIconColorArgb,
+                iconFillArgb = ThreadMessageSavedBadgeIconColorArgb,
+                color = ThreadMessageSavedBadgeColor,
                 modifier = Modifier.widthIn(max = 96.dp),
                 pressFeedback = false,
                 clickIdentity = "thread-saved:${message.id}",
@@ -15057,56 +15115,66 @@ private fun ThreadMessageTextSelectionDialog(
         mutableStateOf(TextFieldValue(originalText, selection = TextRange(0, originalText.length)))
     }
     Modal(onWillDismiss = { onDismiss() }) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(topSafeArea + 56.dp)
-                    .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.End
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Keep the native dispatch boundary behind the selectable content.
+            // A capture node on the Column itself prevents its text field and
+            // toolbar actions from receiving the gesture on Android.
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .background(SlockColor.SurfaceWhite)
+                        .slockNativeDispatchCapture()
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
             ) {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Copy,
-                    onClick = onCopyAll,
-                    backgroundColor = SlockColor.BrandYellow,
-                    size = 36.dp,
-                    shadowOffset = 2.dp
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.X,
-                    onClick = onDismiss,
-                    size = 36.dp,
-                    shadowOffset = 2.dp
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(topSafeArea + 56.dp)
+                        .padding(start = 16.dp, top = topSafeArea + 10.dp, end = 16.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Copy,
+                        onClick = onCopyAll,
+                        backgroundColor = SlockColor.BrandYellow,
+                        size = 36.dp,
+                        shadowOffset = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.X,
+                        onClick = onDismiss,
+                        size = 36.dp,
+                        shadowOffset = 2.dp
+                    )
+                }
+                TextField(
+                    value = fieldValue,
+                    onValueChange = { fieldValue = it },
+                    autoFocus = true,
+                    maxLines = Int.MAX_VALUE,
+                    systemNewlineAction = true,
+                    contentAlignment = Alignment.TopStart,
+                    textStyle =
+                        SlockType.Body.copy(
+                            fontFamily = SlockMonoFamily,
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(12.dp)
                 )
             }
-            TextField(
-                value = fieldValue,
-                onValueChange = { fieldValue = it },
-                autoFocus = true,
-                maxLines = Int.MAX_VALUE,
-                systemNewlineAction = true,
-                contentAlignment = Alignment.TopStart,
-                textStyle =
-                    SlockType.Body.copy(
-                        fontFamily = SlockMonoFamily,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                        color = SlockColor.TextBlack
-                    ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(start = 16.dp, end = 16.dp, bottom = bottomSafeArea + 16.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(12.dp)
-            )
         }
     }
 }
@@ -15987,7 +16055,7 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
     isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
-    listOf(sizeLabel, mimeType)
+    listOf(displaySizeLabel(), mimeType)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
@@ -16005,7 +16073,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
             mimeType.isNotBlank() -> mimeType
             else -> "file"
         },
-        sizeLabel
+        displaySizeLabel()
     )
         .filter { it.isNotBlank() }
         .joinToString(" · ")
@@ -16017,6 +16085,10 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
         isPreviewableDocumentAttachment() -> "Document preview"
         else -> null
     }
+
+/** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
+internal fun KuiklyThreadAttachmentItem.displaySizeLabel(): String =
+    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
 
 private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
@@ -16335,7 +16407,7 @@ private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentIte
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val meta = listOf(attachment.sizeLabel, attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+            val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
@@ -16675,51 +16747,87 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 @Composable
 private fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
-    modifier: Modifier = Modifier,
-    onOpen: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    Button(
-        onClick = onOpen,
-        pressFeedback = false,
+    // Aligned to the react ForwardedBundleCard: an inline bordered white card that
+    // renders the forwarded messages in place (header title + count, then each message's
+    // author / Space-Mono timestamp / body / attachment label, divided by hairlines) —
+    // instead of a summary that opened a separate modal. No avatars (react shows author
+    // text). Space Mono stays on the timestamp only. See visual case components.thread.forward-bundle.
+    Column(
         modifier = modifier
-            .background(SlockColor.SurfaceCream)
+            .background(SlockColor.SurfaceWhite)
             .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(modifier = Modifier.width(3.dp).height(16.dp).background(SlockColor.BrandYellow))
+            Text(
+                text = bundle.localizedForwardTitle(),
+                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text =
+                    if (bundle.displayCount() == 1) {
+                        stringResource(MR.strings.thread_message_count_one)
+                    } else {
+                        stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
+                    },
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        bundle.messages.forEach { item ->
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Box(modifier = Modifier.width(3.dp).height(20.dp).background(SlockColor.BrandYellow))
-                Text(
-                    text = bundle.localizedForwardTitle(),
-                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 19.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(15.dp), color = "#FF000000")
-            }
-            bundle.messages.take(4).forEach { item ->
-                Text(
-                    text = item.localizedForwardPreviewLine(),
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            val hiddenCount = (bundle.displayCount() - bundle.messages.take(4).size).coerceAtLeast(0)
-            if (hiddenCount > 0) {
-                Text(
-                    text = stringResource(MR.strings.thread_more_messages, hiddenCount),
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                        style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    item.timestampLabel.takeIf { it.isNotBlank() }?.let { timestamp ->
+                        Text(
+                            text = timestamp,
+                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (item.body.isNotBlank()) {
+                    Text(
+                        text = item.body,
+                        style = ThreadMessageBodyTextStyle,
+                        color = SlockColor.TextBlack
+                    )
+                }
+                if (item.attachmentCount > 0) {
+                    Text(
+                        text = item.localizedForwardAttachmentLabel(),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
             }
         }
     }
@@ -16864,13 +16972,6 @@ private fun ForwardMessageBundle.displayCount(): Int =
 private fun ForwardMessageItem.forwardPreviewLine(): String {
     val text = body.trim().ifBlank { forwardAttachmentLabel() }
     return "${authorName.ifBlank { "Unknown" }}: $text"
-}
-
-@Composable
-private fun ForwardMessageItem.localizedForwardPreviewLine(): String {
-    val text = body.trim().ifBlank { localizedForwardAttachmentLabel() }
-    val author = authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) }
-    return "$author: $text"
 }
 
 private fun ForwardMessageItem.forwardAttachmentLabel(): String =
@@ -17176,12 +17277,7 @@ internal fun ThreadForwardBundleVisualScreen() {
                     )
             )
         }
-    ThreadForwardBundleModal(
-        bundle = bundle,
-        memberAvatarResolver = EmptySlockMemberAvatarResolver,
-        onDismiss = {},
-        onOpenMember = {}
-    )
+    ThreadForwardBundleCard(bundle = bundle)
 }
 
 @Composable

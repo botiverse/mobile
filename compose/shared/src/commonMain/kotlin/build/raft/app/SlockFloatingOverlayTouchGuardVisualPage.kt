@@ -32,9 +32,18 @@ const val SLOCK_FLOATING_OVERLAY_TOUCH_GUARD_VISUAL_PAGE = "compose_floating_ove
 internal class ComposeSlockFloatingOverlayTouchGuardVisualPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { SlockFloatingOverlayTouchGuardVisualScreen() }
+        val fixture = pageData.params.optString("fixture")
+        setContent {
+            if (fixture == FloatingOverlayTouchGuardModalFixture) {
+                SlockModalPointerBarrierVisualScreen()
+            } else {
+                SlockFloatingOverlayTouchGuardVisualScreen()
+            }
+        }
     }
 }
+
+private const val FloatingOverlayTouchGuardModalFixture = "modal"
 
 @Composable
 internal fun SlockFloatingOverlayTouchGuardVisualScreen() {

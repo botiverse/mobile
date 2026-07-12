@@ -170,6 +170,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -209,7 +210,7 @@ private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
-private val MemberRowMinHeight = 48.dp
+private val MemberRowMinHeight = 42.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
@@ -640,7 +641,7 @@ private val membersSmokePayload = KuiklyMembersPayload(
             displayName = "Cindy",
             handle = "Onboarding Assistant",
             kind = MemberKind.Agent,
-            description = "Onboarding Assistant",
+            description = null,
             roleDescription = "agent",
             avatar = build.raft.app.model.AvatarReference.Pixel("heart"),
             avatarLabel = "C",
@@ -650,15 +651,48 @@ private val membersSmokePayload = KuiklyMembersPayload(
         ),
         MemberProfile(
             id = build.raft.app.model.MemberId("builder"),
-            displayName = "Builder",
+            displayName = "Builder with a deliberately long display name",
             handle = "@builder",
             kind = MemberKind.Agent,
-            description = "File and repo automation",
+            description = "File, repository, release, and automation workflows across the workspace",
             avatar = build.raft.app.model.AvatarReference.Pixel("robot"),
             avatarLabel = "B",
             presence = build.raft.app.model.Presence.Away,
             agentStatus = build.raft.app.model.AgentStatus.Working,
             permissionBadges = listOf("computer:MacBook Pro")
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("mobile-qa"),
+            displayName = "Mobile QA Sentinel",
+            handle = "@QA-Tester",
+            kind = MemberKind.Agent,
+            description = "Android, KMP, visual, performance, and release regression verification",
+            avatar = build.raft.app.model.AvatarReference.Pixel("shield"),
+            avatarLabel = "Q",
+            presence = build.raft.app.model.Presence.Active,
+            agentStatus = build.raft.app.model.AgentStatus.Working
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("product-ux"),
+            displayName = "Product UX Designer for Mobile and Desktop",
+            handle = "@Product-UX-Designer",
+            kind = MemberKind.Agent,
+            description = "Turns screenshots and product feedback into implementation-ready interaction specs",
+            avatar = build.raft.app.model.AvatarReference.Pixel("paint"),
+            avatarLabel = "P",
+            presence = build.raft.app.model.Presence.Away,
+            agentStatus = build.raft.app.model.AgentStatus.Idle
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("kmp-bridge"),
+            displayName = "KMP Bridge and Runtime Integration Specialist",
+            handle = "@KMP-Bridge",
+            kind = MemberKind.Agent,
+            description = "Shared MVI, native bridge, storage, networking, and cross-platform runtime boundaries",
+            avatar = build.raft.app.model.AvatarReference.Pixel("link"),
+            avatarLabel = "K",
+            presence = build.raft.app.model.Presence.Offline,
+            agentStatus = build.raft.app.model.AgentStatus.Offline
         ),
         MemberProfile(
             id = build.raft.app.model.MemberId("artin"),
@@ -677,6 +711,33 @@ private val membersSmokePayload = KuiklyMembersPayload(
             description = "Android",
             avatarLabel = "J",
             presence = build.raft.app.model.Presence.Away
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("artea"),
+            displayName = "Artea with a long product review display name",
+            handle = "@Artea",
+            kind = MemberKind.Human,
+            description = "Product and visual acceptance across mobile surfaces",
+            avatarLabel = "AR",
+            presence = build.raft.app.model.Presence.Active
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("cata"),
+            displayName = "Cata",
+            handle = "@Cata",
+            kind = MemberKind.Human,
+            description = "Cross-platform product engineering and release coordination",
+            avatarLabel = "CA",
+            presence = build.raft.app.model.Presence.Away
+        ),
+        MemberProfile(
+            id = build.raft.app.model.MemberId("reviewer"),
+            displayName = "A human member whose display name must ellipsize cleanly",
+            handle = "",
+            kind = MemberKind.Human,
+            description = null,
+            avatarLabel = "R",
+            presence = build.raft.app.model.Presence.Offline
         )
     )
 )
@@ -1735,13 +1796,15 @@ private fun rememberMemberDetailRouteProvider(
             )
         }
     val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val agentPanelTabOrderStore = sharedStores.agentPanelTabOrderStore
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()
     val codecModule = remember(pager.pagerId) { pager.acquireModule<CodecModule>(CodecModule.MODULE_NAME) }
-    val agentIssueReportRepository = remember(networkClient, authStore, codecModule) {
+    val agentIssueReportRepository = remember(networkClient, authStore, selectedServerStore, codecModule) {
         AgentIssueReportRepository(
             sessionStore = authStore,
+            selectedServerStore = selectedServerStore,
             networkClient = networkClient,
             sha256Hex = codecModule::sha256,
             logger = { message -> bridge.log("member_detail_agent_issue $message") }
@@ -2875,7 +2938,7 @@ internal fun MembersListContent(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
@@ -2906,7 +2969,7 @@ internal fun MembersListContent(
                         if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
                                 icon = SlockLucideIconName.Plus,
-                                contentDescription = "Create agent",
+                                contentDescription = stringResource(MR.strings.agent_create_action_create),
                                 onClick = {
                                     if (createAgentSubmit != null) {
                                         activeCreateAgent = true
@@ -2921,15 +2984,31 @@ internal fun MembersListContent(
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
                     item("group_${group.label}") {
-                        Text(
-                            text = group.label,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = SlockColor.TextMutedGray,
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MembersPageInset)
-                                .padding(top = SlockSpacing.Xs)
-                        )
+                                .padding(top = 6.dp, bottom = SlockSpacing.Xxs),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                        ) {
+                            SlockLucideIcon(
+                                name = SlockLucideIconName.Monitor,
+                                modifier = Modifier.size(9.dp),
+                                color = "#66000000"
+                            )
+                            Text(
+                                text = group.label.lowercase(),
+                                style = SlockType.Caption.copy(
+                                    fontFamily = SlockMonoFamily,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp
+                                ),
+                                color = SlockColor.TextBlack.copy(alpha = 0.40f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                         val member = group.members[index]
@@ -3500,17 +3579,19 @@ private fun MembersDetailContent(
                     }
                 }
             )
-            if (runtimeErrorText != null) {
+            val runtimeErrorBanner =
+                membersAgentRuntimeErrorBannerState(
+                    memberKind = member.kind,
+                    selectedTab = selectedTab,
+                    runtimeErrorText = runtimeErrorText
+                )
+            if (runtimeErrorBanner != null) {
                 MembersAgentRuntimeErrorBanner(
-                    errorText = runtimeErrorText,
+                    errorText = runtimeErrorBanner.errorText,
                     canViewPrivate = canViewPrivate,
+                    showViewLogs = runtimeErrorBanner.showViewLogs,
                     onViewLogs = { selectedTabOverride = MembersAgentDetailTab.Activity },
-                    onCopyInfo = { copyDiagnostics() },
-                    modifier = Modifier.padding(
-                        start = MembersPageInset,
-                        top = SlockSpacing.Sm,
-                        end = MembersPageInset
-                    )
+                    onCopyInfo = { copyDiagnostics() }
                 )
             }
             if (member.kind == MemberKind.Agent) {
@@ -3533,7 +3614,6 @@ private fun MembersDetailContent(
                     stateNotice = {
                         MembersAgentDetailStateNotice(
                             state = agentDetailState,
-                            canViewPrivate = canViewPrivate,
                             modifier = Modifier.padding(
                                 start = MembersPageInset,
                                 top = SlockSpacing.Xs,
@@ -3559,7 +3639,6 @@ private fun MembersDetailContent(
                             item {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
-                                    canViewPrivate = canViewPrivate,
                                     modifier = Modifier.padding(horizontal = MembersPageInset)
                                 )
                             }
@@ -4719,6 +4798,24 @@ private fun MembersAgentTabBar(
     }
 }
 
+internal data class MembersAgentRuntimeErrorBannerState(
+    val errorText: String,
+    val showViewLogs: Boolean
+)
+
+internal fun membersAgentRuntimeErrorBannerState(
+    memberKind: MemberKind,
+    selectedTab: MembersAgentDetailTab,
+    runtimeErrorText: String?
+): MembersAgentRuntimeErrorBannerState? {
+    if (memberKind != MemberKind.Agent) return null
+    val errorText = runtimeErrorText?.takeIf { it.isNotBlank() } ?: return null
+    return MembersAgentRuntimeErrorBannerState(
+        errorText = errorText,
+        showViewLogs = selectedTab != MembersAgentDetailTab.Activity
+    )
+}
+
 @Composable
 private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDetailTab> =
     SlockTabSpec(
@@ -4739,7 +4836,6 @@ private fun MembersAgentDetailTab.toSlockTabSpec(): SlockTabSpec<MembersAgentDet
 @Composable
 private fun MembersAgentDetailStateNotice(
     state: MembersAgentDetailLoadState,
-    canViewPrivate: Boolean,
     modifier: Modifier = Modifier
 ) {
     val message =
@@ -4752,13 +4848,7 @@ private fun MembersAgentDetailStateNotice(
             is MembersAgentDetailLoadState.Content ->
                 if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
         }
-    val privateMessage =
-        if (!canViewPrivate && state is MembersAgentDetailLoadState.Content) {
-            stringResource(MR.strings.member_state_private_hidden)
-        } else {
-            null
-        }
-    val resolved = message ?: privateMessage ?: return
+    val resolved = message ?: return
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -4781,6 +4871,7 @@ private fun MembersAgentDetailStateNotice(
 private fun MembersAgentRuntimeErrorBanner(
     errorText: String,
     canViewPrivate: Boolean,
+    showViewLogs: Boolean,
     onViewLogs: () -> Unit,
     onCopyInfo: () -> Unit,
     modifier: Modifier = Modifier
@@ -4788,15 +4879,12 @@ private fun MembersAgentRuntimeErrorBanner(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .border(SlockStroke.Default, SlockColor.AccentOrange)
-            .background(SlockColor.SurfaceCream)
-            .padding(SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            .background(SlockColor.AccentOrange.copy(alpha = 0.2f))
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = MembersPageInset, vertical = SlockSpacing.Sm),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             SlockStatusIndicator(
                 color = SlockColor.AccentOrange,
@@ -4812,35 +4900,41 @@ private fun MembersAgentRuntimeErrorBanner(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-        }
-        if (canViewPrivate) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-            ) {
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.member_action_view_logs),
-                    leadingIcon = SlockLucideIconName.FileText,
-                    minWidth = 92.dp,
-                    minHeight = 30.dp,
-                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    shadowOffset = 2.dp,
-                    onClick = onViewLogs
-                )
-                SlockBrutalActionButton(
-                    label = stringResource(MR.strings.member_action_copy_info),
-                    leadingIcon = SlockLucideIconName.Copy,
-                    minWidth = 92.dp,
-                    minHeight = 30.dp,
-                    textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    shadowOffset = 2.dp,
-                    onClick = onCopyInfo
-                )
+            if (canViewPrivate) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    MembersAgentRuntimeErrorAction(
+                        label = stringResource(MR.strings.member_action_copy_info),
+                        onClick = onCopyInfo
+                    )
+                    if (showViewLogs) {
+                        MembersAgentRuntimeErrorAction(
+                            label = stringResource(MR.strings.member_action_view_logs),
+                            onClick = onViewLogs
+                        )
+                    }
+                }
             }
         }
+        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
+}
+
+@Composable
+private fun MembersAgentRuntimeErrorAction(
+    label: String,
+    onClick: () -> Unit
+) {
+    Text(
+        text = label,
+        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp)
+            .withSlockFontWeight(FontWeight.Bold)
+            .copy(textDecoration = TextDecoration.Underline),
+        color = SlockColor.TextBlack.copy(alpha = 0.6f),
+        modifier = Modifier.clickable(onClick = onClick)
+    )
 }
 
 @Composable
@@ -8987,6 +9081,7 @@ private fun MembersListRow(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
+    val subtitle = membersListRowSubtitle(member)
     val agentStatusDisplayState =
         if (member.kind == MemberKind.Agent) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
@@ -8998,7 +9093,7 @@ private fun MembersListRow(
             .fillMaxWidth()
             .heightIn(min = MemberRowMinHeight)
             .clickable(onClick = onClick)
-            .padding(vertical = SlockSpacing.Sm),
+            .padding(vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
@@ -9008,37 +9103,44 @@ private fun MembersListRow(
             statusIndicatorState = agentStatusDisplayState,
             memberAvatarResolver = memberAvatarResolver
         )
-        Row(
+        Column(
             modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs)
         ) {
             Text(
                 text = member.displayName,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(0.5f, fill = false)
+                overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = member.description ?: member.handle,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        if (member.kind == MemberKind.Agent) {
-            SlockStatusIndicator(
-                color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
-                size = MemberStatusDotSize,
-                pulsing = agentStatusDisplayState?.pulsing == true
-            )
+        Box(
+            modifier = Modifier.width(MemberStatusDotSize),
+            contentAlignment = Alignment.Center
+        ) {
+            if (member.kind == MemberKind.Agent) {
+                SlockStatusIndicator(
+                    color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
+                    size = MemberStatusDotSize,
+                    pulsing = agentStatusDisplayState?.pulsing == true
+                )
+            }
         }
     }
 }
+
+internal fun membersListRowSubtitle(member: MemberProfile): String? =
+    member.description?.trim()?.takeIf { it.isNotEmpty() }
 
 @Composable
 private fun MembersAvatar(

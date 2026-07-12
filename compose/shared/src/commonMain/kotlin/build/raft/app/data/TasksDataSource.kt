@@ -111,14 +111,18 @@ data class TaskCreateDraft(
     val description: String? = null
 )
 
-private suspend fun SlockNetworkClient.serverTasks(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "tasks/server")
+private suspend fun SlockNetworkClient.serverTasks(
+    priority: DataRequestPriority,
+    serverId: ServerId
+): HomeNetworkResponse =
+    request(priority, "tasks/server", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.channelTasks(
     priority: DataRequestPriority,
-    channelId: ChannelId
+    channelId: ChannelId,
+    serverId: ServerId
 ): HomeNetworkResponse =
-    request(priority, "tasks/channel/${channelId.value}")
+    request(priority, "tasks/channel/${channelId.value}", serverIdOverride = serverId)
 
 private suspend fun SlockNetworkClient.claimTask(
     priority: DataRequestPriority,
@@ -196,7 +200,7 @@ class RealTaskRepository(
     ): DataResult<TaskSnapshot> {
         val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
         val result =
-            networkClient.serverTasks(DataRequestPriority.Visible)
+            networkClient.serverTasks(DataRequestPriority.Visible, serverId)
                 .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_server")
         return result.filterAssignedToMe(filter, context.currentUserId)
     }
@@ -208,7 +212,7 @@ class RealTaskRepository(
     ): DataResult<TaskSnapshot> {
         val context = sessionStore.taskServerContext(serverId) ?: return authRequired()
         val result =
-            networkClient.channelTasks(DataRequestPriority.Visible, channelId)
+            networkClient.channelTasks(DataRequestPriority.Visible, channelId, serverId)
                 .toTasksResult(filter = filter.withoutAssigneeFilter(), source = "tasks_channel")
         return result.filterAssignedToMe(filter, context.currentUserId)
     }
@@ -581,8 +585,8 @@ private data class TaskServerContext(val currentUserId: String)
 
 private suspend fun SlockAuthSessionStore.taskServerContext(serverId: ServerId): TaskServerContext? {
     val session = readSession() ?: return null
-    val selectedId = session.currentServerId ?: return null
-    if (selectedId != serverId.value) return null
+    val requestedId = serverId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    if (session.servers.none { it.id == requestedId }) return null
     return TaskServerContext(currentUserId = session.user.id)
 }
 

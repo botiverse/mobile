@@ -17,6 +17,7 @@ import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,6 +60,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
+import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
@@ -154,6 +156,41 @@ internal data class KuiklySettingsConnectedAccount(
     val status: String = "notConnected",
     val canConnect: Boolean = status == "notConnected"
 )
+
+@Composable
+private fun KuiklySettingsAccountPayload.localizedPresentationCopy(): KuiklySettingsAccountPayload =
+    copy(
+        profileSectionTitle = stringResource(MR.strings.settings_account_profile_section),
+        displayNameLabel = stringResource(MR.strings.settings_account_display_name),
+        displayNamePlaceholder = stringResource(MR.strings.settings_account_display_name_placeholder),
+        handleLabel = stringResource(MR.strings.settings_account_name),
+        handlePlaceholder = stringResource(MR.strings.settings_account_handle_placeholder),
+        emailLabel = stringResource(MR.strings.settings_account_email),
+        emailPlaceholder = stringResource(MR.strings.settings_account_email_placeholder),
+        verifiedLabel = stringResource(MR.strings.settings_account_verified),
+        saveChangesLabel = stringResource(MR.strings.settings_account_save_profile),
+        cancelLabel = stringResource(MR.strings.common_cancel),
+        connectedAccountsTitle = stringResource(MR.strings.settings_account_connected_accounts),
+        connectedLabel = stringResource(MR.strings.settings_account_connected),
+        connectLabel = stringResource(MR.strings.settings_account_connect),
+        connectingLabel = stringResource(MR.strings.settings_account_connecting),
+        failedLabel = stringResource(MR.strings.settings_account_failed),
+        logoutTitle = stringResource(MR.strings.settings_account_logout),
+        logoutDetail = stringResource(MR.strings.settings_account_logout_detail),
+        logoutLabel = stringResource(MR.strings.settings_account_logout),
+        logoutConfirmMessage = stringResource(MR.strings.settings_account_logout_confirm),
+        logoutConfirmLabel = stringResource(MR.strings.settings_account_logout),
+        logoutCancelLabel = stringResource(MR.strings.common_cancel),
+        changePasswordTitle = stringResource(MR.strings.settings_account_change_password),
+        changePasswordSubtitle = stringResource(MR.strings.settings_account_change_password_detail),
+        currentPasswordLabel = stringResource(MR.strings.settings_account_current_password),
+        newPasswordLabel = stringResource(MR.strings.settings_account_new_password),
+        confirmPasswordLabel = stringResource(MR.strings.settings_account_confirm_password),
+        newPasswordPlaceholder = stringResource(MR.strings.settings_account_password_minimum),
+        changePasswordButtonLabel = stringResource(MR.strings.settings_account_change_password),
+        passwordUpdatingLabel = stringResource(MR.strings.settings_account_updating),
+        passwordUpdatedLabel = stringResource(MR.strings.settings_account_password_updated)
+    )
 
 internal val settingsAccountSmokePayload: KuiklySettingsAccountPayload
     get() {
@@ -272,8 +309,9 @@ internal fun SettingsAccountContent(
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit = { _, _ -> },
     onEvent: (String, String?) -> Unit
 ) {
+    val localizedPayload = payload.localizedPresentationCopy()
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
-    val visibleConnectedAccounts = payload.connectedAccounts.visibleSettingsConnectedAccounts()
+    val visibleConnectedAccounts = localizedPayload.connectedAccounts.visibleSettingsConnectedAccounts()
     LazyColumn(
         modifier =
             Modifier
@@ -283,9 +321,9 @@ internal fun SettingsAccountContent(
                 .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { SettingsAccountSectionHeader(payload.profileSectionTitle) }
-        item { SettingsAccountProfileCard(payload, visibleConnectedAccounts, onEvent, onPasswordChange) }
-        item { SettingsLogoutAction(payload) { onEvent("logout", null) } }
+        item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
+        item { SettingsAccountProfileCard(localizedPayload, visibleConnectedAccounts, onEvent, onPasswordChange) }
+        item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
@@ -322,13 +360,15 @@ private fun SettingsAccountProfileCard(
     val newPasswordState = remember { mutableStateOf("") }
     val confirmPasswordState = remember { mutableStateOf("") }
     val passwordDraftError = remember { mutableStateOf<String?>(null) }
+    val passwordMinimumError = stringResource(MR.strings.settings_account_password_too_short)
+    val passwordMismatchError = stringResource(MR.strings.settings_account_password_mismatch)
     val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsProfileAvatar(profile, payload, onEvent)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    profile.displayName.ifBlank { "Account" },
+                    profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -346,16 +386,16 @@ private fun SettingsAccountProfileCard(
             }
         }
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning("Avatar upload failed: $code")
+            SettingsAccountWarning(stringResource(MR.strings.settings_account_avatar_upload_failed, code))
         }
         SlockBrutalReadOnlyField(
-            label = "Name",
+            label = payload.handleLabel,
             value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
             textStyle = settingsAccountInputTextStyle(SlockColor.TextMutedGray),
             textColor = SlockColor.TextMutedGray
         )
         SlockBrutalTextField(
-            label = "Display Name",
+            label = payload.displayNameLabel,
             value = displayName,
             placeholder = payload.displayNamePlaceholder,
             onValueChange = { displayNameState.value = it },
@@ -369,7 +409,7 @@ private fun SettingsAccountProfileCard(
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
         payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning("Profile save failed: $code")
+            SettingsAccountWarning(stringResource(MR.strings.settings_account_profile_save_failed, code))
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
         if (connectedAccounts.isNotEmpty()) {
@@ -408,8 +448,8 @@ private fun SettingsAccountProfileCard(
                     val next = newPasswordState.value
                     val confirm = confirmPasswordState.value
                     when {
-                        next.length < 8 -> passwordDraftError.value = "New password must be at least 8 characters"
-                        next != confirm -> passwordDraftError.value = "Passwords do not match"
+                        next.length < 8 -> passwordDraftError.value = passwordMinimumError
+                        next != confirm -> passwordDraftError.value = passwordMismatchError
                         else -> {
                             passwordDraftError.value = null
                             onPasswordChange(current, next)
@@ -506,10 +546,11 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
     )
 }
 
+@Composable
 private fun KuiklySettingsAccountPayload.profileSaveButtonLabel(): String =
     when {
-        saveInProgress -> "Saving"
-        saveErrorCode != null -> "Retry"
+        saveInProgress -> stringResource(MR.strings.settings_account_saving)
+        saveErrorCode != null -> stringResource(MR.strings.common_retry)
         else -> saveChangesLabel
     }
 
@@ -590,7 +631,9 @@ private fun SettingsPasswordForm(
             password = true
         )
         draftError?.let { SettingsAccountWarning(it) }
-        payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let { SettingsAccountWarning("Password update failed: $it") }
+        payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let {
+            SettingsAccountWarning(stringResource(MR.strings.settings_account_password_update_failed, it))
+        }
         SettingsProfileSaveButton(
             text = if (payload.passwordInProgress) payload.passwordUpdatingLabel else payload.changePasswordButtonLabel,
             enabled = payload.canChangePassword && !payload.passwordInProgress,
@@ -614,7 +657,10 @@ private fun SettingsConnectedAccounts(
             overflow = TextOverflow.Ellipsis
         )
         if (accounts.isEmpty()) {
-            SettingsAccountEmptyMessage("No connected accounts", "External login providers will show up here.")
+            SettingsAccountEmptyMessage(
+                stringResource(MR.strings.settings_account_no_connected_accounts),
+                stringResource(MR.strings.settings_account_no_connected_accounts_detail)
+            )
         } else {
             accounts.forEachIndexed { index, account ->
                 SettingsConnectedAccountRow(account, index, payload, onEvent)
@@ -659,7 +705,7 @@ private fun SettingsConnectedAccountRow(
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    account.provider.ifBlank { "Account ${index + 1}" },
+                    account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) },
                     style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -685,7 +731,12 @@ private fun SettingsConnectedAccountRow(
             }
         }
         if (failed) {
-            SettingsAccountWarning("Provider link failed: ${payload.providerErrorCode ?: payload.failedLabel}")
+            SettingsAccountWarning(
+                stringResource(
+                    MR.strings.settings_account_provider_link_failed,
+                    payload.providerErrorCode ?: payload.failedLabel
+                )
+            )
         }
     }
 }
@@ -710,7 +761,7 @@ private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, 
 private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle("Session", SlockLucideIconName.LogOut)
+        SettingsAccountSectionTitle(stringResource(MR.strings.settings_account_session), SlockLucideIconName.LogOut)
         SettingsAccountHardShadowCard {
             Text(
                 payload.logoutTitle,
@@ -880,11 +931,14 @@ internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccoun
         resolvedId.startsWith("password") || resolvedId.startsWith("email")
     }
 
+@Composable
 private fun connectedAccountStatusDetail(account: KuiklySettingsConnectedAccount, connected: Boolean): String =
     if (connected) {
-        account.identifier.takeIf { it.isNotBlank() }?.let { "Connected as $it" } ?: "Connected"
+        account.identifier.takeIf { it.isNotBlank() }?.let {
+            stringResource(MR.strings.settings_account_connected_as, it)
+        } ?: stringResource(MR.strings.settings_account_connected)
     } else {
-        "Not connected"
+        stringResource(MR.strings.settings_account_not_connected)
     }
 
 private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, SlockLucideIconName?> =

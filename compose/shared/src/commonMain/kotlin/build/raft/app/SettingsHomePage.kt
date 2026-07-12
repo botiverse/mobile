@@ -187,6 +187,7 @@ import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_START
 import build.raft.app.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import build.raft.app.data.isAuthSessionError
+import build.raft.app.data.isValidChannelName
 import build.raft.app.data.KuiklyAuthSessionEvents
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.kuiklyBridgeCallContext
@@ -362,6 +363,7 @@ import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
+import build.raft.app.data.realtime.SlockRealtimeNotifyContract
 import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
@@ -517,9 +519,6 @@ private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
 private val EmptyConversationDirectoryProjectionFlow =
     MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
-private const val AppShellLifecycleAction = "appLifecycle"
-private const val AppShellLifecycleResume = "resume"
-private const val AppShellLifecycleShow = "show"
 private const val HomeDestinationSearch = SharedHomeShellDestinationSearch
 private const val HomeDestinationActivity = SharedHomeShellDestinationActivity
 private const val HomeDestinationSaved = SharedHomeShellDestinationSaved
@@ -592,18 +591,23 @@ private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
 private val AppShellChildPageTabKeys = listOf("home", "tasks", "members", "settings")
+private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
+private const val AppShellChildPagePrewarmInitialDelayMs = 600L
+private const val AppShellChildPagePrewarmIntervalMs = 500L
 
 private typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
 
 private class AppShellChildTabEntry(
     val debugId: Int,
     initialSelectedTab: String = "home",
+    initialRetainedTabs: Set<String> = setOf(initialSelectedTab),
     initialRenderer: AppShellChildTabRenderer = { _, _ ->
         SlockCenteredLoading()
     },
     initialModalHostState: SlockUnifiedDialogHostState? = null
 ) {
     var selectedTab by mutableStateOf(initialSelectedTab)
+    var retainedTabs by mutableStateOf(initialRetainedTabs)
     var renderer: AppShellChildTabRenderer by mutableStateOf(initialRenderer)
     var modalHostState: SlockUnifiedDialogHostState? by mutableStateOf(initialModalHostState)
 }
@@ -1312,6 +1316,7 @@ private fun SlockAppShellChildTabPageContent() {
         return
     }
     val active = entry.selectedTab == tab
+    val retained = tab in entry.retainedTabs
     LaunchedEffect(shellId, tab, entry.debugId) {
         bridge.log(
             "app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab " +
@@ -1326,13 +1331,17 @@ private fun SlockAppShellChildTabPageContent() {
             )
         }
     }
-    val modalHostState = entry.modalHostState
-    if (modalHostState != null) {
-        SlockUnifiedDialogHostProvider(modalHostState) {
+    if (appShellChildPageRendersContent(active = active, retained = retained)) {
+        val modalHostState = entry.modalHostState
+        if (modalHostState != null) {
+            SlockUnifiedDialogHostProvider(modalHostState) {
+                entry.renderer(tab, active)
+            }
+        } else {
             entry.renderer(tab, active)
         }
     } else {
-        entry.renderer(tab, active)
+        Box(modifier = Modifier.fillMaxSize())
     }
 }
 
@@ -1597,6 +1606,9 @@ private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settin
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
 
+internal fun shouldHandleAppShellTabSelection(currentTab: String, nextTab: String): Boolean =
+    retainedAppShellSelectedTab(currentTab) != retainedAppShellSelectedTab(nextTab)
+
 internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentTab: String, targetTab: String): Boolean =
     retainedAppShellSelectedTab(currentTab) == "home" &&
         retainedAppShellSelectedTab(targetTab) != "home"
@@ -1655,6 +1667,18 @@ internal fun appShellRetainedChildTabs(activeChildTab: String?, mountedTabs: Set
     } else {
         (AppShellChildPageTabKeys.filter { it in mountedTabs } + activeChildTab).distinct()
     }
+
+internal fun appShellChildPagePrewarmOrder(
+    activeChildTab: String?,
+    retainedTabs: Set<String>,
+    prewarmedTabs: Set<String>
+): List<String> =
+    AppShellChildPagePrewarmOrder.filter { tab ->
+        tab != activeChildTab && tab !in retainedTabs && tab !in prewarmedTabs
+    }
+
+internal fun appShellChildPageRendersContent(active: Boolean, retained: Boolean): Boolean =
+    active || retained
 
 internal fun appShellNextChildTabSwitchEpoch(currentTab: String, nextTab: String, currentEpoch: Int): Int =
     if (retainedAppShellSelectedTab(currentTab) == retainedAppShellSelectedTab(nextTab)) {
@@ -1964,11 +1988,14 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var retainedAppShellTabs by remember {
         mutableStateOf(setOf("home", launchSelection.selectedTab))
     }
+    var prewarmedAppShellTabs by remember { mutableStateOf(emptySet<String>()) }
     var selectedSettingsDestination by remember {
         mutableStateOf(launchSelection.selectedSettingsDestination)
     }
     var settingsHeaderTapCount by remember { mutableStateOf(0) }
-    var homeListPosition by remember { mutableStateOf(AppShellServerScopedLazyListPosition()) }
+    var homeListPositions by remember { mutableStateOf(AppShellServerLazyListPositions()) }
+    var pendingHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
+    var observedHomeServerSwitchId by remember { mutableStateOf<String?>(null) }
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var hostNetworkStatus by remember { mutableStateOf(SlockAppShellNetworkStatus.Online) }
@@ -1987,18 +2014,18 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     val authStore = sharedStores.authStore
     val shellAuthStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val shellRuntime = remember(sharedStores, storeScope) { sharedStores.shellRuntime(storeScope) }
+    val selectedServerStore = remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
     val appShellServerMembersStore =
         remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val appShellRealtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
     val appShellAgentDetailStore =
         remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
-    val runtimeServerId by shellRuntime.currentServerId.collectAsState()
-    val navigationStoreScope = remember(storeScope.shellInstanceId, runtimeServerId) {
+    val selectedServerId by selectedServerStore.selectedServerId.collectAsState()
+    val navigationStoreScope = remember(storeScope.shellInstanceId, selectedServerId) {
         SlockShellStoreScope.create(
             shellInstanceId = storeScope.shellInstanceId,
-            initialServerId = runtimeServerId ?: storeScope.initialServerId
+            initialServerId = selectedServerId ?: storeScope.initialServerId
         )
     }
     val authDataSource = remember(sharedStores, storeScope) {
@@ -2228,6 +2255,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = shellAuthStore,
+                selectedServerStore = selectedServerStore,
                 conversationRepository = conversationRepository,
                 messageStore = sharedStores.threadMessageStore,
                 payloadStore = sharedStores.threadPayloadStore,
@@ -2318,6 +2346,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
+    val diagnosticsChooseChannelToast = stringResource(MR.strings.settings_diagnostics_feedback_choose_channel)
+    val diagnosticsCannotAttachToast = stringResource(MR.strings.settings_diagnostics_feedback_cannot_attach)
+    val diagnosticsPreparingToast = stringResource(MR.strings.settings_diagnostics_feedback_preparing)
+    val diagnosticsUploadEmptyToast = stringResource(MR.strings.settings_diagnostics_feedback_upload_empty)
+    val diagnosticsDraftReadyToast = stringResource(MR.strings.settings_diagnostics_feedback_draft_ready)
+    val diagnosticsUploadFailedPrefix = stringResource(MR.strings.settings_diagnostics_feedback_upload_failed_prefix)
+    val diagnosticsComposerSeed = stringResource(MR.strings.settings_diagnostics_feedback_composer_seed)
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = appShellAuthGateViewModelKey(pager.pagerId, authGateInstanceId)) {
             SharedAuthGateViewModel(authDataSource)
@@ -2426,11 +2461,33 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     val settingsState by settingsViewModel.state.collectAsState()
     var consumedDiagnosticsDeepLinkId by remember { mutableStateOf<String?>(null) }
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-    val readyServerId = readySession?.currentServerId
+    val readyServerId = selectedServerId
+    val renderedHomeServerId =
+        (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
     val latestReadySession by rememberUpdatedState(readySession)
+    LaunchedEffect(renderedHomeServerId, pendingHomeServerSwitchId) {
+        val targetServerId = pendingHomeServerSwitchId ?: return@LaunchedEffect
+        if (renderedHomeServerId != targetServerId) return@LaunchedEffect
+        bridge.performanceMarker(
+            phase = "home_server_switch_state_observed",
+            routeName = "kuikly_home",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "serverId" to targetServerId,
+                    "channels" to
+                        ((homeState.content as? SharedHomeContentState.Content)
+                            ?.snapshot
+                            ?.channels
+                            ?.size
+                            ?: 0).toString()
+                )
+        )
+        observedHomeServerSwitchId = targetServerId
+    }
     // task #226: fetch the latest active announcement once the session is ready
     // (keyed by server so switching servers re-pulls that server's announcement).
-    LaunchedEffect(announcementsClient, readySession?.currentServerId) {
+    LaunchedEffect(announcementsClient, readyServerId) {
         if (readySession == null) {
             activeAnnouncement = null
             return@LaunchedEffect
@@ -2578,7 +2635,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     }
     val shellScope = rememberSlockAppShellScope()
     val appShellModalHostState = rememberSlockUnifiedDialogHostState()
-    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val realtimeEventMapper =
+        remember(sharedStores) { RealtimeEventMapper(messageShadowObserver = sharedStores.messageShadowObserver) }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
@@ -2629,8 +2687,11 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         sharedStores.homeSavedStateCache.clear()
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
+        prewarmedAppShellTabs = emptySet()
         selectedSettingsDestination = SettingsDestinationHome
-        homeListPosition = AppShellServerScopedLazyListPosition()
+        homeListPositions = AppShellServerLazyListPositions()
+        pendingHomeServerSwitchId = null
+        observedHomeServerSwitchId = null
         tasksListPosition = AppShellLazyListPosition()
         membersListState = AppShellMembersListState()
         homeShellStore.reset()
@@ -2992,15 +3053,15 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
     ) {
         val channelId = conversation.channelId?.value?.takeIf { it.isNotBlank() } ?: conversation.threadId.value
         if (conversation.kind != ConversationKind.Channel || channelId.isBlank()) {
-            bridge.toast("Choose a channel for diagnostics")
+            bridge.toast(diagnosticsChooseChannelToast)
             return
         }
         if (!conversation.joined || !conversation.permissions.canSend || !conversation.permissions.canAttach) {
-            bridge.toast("You cannot attach diagnostics in this channel")
+            bridge.toast(diagnosticsCannotAttachToast)
             return
         }
         if (diagnosticsFeedbackUploadChannelId != null) {
-            bridge.toast("Preparing diagnostics attachment...")
+            bridge.toast(diagnosticsPreparingToast)
             return
         }
         bridge.log(
@@ -3008,7 +3069,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 "fileName=${draft.fileName} pushCurrent=$pushCurrent"
         )
         diagnosticsFeedbackUploadChannelId = channelId
-        bridge.toast("Preparing diagnostics attachment...")
+        bridge.toast(diagnosticsPreparingToast)
         appShellCoroutineScope.launch {
             val uploadResult =
                 withContext(Dispatchers.Default) {
@@ -3028,12 +3089,13 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 id = attachment.id.value,
                                 fileName = attachment.name,
                                 sizeLabel = attachment.sizeLabel,
+                                sizeBytes = attachment.sizeBytes,
                                 mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
                                 status = "ready"
                             )
                         }
                     if (uploadedAttachments.isEmpty()) {
-                        bridge.toast("Diagnostics attachment upload returned empty")
+                        bridge.toast(diagnosticsUploadEmptyToast)
                         return@launch
                     }
                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
@@ -3049,26 +3111,27 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             onWarn = { bridge.logWarn(it) },
                             threadRowAffordances = threadRowAffordances
                         ).withDiagnosticsFeedbackDraft(
-                            draft = draft
+                            draft = draft,
+                            composerSeedText = diagnosticsComposerSeed
                         )
                     composerDraftPersistSlice.stageUploadedAttachments(
                         draftKey = launchPayload.threadComposerDraftKey(),
                         attachments = uploadedAttachments
                     )
                     pager.openStandaloneThreadLaunchPayload(launchPayload, navigationStoreScope)
-                    bridge.toast("Diagnostics draft ready")
+                    bridge.toast(diagnosticsDraftReadyToast)
                 }
                 is DataResult.Error -> {
                     val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.settingsUserFacingMessage()
-                    bridge.toast("Diagnostics attachment upload failed: $reason")
+                    bridge.toast("$diagnosticsUploadFailedPrefix $reason")
                     bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
                 }
                 is DataResult.NoPermission -> {
-                    bridge.toast("You cannot attach diagnostics in this channel")
+                    bridge.toast(diagnosticsCannotAttachToast)
                     bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
                 }
                 is DataResult.Empty -> {
-                    bridge.toast("Diagnostics attachment upload returned empty")
+                    bridge.toast(diagnosticsUploadEmptyToast)
                     bridge.log("diagnostics_feedback_attachment_upload_empty reason=${uploadResult.reason}")
                 }
             }
@@ -3231,7 +3294,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         userMemberIds: List<String>
     ) {
         val trimmedName = name.trim()
-        if (trimmedName.isBlank() || createChannelSubmitting) {
+        if (!trimmedName.isValidChannelName() || createChannelSubmitting) {
             return
         }
         createChannelSubmitting = true
@@ -3292,14 +3355,12 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     bridge.realtimeAuthRefreshFinished(reason, success = false)
                     return
                 }
-        val currentServerId =
-            currentSession.currentServerId
-                ?: run {
-                    bridge.realtimeAuthRefreshFinished(reason, success = false)
-                    return
-                }
-        if (currentServerId != requestedServerId) {
-            bridge.log("shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId currentServerId=$currentServerId")
+        val currentServerId = selectedServerStore.selectedServerId.value
+        if (!selectedServerStore.isSelected(requestedServerId)) {
+            bridge.log(
+                "shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId " +
+                    "currentServerId=${currentServerId.orEmpty()}"
+            )
             bridge.realtimeAuthRefreshFinished(reason, success = false)
             return
         }
@@ -3307,8 +3368,8 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
             when (val result = authDataSource.refreshRealtimeAuth(reason)) {
                 is SharedAuthResult.Success -> {
                     val refreshed = result.data
-                    val refreshedServerId = refreshed.currentServerId
-                    if (refreshedServerId != requestedServerId || refreshed.accessToken.isBlank()) {
+                    val refreshedServerId = selectedServerStore.selectedServerId.value
+                    if (!selectedServerStore.isSelected(requestedServerId) || refreshed.accessToken.isBlank()) {
                         bridge.log("shared_realtime_auth_refresh_skip reason=$reason result=server_mismatch")
                         bridge.realtimeAuthRefreshFinished(reason, success = false)
                         return@launch
@@ -3317,7 +3378,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
                     appShellAgentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
                     bridge.realtimeConnect(
-                        serverId = refreshedServerId,
+                        serverId = refreshedServerId.orEmpty(),
                         accessToken = refreshed.accessToken,
                         shellInstanceId = storeScope.shellInstanceId,
                         lastSeq = realtimeLastSeq,
@@ -3425,11 +3486,24 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                 val eventDataSnapshot = rawEventData.toString()
                 appShellCoroutineScope.launch {
                     val eventData = JSONObject(eventDataSnapshot)
-                    if (eventData.optString("action") == AppShellLifecycleAction) {
-                        val event = eventData.optString("event")
+                    if (
+                        eventData.optString(SlockRealtimeNotifyContract.KeyAction) ==
+                        SlockRealtimeNotifyContract.ActionAppLifecycle
+                    ) {
+                        val event = eventData.optString(SlockRealtimeNotifyContract.KeyLifecycleEvent)
+                        if (!appLifecycleEventTargetsShell(
+                                eventShellInstanceId = eventData.optString(SlockRealtimeNotifyContract.KeyShellInstanceId),
+                                routeShellInstanceId = storeScope.shellInstanceId
+                            )
+                        ) {
+                            return@launch
+                        }
                         if (
-                            eventData.optString("pageName") == SLOCK_APP_SHELL_PAGE &&
-                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                            eventData.optString(SlockRealtimeNotifyContract.KeyPageName) == SLOCK_APP_SHELL_PAGE &&
+                            (
+                                event == SlockRealtimeNotifyContract.LifecycleVisibleResume ||
+                                    event == SlockRealtimeNotifyContract.LifecycleVisibleShow
+                                ) &&
                             latestReadySession != null
                         ) {
                             refreshVisibleAppShellRoute("app_lifecycle_$event")
@@ -3448,17 +3522,17 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             slockLogger("SlockRealtimeDecode")
                         ) ?: return@launch
                     val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return@launch
-                    val activeSession = latestReadySession
-                    if (!shouldRouteRealtimeEventToShell(activeSession?.currentServerId, serverId)) {
+                    val activeSelectedServerId = selectedServerStore.selectedServerId.value
+                    if (!shouldRouteRealtimeEventToShell(activeSelectedServerId, serverId)) {
                         bridge.log(
                             "shared_realtime_event_skip reason=server_mismatch " +
-                                "eventServerId=$serverId shellServerId=${activeSession?.currentServerId.orEmpty()}"
+                                "eventServerId=$serverId shellServerId=${activeSelectedServerId.orEmpty()}"
                         )
                         return@launch
                     }
                     if (
                         event is ServerMembershipRemoved &&
-                        event.serverId.value == activeSession?.currentServerId
+                        selectedServerStore.isSelected(event.serverId.value)
                     ) {
                         slockLogWarn(
                             "SlockRealtimeDomain",
@@ -3479,7 +3553,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     }
                     if (
                         event is ServerDeleted &&
-                        event.serverId.value == activeSession?.currentServerId
+                        selectedServerStore.isSelected(event.serverId.value)
                     ) {
                         slockLogWarn(
                             "SlockRealtimeDomain",
@@ -3518,7 +3592,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             val banner =
                                 slockNotificationPushBannerOrNull(
                                     event = event,
-                                    currentServerId = activeSession?.currentServerId,
+                                    currentServerId = activeSelectedServerId,
                                     visibleConversationKey =
                                         appShellVisibleForegroundConversationKey(
                                             selectedTab = latestSelectedTab,
@@ -3583,12 +3657,41 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
         }
     }
 
+    val homeReadyForChildPagePrewarm =
+        readyServerId != null && homeState.content is SharedHomeContentState.Content
+    LaunchedEffect(homeReadyForChildPagePrewarm, childTabShellId) {
+        if (!homeReadyForChildPagePrewarm || !slockPlatformPrewarmsAppShellChildPages()) {
+            return@LaunchedEffect
+        }
+        delay(AppShellChildPagePrewarmInitialDelayMs)
+        appShellChildPagePrewarmOrder(
+            activeChildTab = appShellActiveChildPagerTab(selectedTab),
+            retainedTabs = retainedAppShellTabs,
+            prewarmedTabs = prewarmedAppShellTabs
+        ).forEach { tab ->
+            if (
+                tab == appShellActiveChildPagerTab(selectedTab) ||
+                tab in retainedAppShellTabs ||
+                tab in prewarmedAppShellTabs
+            ) {
+                return@forEach
+            }
+            prewarmedAppShellTabs = prewarmedAppShellTabs + tab
+            bridge.log(
+                "app_shell_child_tab_prewarm tab=$tab selectedTab=$selectedTab " +
+                    "retained=$retainedAppShellTabs prewarmed=$prewarmedAppShellTabs"
+            )
+            delay(AppShellChildPagePrewarmIntervalMs)
+        }
+    }
+
     val mainRouteContent: @Composable () -> Unit = {
         SlockAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
-            onBottomTabSelected = {
+            onBottomTabSelected = onBottomTabSelected@{
                 val nextTab = retainedAppShellSelectedTab(it)
+                if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
                 val visitedBefore = nextTab in retainedAppShellTabs
                 bridge.performanceMarker(
                     phase = appShellBottomTabPerformancePhase(nextTab),
@@ -3648,12 +3751,16 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        val homeListServerId = readyServerId
+                        val homeListServerId =
+                            appShellHomeListServerId(
+                                renderedServerId = renderedHomeServerId,
+                                readyServerId = readyServerId
+                            )
+                        val homeListPositionServerId = readyServerId ?: homeListServerId
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
-                        key("home-list-${homeListServerId.orEmpty()}") {
-                            SharedHomeScreen(
+                        SharedHomeScreen(
                                 bridge = bridge,
                                 state = homeState,
                                 active = active,
@@ -3666,13 +3773,40 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 onIntent = { intent ->
                                     if (intent is SharedHomeIntent.SelectServer) {
+                                        pendingHomeServerSwitchId =
+                                            intent.serverId.takeIf { it != homeListServerId }
+                                        observedHomeServerSwitchId = null
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_select",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata =
+                                                mapOf(
+                                                    "from" to homeListServerId.orEmpty(),
+                                                    "to" to intent.serverId
+                                                )
+                                        )
                                         readySession
                                             ?.withAppShellSelectedServer(intent.serverId)
                                             ?.let { session ->
                                                 authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                                                bridge.performanceMarker(
+                                                    phase = "home_server_switch_session_projected",
+                                                    routeName = "kuikly_home",
+                                                    event = "instant",
+                                                    metadata = mapOf("serverId" to intent.serverId)
+                                                )
                                             }
                                     }
                                     homeShellStore.dispatch(SharedHomeShellIntent.Home(intent))
+                                    if (intent is SharedHomeIntent.SelectServer) {
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_store_dispatched",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata = mapOf("serverId" to intent.serverId)
+                                        )
+                                    }
                                 },
                                 onNotificationDismiss = { id ->
                                     homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
@@ -3734,17 +3868,31 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
                                 bottomContentPadding = appShellBottomContentInset,
+                                listPositionServerId = homeListPositionServerId,
                                 initialListPosition =
                                     appShellLazyListPositionForServer(
-                                        currentServerId = homeListServerId,
-                                        savedPosition = homeListPosition
+                                        currentServerId = homeListPositionServerId,
+                                        savedPositions = homeListPositions
                                     ),
-                                onListPositionSnapshot = { position ->
-                                    homeListPosition =
-                                        appShellServerScopedLazyListPosition(homeListServerId, position)
+                                onListPositionSnapshot = { serverId, position ->
+                                    homeListPositions = homeListPositions.withPosition(serverId, position)
+                                },
+                                onContentComposeCommitted = { serverId ->
+                                    if (
+                                        pendingHomeServerSwitchId == serverId &&
+                                        observedHomeServerSwitchId == serverId
+                                    ) {
+                                        bridge.performanceMarker(
+                                            phase = "home_server_switch_compose_committed",
+                                            routeName = "kuikly_home",
+                                            event = "instant",
+                                            metadata = mapOf("serverId" to serverId)
+                                        )
+                                        pendingHomeServerSwitchId = null
+                                        observedHomeServerSwitchId = null
+                                    }
                                 }
                             )
-                        }
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
@@ -3910,6 +4058,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                             val entry = AppShellChildTabEntry(
                                 debugId = AppShellChildTabRegistry.createEntryId(),
                                 initialSelectedTab = currentChildTab,
+                                initialRetainedTabs = retainedAppShellTabs,
                                 initialRenderer = childTabRenderer,
                                 initialModalHostState = appShellModalHostState
                             )
@@ -3919,6 +4068,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     val childTabEntry = childTabRegistration.entry
                     SideEffect {
                         childTabEntry.selectedTab = currentChildTab
+                        childTabEntry.retainedTabs = retainedAppShellTabs
                         childTabEntry.renderer = childTabRenderer
                         childTabEntry.modalHostState = appShellModalHostState
                     }
@@ -3941,7 +4091,7 @@ private fun SlockAppShellContent(pageVisibleTick: Int = 0, initialAuthRestoreTic
                     AppShellTabs(
                         selectedTab = selectedTab,
                         childHostShellId = childTabShellId,
-                        mountedTabs = retainedAppShellTabs,
+                        mountedTabs = retainedAppShellTabs + prewarmedAppShellTabs,
                         childTabSwitchEpoch = childTabSwitchEpoch,
                         log = { bridge.log(it) }
                     ) { tab, active ->
@@ -5817,13 +5967,13 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_message_font_size_title)) {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
             options =
                 snapshot.messageBodyFontSize.options.map {
-                    SegmentedControlOption(it.key, it.label, SlockLucideIconName.Type)
+                    SegmentedControlOption(it.key, it.label)
                 },
             onValueSelected = onFontSizeDraftChange,
             enabled = snapshot.messageBodyFontSize.available && !busy
@@ -5994,7 +6144,7 @@ private fun SettingsMessageAlignmentCard(
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
     SettingsFormSectionCard(iconName = SlockLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
         SettingsSegmentedControlField(
-            detail = snapshot.messageAlignmentPreference.detail,
+            detail = stringResource(MR.strings.settings_message_alignment_detail),
             selectedValue = selectedKey.ifBlank { "left" },
             options =
                 listOf(
@@ -6019,7 +6169,7 @@ private fun SettingsCompactMessagesCard(
     val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
     val preference = snapshot.compactConsecutiveMessages
     SettingsFormSectionCard(iconName = SlockLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_compact_detail))
         Row(
             modifier =
                 Modifier
@@ -6033,7 +6183,7 @@ private fun SettingsCompactMessagesCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6071,8 +6221,8 @@ private fun SettingsLongMessageCollapseCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.inProgress
     val preference = snapshot.longMessageCollapse
-    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = "Collapse long messages") {
-        SettingsFormDetailText(preference.detail)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardList, title = stringResource(MR.strings.settings_mobile_long_message_collapse)) {
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_long_message_collapse_detail))
         Row(
             modifier =
                 Modifier
@@ -6086,12 +6236,17 @@ private fun SettingsLongMessageCollapseCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    text = if (preference.enabled) "Preview the first 8 lines" else "Show full messages",
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_long_message_collapse_enabled)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_long_message_collapse_disabled)
+                        },
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -6116,7 +6271,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
     val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
     val preference = snapshot.activityTaskStatusBadges
     SettingsFormSectionCard(iconName = SlockLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_activity_task_badges_detail))
         Row(
             modifier =
                 Modifier
@@ -6130,7 +6285,7 @@ private fun SettingsActivityTaskStatusBadgesCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6169,7 +6324,7 @@ private fun SettingsComposerSendKeyCard(
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
     SettingsFormSectionCard(iconName = SlockLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_composer_key_detail))
         Row(
             modifier =
                 Modifier
@@ -6183,7 +6338,12 @@ private fun SettingsComposerSendKeyCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text =
+                        if (preference.enabled) {
+                            stringResource(MR.strings.settings_mobile_composer_key_send)
+                        } else {
+                            stringResource(MR.strings.settings_mobile_composer_key_new_line)
+                        },
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -6221,7 +6381,7 @@ private fun SettingsThreadRowAffordancesCard(
 ) {
     val preference = snapshot.threadRowAffordances
     SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_mobile_message_row_actions)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_message_row_actions_detail))
         preference.options.forEach { option ->
             val affordance = ThreadRowAffordancePreference.fromStorageKey(option.key) ?: return@forEach
             val enabled = option.key in preference.selectedKeys
@@ -6242,7 +6402,7 @@ private fun SettingsThreadRowAffordancesCard(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = option.label,
+                        text = affordance.settingsTitle(),
                         style = SlockType.Button.copy(color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,
@@ -6267,6 +6427,21 @@ private fun SettingsThreadRowAffordancesCard(
         }
     }
 }
+
+@Composable
+private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
+    if (enabled) {
+        stringResource(MR.strings.settings_mobile_status_enabled)
+    } else {
+        stringResource(MR.strings.settings_state_off)
+    }
+
+@Composable
+private fun ThreadRowAffordancePreference.settingsTitle(): String =
+    when (this) {
+        ThreadRowAffordancePreference.Reactions -> stringResource(MR.strings.settings_mobile_reactions)
+        ThreadRowAffordancePreference.Saved -> stringResource(MR.strings.settings_mobile_saved)
+    }
 
 @Composable
 private fun ThreadRowAffordancePreference.settingsDetail(enabled: Boolean): String =
@@ -6294,7 +6469,7 @@ private fun SettingsImageAnnotationCard(
     val busy = actionState?.action == MOBILE_ACTION_IMAGE_ANNOTATION && actionState.inProgress
     val preference = snapshot.imageAnnotation
     SettingsFormSectionCard(iconName = SlockLucideIconName.Image, title = stringResource(MR.strings.settings_mobile_image_annotation)) {
-        SettingsFormDetailText(preference.detail)
+        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_image_annotation_detail))
         Row(
             modifier =
                 Modifier
@@ -6308,7 +6483,7 @@ private fun SettingsImageAnnotationCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = preference.statusLabel,
+                    text = preference.localizedToggleStatus(),
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -7705,20 +7880,21 @@ private fun SettingsServerDeleteConfirmationDialog(
     val resolvedSlug = expectedServerSlug.ifBlank { "server-slug" }
     Modal(onWillDismiss = { if (!deleteBusy) onDismiss() }) {
         Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .background(SlockColor.ShadowBlack.copy(alpha = 0.58f))
-                    .clickable(enabled = !deleteBusy, onClick = onDismiss),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
+            SlockModalDismissBarrier(
+                overlayAlpha = 0.58f,
+                onDismiss = onDismiss,
+                dismissEnabled = !deleteBusy
+            )
             Box(
                 modifier =
                     Modifier
                         .padding(horizontal = 18.dp)
                         .offset(x = (-10).dp, y = (-36).dp)
                         .widthIn(max = 360.dp)
-                        .clickable(enabled = false, onClick = {})
+                        .slockFloatingContentClickTarget()
             ) {
                 Box(
                     modifier =
@@ -8639,7 +8815,7 @@ private fun SharedSettingsOpenSourceLicensesContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenUrl: (String) -> Unit
 ) {
-    val payload = state.toOpenSourceLicensesPayload()
+    val payload = state.toOpenSourceLicensesPayload(settingsOpenSourceLicensesPayloadCopy())
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "openLicenseUrl", "openSourceUrl" ->
@@ -8984,6 +9160,7 @@ private fun SharedQuiverFeedbackContent(
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
+    val copy = settingsQuiverFeedbackCopy()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val chatLayoutPreferenceStore =
@@ -9004,8 +9181,8 @@ private fun SharedQuiverFeedbackContent(
                 SettingsQuiverFeedbackEntry(
                     id = 0,
                     kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                    title = "Feedback",
-                    body = "请反馈问题。每次发送都会创建一条反馈消息，并自动复制可分享的结果。"
+                    title = copy.title,
+                    body = copy.introduction
                 )
             )
         )
@@ -9034,7 +9211,7 @@ private fun SharedQuiverFeedbackContent(
     fun pickAttachment(imageOnly: Boolean) {
         if (busy) return
         if (remainingSlots <= 0) {
-            error = "Hands 一次最多上传 $attachmentLimit 个附件。"
+            error = copy.attachmentLimitReached(attachmentLimit)
             return
         }
         busy = true
@@ -9050,14 +9227,14 @@ private fun SharedQuiverFeedbackContent(
                             .take(attachmentLimit)
                     attachments = merged
                     error = when {
-                        rejectedCount > 0 -> "Hands 单个附件最大 $attachmentMaxLabel，已跳过超限文件。"
-                        accepted.size > remainingSlots -> "Hands 一次最多上传 $attachmentLimit 个附件，已保留前 $attachmentLimit 个。"
+                        rejectedCount > 0 -> copy.attachmentTooLarge(attachmentMaxLabel)
+                        accepted.size > remainingSlots -> copy.attachmentLimitTrimmed(attachmentLimit)
                         else -> null
                     }
                 }
                 is DataResult.Empty -> Unit
-                is DataResult.Error -> error = result.error.code
-                is DataResult.NoPermission -> error = result.blocker.code
+                is DataResult.Error -> error = copy.attachmentPickerFailed
+                is DataResult.NoPermission -> error = copy.attachmentPickerPermissionNeeded
             }
             busy = false
         }
@@ -9075,7 +9252,7 @@ private fun SharedQuiverFeedbackContent(
         }
         if (normalizedMessage.isBlank()) {
             settingsCapabilities.log("settings_quiver_feedback_submit_blocked reason=blank_message")
-            error = "Message is required."
+            error = copy.messageRequired
             return
         }
         settingsCapabilities.log("settings_quiver_feedback_submit_enter")
@@ -9090,12 +9267,12 @@ private fun SharedQuiverFeedbackContent(
                 SettingsQuiverFeedbackEntry(
                     id = nextConversationEntryId(),
                     kind = SettingsQuiverFeedbackEntryKind.User,
-                    title = "You",
+                    title = copy.you,
                     body = submittedMessage,
                     detail =
                         submittedAttachments
                             .takeIf { it.isNotEmpty() }
-                            ?.joinToString { it.fileName.ifBlank { "Attachment" } }
+                            ?.joinToString { it.fileName.ifBlank { copy.attachment } }
                 )
         scope.launch {
             try {
@@ -9107,49 +9284,54 @@ private fun SharedQuiverFeedbackContent(
                         entries =
                             entries +
                                 result.data.toQuiverFeedbackEntry(
-                                    id = nextConversationEntryId()
+                                    id = nextConversationEntryId(),
+                                    copy = copy
                                 )
                         messageFieldValue = TextFieldValue("")
                         attachments = emptyList()
                     }
                     is DataResult.Empty -> {
                         settingsCapabilities.log("settings_quiver_feedback_submit_result status=empty")
-                        error = "settings_feedback_submit_unavailable"
+                        error = copy.submissionUnavailable
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Feedback",
-                                    body = "settings_feedback_submit_unavailable"
+                                    title = copy.title,
+                                    body = copy.submissionUnavailable
                                 )
                     }
                     is DataResult.Error -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=error code=${result.error.code}"
                         )
-                        error = result.error.code
+                        val failure = copy.submissionFailure(result.error.code)
+                        error = failure.composerStatus
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Feedback failed",
-                                    body = result.error.code
+                                    title = failure.title,
+                                    body = failure.body,
+                                    detail = failure.diagnosticDetail
                                 )
                     }
                     is DataResult.NoPermission -> {
                         settingsCapabilities.log(
                             "settings_quiver_feedback_submit_result status=no_permission code=${result.blocker.code}"
                         )
-                        error = result.blocker.code
+                        val failure = copy.submissionPermissionFailure(result.blocker.code)
+                        error = failure.composerStatus
                         entries =
                             entries +
                                 SettingsQuiverFeedbackEntry(
                                     id = nextConversationEntryId(),
                                     kind = SettingsQuiverFeedbackEntryKind.Error,
-                                    title = "Permission needed",
-                                    body = result.blocker.code
+                                    title = failure.title,
+                                    body = failure.body,
+                                    detail = failure.diagnosticDetail
                                 )
                     }
                 }
@@ -9158,14 +9340,16 @@ private fun SharedQuiverFeedbackContent(
                         "settings_quiver_feedback_submit_exception error=${throwable::class.simpleName} " +
                         "message=${throwable.message.orEmpty()}"
                 )
-                error = "settings_feedback_submit_failed"
+                val failure = copy.submissionFailure()
+                error = failure.composerStatus
                 entries =
                     entries +
                         SettingsQuiverFeedbackEntry(
                             id = nextConversationEntryId(),
                             kind = SettingsQuiverFeedbackEntryKind.Error,
-                            title = "Feedback failed",
-                            body = "settings_feedback_submit_failed"
+                            title = failure.title,
+                            body = failure.body,
+                            detail = failure.diagnosticDetail
                         )
             } finally {
                 settingsCapabilities.log("settings_quiver_feedback_submit_finished")
@@ -9185,6 +9369,7 @@ private fun SharedQuiverFeedbackContent(
                 item(key = entry.id) {
                     SettingsQuiverFeedbackConversationRow(
                         entry = entry,
+                        copy = copy,
                         onCopy = { shareText ->
                             settingsCapabilities.bridgeCopyToClipboard(shareText)
                         }
@@ -9198,9 +9383,10 @@ private fun SharedQuiverFeedbackContent(
                             SettingsQuiverFeedbackEntry(
                                 id = -1,
                                 kind = SettingsQuiverFeedbackEntryKind.Quiver,
-                                title = "Feedback",
-                                body = "Submitting feedback and preparing the copied reference..."
+                                title = copy.title,
+                                body = copy.submitting
                             ),
+                        copy = copy,
                         onCopy = {}
                     )
                 }
@@ -9224,12 +9410,12 @@ private fun SharedQuiverFeedbackContent(
                         instanceId = "settings-quiver-feedback-composer",
                         seedText = message,
                         syncNonce = composerSyncNonce,
-                        placeholder = "Share feedback",
+                        placeholder = copy.placeholder,
                         enabled = !busy,
                         attachmentActionsEnabled = remainingSlots > 0,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
                         statusLabel = error?.takeIf { it.isNotBlank() },
-                        pendingAttachments = attachments.toFeedbackComposerAttachmentItems()
+                        pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
                 composerSendKeyEnabled = composerSendKeyEnabled,
                 onEvent = { action, value, _, attachmentId ->
@@ -9280,27 +9466,121 @@ private data class SettingsQuiverFeedbackEntry(
     val shareText: String? = null
 )
 
-private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(id: Int): SettingsQuiverFeedbackEntry =
+internal data class SettingsQuiverFeedbackCopy(
+    val title: String = "Send feedback",
+    val introduction: String = "Share a problem or suggestion. Each submission creates a feedback message and copies a shareable reference.",
+    val you: String = "You",
+    val attachment: String = "Attachment",
+    val attachmentLimitReached: (Int) -> String = { limit -> "You can upload up to $limit attachments at a time." },
+    val attachmentTooLarge: (String) -> String = { maxSize -> "Attachments larger than $maxSize were skipped." },
+    val attachmentLimitTrimmed: (Int) -> String = { limit -> "Only the first $limit attachments were kept." },
+    val attachmentPickerFailed: String = "Unable to add the attachment.",
+    val attachmentPickerPermissionNeeded: String = "Permission is needed to add an attachment.",
+    val messageRequired: String = "A message is required.",
+    val submissionUnavailable: String = "Feedback is unavailable right now. Please try again.",
+    val submissionFailedTitle: String = "Feedback failed",
+    val submissionFailedBody: String = "We could not send your feedback. Please try again.",
+    val submissionPermissionTitle: String = "Permission needed",
+    val submissionPermissionBody: String = "You do not have permission to send feedback.",
+    val submissionSucceeded: (String) -> String = { ticket -> "Submitted $ticket." },
+    val referenceCopied: String = "Reference copied automatically.",
+    val submitting: String = "Submitting feedback and preparing the copied reference...",
+    val placeholder: String = "Share feedback",
+    val copyResult: String = "Copy result"
+)
+
+internal data class SettingsQuiverFeedbackFailurePresentation(
+    val composerStatus: String,
+    val title: String,
+    val body: String,
+    val diagnosticDetail: String?
+)
+
+internal fun SettingsQuiverFeedbackCopy.submissionFailure(
+    diagnosticCode: String? = null
+): SettingsQuiverFeedbackFailurePresentation =
+    SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = submissionFailedBody,
+        title = submissionFailedTitle,
+        body = submissionFailedBody,
+        diagnosticDetail = diagnosticCode?.takeIf { it.isNotBlank() }
+    )
+
+internal fun SettingsQuiverFeedbackCopy.submissionPermissionFailure(
+    diagnosticCode: String
+): SettingsQuiverFeedbackFailurePresentation =
+    SettingsQuiverFeedbackFailurePresentation(
+        composerStatus = submissionPermissionBody,
+        title = submissionPermissionTitle,
+        body = submissionPermissionBody,
+        diagnosticDetail = diagnosticCode.takeIf { it.isNotBlank() }
+    )
+
+@Composable
+private fun settingsQuiverFeedbackCopy(): SettingsQuiverFeedbackCopy {
+    val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
+    val attachmentTooLargeTemplate = stringResource(MR.strings.settings_feedback_attachment_too_large)
+    val attachmentLimitTrimmedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_trimmed)
+    val submissionSucceededTemplate = stringResource(MR.strings.settings_feedback_submission_succeeded)
+    return SettingsQuiverFeedbackCopy(
+        title = stringResource(MR.strings.settings_feedback_title),
+        introduction = stringResource(MR.strings.settings_feedback_introduction),
+        you = stringResource(MR.strings.settings_feedback_you),
+        attachment = stringResource(MR.strings.settings_feedback_attachment),
+        attachmentLimitReached = { limit -> attachmentLimitReachedTemplate.replaceLocalizedFormatArgs(limit) },
+        attachmentTooLarge = { maxSize -> attachmentTooLargeTemplate.replaceLocalizedFormatArgs(maxSize) },
+        attachmentLimitTrimmed = { limit -> attachmentLimitTrimmedTemplate.replaceLocalizedFormatArgs(limit) },
+        attachmentPickerFailed = stringResource(MR.strings.settings_feedback_attachment_picker_failed),
+        attachmentPickerPermissionNeeded = stringResource(MR.strings.settings_feedback_attachment_permission_needed),
+        messageRequired = stringResource(MR.strings.settings_feedback_message_required),
+        submissionUnavailable = stringResource(MR.strings.settings_feedback_submission_unavailable),
+        submissionFailedTitle = stringResource(MR.strings.settings_feedback_submission_failed_title),
+        submissionFailedBody = stringResource(MR.strings.settings_feedback_submission_failed_body),
+        submissionPermissionTitle = stringResource(MR.strings.settings_feedback_submission_permission_title),
+        submissionPermissionBody = stringResource(MR.strings.settings_feedback_submission_permission_body),
+        submissionSucceeded = { ticket -> submissionSucceededTemplate.replaceLocalizedFormatArgs(ticket) },
+        referenceCopied = stringResource(MR.strings.settings_feedback_reference_copied),
+        submitting = stringResource(MR.strings.settings_feedback_submitting),
+        placeholder = stringResource(MR.strings.settings_feedback_placeholder),
+        copyResult = stringResource(MR.strings.settings_feedback_copy_result)
+    )
+}
+
+internal fun String.replaceLocalizedFormatArgs(vararg args: Any): String =
+    args.foldIndexed(this) { index, value, argument ->
+        val placeholderIndex = index + 1
+        value
+            .replace("%${placeholderIndex}${'$'}s", argument.toString())
+            .replace("%${placeholderIndex}${'$'}d", argument.toString())
+    }
+
+private fun SettingsQuiverFeedbackSubmission.toQuiverFeedbackEntry(
+    id: Int,
+    copy: SettingsQuiverFeedbackCopy
+): SettingsQuiverFeedbackEntry =
     SettingsQuiverFeedbackEntry(
         id = id,
         kind = SettingsQuiverFeedbackEntryKind.Quiver,
-        title = "Feedback",
+        title = copy.title,
         body =
             listOf(
-                "Submitted ${ticketId.take(8).ifBlank { "feedback" }}.",
-                shareText.takeIf { it.isNotBlank() }?.let { "Reference copied automatically." }
+                copy.submissionSucceeded(ticketId.take(8).ifBlank { copy.title }),
+                shareText.takeIf { it.isNotBlank() }?.let { copy.referenceCopied }
             ).filterNotNull().joinToString(" "),
         detail = shareText.takeIf { it.isNotBlank() },
         ticketId = ticketId,
         shareText = shareText
     )
 
-private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(): List<KuiklyPendingAttachmentItem> =
+private fun List<PlatformFile>.toFeedbackComposerAttachmentItems(
+    copy: SettingsQuiverFeedbackCopy
+): List<KuiklyPendingAttachmentItem> =
     map { file ->
         KuiklyPendingAttachmentItem(
             id = file.feedbackComposerAttachmentId(),
-            fileName = file.fileName.ifBlank { "Attachment" },
-            sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            fileName = file.fileName.ifBlank { copy.attachment },
+            sizeLabel = "",
+            sizeBytes = file.sizeBytes ?: 0L,
             mimeType = file.mimeType,
             previewUri = file.previewUri,
             status = "ready"
@@ -9313,6 +9593,7 @@ private fun PlatformFile.feedbackComposerAttachmentId(): String =
 @Composable
 private fun SettingsQuiverFeedbackConversationRow(
     entry: SettingsQuiverFeedbackEntry,
+    copy: SettingsQuiverFeedbackCopy,
     onCopy: (String) -> Unit
 ) {
     val isUser = entry.kind == SettingsQuiverFeedbackEntryKind.User
@@ -9361,7 +9642,7 @@ private fun SettingsQuiverFeedbackConversationRow(
             }
             entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
                 SlockBrutalActionButton(
-                    label = "Copy result",
+                    label = copy.copyResult,
                     onClick = { onCopy(shareText) },
                     leadingIcon = SlockLucideIconName.Clipboard,
                     modifier = Modifier.fillMaxWidth(),
@@ -9458,53 +9739,56 @@ private fun SettingsSharedPlaceholder(
 private fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
     selectedDestination: String
-): KuiklySettingsHomePayload =
-    KuiklySettingsHomePayload(
-        title = "Settings",
+): KuiklySettingsHomePayload {
+    val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
+    val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
+    val aboutSection = stringResource(MR.strings.settings_navigation_section_about)
+    return KuiklySettingsHomePayload(
+        title = stringResource(MR.strings.settings_title),
         subtitle = "",
         showSelection = true,
         items =
             listOf(
                 SlockTabItemPayload(
                     key = SettingsDestinationAccount,
-                    title = "Account",
-                    subtitle = "Profile, email, password, connected accounts",
+                    title = stringResource(MR.strings.settings_account_title),
+                    subtitle = stringResource(MR.strings.settings_account_subtitle),
                     iconName = SlockLucideIconName.User,
                     value = session?.user?.bestDisplayName,
                     selected = selectedDestination == SettingsDestinationAccount,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationLanguageRegion,
-                    title = "Language & Region",
-                    subtitle = "Language, timezone, translation",
+                    title = stringResource(MR.strings.settings_language_region_title),
+                    subtitle = stringResource(MR.strings.settings_language_region_subtitle),
                     iconName = SlockLucideIconName.Languages,
                     selected = selectedDestination == SettingsDestinationLanguageRegion,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAppearance,
-                    title = "Appearance",
-                    subtitle = "Message font size and reading density",
+                    title = stringResource(MR.strings.settings_appearance_title),
+                    subtitle = stringResource(MR.strings.settings_appearance_subtitle),
                     iconName = SlockLucideIconName.Type,
                     selected = selectedDestination == SettingsDestinationAppearance,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationNotifications,
-                    title = "Notifications",
-                    subtitle = "Push status and workspace mute",
+                    title = stringResource(MR.strings.settings_notifications_title),
+                    subtitle = stringResource(MR.strings.settings_notifications_subtitle),
                     iconName = SlockLucideIconName.Bell,
                     selected = selectedDestination == SettingsDestinationNotifications,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationMobile,
-                    title = "Mobile",
-                    subtitle = "My message alignment",
+                    title = stringResource(MR.strings.settings_mobile_title),
+                    subtitle = stringResource(MR.strings.settings_mobile_subtitle),
                     iconName = SlockLucideIconName.Smartphone,
                     selected = selectedDestination == SettingsDestinationMobile,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationStorage,
@@ -9512,7 +9796,7 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_storage_subtitle),
                     iconName = SlockLucideIconName.Archive,
                     selected = selectedDestination == SettingsDestinationStorage,
-                    section = "Personal"
+                    section = personalSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationServer,
@@ -9521,16 +9805,16 @@ private fun appShellSettingsHomePayload(
                     iconName = SlockLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationServer,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationBilling,
-                    title = "Billing",
-                    subtitle = "Plan and usage",
+                    title = stringResource(MR.strings.settings_billing_title),
+                    subtitle = stringResource(MR.strings.settings_billing_subtitle),
                     iconName = SlockLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationBilling,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAdministration,
@@ -9538,7 +9822,7 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
                     iconName = SlockLucideIconName.Shield,
                     selected = selectedDestination == SettingsDestinationAdministration,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationConnectedApps,
@@ -9546,15 +9830,15 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
                     iconName = SlockLucideIconName.Link2,
                     selected = selectedDestination == SettingsDestinationConnectedApps,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationComputers,
-                    title = "Computers",
-                    subtitle = "Connected machines and workspaces",
+                    title = stringResource(MR.strings.settings_computers_title),
+                    subtitle = stringResource(MR.strings.settings_computers_subtitle),
                     iconName = SlockLucideIconName.Monitor,
                     selected = selectedDestination == SettingsDestinationComputers,
-                    section = "Workspace"
+                    section = workspaceSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
@@ -9562,26 +9846,27 @@ private fun appShellSettingsHomePayload(
                     subtitle = stringResource(MR.strings.settings_about_subtitle),
                     iconName = SlockLucideIconName.BadgeInfo,
                     selected = selectedDestination == SettingsDestinationAbout,
-                    section = "About"
+                    section = aboutSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationQuiverFeedback,
-                    title = "Send feedback",
-                    subtitle = "Report a problem or suggestion",
+                    title = stringResource(MR.strings.settings_feedback_title),
+                    subtitle = stringResource(MR.strings.settings_feedback_subtitle),
                     iconName = SlockLucideIconName.MessageSquarePlus,
                     selected = selectedDestination == SettingsDestinationQuiverFeedback,
-                    section = "About"
+                    section = aboutSection
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationReleaseNotes,
-                    title = "Release Notes",
-                    subtitle = "Version history and changelog",
+                    title = stringResource(MR.strings.settings_release_notes_title),
+                    subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
                     iconName = SlockLucideIconName.FileText,
                     selected = selectedDestination == SettingsDestinationReleaseNotes,
-                    section = "About"
+                    section = aboutSection
                 )
             )
     )
+}
 
 internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     session: StoredAuthSession?,
@@ -9690,8 +9975,11 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         }
     return KuiklySettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
+        totalTitle = stringResource(MR.strings.settings_storage_total_title),
         totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
-        feedback = statusText,
+        refreshLabel = stringResource(MR.strings.settings_storage_refresh),
+        safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
+        feedback = localizedSettingsStorageFeedback(statusText),
         rows =
             storage?.rows?.map { row ->
                 row.toStoragePayloadRow(
@@ -9709,8 +9997,8 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
     KuiklySettingsStorageRow(
         target = target,
         iconName = storageTargetIconName(target),
-        title = title,
-        detail = detail,
+        title = localizedSettingsStorageRowTitle(target, title),
+        detail = localizedSettingsStorageRowDetail(detail),
         size = sizeLabel,
         clearLabel =
             if (clearEnabled) {
@@ -9726,6 +10014,46 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearEnabled = clearEnabled,
         clearInProgress = clearInProgress
     )
+
+@Composable
+private fun localizedSettingsStorageRowTitle(target: String, fallback: String): String =
+    when (target) {
+        "database" -> stringResource(MR.strings.settings_storage_row_database)
+        "imageCache" -> stringResource(MR.strings.settings_storage_row_image_cache)
+        "attachmentDownloads" -> stringResource(MR.strings.settings_storage_row_downloads)
+        "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_row_temporary)
+        else -> fallback
+    }
+
+@Composable
+private fun localizedSettingsStorageRowDetail(detail: String): String =
+    when (detail) {
+        "Messages, task metadata, and server snapshots stored on this device." ->
+            stringResource(MR.strings.settings_storage_row_database_detail)
+        "Downloaded image previews kept for faster viewing." ->
+            stringResource(MR.strings.settings_storage_row_image_cache_detail)
+        "Files downloaded for opening or installing from previews." ->
+            stringResource(MR.strings.settings_storage_row_downloads_detail)
+        "Debug logs and temporary files generated by the app." ->
+            stringResource(MR.strings.settings_storage_row_temporary_detail)
+        "OHOS storage usage is not exposed through the host capability yet." ->
+            stringResource(MR.strings.settings_storage_ohos_database_detail)
+        "Image cache clearing is not available on OHOS yet." ->
+            stringResource(MR.strings.settings_storage_ohos_image_cache_detail)
+        "Use Diagnostics clear logs for the local diagnostics buffer." ->
+            stringResource(MR.strings.settings_storage_ohos_temporary_detail)
+        else -> detail
+    }
+
+@Composable
+private fun localizedSettingsStorageFeedback(feedback: String): String =
+    when (feedback) {
+        "Image cache cleared." -> stringResource(MR.strings.settings_storage_feedback_image_cleared)
+        "Downloaded files cleared." -> stringResource(MR.strings.settings_storage_feedback_downloads_cleared)
+        "Temporary files and diagnostics logs cleared." ->
+            stringResource(MR.strings.settings_storage_feedback_temporary_cleared)
+        else -> feedback
+    }
 
 private fun storageTargetIconName(target: String): SlockLucideIconName =
     when (target) {
@@ -11109,31 +11437,85 @@ private fun SharedSettingsAboutSnapshot.buildSummary(): String =
         packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
     }
 
-internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(): KuiklySharedSettingsPayload {
+internal data class SettingsOpenSourceLicensesPayloadCopy(
+    val title: String = "Open Source Licenses",
+    val detail: (Int, String) -> String = { count, source -> "$count libraries from $source" },
+    val defaultSource: String = "Android release runtime",
+    val sectionLicenses: String = "Licenses",
+    val loading: String = "Loading",
+    val loadingDetail: String = "Loading generated Android package license metadata.",
+    val wait: String = "Wait",
+    val unavailable: String = "Unavailable",
+    val emptyTitle: String = "No licenses found",
+    val emptyDetail: String = "The generated Android package license asset did not include any dependencies.",
+    val empty: String = "Empty",
+    val libraries: String = "Libraries",
+    val numberedLibraries: (Int) -> String = { section -> "Libraries $section" },
+    val licenseUnknown: String = "License unknown",
+    val licenseLink: String = "License link",
+    val sourceLink: String = "Source link",
+    val noLink: String = "No link",
+    val license: String = "License",
+    val source: String = "Source"
+)
+
+@Composable
+private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesPayloadCopy {
+    val detailTemplate = stringResource(MR.strings.settings_open_source_licenses_detail_libraries_from)
+    val numberedLibrariesTemplate = stringResource(MR.strings.settings_open_source_licenses_section_libraries_numbered)
+    return SettingsOpenSourceLicensesPayloadCopy(
+        title = stringResource(MR.strings.settings_open_source_licenses_title),
+        detail = { count, source -> detailTemplate.replaceLocalizedFormatArgs(count, source) },
+        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source),
+        sectionLicenses = stringResource(MR.strings.settings_licenses_title),
+        loading = stringResource(MR.strings.settings_open_source_licenses_state_loading),
+        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail),
+        wait = stringResource(MR.strings.settings_open_source_licenses_state_wait),
+        unavailable = stringResource(MR.strings.settings_open_source_licenses_action_unavailable),
+        emptyTitle = stringResource(MR.strings.settings_open_source_licenses_empty_title),
+        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail),
+        empty = stringResource(MR.strings.settings_open_source_licenses_state_empty),
+        libraries = stringResource(MR.strings.settings_open_source_licenses_section_libraries),
+        numberedLibraries = { section -> numberedLibrariesTemplate.replaceLocalizedFormatArgs(section) },
+        licenseUnknown = stringResource(MR.strings.settings_open_source_licenses_license_unknown),
+        licenseLink = stringResource(MR.strings.settings_open_source_licenses_license_link),
+        sourceLink = stringResource(MR.strings.settings_open_source_licenses_source_link),
+        noLink = stringResource(MR.strings.settings_open_source_licenses_no_link),
+        license = stringResource(MR.strings.settings_open_source_licenses_action_license),
+        source = stringResource(MR.strings.settings_open_source_licenses_action_source)
+    )
+}
+
+internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSourceLicensesPayload(
+    copy: SettingsOpenSourceLicensesPayloadCopy = SettingsOpenSourceLicensesPayloadCopy()
+): KuiklySharedSettingsPayload {
     val snapshot = (this as? ScreenLoadState.Content<SharedSettingsOpenSourceLicensesSnapshot>)?.data
     val detail =
         when (this) {
             is ScreenLoadState.Content ->
-                "${snapshot?.items.orEmpty().size} libraries from ${snapshot?.sourceConfiguration.orEmpty().ifBlank { "Android release runtime" }}"
+                copy.detail(
+                    snapshot?.items.orEmpty().size,
+                    snapshot?.sourceConfiguration.orEmpty().ifBlank { copy.defaultSource }
+                )
             is ScreenLoadState.Error -> error.settingsUserFacingMessage()
             is ScreenLoadState.Empty -> reason.settingsUserFacingMessage()
             is ScreenLoadState.NoPermission -> blocker.settingsUserFacingMessage()
-            ScreenLoadState.Loading -> "Loading generated Android package license metadata."
+            ScreenLoadState.Loading -> copy.loadingDetail
         }
     val sections =
         when {
             snapshot == null ->
                 listOf(
                     KuiklySharedSettingsSection(
-                        title = "Licenses",
+                        title = copy.sectionLicenses,
                         rows =
                             listOf(
                                 KuiklySharedSettingsRow(
                                     key = "loading",
                                     iconName = SlockLucideIconName.LoaderCircle,
-                                    title = "Loading",
+                                    title = if (this == ScreenLoadState.Loading) copy.loading else copy.unavailable,
                                     detail = detail,
-                                    status = "Wait"
+                                    status = if (this == ScreenLoadState.Loading) copy.wait else copy.unavailable
                                 )
                             )
                     )
@@ -11141,15 +11523,15 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
             snapshot.items.isEmpty() ->
                 listOf(
                     KuiklySharedSettingsSection(
-                        title = "Licenses",
+                        title = copy.sectionLicenses,
                         rows =
                             listOf(
                                 KuiklySharedSettingsRow(
                                     key = "empty",
                                     iconName = SlockLucideIconName.FileText,
-                                    title = "No licenses found",
-                                    detail = "The generated Android package license asset did not include any dependencies.",
-                                    status = "Empty"
+                                    title = copy.emptyTitle,
+                                    detail = copy.emptyDetail,
+                                    status = copy.empty
                                 )
                             )
                     )
@@ -11160,7 +11542,7 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                     .chunked(32)
                     .mapIndexed { sectionIndex, items ->
                         KuiklySharedSettingsSection(
-                            title = if (sectionIndex == 0) "Libraries" else "Libraries ${sectionIndex + 1}",
+                            title = if (sectionIndex == 0) copy.libraries else copy.numberedLibraries(sectionIndex + 1),
                             rows =
                                 items.map { item ->
                                     val title = item.displayName.ifBlank { item.name.ifBlank { item.id } }
@@ -11171,9 +11553,9 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                                         title = title,
                                         detail = item.settingsLicenseCoordinates(),
                                         value = link,
-                                        status = item.settingsLicenseActionLabel(),
+                                        status = item.settingsLicenseActionLabel(copy),
                                         enabled = link.isNotBlank(),
-                                        supportingDetail = item.settingsLicenseMetaLine()
+                                        supportingDetail = item.settingsLicenseMetaLine(copy)
                                     )
                                 }
                         )
@@ -11181,9 +11563,9 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-open-source-licenses",
-        title = "Open Source Licenses",
+        title = copy.title,
         heroIconName = SlockLucideIconName.FileText,
-        heroLabel = "Open Source Licenses",
+        heroLabel = copy.title,
         detail = detail,
         sections = sections
     )
@@ -11195,21 +11577,21 @@ private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseCoordinates(): St
         .joinToString(":")
         .ifBlank { id }
 
-private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseMetaLine(): String =
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseMetaLine(copy: SettingsOpenSourceLicensesPayloadCopy): String =
     listOf(
-        licenseName.ifBlank { "License unknown" },
+        licenseName.ifBlank { copy.licenseUnknown },
         when {
-            licenseUrl.isNotBlank() -> "License link"
-            sourceUrl.isNotBlank() -> "Source link"
-            else -> "No link"
+            licenseUrl.isNotBlank() -> copy.licenseLink
+            sourceUrl.isNotBlank() -> copy.sourceLink
+            else -> copy.noLink
         }
     ).joinToString(" / ")
 
-private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(): String =
+private fun SharedSettingsOpenSourceLicenseItem.settingsLicenseActionLabel(copy: SettingsOpenSourceLicensesPayloadCopy): String =
     when {
-        licenseUrl.isNotBlank() -> "License"
-        sourceUrl.isNotBlank() -> "Source"
-        else -> "Unavailable"
+        licenseUrl.isNotBlank() -> copy.license
+        sourceUrl.isNotBlank() -> copy.source
+        else -> copy.unavailable
     }
 
 internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
@@ -11382,49 +11764,50 @@ private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: Setti
 @Composable
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> "Account"
-        SettingsDestinationComputers -> "Computers"
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_title)
+        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_title)
         SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_title)
         SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
         SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
-        SettingsDestinationBilling -> "Billing"
-        SettingsDestinationLanguageRegion -> "Language & Region"
-        SettingsDestinationAppearance -> "Appearance"
-        SettingsDestinationNotifications -> "Notifications"
-        SettingsDestinationMobile -> "Mobile"
+        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_title)
+        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_title)
+        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_title)
+        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_title)
+        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_title)
         SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
         SettingsDestinationAbout -> stringResource(MR.strings.settings_about_title)
         SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
-        SettingsDestinationReleaseNotes -> "Release Notes"
+        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_title)
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_title)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_title)
-        SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
-        SettingsDestinationQuiverFeedback -> "Send feedback"
-        else -> "Settings"
+        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_title)
+        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_title)
+        else -> stringResource(MR.strings.settings_title)
     }
 
 @Composable
 private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> "Profile and sign out"
-        SettingsDestinationComputers -> "Connected machines"
+        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_destination_subtitle)
+        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_subtitle)
         SettingsDestinationServer -> stringResource(MR.strings.settings_server_profile_subtitle)
         SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_subtitle)
         SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_subtitle)
-        SettingsDestinationBilling -> "Plan and usage"
-        SettingsDestinationLanguageRegion -> "Language, timezone, translation"
-        SettingsDestinationAppearance -> "Message font size and preview"
-        SettingsDestinationNotifications -> "Push status and workspace mute"
-        SettingsDestinationMobile -> "My message alignment"
+        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_subtitle)
+        SettingsDestinationLanguageRegion -> stringResource(MR.strings.settings_language_region_subtitle)
+        SettingsDestinationAppearance -> stringResource(MR.strings.settings_appearance_subtitle)
+        SettingsDestinationNotifications -> stringResource(MR.strings.settings_notifications_subtitle)
+        SettingsDestinationMobile -> stringResource(MR.strings.settings_mobile_subtitle)
         SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_subtitle)
         SettingsDestinationAbout -> stringResource(MR.strings.settings_about_detail)
         SettingsDestinationOpenSourceLicenses -> stringResource(MR.strings.settings_about_licenses_detail)
+        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_subtitle)
         SettingsDestinationDeveloper -> stringResource(MR.strings.settings_developer_subtitle)
         SettingsDestinationApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment_subtitle)
         SettingsDestinationDiagnostics -> stringResource(MR.strings.settings_diagnostics_subtitle)
-        SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
-        SettingsDestinationQuiverFeedback -> "Report a problem or suggestion"
+        SettingsDestinationDiagnosticsFeedbackChannel -> stringResource(MR.strings.settings_diagnostics_feedback_channel_subtitle)
+        SettingsDestinationQuiverFeedback -> stringResource(MR.strings.settings_feedback_subtitle)
         else -> ""
     }
 
@@ -12939,8 +13322,10 @@ private fun SharedHomeScreen(
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    listPositionServerId: String? = null,
     initialListPosition: AppShellLazyListPosition = AppShellLazyListPosition(),
-    onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {}
+    onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
+    onContentComposeCommitted: (String) -> Unit = {}
 ) {
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
@@ -13057,6 +13442,9 @@ private fun SharedHomeScreen(
             }
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
+            SideEffect {
+                onContentComposeCommitted(snapshot.server.id.value)
+            }
             val agentStatusResolver =
                 remember(serverMembersStore, snapshot.server.id.value) {
                     slockAgentStatusResolver(serverMembersStore, snapshot.server.id.value)
@@ -13309,6 +13697,7 @@ private fun SharedHomeScreen(
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
+                listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = onListPositionSnapshot
             )
@@ -13341,12 +13730,12 @@ private fun SharedDiagnosticsFeedbackChannelPage(
         ) {
             Text(
                 modifier = Modifier.weight(1f),
-                text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
+                text = stringResource(MR.strings.settings_diagnostics_feedback_channel_guidance),
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
             SlockBrutalActionButton(
-                label = "Refresh",
+                label = stringResource(MR.strings.settings_state_refresh),
                 backgroundColor = SlockColor.BrandYellow,
                 onClick = onRefresh
             )
@@ -13392,7 +13781,7 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                 }
             }
             else -> {
-                SlockBrutalSectionLabel(label = "最近使用")
+                SlockBrutalSectionLabel(label = stringResource(MR.strings.settings_diagnostics_feedback_channel_recent))
                 LazyColumn(
                     modifier =
                         Modifier
@@ -13489,13 +13878,17 @@ private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<Conversati
         .toList()
 }
 
+@Composable
 private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
     val latest = lastMessageAt?.takeIf { it.isNotBlank() }
-    val unread = unreadCount.takeIf { it > 0 }?.let { "$it unread" }
+    val unread =
+        unreadCount.takeIf { it > 0 }?.let {
+            MR.strings.settings_diagnostics_feedback_channel_unread.format(listOf(it)).localized()
+        }
     val sender = lastMessageSenderName?.takeIf { it.isNotBlank() }
     return listOfNotNull(latest, sender, unread)
         .joinToString(" · ")
-        .ifBlank { "Channel" }
+        .ifBlank { stringResource(MR.strings.search_entity_channel) }
 }
 
 private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): PlatformFile =
@@ -13510,14 +13903,16 @@ private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsPlatformFile(): Platfo
 internal const val DiagnosticsFeedbackComposerSeedText: String =
     "Diagnostics zip attached.\n\n<!-- Describe what happened here. -->"
 
-internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
-    DiagnosticsFeedbackComposerSeedText
+internal fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(
+    seedText: String = DiagnosticsFeedbackComposerSeedText
+): String = seedText
 
 private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
-    draft: SettingsDiagnosticsFeedbackDraft
+    draft: SettingsDiagnosticsFeedbackDraft,
+    composerSeedText: String
 ): WireThreadLaunchPayload =
     copy(
-        composerSeedText = draft.diagnosticsComposerMessage(),
+        composerSeedText = draft.diagnosticsComposerMessage(composerSeedText),
         composerSyncNonce = composerSyncNonce + 1,
         composerFocusRequestNonce = composerFocusRequestNonce + 1
     )
@@ -13542,7 +13937,14 @@ private fun SharedCreateChannelDialog(
     var selectedMemberKeys by remember(initialSelectedMemberKeys) {
         mutableStateOf(initialSelectedMemberKeys)
     }
-    val canSubmit = name.isNotBlank() && !submitting
+    val trimmedName = name.trim()
+    val nameError =
+        if (trimmedName.isNotEmpty() && !trimmedName.isValidChannelName()) {
+            stringResource(MR.strings.channel_create_error_name_format)
+        } else {
+            null
+        }
+    val canSubmit = trimmedName.isValidChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     val filteredMembers =
         filterPeopleSuggestions(
@@ -13558,25 +13960,27 @@ private fun SharedCreateChannelDialog(
     val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
     val hasFilteredMembers = filteredMembers.isNotEmpty()
     SlockUnifiedDialog(
-        title = "CREATE CHANNEL",
+        title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
         onDismiss = onDismiss
     ) {
         SlockBrutalTextField(
-            label = "Name",
+            label = stringResource(MR.strings.channel_create_label_name),
             required = true,
             value = name,
             onValueChange = { name = it },
-            placeholder = "e.g. ai-research",
+            placeholder = stringResource(MR.strings.channel_create_placeholder_name),
             enabled = !submitting,
+            hint = stringResource(MR.strings.channel_create_hint_name_format),
+            error = nameError,
             autoFocus = true
         )
         SlockBrutalTextField(
-            label = "Description",
+            label = stringResource(MR.strings.channel_create_label_description),
             optional = true,
             value = description,
             onValueChange = { description = it },
-            placeholder = "What is this channel about?",
+            placeholder = stringResource(MR.strings.channel_create_placeholder_description),
             enabled = !submitting,
             maxLines = 2,
             autoFocus = false
@@ -13606,8 +14010,14 @@ private fun SharedCreateChannelDialog(
             }
         )
         if (!errorMessage.isNullOrBlank()) {
+            val localizedError =
+                if (errorMessage == "channel_name_invalid") {
+                    stringResource(MR.strings.channel_create_error_name_format)
+                } else {
+                    errorMessage
+                }
             Text(
-                text = "Error: $errorMessage",
+                text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
                 style = SlockType.Caption,
                 color = SlockColor.AccentRed
             )
@@ -13625,7 +14035,12 @@ private fun SharedCreateChannelDialog(
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
-                label = if (submitting) "Creating..." else "Create Channel",
+                label =
+                    if (submitting) {
+                        stringResource(MR.strings.channel_create_action_creating)
+                    } else {
+                        stringResource(MR.strings.channel_create_action_create)
+                    },
                 enabled = canSubmit,
                 minWidth = 126.dp,
                 backgroundColor = SlockColor.AccentPink,
@@ -13666,14 +14081,18 @@ private fun SharedCreateChannelVisibilityControl(
     onSelected: (SharedCreateChannelVisibility) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = "Visibility")
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_visibility))
         SegmentedControl(
             selectedValue = selected.name,
             options =
                 SharedCreateChannelVisibility.values().map { option ->
                     SegmentedControlOption(
                         value = option.name,
-                        label = option.label,
+                        label =
+                            when (option) {
+                                SharedCreateChannelVisibility.Public -> stringResource(MR.strings.channel_create_visibility_public)
+                                SharedCreateChannelVisibility.Private -> stringResource(MR.strings.channel_create_visibility_private)
+                            },
                         iconName = option.iconName
                     )
                 },
@@ -13701,7 +14120,7 @@ private fun SharedCreateChannelMemberPicker(
     onToggle: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SlockBrutalSectionLabel(label = "Members", optional = true)
+        SlockBrutalSectionLabel(label = stringResource(MR.strings.channel_create_label_members), optional = true)
         when {
             loading ->
                 Text(
@@ -13719,7 +14138,7 @@ private fun SharedCreateChannelMemberPicker(
                 SlockBrutalSearchField(
                     value = query,
                     enabled = enabled,
-                    placeholder = "Search members by name",
+                    placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
                     onValueChange = onQueryChange
                 )
                 SlockBrutalPanelShell(
@@ -13746,7 +14165,7 @@ private fun SharedCreateChannelMemberPicker(
                         LazyColumn(modifier = Modifier.fillMaxWidth()) {
                             if (filteredAgentMembers.isNotEmpty()) {
                                 item(key = "agents-header") {
-                                    SharedCreateChannelMemberSectionLabel("Agents")
+                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
                                 }
                                 filteredAgentMembers.forEach { member ->
                                     item(key = member.memberSelectionKey) {
@@ -13761,7 +14180,7 @@ private fun SharedCreateChannelMemberPicker(
                             }
                             if (filteredHumanMembers.isNotEmpty()) {
                                 item(key = "humans-header") {
-                                    SharedCreateChannelMemberSectionLabel("Humans")
+                                    SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
                                 }
                                 filteredHumanMembers.forEach { member ->
                                     item(key = member.memberSelectionKey) {
@@ -14750,111 +15169,74 @@ private fun SharedHomeSearchFilters(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item {
-                SlockAnchoredToolbarChip(
-                    label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
-                    active = scopeActive,
-                    enabled = true,
-                    uppercase = !scopeActive,
-                    iconName = SlockLucideIconName.AtSign,
-                    activeBackgroundColor = SlockColor.BrandYellow,
-                    activeShadowOffset = SearchControlShadowOffset,
-                    reserveActiveShadowSpace = true,
-                    onAnchorChanged = scopeAnchorChanged,
-                    onClick = { anchor ->
-                        scopeAnchorChanged(anchor)
-                        onOpenFilter("scope")
+            homeSearchFilterOrder(showSenderFilter).forEach { filter ->
+                item(key = "search-filter-${filter.id}") {
+                    when (filter) {
+                        HomeSearchFilter.Sender ->
+                            SlockAnchoredToolbarChip(
+                                label = state.localizedSenderFilterLabel(),
+                                active = senderActive,
+                                enabled = true,
+                                uppercase = !senderActive,
+                                iconName = SlockLucideIconName.CircleUser,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = senderAnchorChanged,
+                                onClick = { anchor ->
+                                    senderAnchorChanged(anchor)
+                                    onOpenFilter("sender")
+                                }
+                            )
+                        HomeSearchFilter.Scope ->
+                            SlockAnchoredToolbarChip(
+                                label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
+                                active = scopeActive,
+                                enabled = true,
+                                uppercase = !scopeActive,
+                                iconName = SlockLucideIconName.AtSign,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = scopeAnchorChanged,
+                                onClick = { anchor ->
+                                    scopeAnchorChanged(anchor)
+                                    onOpenFilter("scope")
+                                }
+                            )
+                        HomeSearchFilter.Channel ->
+                            SlockAnchoredToolbarChip(
+                                label = selectedChannel?.label ?: channelLabel,
+                                active = channelActive,
+                                enabled = true,
+                                uppercase = selectedChannel == null,
+                                iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = channelAnchorChanged,
+                                onClick = { anchor ->
+                                    channelAnchorChanged(anchor)
+                                    onOpenFilter("channel")
+                                }
+                            )
+                        HomeSearchFilter.Time ->
+                            SlockAnchoredToolbarChip(
+                                label = state.timeRange.localizedSearchLabel(),
+                                active = timeActive,
+                                enabled = true,
+                                uppercase = false,
+                                iconName = SlockLucideIconName.Calendar,
+                                activeBackgroundColor = SlockColor.BrandYellow,
+                                activeShadowOffset = SearchControlShadowOffset,
+                                reserveActiveShadowSpace = true,
+                                onAnchorChanged = timeAnchorChanged,
+                                onClick = { anchor ->
+                                    timeAnchorChanged(anchor)
+                                    onOpenFilter("time")
+                                }
+                            )
                     }
-                )
-            }
-            if (showSenderFilter) {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.localizedSenderFilterLabel(),
-                        active = senderActive,
-                        enabled = true,
-                        uppercase = !senderActive,
-                        iconName = SlockLucideIconName.CircleUser,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = senderAnchorChanged,
-                        onClick = { anchor ->
-                            senderAnchorChanged(anchor)
-                            onOpenFilter("sender")
-                        }
-                    )
-                }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: channelLabel,
-                        active = channelActive,
-                        enabled = true,
-                        uppercase = selectedChannel == null,
-                        iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = channelAnchorChanged,
-                        onClick = { anchor ->
-                            channelAnchorChanged(anchor)
-                            onOpenFilter("channel")
-                        }
-                    )
-                }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.timeRange.localizedSearchLabel(),
-                        active = timeActive,
-                        enabled = true,
-                        uppercase = false,
-                        iconName = SlockLucideIconName.Calendar,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = timeAnchorChanged,
-                        onClick = { anchor ->
-                            timeAnchorChanged(anchor)
-                            onOpenFilter("time")
-                        }
-                    )
-                }
-            } else {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = selectedChannel?.label ?: channelLabel,
-                        active = channelActive,
-                        enabled = true,
-                        uppercase = selectedChannel == null,
-                        iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = channelAnchorChanged,
-                        onClick = { anchor ->
-                            channelAnchorChanged(anchor)
-                            onOpenFilter("channel")
-                        }
-                    )
-                }
-            }
-            if (!showSenderFilter) {
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = state.timeRange.localizedSearchLabel(),
-                        active = timeActive,
-                        enabled = true,
-                        uppercase = false,
-                        iconName = SlockLucideIconName.Calendar,
-                        activeBackgroundColor = SlockColor.BrandYellow,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
-                        onAnchorChanged = timeAnchorChanged,
-                        onClick = { anchor ->
-                            timeAnchorChanged(anchor)
-                            onOpenFilter("time")
-                        }
-                    )
                 }
             }
             item {
@@ -14895,6 +15277,20 @@ private fun SharedHomeSearchFilters(
         }
     }
 }
+
+internal enum class HomeSearchFilter(val id: String) {
+    Sender("sender"),
+    Scope("scope"),
+    Channel("channel"),
+    Time("time"),
+}
+
+internal fun homeSearchFilterOrder(showSenderFilter: Boolean): List<HomeSearchFilter> =
+    if (showSenderFilter) {
+        listOf(HomeSearchFilter.Sender, HomeSearchFilter.Scope, HomeSearchFilter.Channel, HomeSearchFilter.Time)
+    } else {
+        listOf(HomeSearchFilter.Scope, HomeSearchFilter.Channel, HomeSearchFilter.Time)
+    }
 
 @Composable
 private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() -> Unit) {
@@ -16334,11 +16730,12 @@ internal data class AppShellNotificationThreadLaunchRequest(
 
 internal fun notificationLaunchHomeContentReady(
     content: SharedHomeContentState.Content?,
-    targetServerId: String?
+    targetServerId: String?,
+    selectedServerId: String?
 ): Boolean {
     val target = targetServerId?.trim().takeIf { !it.isNullOrBlank() } ?: return false
     val readyContent = content ?: return false
-    return readyContent.snapshot.server.id.value == target && readyContent.session.currentServerId == target
+    return readyContent.snapshot.server.id.value == target && selectedServerId == target
 }
 
 private fun JSONObject.appShellNotificationThreadLaunchRequest(): AppShellNotificationThreadLaunchRequest? {
@@ -16449,8 +16846,7 @@ internal fun appShellSessionIdentityChanged(
     cachedSession: StoredAuthSession?,
     currentSession: StoredAuthSession?
 ): Boolean =
-    cachedSession?.user?.id != currentSession?.user?.id ||
-        cachedSession?.currentServerId != currentSession?.currentServerId
+    cachedSession?.user?.id != currentSession?.user?.id
 
 internal fun appShellSessionChangeRestoreIntent(identityChanged: Boolean): SharedAuthGateIntent =
     if (identityChanged) SharedAuthGateIntent.Restore else SharedAuthGateIntent.RefreshSilently
@@ -18365,7 +18761,12 @@ internal fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
     val openFilterId =
         initialOpenFilterId ?: pager.pageData.params.optString("openFilterId").takeIf { it.isNotBlank() }
-    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
+    // Fill the captured viewport (matched to the react fixture, which renders the search
+    // panel full-frame) instead of a 342x620 sub-region — the smaller box left the crop's
+    // margin painted with the window background (cream), which the react↔android diff
+    // flagged as a spurious "empty beige area" drift. White backing keeps any residual gap
+    // aligned with the react baseline. (visual case components.home.search.*-dropdown)
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState,
             homeState = homeSearchVisualHomeState,

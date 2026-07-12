@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encoding.Encoder
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -252,6 +254,68 @@ class MviFoundationTest {
         scope.cancel()
     }
 
+    @Test
+    fun persistMiddlewareKeepsStoreTransitionAliveWhenSnapshotEncodingFails() {
+        val previousSnapshot = """{"version":1,"snapshot":{"value":3}}"""
+        val storage =
+            InMemorySlockKeyValueStore(
+                mapOf("persist:test" to previousSnapshot)
+            )
+        val diagnostics = mutableListOf<String>()
+        val failures = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val runtime =
+            persistRuntime(
+                scope = scope,
+                storage = storage,
+                initialState = PersistState(value = 0, transientLabel = "initial"),
+                persistSnapshotSerializer = NumberFormatFailingPersistSnapshotSerializer,
+                diagnosticsLogger = diagnostics::add,
+                failureLogger = failures::add
+            )
+
+        assertTrue(runtime.accept(PersistIntent.SetValue(7, "network")))
+
+        assertEquals(PersistState(value = 7, transientLabel = "network"), runtime.state.value)
+        assertEquals(previousSnapshot, storage.getString("persist:test"))
+        assertTrue(diagnostics.isEmpty())
+        assertTrue(
+            failures.any {
+                it == "mvi_persist_skip name=test key=persist:test reason=encode_error type=NumberFormatException"
+            }
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun persistMiddlewareKeepsStoreTransitionAliveWhenStorageWriteFails() {
+        val previousSnapshot = """{"version":1,"snapshot":{"value":3}}"""
+        val storage = ThrowingWritePreferenceStore(previousSnapshot)
+        val diagnostics = mutableListOf<String>()
+        val failures = mutableListOf<String>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val runtime =
+            persistRuntime(
+                scope = scope,
+                storage = storage,
+                initialState = PersistState(value = 0, transientLabel = "initial"),
+                diagnosticsLogger = diagnostics::add,
+                failureLogger = failures::add
+            )
+
+        assertTrue(runtime.accept(PersistIntent.SetValue(9, "network")))
+
+        assertEquals(PersistState(value = 9, transientLabel = "network"), runtime.state.value)
+        assertEquals(previousSnapshot, storage.getString("persist:test"))
+        assertTrue(diagnostics.isEmpty())
+        assertTrue(
+            failures.any {
+                it == "mvi_persist_skip name=test key=persist:test reason=write_error type=IllegalStateException"
+            }
+        )
+        scope.cancel()
+    }
+
     private fun counterRuntime(
         scope: CoroutineScope,
         transitions: MutableList<MviTransition<CounterIntent>>
@@ -293,7 +357,10 @@ class MviFoundationTest {
     private fun persistRuntime(
         scope: CoroutineScope,
         storage: SharedPreferenceStore,
-        initialState: PersistState
+        initialState: PersistState,
+        persistSnapshotSerializer: KSerializer<PersistSnapshot> = PersistSnapshot.serializer(),
+        diagnosticsLogger: (String) -> Unit = {},
+        failureLogger: (String) -> Unit = diagnosticsLogger
     ): MviStoreRuntime<PersistState, PersistIntent> =
         MviStoreRuntime(
             initialState = initialState,
@@ -308,11 +375,13 @@ class MviFoundationTest {
                 listOf(
                     MviPersistMiddleware(
                         storage = SharedPreferencePersistStorage(storage),
+                        diagnosticsLogger = diagnosticsLogger,
+                        failureLogger = failureLogger,
                         spec =
                             object : MviPersistSpec<PersistState, PersistIntent, PersistSnapshot> {
                                 override val name: String = "test"
                                 override val version: Int = 1
-                                override val snapshotSerializer = PersistSnapshot.serializer()
+                                override val snapshotSerializer = persistSnapshotSerializer
 
                                 override fun key(
                                     previous: PersistState,
@@ -346,6 +415,26 @@ class MviFoundationTest {
                     )
                 )
         )
+
+    private object NumberFormatFailingPersistSnapshotSerializer :
+        KSerializer<PersistSnapshot> by PersistSnapshot.serializer() {
+        override fun serialize(encoder: Encoder, value: PersistSnapshot) {
+            throw NumberFormatException("invalid numeric literal")
+        }
+    }
+
+    private class ThrowingWritePreferenceStore(initialValue: String) : SharedPreferenceStore {
+        private var value: String? = initialValue
+
+        override fun getString(key: String): String? = value
+
+        override fun putString(key: String, value: String?) {
+            if (value != null) {
+                throw IllegalStateException("write failed")
+            }
+            this.value = null
+        }
+    }
 
     private sealed interface DemoAction {
         data class Load(val id: Int) : DemoAction

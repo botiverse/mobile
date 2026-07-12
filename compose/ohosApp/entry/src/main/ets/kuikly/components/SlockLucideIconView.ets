@@ -6,6 +6,7 @@ const kName = 'name';
 const kColor = 'color';
 const kFill = 'fill';
 const kStrokeWidth = 'strokeWidth';
+const kVerticalOffsetDp = 'verticalOffsetDp';
 const kFrame = 'frame';
 const kRotationDegrees = 'rotationDegrees';
 const kSpinning = 'spinning';
@@ -19,6 +20,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconFill: ResourceColor = '#00000000';
   iconFillEnabled: boolean = false;
   iconStrokeWidth: number = 0;
+  iconVerticalOffsetDp: number = 0;
   iconRenderX: number = 0;
   iconRenderY: number = 0;
   iconRenderWidth: number = 0;
@@ -53,6 +55,10 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
         return true;
       case kStrokeWidth:
         this.updateStrokeWidth(propValue);
+        return true;
+      case kVerticalOffsetDp:
+        this.iconVerticalOffsetDp = normalizeVerticalOffset(propValue);
+        this.bumpRenderRevision();
         return true;
       case kRotationDegrees:
         this.updateIconRotationDegrees(propValue);
@@ -263,7 +269,7 @@ export struct SlockLucideIcon {
       }, (entry: SlockLucidePathEntry) => `${this.renderView.renderRevision}:${this.renderView.iconName}:${entry.commands}:${entry.strokeWidth}`)
     }
       .alignContent(Alignment.Center)
-      .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY })
+      .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY + this.renderView.iconVerticalOffsetDp })
       .size({ width: this.renderView.iconRenderWidth, height: this.renderView.iconRenderHeight })
       .rotate({ angle: this.renderView.rotationAngle() })
       .alignSelf(ItemAlign.Start)
@@ -302,6 +308,17 @@ function normalizeStrokeWidth(value: KRAny | KuiklyRenderCallback): number {
   if (typeof value === 'string') {
     const parsed = Number(value);
     return parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
+function normalizeVerticalOffset(value: KRAny | KuiklyRenderCallback): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
   return 0;
 }
