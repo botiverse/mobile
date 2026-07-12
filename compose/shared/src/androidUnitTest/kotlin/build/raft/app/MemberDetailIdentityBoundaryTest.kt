@@ -65,11 +65,17 @@ class MemberDetailIdentityBoundaryTest {
                 "onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity)",
                 "onOpenMemberProfile: (MemberDetailIdentity) -> Unit",
                 "onOpenMember: (MemberDetailIdentity) -> Unit",
+                "fun KuiklyThreadMemberItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = id,\n        kind = kind.parsedMemberKindOrNull()",
+                "fun KuiklyThreadMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = authorId,\n        kind = authorKind.parsedMemberKindOrNull()",
+                "fun ForwardMessageItem.memberDetailIdentity(): MemberDetailIdentity? =\n    memberDetailIdentity(\n        memberId = authorId,\n        kind = authorKind.parsedMemberKindOrNull()",
             ),
             forbidden = listOf(
                 "onOpenMemberProfile: (String",
                 "onOpenMember: (String",
                 "selectedMemberKind: MemberKind?",
+                "if (kind.equals(\"agent\", ignoreCase = true)) MemberKind.Agent else MemberKind.Human",
+                "if (authorKind.equals(\"agent\", ignoreCase = true)) MemberKind.Agent else MemberKind.Human",
+                "fun ForwardMessageItem.forwardMemberKind(): MemberKind",
             ),
         ),
         BoundaryFile(
