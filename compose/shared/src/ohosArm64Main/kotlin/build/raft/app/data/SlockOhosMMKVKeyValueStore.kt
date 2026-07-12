@@ -5,7 +5,6 @@ import build.raft.app.data.ohosmmkv.mmkv_c_get_string
 import build.raft.app.data.ohosmmkv.mmkv_c_mmkv_with_id
 import build.raft.app.data.ohosmmkv.mmkv_c_remove_value_for_key
 import build.raft.app.data.ohosmmkv.mmkv_c_set_string
-import build.raft.app.data.ohosmmkv.mmkv_c_sync
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.toKString
 import platform.posix.free
@@ -51,7 +50,6 @@ internal class SlockOhosMMKVKeyValueStore(
         } else {
             mmkv_c_set_string(mmkvHandle, namespacedKey, value)
         }
-        mmkv_c_sync(mmkvHandle)
     }
 
     private fun namespaced(key: String): String = "$namespace:$key"
