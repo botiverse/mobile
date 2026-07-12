@@ -71,6 +71,17 @@ class PerReceiverStateVersionStore(
         return decision
     }
 
+    /** Persist a version that the domain reducer has already accepted. */
+    internal fun writeAcceptedVersion(
+        serverId: ServerId,
+        memberId: MemberId,
+        scope: PerReceiverStateScope,
+        acceptedVersion: Long,
+        scopeId: ChannelId? = null
+    ) {
+        store.putString(key(serverId, memberId, scope, scopeId), acceptedVersion.toString())
+    }
+
     private fun key(
         serverId: ServerId,
         memberId: MemberId,

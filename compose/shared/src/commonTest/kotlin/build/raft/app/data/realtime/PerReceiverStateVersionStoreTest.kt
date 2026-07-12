@@ -100,6 +100,35 @@ class PerReceiverStateVersionStoreTest {
     }
 
     @Test
+    fun gatesTheSameReadScopeIndependentlyPerServer() {
+        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val member = MemberId("member-1")
+        val channel = ChannelId("channel-shared-id")
+        val serverA = ServerId("server-a")
+        val serverB = ServerId("server-b")
+
+        store.writeAcceptedVersion(
+            serverId = serverA,
+            memberId = member,
+            scope = PerReceiverStateScope.ReadState,
+            acceptedVersion = 5,
+            scopeId = channel
+        )
+
+        assertTrue(
+            store.decide(
+                serverId = serverB,
+                memberId = member,
+                scope = PerReceiverStateScope.ReadState,
+                incomingVersion = 3,
+                scopeId = channel
+            ).shouldApply
+        )
+        assertEquals(5, store.readVersion(serverA, member, PerReceiverStateScope.ReadState, channel))
+        assertEquals(0, store.readVersion(serverB, member, PerReceiverStateScope.ReadState, channel))
+    }
+
+    @Test
     fun doesNotShareRealtimeSeqCursorKeysOrSemantics() {
         val keyValueStore = InMemorySlockKeyValueStore()
         val versionStore = PerReceiverStateVersionStore(keyValueStore)

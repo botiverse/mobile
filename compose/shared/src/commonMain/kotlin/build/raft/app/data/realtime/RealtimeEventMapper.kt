@@ -1097,12 +1097,14 @@ private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeRes
 
 private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
     val cleanScopeId = scopeId.takeIf { it.isNotBlank() } ?: return null
+    val cleanMaxReadSeq = maxReadSeq?.takeIf { it >= 0L } ?: return null
+    if (readStateVersion <= 0L) return null
     return PerReceiverReadStateChanged(
         serverId = serverId?.takeIf { it.isNotBlank() }?.let(::ServerId),
         scopes = listOf(
             PerReceiverReadStateScope(
                 scopeId = ChannelId(cleanScopeId),
-                maxReadSeq = maxReadSeq,
+                maxReadSeq = cleanMaxReadSeq,
                 readStateVersion = readStateVersion
             )
         )
@@ -1112,9 +1114,11 @@ private fun ReadStateUpdatedDto.toDomain(): PerReceiverReadStateChanged? {
 private fun ReadStateUpdatedBulkDto.toDomain(): PerReceiverReadStateChanged? {
     val cleanScopes = scopes.mapNotNull { scope ->
         val cleanScopeId = scope.scopeId.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val cleanMaxReadSeq = scope.maxReadSeq?.takeIf { it >= 0L } ?: return@mapNotNull null
+        if (scope.readStateVersion <= 0L) return@mapNotNull null
         PerReceiverReadStateScope(
             scopeId = ChannelId(cleanScopeId),
-            maxReadSeq = scope.maxReadSeq,
+            maxReadSeq = cleanMaxReadSeq,
             readStateVersion = scope.readStateVersion
         )
     }

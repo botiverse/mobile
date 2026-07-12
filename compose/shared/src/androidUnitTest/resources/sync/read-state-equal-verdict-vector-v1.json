@@ -1,0 +1,37 @@
+{
+  "vector": "read-state-equal-verdict-v1",
+  "authority": "expected verdicts + stored state derived from Web #4622 packages/web/src/store/readStateSync.ts consumeReadStateUpdate",
+  "sequences": [
+    {"id":"S1-composite-key","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":5,"maxReadSeq":100}}},
+      {"in":{"serverId":"B","scopeId":"X","readStateVersion":3,"maxReadSeq":50},"verdict":"advanced","accepted":{"B:X":{"version":3,"maxReadSeq":50}}}
+    ]},
+    {"id":"S2-regressed-stores-incoming-high-version","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":5,"maxReadSeq":100}}},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":7,"maxReadSeq":80},"verdict":"regressed","accepted":{"A:X":{"version":7,"maxReadSeq":100}}},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":6,"maxReadSeq":200},"verdict":"stale","accepted":{"A:X":{"version":7,"maxReadSeq":100}}}
+    ]},
+    {"id":"S3-equal-watermark-higher-version-is-advanced","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":5,"maxReadSeq":100}}},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":7,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":7,"maxReadSeq":100}},"clearsUnread":true}
+    ]},
+    {"id":"S4-regressed-never-clears-optimistic-unread","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":5,"maxReadSeq":100}},"clearsUnread":true},
+      {"external":"set optimistic unread on A:X = 1"},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":7,"maxReadSeq":80},"verdict":"regressed","accepted":{"A:X":{"version":7,"maxReadSeq":100}},"clearsUnread":false,"assertOptimisticUnread":1}
+    ]},
+    {"id":"S5-bulk-per-scope-independent","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":100},"verdict":"advanced","accepted":{"A:X":{"version":5,"maxReadSeq":100}}},
+      {"bulk":[
+        {"in":{"serverId":"A","scopeId":"X","readStateVersion":3,"maxReadSeq":50},"verdict":"stale","accepted":{"A:X":{"version":5,"maxReadSeq":100}}},
+        {"in":{"serverId":"A","scopeId":"Y","readStateVersion":2,"maxReadSeq":30},"verdict":"advanced","accepted":{"A:Y":{"version":2,"maxReadSeq":30}}}
+      ]}
+    ]},
+    {"id":"S6-fail-closed","steps":[
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5,"maxReadSeq":-1},"verdict":"rejected","accepted":{}},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":"abc","maxReadSeq":100},"verdict":"rejected","accepted":{}},
+      {"in":{"serverId":"A","scopeId":"X","readStateVersion":5},"verdict":"rejected","accepted":{}},
+      {"in":{"serverId":"A","scopeId":"","readStateVersion":5,"maxReadSeq":100},"verdict":"rejected","accepted":{}}
+    ]}
+  ]
+}
