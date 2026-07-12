@@ -13032,7 +13032,10 @@ private fun SharedMembersScreen(
                             } else {
                                 membersPayload
                             }
-                        val pageData = launchPayload.toMemberDetailPageData(member.id.value, member.kind)
+                        val pageData =
+                            launchPayload.toMemberDetailPageData(
+                                MemberDetailIdentity(member.id, member.kind, member.serverId)
+                            )
                         if (pageData == null) {
                             bridge.toast("Unable to open profile")
                             bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
@@ -13642,13 +13645,13 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 },
-                onPinnedMemberClick = { kind, memberId ->
+                onPinnedMemberClick = { identity ->
                     val repository = channelRepository
                     if (repository == null) {
                         bridge.toast("Direct message is unavailable")
                     } else {
                         pinnedMemberOpenScope.launch {
-                            when (val result = repository.openPinnedMemberDirectMessage(kind, memberId)) {
+                            when (val result = repository.openPinnedMemberDirectMessage(identity)) {
                                 is DataResult.Content -> {
                                     val conversation = result.data.conversation
                                     onOpenConversation(conversation.toThreadLaunchConversationIdentity())
@@ -16654,7 +16657,7 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         lastMessageAt = lastMessageAt,
         description = directoryProjection?.subtitle ?: fallbackDescription,
         peerType = peerType,
-        presenceMemberId = directoryProjection?.peerMemberId ?: fallbackPresenceMemberId,
+        presenceMemberId = directoryProjection?.peerIdentity?.memberId?.value ?: fallbackPresenceMemberId,
         hasDraft = draftProjection.hasRootDraft(id),
         joined = directoryProjection?.joined ?: fallbackJoined,
         archived = directoryProjection?.archived ?: fallbackArchived,

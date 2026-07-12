@@ -600,7 +600,7 @@ private fun ThreadLaunchConversationIdentity.foregroundBannerSourceLabel(
             foregroundBannerSelfRow(streamProjection, directory)
                 ?.let { row ->
                     row.safeForegroundBannerTitle(
-                        identityIds = setOfNotNull(channelId?.value, threadId.value, row.peerMemberId)
+                        identityIds = setOfNotNull(channelId?.value, threadId.value, row.peerIdentity?.memberId?.value)
                     )
                 }
                 ?.let { "@$it" }

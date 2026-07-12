@@ -654,7 +654,12 @@ class SlockHomeComponentsTest {
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
                 channelKind = "channel",
                 title = "Cindy",
-                peerMemberId = "user-cindy",
+                peerIdentity =
+                    MemberDetailIdentity(
+                        memberId = MemberId("user-cindy"),
+                        kind = MemberKind.Human,
+                        sourceServerId = ServerId("server-1")
+                    ),
                 joined = true
             )
 
@@ -896,11 +901,10 @@ class SlockHomeComponentsTest {
                 pinnedMemberProfileResolver = { memberId ->
                     if (memberId == "agent-1") {
                         SlockHomePinnedMemberItem(
-                            memberId = "agent-1",
+                            identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent),
                             name = "Cindy",
                             description = "@cindy",
-                            avatarLabel = "C",
-                            peerType = "agent"
+                            avatarLabel = "C"
                         )
                     } else {
                         null
@@ -918,11 +922,10 @@ class SlockHomeComponentsTest {
     fun pinnedMemberRowsRemainLongPressableAndParticipateInManualSort() {
         val member =
             SlockHomePinnedMemberItem(
-                memberId = "agent-1",
+                identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent),
                 name = "Cindy",
                 description = "@cindy",
-                avatarLabel = "C",
-                peerType = "agent"
+                avatarLabel = "C"
             )
         val memberRow = SlockHomePinnedRow(key = "agent:agent-1", member = member)
         val conversation =
@@ -978,17 +981,16 @@ class SlockHomeComponentsTest {
                 typedPinnedItems = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")),
                 pinnedMemberProfileResolver = {
                     SlockHomePinnedMemberItem(
-                        memberId = "agent-1",
+                        identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent),
                         name = "Stale Cindy",
-                        avatarLabel = "S",
-                        peerType = "agent"
+                        avatarLabel = "S"
                     )
                 },
                 mode = SlockSidebarSortMode.Manual
             )
 
         assertEquals(listOf("dm-agent-1"), pinned.map { it.conversation?.id })
-        assertEquals(listOf(null), pinned.map { it.member?.memberId })
+        assertEquals(listOf(null), pinned.map { it.member?.identity?.memberId })
     }
 
     @Test

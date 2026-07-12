@@ -2015,7 +2015,12 @@ class SlockAppShellTest {
                         title = "Cindy",
                         avatarWireValue = "pixel:robot",
                         avatarLabel = "CI",
-                        peerMemberId = "agent-1"
+                        peerIdentity =
+                            MemberDetailIdentity(
+                                memberId = MemberId("agent-1"),
+                                kind = MemberKind.Agent,
+                                sourceServerId = ServerId("server-1")
+                            )
                     )
                 )
             )

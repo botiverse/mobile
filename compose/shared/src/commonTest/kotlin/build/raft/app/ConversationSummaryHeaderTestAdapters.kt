@@ -29,7 +29,11 @@ internal fun ConversationSummary.toConversationHeaderEntry(): SharedConversation
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = null,
         avatarLabel = displayName.take(2).uppercase(),
-        dmPeerMemberId = presenceMemberId?.value,
+        dmPeerIdentity =
+            memberDetailIdentity(
+                memberId = presenceMemberId?.value,
+                kind = directMessagePeerType.parsedMemberKindOrNull()
+            )
     )
 }
 
