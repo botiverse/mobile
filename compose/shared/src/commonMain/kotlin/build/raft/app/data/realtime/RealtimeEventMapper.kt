@@ -2,6 +2,7 @@ package build.raft.app.data.realtime
 
 import build.raft.app.KuiklyThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.parseConversationKindOrNull
@@ -759,7 +760,7 @@ private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSum
 private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
     val projectedActivity = entries.latestAgentActivityProjection()
         ?: AgentStatus.fromAgentActivityWireValue(activity)
-            ?.let { status -> AgentActivityProjection(status = status, detail = detail) }
+            ?.let { status -> AgentActivityStatusProjection(status = status, detail = detail) }
         ?: return null
     val status = projectedActivity.status
     return MemberPresenceUpdated(
@@ -777,12 +778,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
     )
 }
 
-private data class AgentActivityProjection(
-    val status: AgentStatus,
-    val detail: String?
-)
-
-private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityProjection? {
+private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityStatusProjection? {
     for (index in indices.reversed()) {
         val projection = this[index].toAgentActivityProjection()
         if (projection != null) return projection
@@ -790,20 +786,14 @@ private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityProje
     return null
 }
 
-private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
-    val projection =
-        projectAgentActivityStatus(
-            kind = stringValue("kind"),
-            activity = stringValue("activity"),
-            detail = stringValue("detail"),
-            text = stringValue("text"),
-            toolName = stringValue("toolName")
-        ) ?: return null
-    return AgentActivityProjection(
-        status = projection.status,
-        detail = projection.detail
+private fun JsonObject.toAgentActivityProjection(): AgentActivityStatusProjection? =
+    projectAgentActivityStatus(
+        kind = stringValue("kind"),
+        activity = stringValue("activity"),
+        detail = stringValue("detail"),
+        text = stringValue("text"),
+        toolName = stringValue("toolName")
     )
-}
 
 private fun List<JsonObject>.toRealtimeAgentActivityEntries(
     agentId: String,

@@ -1062,16 +1062,14 @@ class SharedThreadStoreTest {
 
         val payload = current.withContentSliceFrom(networkPatch)
         val headerDisplay =
-            payload.threadHeaderDisplayModel(
-                payload.conversationHeaderEntryFrom(
-                    ConversationSummary(
-                        threadId = ThreadId("dm-1"),
-                        channelId = ChannelId("dm-1"),
-                        kind = ConversationKind.DirectMessage,
-                        name = "artin"
-                    ).toConversationHeaderEntry()
-                )
-        )
+            payload.threadHeaderDisplayModelFromDirectory(
+                ConversationSummary(
+                    threadId = ThreadId("dm-1"),
+                    channelId = ChannelId("dm-1"),
+                    kind = ConversationKind.DirectMessage,
+                    name = "artin"
+                ).toConversationHeaderProjection()
+            )
 
         assertEquals("artin", payload.title)
         assertEquals("artin", payload.dmPeerName)
@@ -1105,7 +1103,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(directMessagePayload()))
 
         val payload = store.state.value.payload
-        val headerDisplay = payload.threadHeaderDisplayModel(null)
+        val headerDisplay = payload.threadHeaderFallbackDisplayModel()
         assertEquals("content", payload.status)
         assertEquals("Direct Message", payload.title)
         assertEquals("Direct Message", headerDisplay.title)
@@ -2991,7 +2989,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(directMessagePayload()))
 
         val payload = store.state.value.payload
-        val headerDisplay = payload.threadHeaderDisplayModel(null)
+        val headerDisplay = payload.threadHeaderFallbackDisplayModel()
         assertEquals("error", payload.status)
         assertEquals("artin", payload.title)
         assertEquals("Direct Message", headerDisplay.title)
@@ -3551,15 +3549,13 @@ class SharedThreadStoreTest {
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
         val headerDisplay =
-            payload.threadHeaderDisplayModel(
-                payload.conversationHeaderEntryFrom(
-                    ConversationSummary(
-                        threadId = ThreadId("dm-1"),
-                        channelId = ChannelId("dm-1"),
-                            kind = ConversationKind.DirectMessage,
-                            name = "Cindy"
-                        ).toConversationHeaderEntry()
-                )
+            payload.threadHeaderDisplayModelFromDirectory(
+                ConversationSummary(
+                    threadId = ThreadId("dm-1"),
+                    channelId = ChannelId("dm-1"),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Cindy"
+                ).toConversationHeaderProjection()
             )
 
         assertEquals("Thread", payload.title)

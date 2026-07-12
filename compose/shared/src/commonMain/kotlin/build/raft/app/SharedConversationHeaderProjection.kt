@@ -3,17 +3,6 @@ package build.raft.app
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationPermissions
 
-internal data class SharedConversationHeaderEntry(
-    val ids: Set<String>,
-    val surfaceKind: String,
-    val channelKind: String = "channel",
-    val title: String,
-    val subtitle: String? = null,
-    val avatarWireValue: String? = null,
-    val avatarLabel: String = title.take(2).uppercase(),
-    val dmPeerIdentity: MemberDetailIdentity? = null
-)
-
 internal data class ConversationAccessCandidate(
     val ids: Set<String>,
     val surfaceKind: String,
@@ -219,33 +208,28 @@ private data class ReplyThreadHeaderProjectionInput(
         )
 }
 
-internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
-    entry: SharedConversationHeaderEntry?
-): ThreadHeaderDisplayModel {
-    val header = entry?.takeIf { it.surfaceKind == surfaceKind }
+internal fun KuiklyThreadScreenPayload.threadHeaderFallbackDisplayModel(): ThreadHeaderDisplayModel {
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
-            val titleCandidate = header?.title ?: loadedConversationHeaderTitleOrNull()
+            val titleCandidate = loadedConversationHeaderTitleOrNull()
             val displayTitle = threadHeaderDisplayTitle(titleCandidate, surfaceKind)
             ThreadHeaderDisplayModel(
                 title = displayTitle,
                 subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = channelKind,
-                dmPeerAvatarWireValue = header?.avatarWireValue,
-                dmPeerAvatarLabel =
-                    header?.avatarLabel?.takeIf { it.isNotBlank() }
-                        ?: displayTitle.take(2).uppercase(),
-                dmPeerIdentity = header?.dmPeerIdentity ?: dmPeerIdentity
+                dmPeerAvatarWireValue = null,
+                dmPeerAvatarLabel = displayTitle.take(2).uppercase(),
+                dmPeerIdentity = dmPeerIdentity
             )
         }
         KuiklyThreadSurfaceKind.Channel -> {
-            val titleCandidate = header?.title ?: loadedConversationHeaderTitleOrNull()
+            val titleCandidate = loadedConversationHeaderTitleOrNull()
             ThreadHeaderDisplayModel(
                 title = threadHeaderDisplayTitle(titleCandidate, surfaceKind),
-                subtitle = header?.subtitle ?: loadedConversationHeaderSubtitleOrNull(),
+                subtitle = loadedConversationHeaderSubtitleOrNull(),
                 surfaceKind = surfaceKind,
-                channelKind = header?.channelKind ?: channelKind
+                channelKind = channelKind
             )
         }
         else ->
@@ -266,16 +250,15 @@ internal fun ThreadHeaderProjectionInput.displayModel(
     return if (accepted != null) {
         displayModel(accepted)
     } else {
-        contentPayload.threadHeaderDisplayModel(null)
+        contentPayload.threadHeaderFallbackDisplayModel()
     }
 }
 
 internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
-    projection: SharedConversationDirectoryProjection?,
-    fallbackEntry: SharedConversationHeaderEntry? = null
+    projection: SharedConversationDirectoryProjection?
 ): ThreadHeaderDisplayModel {
     val directory = projection?.takeIf(::acceptsThreadHeaderDirectoryProjection)
-    if (directory == null) return threadHeaderDisplayModel(fallbackEntry)
+    if (directory == null) return threadHeaderFallbackDisplayModel()
     return when (surfaceKind) {
         KuiklyThreadSurfaceKind.DirectMessage -> {
             val displayTitle = threadHeaderDisplayTitle(directory.title, surfaceKind)
@@ -308,7 +291,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                     ?: channelKind
             )
         else ->
-            threadHeaderDisplayModel(fallbackEntry)
+            threadHeaderFallbackDisplayModel()
     }
 }
 
@@ -395,15 +378,6 @@ internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): 
         else -> title.takeIf { it.isNotBlank() }
     }
 
-internal fun KuiklyThreadScreenPayload.conversationHeaderEntryFrom(
-    entry: SharedConversationHeaderEntry?
-): SharedConversationHeaderEntry? {
-    val candidate = entry ?: return null
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || candidate.surfaceKind != surfaceKind) return null
-    val lookupIds = conversationHeaderLookupIds()
-    return candidate.takeIf { lookupIds.any(candidate.ids::contains) }
-}
-
 internal fun KuiklyThreadScreenPayload.withConversationAccessFallback(
     fallback: ConversationAccessCandidate?
 ): KuiklyThreadScreenPayload {
@@ -435,18 +409,6 @@ internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<Strin
         streamChannelId,
         sourceThreadId
     ).mapNotNull { id -> id.takeIf { it.isNotBlank() } }
-
-private fun SharedConversationDirectoryProjection.toConversationHeaderEntry(): SharedConversationHeaderEntry =
-    SharedConversationHeaderEntry(
-        ids = (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet(),
-        surfaceKind = surfaceKind,
-        channelKind = channelKind,
-        title = title,
-        subtitle = subtitle?.takeIf { it.isNotBlank() },
-        avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() },
-        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(2).uppercase(),
-        dmPeerIdentity = peerIdentity
-    )
 
 internal fun SharedConversationDirectoryProjection.toConversationAccessCandidate(): ConversationAccessCandidate =
     ConversationAccessCandidate(
