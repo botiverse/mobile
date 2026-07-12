@@ -139,7 +139,16 @@ did not carry. Terminal class is **add-gate + repair**, never "fossilize current
 
 - Route every kind/status/type parse through **one shared strict parser** (the sole entry, e.g.
   `parsedMemberKindOrNull`); duplicated per-mapper parsing (canonical-row / REST / realtime / home / task /
-  thread) drifts — gate parity across all paths.
+  thread / **inbox**) drifts — gate parity across all paths. **Single entry is NOT self-enforcing by
+  convention:** nothing stops a new `@Serializable` DTO from parsing a kind/type/status inline (a plain enum
+  is constructible anywhere), and only per-consumer tests — not a mechanical gate — would catch it. Pin it
+  with a **discovery meta-closure** (same shape as #715): mechanically find every wire→enum parse across the
+  source sets and assert it routes through the shared strict parser; a new inline parse is RED. A drifting
+  second path is a real defect, not hypothetical — e.g. `InboxParser`'s own `toSenderKind` accepted
+  `{agent, user, human}`, which both bypassed the shared parser AND was the wrong dialect (the inbox wire
+  emits `{user, agent, system}`, so it silently **over-rejected `system`** — dropped real data). Per-dialect
+  accepted sets (frontend `{user, agent}` vs inbox/agent-visible `{user, agent, system}`) are an **explicit
+  wire-contract parameter of the one shared parser**, never separate parsers with drifting sets.
 - **Unknown fails closed** with a bounded diagnostic. It is NOT silently defaulted.
 - A "documented default" is allowed **only with production-face evidence of the VALUE closed set** — and that
   evidence must be the **producer code / DB enum / serializer symbol** that emits the field, cited by name.
