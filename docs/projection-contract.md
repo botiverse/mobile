@@ -141,11 +141,25 @@ did not carry. Terminal class is **add-gate + repair**, never "fossilize current
   `parsedMemberKindOrNull`); duplicated per-mapper parsing (canonical-row / REST / realtime / home / task /
   thread) drifts — gate parity across all paths.
 - **Unknown fails closed** with a bounded diagnostic. It is NOT silently defaulted.
-- A "documented default" is allowed **only with production-face evidence** that the value cannot be unknown
-  — e.g. G6 mechanically proves the `message:*` `senderType` is the closed set `{human, agent, system}`, so
-  the only real victim of `else → Human` there is `system` (root of #122). The default's comment MUST cite
-  *which production face* proves the closed set. Wire with **no manifest coverage** (task assignee, home
-  peer, `TaskStatus`, `MessageType` outside the proven face) has no such evidence → **fail closed**.
+- A "documented default" is allowed **only with production-face evidence of the VALUE closed set** — and that
+  evidence must be the **producer code / DB enum / serializer symbol** that emits the field, cited by name.
+  **Key-set closure and value-set closure are DIFFERENT proofs and are NOT interchangeable.** A reverse-closure
+  gate (G6 / (甲) / #715) proves the **key set** — *which* fields appear on the post-projection payload — it
+  does **not** prove *which enum values* a field may take. Citing a key-existence proof as a value-set proof is
+  itself an invention: it once green-lit a fabricated `senderType=system` fixture (the field exists on the
+  wire, but that value does not on this face). So:
+  - ❌ *wrong:* "G6 proves `message:*` `senderType` ∈ `{human, agent, system}`" — G6 proves `senderType` is a
+    *present key*, not its value set; and that value set is not what the frontend producer emits.
+  - ✅ *right (value set evidenced from the producer):* the frontend `message:*` / thread / realtime
+    `senderType` closed set is `{user, agent}` (per the server producer/serializer), and a **system** message
+    is `senderType=user` + `messageType=system` — `System` is projected from the strict `messageType=system`,
+    never from a `senderType=system` (that value exists only on the *agent-facing* projection). A `senderType`
+    default may therefore assume only `{user, agent}`, and dialect-specific accepted sets (frontend
+    `{user, agent}` vs a normalized cache re-seed `{human, agent, system}`) must be distinguished **explicitly**
+    (a wire-contract parameter), never merged by a global alias that eats the boundary difference.
+  The default's comment MUST cite the **producer/DB-enum/serializer symbol** proving the value closed set. Wire
+  with **no such producer evidence** (task assignee, home peer, `TaskStatus`, `MessageType` outside a
+  producer-proven face) has no value-set evidence → **fail closed**.
 
 ### Ruling 2 — never gate a wrong assumption; repair the fact (Rule 2)
 
