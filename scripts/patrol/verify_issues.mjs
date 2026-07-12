@@ -13,7 +13,7 @@
 //
 // Usage:
 //   node scripts/patrol/verify_issues.mjs [--repo botiverse/mobile] [--comparison react__android]
-//     [--voters 3] [--threshold 2] [--limit 20] [--live]
+//     [--voters 3] [--threshold 2] [--limit 60] [--live]
 
 import { execFileSync } from "node:child_process";
 
@@ -26,7 +26,12 @@ const opts = {
   comparison: arg("--comparison", "react__android"),
   voters: Number(arg("--voters", "3")),
   threshold: Number(arg("--threshold", "2")),
-  limit: Number(arg("--limit", "20")),
+  // Fetch cap for the open-drift list. This is the FETCH size (newest-first), and
+  // already-`verified` issues are filtered out after fetching, so with a backlog the
+  // effective batch is (fetched - already-verified). 20 was too small once the queue
+  // grew past ~20 open (older unverified issues never got a turn); 60 covers a full
+  // day's backlog in one run. Daily runs skip the already-verified, so cost stays low.
+  limit: Number(arg("--limit", "60")),
   issue: arg("--issue", ""),   // verify a single issue (event path); empty = batch all open unverified
   live: has("--live"),
 };
