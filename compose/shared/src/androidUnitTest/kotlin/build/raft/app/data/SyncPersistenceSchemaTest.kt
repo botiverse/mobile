@@ -9,13 +9,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * #491 P1 schema gate — FRESH baseline, no migration. Per the pre-release DB reset (filename bumped
- * to `slock_cache_v3.db`, schema/migration history reset to zero), the sync-core persistence ships as
- * a brand-new schema version 1 with the per-scope epoch cursor column + the canonical
- * (serverId, channelId, seq, id) restore index built in — there is no v1->v2 migration.
+ * #491 P1 schema gate — FRESH baseline, no migration (pre-release DB reset, `slock_cache_v4.db`). The
+ * sync-core persistence ships as a canonical-native schema version 1: messageEntity holds the lossless
+ * `canonicalFactJson` + minimal scope/order scalars (no presentation columns), with the full 3-part-scope
+ * `(serverId, scopeKind, channelId, seq, id)` restore index and the per-scope epoch cursor column.
  *
- * A fresh `Schema.create` must produce: the nullable epoch column, the tie-break index with the exact
- * column order, live FK enforcement, and the canonical server-backed `(seq, id)` restore ordering.
+ * A fresh `Schema.create` must produce: the nullable epoch column, that tie-break index with the exact
+ * column order, `seq NOT NULL` (pending never enters), and the canonical `(seq, id)` restore ordering.
  * JDBC drives this schema gate; Android/Native open-path is covered by the driver audit (task #494).
  */
 class SyncPersistenceSchemaTest {
@@ -42,61 +42,49 @@ class SyncPersistenceSchemaTest {
 
         // 2) canonical tie-break index exists with the EXACT column order.
         assertEquals(
-            listOf("serverId", "channelId", "seq", "id"),
+            listOf("serverId", "scopeKind", "channelId", "seq", "id"),
             driver.indexColumns("messageEntity_channelSeqId"),
         )
 
-        // 3) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves
-        //    the .sq query, not raw SQL): same seq tie-breaks by id (m1 before m2); pending seq=NULL excluded.
+        // 3) canonical-native schema contract: messageEntity carries the lossless `canonicalFactJson` +
+        //    `scopeKind`, and `seq` is NOT NULL (pending/optimistic NEVER enter this table — the constraint
+        //    is structural, so no "seq-null pending" state can exist to be filtered/preserved).
+        val cols = driver.columnInfo("messageEntity")
+        assertNotNull(cols.firstOrNull { it.name == "canonicalFactJson" }, "canonicalFactJson column missing")
+        assertNotNull(cols.firstOrNull { it.name == "scopeKind" }, "scopeKind column missing")
+        assertEquals(1L, cols.first { it.name == "seq" }.notNull, "seq must be NOT NULL (no pending rows)")
+
+        // 4) restore ordering via the GENERATED selectServerBackedMessagesForChannel query (proves the .sq
+        //    query, not raw SQL): same seq tie-breaks by id (m1 before m2). No seq-null filter needed.
         driver.insertMessage(id = "m2", seq = 7)
         driver.insertMessage(id = "m1", seq = 7)
-        driver.insertMessage(id = "pending", seq = null) // client/pending (seq NULL) excluded
         val restored = SlockDatabase(driver).slockDatabaseQueries
-            .selectServerBackedMessagesForChannel(serverId = "s1", channelId = "c1")
+            .selectServerBackedMessagesForChannel(serverId = "s1", scopeKind = "channel", channelId = "c1")
             .executeAsList()
             .map { it.id }
         assertEquals(listOf("m1", "m2"), restored)
 
-        // 4) FK enforcement live on the message content children that SHOULD cascade — attachment /
-        //    reaction (the projector rebuilds these in the same txn on rebaseline, §4.4). NOTE:
-        //    savedMessageEntity is deliberately excluded here — its ON DELETE CASCADE is a schema
-        //    hazard the wrapper must work AROUND (saved is an independent receiver domain the messages
-        //    snapshot never adjudicates: prune skips saved-referenced facts / snapshot preserves the
-        //    saved marker). Asserting a message-delete cascading saved as "success" would codify the
-        //    wrong contract, so it is proven at the wrapper layer, not here.
-        driver.execute(
-            null,
-            "INSERT INTO attachmentEntity(id, messageId, name, mimeType, sizeLabel, sortOrder) " +
-                "VALUES ('a1','m1','f.png','image/png','1kb', 0);",
-            0,
-        )
-        driver.execute(
-            null,
-            "INSERT INTO messageReactionEntity(messageId, reactorKind, reactorId, emoji) " +
-                "VALUES ('m1','human','u1',':+1:');",
-            0,
-        )
-        driver.execute(null, "DELETE FROM messageEntity WHERE id='m1';", 0)
-        assertEquals(0L, driver.singleLong("SELECT COUNT(*) FROM attachmentEntity WHERE messageId='m1';"))
-        assertEquals(0L, driver.singleLong("SELECT COUNT(*) FROM messageReactionEntity WHERE messageId='m1';"))
+        // (The attachment/reaction/saved child tables were removed with the canonical-native rebuild —
+        // attachments/reactions live losslessly in canonicalFactJson, so there is no child FK-cascade to
+        // assert here. The store-level suite proves scalars==extract(decode(payload)) instead.)
 
         driver.close()
     }
 
-    private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int?) = execute(
+    private fun JdbcSqliteDriver.insertMessage(id: String, seq: Int) = execute(
         null,
-        "INSERT INTO messageEntity(id, serverId, channelId, seq, authorId, authorDisplayName, " +
-            "authorHandle, authorKind, timestampLabel, body, messageType, deliveryState) " +
-            "VALUES ('$id','s1','c1', ${seq ?: "NULL"}, 'u1','U','u','human','t','b','text','delivered');",
+        "INSERT INTO messageEntity(id, serverId, channelId, scopeKind, seq, createdAt, canonicalFactJson) " +
+            "VALUES ('$id','s1','c1','channel', $seq, 't', '{\"version\":1,\"id\":\"$id\"}');",
         0,
     )
 
-    private data class ColumnInfo(val name: String, val type: String)
+    private data class ColumnInfo(val name: String, val type: String, val notNull: Long)
 
     private fun JdbcSqliteDriver.columnInfo(table: String): List<ColumnInfo> =
         executeQuery(null, "PRAGMA table_info($table);", { cursor ->
             val rows = mutableListOf<ColumnInfo>()
-            while (cursor.next().value) rows += ColumnInfo(cursor.getString(1)!!, cursor.getString(2)!!)
+            // PRAGMA table_info columns: cid(0), name(1), type(2), notnull(3), dflt_value(4), pk(5).
+            while (cursor.next().value) rows += ColumnInfo(cursor.getString(1)!!, cursor.getString(2)!!, cursor.getLong(3)!!)
             QueryResult.Value(rows.toList())
         }, 0).value
 
@@ -114,10 +102,5 @@ class SyncPersistenceSchemaTest {
     private fun JdbcSqliteDriver.singleText(sql: String): String? =
         executeQuery(null, sql, { cursor ->
             QueryResult.Value(if (cursor.next().value) cursor.getString(0) else null)
-        }, 0).value
-
-    private fun JdbcSqliteDriver.singleLong(sql: String): Long? =
-        executeQuery(null, sql, { cursor ->
-            QueryResult.Value(if (cursor.next().value) cursor.getLong(0) else null)
         }, 0).value
 }

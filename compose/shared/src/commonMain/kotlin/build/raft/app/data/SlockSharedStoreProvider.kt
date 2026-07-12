@@ -290,13 +290,6 @@ internal class SlockSharedStoreProvider private constructor(
         authSessionClearLogger?.let(::installAuthSessionClearNotifyBridge)
     }
 
-    fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
-        SqlDelightComposeLocalDataStore(
-            database = sqlDatabase,
-            fallback = localDataStore,
-            currentServerId = currentServerId
-        )
-
     fun getOrCreateHomeStore(
         scope: SlockShellStoreScope = SlockShellStoreScope.Legacy,
         dataSource: SharedHomeDataSource,

@@ -1,0 +1,230 @@
+/*
+ * T-wrapper SQLite store — real-driver gates (RFC 043 §9.9). JdbcSqliteDriver + PRAGMA foreign_keys=ON.
+ *
+ * Proves the store-level DoD on a REAL backend (backend-neutral one-txn tests can't): one applied frame =
+ * exactly one real BEGIN + COMMIT (0 rollback); mid-block process death = one real ROLLBACK to the complete
+ * pre-frame state; a full 19-field + nested canonical row survives round-trip through the JSON payload; the
+ * scalar columns equal what you extract from decoding that payload; every SQL touch is FULL 3-part scoped
+ * (serverId + scopeKind + scopeId — a same-scopeId different-scopeKind or different-server scope must not
+ * collide); a cross-scope same-id collision fail-stops on the REAL applyFrame path; a projection-tampered
+ * scalar is poisoned (restore never returns a drifted row, and the payload itself is untouched); a malformed
+ * row is a counted poison-gate input; and persist->restore preserves the resolved null/empty/value states.
+ */
+package build.raft.app.network.sync
+
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.data.SlockSqlDatabase
+import build.raft.app.model.ChannelId
+import build.raft.app.model.MessageId
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class SqlDelightFoldPersistStoreTest {
+
+    /** Delegates everything to a real driver and counts real transaction boundaries. */
+    private class CountingDriver(private val delegate: SqlDriver) : SqlDriver by delegate {
+        var begin = 0; private set
+        var commit = 0; private set
+        var rollback = 0; private set
+        override fun execute(identifier: Int?, sql: String, parameters: Int, binders: (SqlPreparedStatement.() -> Unit)?): QueryResult<Long> {
+            when (sql.trim().uppercase().substringBefore(' ')) {
+                "BEGIN" -> begin++
+                "COMMIT" -> commit++
+                "ROLLBACK" -> rollback++
+            }
+            return delegate.execute(identifier, sql, parameters, binders)
+        }
+    }
+
+    private fun freshDb(): Pair<SlockSqlDatabase, CountingDriver> {
+        val driver = CountingDriver(JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY))
+        build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
+        driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
+        return SlockSqlDatabase(driver) to driver
+    }
+
+    private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
+
+    private fun store(db: SlockSqlDatabase, onDecodeFailure: (SyncScopeKey, String) -> Unit = { _, _ -> }) =
+        SqlDelightFoldPersistStore(db, now = { 100L }, onDecodeFailure = onDecodeFailure)
+
+    private fun adapter(db: SlockSqlDatabase, faultStore: FoldPersistStore? = null) =
+        DefaultFoldPersistenceAdapter(SqlDelightFoldPersistTransactionRunner(db), faultStore ?: store(db))
+
+    private fun row(id: String, seq: Long, scopeKey: SyncScopeKey = scope) = CanonicalMessageRow(
+        id = MessageId(id),
+        channelId = ChannelId(scopeKey.scopeId),
+        seq = seq,
+        senderType = "human",
+        senderId = "u1",
+        content = "body-$id",
+        messageType = "chat",
+        createdAt = "2026-07-12T00:00:0${seq}Z",
+        senderName = "Alice",
+    )
+
+    /** Every canonical field + every nested shape populated distinctly — a dropped field fails round-trip. */
+    private fun fullRow(scopeKey: SyncScopeKey = scope) = CanonicalMessageRow(
+        id = MessageId("full"),
+        channelId = ChannelId(scopeKey.scopeId),
+        seq = 42,
+        senderType = "agent",
+        senderId = "u1",
+        content = "hello",
+        messageType = "chat",
+        createdAt = "2026-07-12T00:00:42Z",
+        randomId = "r1",
+        threadId = "t1",
+        senderName = "Alice",
+        senderDescription = "eng",
+        senderMembershipStatus = "active",
+        mentions = listOf(CanonicalMentionWire("men1", "Bob", "user")),
+        attachments = listOf(CanonicalAttachmentWire("a1", "f.txt", "text/plain", 12288, 4, 5, "https://cdn/x")),
+        reactions = listOf(CanonicalReactionWire("👍", 2, listOf("u2"), listOf("Bob"))),
+        commentRef = CanonicalCommentRefWire("a1", "f.txt", "hm1", CanonicalCommentHostSourceWire("channel", "channel", "ch", "pm1", "tc1", "rtc1"), "line 3", "quoted"),
+        actionMetadata = buildJsonObject { put("kind", JsonPrimitive("card")) },
+        conversationContext = CanonicalConversationContextWire("channel", "pc1", "channel", "pm2"),
+    )
+
+    private fun frame(scopeKey: SyncScopeKey, vararg rows: CanonicalMessageRow) = FoldPersistFrame(
+        scope = scopeKey,
+        facts = rows.toList(),
+        cursor = PersistedCursor(latestSeq = rows.maxOfOrNull { it.seq }, oldestLoadedSeq = rows.minOfOrNull { it.seq }, newestLoadedSeq = rows.maxOfOrNull { it.seq }, epoch = "e1"),
+    )
+
+    @Test
+    fun oneFrameApplyIsExactlyOneRealBeginCommit() = runBlocking {
+        val (db, driver) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("m1", 1), row("m2", 2)))
+        assertEquals(1, driver.begin, "one frame apply = one BEGIN")
+        assertEquals(1, driver.commit, "one frame apply = one COMMIT")
+        assertEquals(0, driver.rollback, "a clean apply never rolls back")
+    }
+
+    @Test
+    fun fullFieldRoundTripThroughPayload() = runBlocking {
+        val (db, _) = freshDb()
+        val fact = fullRow()
+        adapter(db).applyFrame(frame(scope, fact))
+        assertEquals(listOf(fact), store(db).readFacts(scope), "every canonical + nested field must survive round-trip via the JSON payload")
+    }
+
+    @Test
+    fun scalarColumnsEqualExtractOfDecodedPayload() = runBlocking {
+        val (db, _) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("m1", 5)))
+        val stored = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single()
+        val decoded = decodeCanonicalFact(stored.canonicalFactJson)!!
+        assertEquals(stored.id, decoded.id.value)
+        assertEquals(stored.channelId, decoded.channelId.value)
+        assertEquals(stored.seq, decoded.seq)
+        assertEquals(stored.createdAt, decoded.createdAt)
+    }
+
+    @Test
+    fun sqlIsFullThreePartScopeIsolated() = runBlocking {
+        val (db, _) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("m1", 1)))
+        // Same server+scopeId but a DIFFERENT scopeKind must not see it (a channel vs a thread on c1).
+        val sameIdOtherKind = SyncScopeKey("s1", "c1", "thread")
+        assertTrue(store(db).readFacts(sameIdOtherKind).isEmpty(), "different scopeKind (same scopeId) must be isolated")
+        // Different server must not see it.
+        assertTrue(store(db).readFacts(SyncScopeKey("s2", "c1", "channel")).isEmpty(), "different server must be isolated")
+        // Different channelId must not see it.
+        assertTrue(store(db).readFacts(SyncScopeKey("s1", "c2", "channel")).isEmpty(), "different channelId must be isolated")
+        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id.value })
+    }
+
+    @Test
+    fun cursorIsFullThreePartScoped() = runBlocking {
+        val (db, _) = freshDb()
+        // A channel and a thread sharing serverId + scopeId must NOT collide on the cursor.
+        adapter(db).applyFrame(frame(scope, row("m1", 5)))
+        adapter(db).applyFrame(frame(SyncScopeKey("s1", "c1", "thread"), row("t1", 9)))
+        assertEquals(5L, store(db).readCursor(scope)?.latestSeq)
+        assertEquals(9L, store(db).readCursor(SyncScopeKey("s1", "c1", "thread"))?.latestSeq)
+    }
+
+    @Test
+    fun crossScopeSameIdFailStopsOnRealApplyFrame() = runBlocking {
+        val (db, _) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("dup", 1)))
+        val other = SyncScopeKey("s1", "c2", "channel")
+        assertFailsWith<FoldPersistScopeConflict> {
+            adapter(db).applyFrame(frame(other, row("dup", 2, other)))
+        }
+        assertEquals(listOf("dup"), store(db).readFacts(scope).map { it.id.value }, "the original scope's fact is untouched")
+        assertTrue(store(db).readFacts(other).isEmpty(), "the conflicting frame rolled back")
+    }
+
+    @Test
+    fun midBlockDeathIsOneRealRollbackToPreFrame() = runBlocking {
+        val (db, driver) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("m1", 1)))
+        val beforeRollback = driver.rollback
+        val dying = object : FoldPersistStore by store(db) {
+            override suspend fun maintainTimelineIndex(scope: SyncScopeKey, facts: List<CanonicalMessageRow>): Unit =
+                throw RuntimeException("process death mid-block")
+        }
+        assertFailsWith<RuntimeException> { adapter(db, faultStore = dying).applyFrame(frame(scope, row("m2", 2))) }
+        assertEquals(beforeRollback + 1, driver.rollback, "mid-block death must be one real ROLLBACK")
+        assertEquals(listOf("m1"), store(db).readFacts(scope).map { it.id.value }, "rolled back to the complete pre-frame state")
+    }
+
+    @Test
+    fun projectionTamperOfScalarIsPoisonedNotReturned() = runBlocking {
+        val (db, _) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("m1", 3)))
+        // Tamper ONLY the scalar seq column (leave the payload intact) — a drifted projection.
+        db.execute("UPDATE messageEntity SET seq = 999 WHERE id = 'm1';")
+        val poisoned = mutableListOf<String>()
+        val facts = store(db, onDecodeFailure = { _, id -> poisoned.add(id) }).readFacts(scope)
+        assertTrue(facts.isEmpty(), "restore must not return a row whose scalar drifted from its payload")
+        assertEquals(listOf("m1"), poisoned, "the drifted row is a counted poison-gate input")
+        // Restore-purity: the payload itself was never mutated — it still decodes to the true fact.
+        val payload = db.queries.selectServerBackedMessagesForChannel("s1", "channel", "c1").executeAsList().single().canonicalFactJson
+        assertEquals(3L, decodeCanonicalFact(payload)?.seq, "the payload seq is untouched; only the scalar was tampered")
+    }
+
+    @Test
+    fun malformedPayloadIsFailClosedAndCounted() = runBlocking {
+        val (db, _) = freshDb()
+        adapter(db).applyFrame(frame(scope, row("bad", 1)))
+        db.execute("UPDATE messageEntity SET canonicalFactJson = 'not-json' WHERE id = 'bad';")
+        val poisoned = mutableListOf<String>()
+        val facts = store(db, onDecodeFailure = { _, id -> poisoned.add(id) }).readFacts(scope)
+        assertTrue(facts.isEmpty())
+        assertEquals(listOf("bad"), poisoned, "a malformed payload is reported to the poison gate, not silently dropped")
+    }
+
+    @Test
+    fun persistRestorePreservesResolvedNullEmptyValueStates() = runBlocking {
+        val (db, _) = freshDb()
+        // Resolved three states the fold can produce: null nullable + empty list; and a populated value.
+        val nulls = row("nulls", 1).copy(commentRef = null, conversationContext = null, reactions = emptyList())
+        val values = fullRow().copy(id = MessageId("values"), channelId = ChannelId("c1"))
+        adapter(db).applyFrame(FoldPersistFrame(scope, listOf(nulls, values), PersistedCursor(2, 1, 2, epoch = "e1")))
+        val restored = store(db).readFacts(scope).associateBy { it.id.value }
+        assertNull(restored["nulls"]!!.commentRef, "resolved null must survive as null (not [] or a value)")
+        assertEquals(emptyList(), restored["nulls"]!!.reactions, "resolved empty must survive as empty")
+        assertEquals(values, restored["values"], "a fully-populated resolved fact round-trips exactly")
+    }
+
+    @Test
+    fun restoreYieldsNullCursorBeforeFirstWrite() = runBlocking {
+        val (db, _) = freshDb()
+        assertNull(store(db).readCursor(scope))
+        adapter(db).applyFrame(frame(scope, row("m1", 3)))
+        assertEquals(3L, store(db).readCursor(scope)?.latestSeq)
+        assertEquals("e1", store(db).readCursor(scope)?.epoch)
+    }
+}

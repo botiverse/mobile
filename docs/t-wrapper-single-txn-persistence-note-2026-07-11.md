@@ -1,4 +1,10 @@
-# T-wrapper — single-transaction fold persistence (KV-on-SQLite), implementation note
+# T-wrapper — single-transaction fold persistence (SQLite), implementation note
+
+> Naming note (artin): the mobile store is **pure SQLite / relational**, NOT a key-value store. "KV"
+> appears below ONLY as the name of the sync-core's *backend-neutral* storage INTERFACE (RFC 043 §10) —
+> the abstraction that lets web bind IndexedDB and mobile bind SQLite to one shared core. The mobile binding
+> is form A: extend the existing relational tables (`messageEntity` + a `canonicalFactJson` column,
+> `syncCursorEntity`). The literal KV-table option (a `localSnapshotEntity` blob store) was rejected.
 
 Status: design note for the P1 persistence layer (RFC 043 §7.6 / §9.9), first increment = **one-txn gate**.
 Owner: HanXin. Review: LiBai + AD2. Line: `fold → app-bind → wrapper` (third segment; fold + app-bind
@@ -51,7 +57,7 @@ What a single applied frame writes, together, in one SQLite transaction:
   defines the stable timeline window. Index maintenance joins the SAME transaction — a separate index
   transaction is a torn window by another name.
 
-## 3. Adapter shape (KV-with-versioned-values, §10 — RULED HanXin 2026-07-08)
+## 3. Adapter shape (core INTERFACE = KV-with-versioned-values, §10 — RULED HanXin 2026-07-08; mobile BINDING = SQLite)
 
 The backend-neutral interface stays narrow; SQLite is the binding where the transactional/scan requirements
 apply (the messages domain). The wrapper exposes a single atomic entry point plus a fault hook:
