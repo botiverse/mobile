@@ -18,7 +18,9 @@ package build.raft.app.network.sync
  *     (using the sort key as the dedup key mis-kills out-of-order real replies). `snapshotSeq` is a fixed
  *     seam set from the initial snapshot; live deltas never advance it; a reconnect-replay delta with
  *     `seq <= snapshotSeq` that is not already in the window is already covered → dropped, window unchanged.
- *  3. `replyCount` is independent of window size (40 total vs window N).
+ *  3. `replyCount` is the server's AUTHORITATIVE total (independent of window size — 40 total vs window N),
+ *     applied MONOTONICALLY (`max`): never `+1`-derived (that double-counts an evicted reply's replay),
+ *     never naively overwritten (a stale out-of-order frame would drag the total backwards).
  *  4. No-op on no-change — the same window + replyCount returns the SAME instance (reference equality) so a
  *     reply landing on one thread re-renders only that thread, never the whole timeline.
  */
@@ -58,31 +60,44 @@ fun initialThreadRepliesReadModel(
 }
 
 /**
- * Fold one live reply delta (a `thread:updated.latestReply` frame) into the window. Returns the SAME
- * instance when nothing semantically changes (Gate 4). `replyCount` is DERIVED — it increments by one for a
- * genuinely-new reply and is unchanged on a drop/dup/replay — and is re-based to the authoritative total on
- * the next `getLatestNReplies` snapshot (so any missed-frame drift is bounded and self-correcting).
+ * Fold one live reply delta (a `thread:updated` frame carrying `latestReply` + the authoritative
+ * `threadInfo.replyCount`) into the window. Returns the SAME instance when nothing semantically changes
+ * (Gate 4), so a reply on one thread re-renders only that thread.
+ *
+ * `frameReplyCount` is the server's AUTHORITATIVE total, applied MONOTONICALLY (`max`) — never `+1`-derived
+ * and never naively overwritten:
+ *  - `+1` derive double-counts once a reply has been EVICTED from the window: a window-scoped identity check
+ *    no longer sees it, so its replayed frame takes the "new" branch (@Android-Developer-2's finding,
+ *    vector `evicted_live_reply_replay_is_noop`). The window forgets; the server's count cannot.
+ *  - a naive overwrite would let a stale, out-of-order frame carrying an OLDER count drag the total backwards.
+ * `max` is idempotent under replay and safe under reorder.
+ *
+ * (Reply delete/edit are v1-unsupported server-side — no `deletedAt`/`revision` column, no `message:deleted`
+ * event — so this fold is create-only. Delete/edit fold into the same window as forward contract, RFC 043
+ * §B.10: a delete must route by `messageId` BEFORE the seam check below, or it no-ops on a visible reply.)
  */
 fun ThreadRepliesReadModel.applyReplyFrame(
     reply: ReplyPreview,
+    frameReplyCount: Int,
     limit: Int,
 ): ThreadRepliesReadModel {
-    return when {
-        // Gate 2 — dedup by IDENTITY: a delta whose messageId is already in the window is a duplicate and is
-        // DROPPED (the reply is already present at its real seq) — even if the dup frame claims a HIGHER seq.
-        // Identity, not seq magnitude, decides a duplicate; keeping the existing entry keeps the window stable.
-        replies.any { it.messageId == reply.messageId } -> this
-        // Gate 2 — seam: a reconnect-replay delta at or below the fixed snapshot seam is already covered →
-        // drop. A genuinely new reply, even one arriving out of order (9 before 8), has seq > snapshotSeq, so
-        // this never drops a real reply — the out-of-order-no-loss case.
-        reply.seq <= snapshotSeq -> this
-        // Gate 1 — a genuinely new reply lands in its seq position; keep the latest N; count +1 (total, not
-        // window size — an eviction still counts).
-        else -> copy(
-            replies = (replies + reply).sortedBy { it.seq }.takeLast(limit),
-            replyCount = replyCount + 1,
-        )
+    val mergedCount = maxOf(replyCount, frameReplyCount)
+    val newWindow = when {
+        // Gate 2 — dedup by IDENTITY: a delta whose messageId is already in the window is a duplicate; keep
+        // the existing entry (identity, not seq magnitude, decides a duplicate) → window unchanged.
+        replies.any { it.messageId == reply.messageId } -> replies
+        // Gate 2 — seam: a reconnect-replay delta at or below the fixed snapshot seam is already covered by
+        // the initial snapshot → window unchanged. A genuinely new reply, even out of order (9 before 8), has
+        // seq > snapshotSeq, so this never drops a real reply.
+        reply.seq <= snapshotSeq -> replies
+        // Gate 1 — a genuinely new reply lands in its seq position; keep the latest N. A reply already EVICTED
+        // (seq below the window min) is simply re-evicted here, so the window is unchanged and — with the
+        // authoritative count above — a replay of it is a true no-op (not a spurious +1).
+        else -> (replies + reply).sortedBy { it.seq }.takeLast(limit)
     }
+    // Gate 4 — no semantic change (same window values AND same count) ⇒ SAME instance (render isolation).
+    return if (newWindow == replies && mergedCount == replyCount) this
+    else copy(replies = newWindow, replyCount = mergedCount)
 }
 
 /** Collapse duplicate messageIds in an initial batch, keeping the higher-seq copy (later state wins). */

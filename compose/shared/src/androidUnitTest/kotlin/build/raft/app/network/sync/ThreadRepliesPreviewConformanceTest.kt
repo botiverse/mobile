@@ -1,17 +1,25 @@
 /*
- * Thread-replies latest-N read-model — cross-end conformance + cross-repo checksum (RFC 043 App B addendum).
+ * Thread-replies latest-N read-model — cross-end conformance + offline copy-integrity (RFC 043 §B.10).
  *
- * The canonical vector lives in the WEB repo (`botiverse/slock` packages/shared/src/testVectors/
- * threadRepliesReadModel.vectors.json). Mobile is a SEPARATE repo, so KMP cannot read that path — the vector
- * is SYNCED into this repo as a test resource and pinned by sha256 against the same authoritative hash the
- * web side asserts. Either copy drifting → both repos red (a copy that could silently drift would defeat the
- * equal-verdict gate itself). Then this same vector is fed to the KMP reducer and asserted logically
- * deep-equal to the expected snapshots — the KMP half of 赵's cross-end equal-verdict (#731 discipline).
+ * The canonical vector lives in the WEB repo (botiverse/slock packages/shared/src/testVectors/
+ * threadRepliesReadModel.vectors.json). Mobile is a SEPARATE repo, so this is a SYNCED copy. Both ends fold
+ * THIS SAME vector and must agree step-by-step — the KMP half of 赵's cross-end equal-verdict gate (#731).
+ *
+ * Two protections, kept honestly distinct:
+ *  - `syncedVectorMatchesPinnedHash` is an OFFLINE integrity check: the synced copy still matches the hash it
+ *    was pinned to, catching a LOCAL accidental edit. It is NOT the cross-repo gate — two independent
+ *    hardcoded hashes can both stay green on DIFFERENT bytes (AD2's finding #2). The real mechanical cross-
+ *    repo gate is a CI step that FETCHES the canonical bytes from slock staging and compares; it is added
+ *    once web lands staging (tracked separately). A second hardcoded hash would be a gate with the very
+ *    blind spot it exists to catch, so this test does not claim to be one.
+ *
+ * Scope is create-only: reply delete/edit are unsupported server-side in v1 (no deletedAt/revision column,
+ * no message:deleted event), so the vector carries no tombstone/edit cases — a vector over an unwritten
+ * server contract would only pin our own guesses.
  */
 package build.raft.app.network.sync
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -27,34 +35,24 @@ import kotlin.test.assertTrue
 
 class ThreadRepliesPreviewConformanceTest {
 
+    private val pinnedHash = "e0af07aa112aff7f8dc653ed1ce5f23211fa6884c780a2e92fff7452b959e98a"
+
     private fun resourceBytes(path: String): ByteArray =
         checkNotNull(javaClass.getResourceAsStream(path)) { "missing test resource $path" }.readBytes()
 
-    /** Cross-repo checksum: the mobile-synced copy must match the same sha256 both repos pin. */
+    private fun replyOf(messageId: String, seq: Long): ReplyPreview =
+        ReplyPreview(messageId, seq, "", "", "", "", null, "")
+
+    /** Offline copy-integrity: the synced mobile copy still matches its pinned hash (NOT the cross-repo gate). */
     @Test
-    fun syncedVectorMatchesCanonicalWebChecksum() {
+    fun syncedVectorMatchesPinnedHash() {
         val bytes = resourceBytes("/sync/threadRepliesReadModel.vectors.json")
-        val expected = resourceBytes("/sync/threadRepliesReadModel.vectors.sha256").decodeToString().trim()
+        val fileHash = resourceBytes("/sync/threadRepliesReadModel.vectors.sha256").decodeToString().trim()
         val actual = MessageDigest.getInstance("SHA-256").digest(bytes)
             .joinToString("") { b -> ((b.toInt() and 0xff) + 0x100).toString(16).substring(1) }
-        assertEquals(
-            "fa7d356c00f0344d9df33af244a4eec565fa462f109a9a473be6fbee14fdc9b2",
-            actual,
-            "synced vector drifted from the canonical web vector — re-sync from botiverse/slock",
-        )
-        assertEquals(expected, actual, "vector bytes disagree with the pinned .sha256 companion")
+        assertEquals(pinnedHash, actual, "synced vector drifted from its pinned hash — re-sync from botiverse/slock")
+        assertEquals(fileHash, actual, "vector bytes disagree with the pinned .sha256 companion")
     }
-
-    /** A vector reply/frame is a bare seq (messageId `m-<seq>`) or a `{seq, messageId}` override. */
-    private fun replyOf(element: kotlinx.serialization.json.JsonElement): ReplyPreview =
-        if (element is JsonPrimitive) {
-            val seq = element.long
-            ReplyPreview("m-$seq", seq, "", "", "", "", null, "")
-        } else {
-            val obj = element.jsonObject
-            val seq = obj.getValue("seq").jsonPrimitive.long
-            ReplyPreview(obj.getValue("messageId").jsonPrimitive.content, seq, "", "", "", "", null, "")
-        }
 
     @Test
     fun kmpReducerMatchesTheCrossEndVectorStepByStep() {
@@ -68,14 +66,27 @@ class ThreadRepliesPreviewConformanceTest {
             val name = case.getValue("name").jsonPrimitive.content
             val snapshot = case.getValue("snapshot").jsonObject
 
+            // Snapshot replies are bare seqs (messageId `m-<seq>`).
             val initial = initialThreadRepliesReadModel(
-                replies = snapshot.getValue("replies").jsonArray.map(::replyOf),
+                replies = snapshot.getValue("replies").jsonArray.map {
+                    val seq = it.jsonPrimitive.long
+                    replyOf("m-$seq", seq)
+                },
                 replyCount = snapshot.getValue("replyCount").jsonPrimitive.int,
                 limit = cap,
             )
+
+            // Each frame is `{seq, replyCount, [messageId]}` — it carries the AUTHORITATIVE replyCount.
+            val frames = case.getValue("frames").jsonArray
             var model = initial
-            for (frame in case.getValue("frames").jsonArray) {
-                model = model.applyReplyFrame(replyOf(frame), cap)
+            var beforeLast = initial
+            frames.forEachIndexed { i, frameElement ->
+                if (i == frames.size - 1) beforeLast = model
+                val frame = frameElement.jsonObject
+                val seq = frame.getValue("seq").jsonPrimitive.long
+                val messageId = frame["messageId"]?.jsonPrimitive?.content ?: "m-$seq"
+                val frameReplyCount = frame.getValue("replyCount").jsonPrimitive.int
+                model = model.applyReplyFrame(replyOf(messageId, seq), frameReplyCount, cap)
             }
 
             val expect = case.getValue("expect").jsonObject
@@ -87,13 +98,20 @@ class ThreadRepliesPreviewConformanceTest {
             assertEquals(expect.getValue("replyCount").jsonPrimitive.int, model.replyCount, "$name: replyCount diverged")
             assertEquals(expect.getValue("snapshotSeq").jsonPrimitive.long, model.snapshotSeq, "$name: snapshotSeq diverged")
 
-            // Gate 4 — reference-stable no-op: a fully-unchanged frame sequence returns the SAME instance.
+            // Gate 4 — a whole-sequence no-op returns the initial instance (render isolation).
             if (expect.getValue("unchanged").jsonPrimitive.boolean) {
-                assertSame(initial, model, "$name: unchanged case must return the same instance (render isolation)")
+                assertSame(initial, model, "$name: unchanged sequence must return the same instance")
             } else {
-                assertNotSame(initial, model, "$name: changed case must produce a new instance")
+                assertNotSame(initial, model, "$name: changed sequence must produce a new instance")
+            }
+            // Gate 4 — the LAST frame alone is a no-op (e.g. an evicted-reply replay): same reference as the
+            // model just before it. A value-only check would pass a rebuild-every-frame implementation.
+            expect["lastFrameUnchanged"]?.let {
+                if (it.jsonPrimitive.boolean) {
+                    assertSame(beforeLast, model, "$name: last frame must be a reference-stable no-op")
+                }
             }
         }
-        assertTrue(vector.getValue("cases").jsonArray.size >= 9, "expected the full 9-case vector")
+        assertTrue(vector.getValue("cases").jsonArray.size >= 10, "expected the full 10-case vector")
     }
 }
