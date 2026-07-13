@@ -38,6 +38,11 @@ data class SyncSnapshot(
     val watermark: Long,
     val epoch: SyncEpoch? = null,
     val state: Any? = null,
+    /**
+     * Monotonic host generation for an authoritative rebaseline flight. A newer generation may
+     * replace sparse realtime state at the same watermark; stale/duplicate generations are no-ops.
+     */
+    val rebaselineGeneration: Long? = null,
 )
 
 /** One event in a difference response. */

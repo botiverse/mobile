@@ -40,6 +40,7 @@ class MessageSyncDomainTest {
         seq: Long = 1L,
         content: String = "b",
         senderName: String = "U",
+        senderType: String = "user",
         senderId: String = "u1",
         mentions: List<CanonicalMentionWire> = emptyList(),
         reactions: List<CanonicalReactionWire> = emptyList(),
@@ -49,7 +50,7 @@ class MessageSyncDomainTest {
         id = id,
         channelId = channel,
         seq = seq,
-        senderType = "user",
+        senderType = senderType,
         senderId = senderId,
         content = content,
         messageType = "chat",
@@ -246,6 +247,7 @@ class MessageSyncDomainTest {
         rows: List<CanonicalMessageRow>,
         serverId: String = "s1",
         memberId: String = "me",
+        receiverKind: MessageReceiverKind = MessageReceiverKind.User,
         scopeId: String = "c1",
         epoch: String = "e1",
         coveredFromSeq: Long = rows.minOfOrNull { it.seq } ?: 1L,
@@ -258,6 +260,7 @@ class MessageSyncDomainTest {
             snapshot = MessageScopeCoverageSnapshot(
                 serverId = serverId,
                 memberId = memberId,
+                receiverKind = receiverKind,
                 scopeId = scopeId,
                 epoch = epoch,
                 rows = rows,
@@ -273,6 +276,7 @@ class MessageSyncDomainTest {
         maxReadSeq: Long,
         serverId: String = "s1",
         memberId: String = "me",
+        receiverKind: MessageReceiverKind? = MessageReceiverKind.User,
         scopeId: String = "c1",
         epoch: String = "e1",
         version: Long = 1L,
@@ -281,6 +285,7 @@ class MessageSyncDomainTest {
             state = state,
             serverId = serverId,
             memberId = memberId,
+            receiverKind = receiverKind,
             scopeId = scopeId,
             epoch = epoch,
             checkpoint = MessageReadStateCheckpoint(readStateVersion = version, maxReadSeq = maxReadSeq),
@@ -314,6 +319,42 @@ class MessageSyncDomainTest {
             ),
             project(state, maxReadSeq = 10, version = 7),
         )
+    }
+
+    @Test
+    fun agentReceiverExcludesAgentSelfAndRecognizesAgentMention() {
+        val state = baseline(
+            receiverKind = MessageReceiverKind.Agent,
+            rows = listOf(
+                row("self", seq = 11, senderType = "agent", senderId = "me"),
+                row(
+                    "mention",
+                    seq = 12,
+                    senderType = "user",
+                    senderId = "u2",
+                    mentions = listOf(CanonicalMentionWire(id = "me", name = "Me", type = "agent")),
+                ),
+            ),
+        )
+
+        val projection = project(
+            state = state,
+            maxReadSeq = 10,
+            receiverKind = MessageReceiverKind.Agent,
+        )
+
+        assertEquals(1, projection.unreadCount)
+        assertTrue(projection.hasMention)
+        assertEquals("mention", projection.firstUnreadMessageId)
+        assertEquals("mention", projection.firstMentionMessageId)
+    }
+
+    @Test
+    fun missingOrMismatchedReceiverKindFailsClosed() {
+        val state = baseline(rows = listOf(row("m11", seq = 11)))
+
+        assertFalse(project(state, maxReadSeq = 10, receiverKind = null).complete)
+        assertFalse(project(state, maxReadSeq = 10, receiverKind = MessageReceiverKind.Agent).complete)
     }
 
     @Test
@@ -406,5 +447,62 @@ class MessageSyncDomainTest {
 
         assertFalse(project(state, maxReadSeq = 10, version = 0).complete)
         assertFalse(project(state, maxReadSeq = -1, version = 1).complete)
+    }
+
+    @Test
+    fun realtimeFirstSameWatermarkAuthoritativeRebaselineInstallsCoverageThroughRealCore() {
+        val core = createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain())))
+        val realtime = row("m14", seq = 14, senderId = "u2")
+        assertEquals(
+            SyncIngestOutcome.MaxAdvanced("c1", 14),
+            core.ingestFrame(
+                MESSAGES_SYNC_DOMAIN,
+                SyncFrame(
+                    scopeId = "c1",
+                    seq = 14,
+                    epoch = "e1",
+                    event = MessageDomainEvent.New(realtime, MESSAGE_NEW),
+                ),
+            ),
+        )
+        val sparse = core.state(MESSAGES_SYNC_DOMAIN, "c1") as MessageDomainState
+        assertNull(sparse.scopeCoverage["c1"])
+
+        val authoritative = baseline(state = sparse, rows = listOf(realtime), coveredFromSeq = 14)
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            core.ingestSnapshot(
+                MESSAGES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = "c1",
+                    watermark = 14,
+                    epoch = "e1",
+                    state = authoritative,
+                    rebaselineGeneration = 1,
+                ),
+            ),
+        )
+        val installed = core.state(MESSAGES_SYNC_DOMAIN, "c1") as MessageDomainState
+        assertTrue(project(installed, maxReadSeq = 13).complete)
+
+        val staleState = baseline(
+            state = installed,
+            rows = listOf(realtime, row("stale", seq = 15, senderId = "u3")),
+            remoteHighWaterSeq = 15,
+        )
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 15),
+            core.ingestSnapshot(
+                MESSAGES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = "c1",
+                    watermark = 15,
+                    epoch = "e1",
+                    state = staleState,
+                    rebaselineGeneration = 1,
+                ),
+            ),
+        )
+        assertSame(installed, core.state(MESSAGES_SYNC_DOMAIN, "c1"))
     }
 }

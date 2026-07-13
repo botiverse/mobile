@@ -69,9 +69,9 @@ sealed interface MessageDomainEvent {
 data class MessageDomainState(
     val channelMessages: Map<String, List<CanonicalMessageRow>> = emptyMap(),
     /**
-     * Authoritative tail coverage for each channel. This lives in the same state value as the rows so
-     * snapshot persistence cannot restore one without the other. A missing entry means rows may still
-     * be useful as a sparse cache, but they cannot prove a read-state projection complete.
+     * Authoritative tail coverage for each channel. This lives in the same in-memory/snapshot state
+     * value as the rows, so a typed [SyncSnapshot] replaces them atomically. Current SQLite warm-start
+     * persistence remains rows-only; after that restore this map is empty and projection fails closed.
      */
     val scopeCoverage: Map<String, MessageScopeCoverage> = emptyMap(),
 )
@@ -85,6 +85,7 @@ data class MessageDomainState(
 data class MessageScopeCoverage(
     val serverId: String,
     val memberId: String,
+    val receiverKind: MessageReceiverKind,
     val scopeId: String,
     val epoch: String?,
     val coveredFromSeq: Long,
@@ -98,6 +99,7 @@ data class MessageScopeCoverage(
 data class MessageScopeCoverageSnapshot(
     val serverId: String,
     val memberId: String,
+    val receiverKind: MessageReceiverKind,
     val scopeId: String,
     val epoch: String?,
     val rows: List<CanonicalMessageRow>,
@@ -106,6 +108,12 @@ data class MessageScopeCoverageSnapshot(
     val hasGap: Boolean = false,
     val hasNewer: Boolean = false,
 )
+
+/** Receiver principal type used by server unread policy and structured mention entities. */
+enum class MessageReceiverKind(val wireName: String) {
+    User("user"),
+    Agent("agent"),
+}
 
 data class MessageReadStateCheckpoint(
     val readStateVersion: Long,
@@ -282,6 +290,7 @@ fun rebaselineMessageScope(
         MessageScopeCoverage(
             serverId = snapshot.serverId,
             memberId = snapshot.memberId,
+            receiverKind = snapshot.receiverKind,
             scopeId = snapshot.scopeId,
             epoch = snapshot.epoch,
             coveredFromSeq = snapshot.coveredFromSeq,
@@ -325,6 +334,7 @@ fun applyReadStateProjection(
     state: MessageDomainState,
     serverId: String,
     memberId: String,
+    receiverKind: MessageReceiverKind?,
     scopeId: String,
     epoch: String?,
     checkpoint: MessageReadStateCheckpoint,
@@ -332,10 +342,12 @@ fun applyReadStateProjection(
     if (checkpoint.readStateVersion <= 0L || checkpoint.maxReadSeq < 0L) {
         return incompleteReadStateProjection(checkpoint)
     }
+    val typedReceiverKind = receiverKind ?: return incompleteReadStateProjection(checkpoint)
     val coverage = state.scopeCoverage[scopeId] ?: return incompleteReadStateProjection(checkpoint)
     val identityMatches =
         coverage.serverId == serverId &&
             coverage.memberId == memberId &&
+            coverage.receiverKind == typedReceiverKind &&
             coverage.scopeId == scopeId &&
             coverage.epoch == epoch
     val coversUnreadTail =
@@ -350,11 +362,11 @@ fun applyReadStateProjection(
     var firstUnreadMessageId: String? = null
     var firstMentionMessageId: String? = null
     state.channelMessages[scopeId].orEmpty().forEach { row ->
-        val selfAuthored = row.senderType == "user" && row.senderId == memberId
+        val selfAuthored = row.senderType == typedReceiverKind.wireName && row.senderId == memberId
         if (row.seq <= checkpoint.maxReadSeq || selfAuthored) return@forEach
         unreadCount += 1
         if (firstUnreadMessageId == null) firstUnreadMessageId = row.id
-        val mentionsMember = row.mentions.any { it.type == "user" && it.id == memberId }
+        val mentionsMember = row.mentions.any { it.type == typedReceiverKind.wireName && it.id == memberId }
         if (mentionsMember) {
             hasMention = true
             if (firstMentionMessageId == null) firstMentionMessageId = row.id

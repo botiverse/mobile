@@ -13,6 +13,8 @@ private class ScopeEntry(
     var epoch: SyncEpoch?,
     var repairPending: Boolean,
     var state: Any?,
+    /** Latest accepted authoritative rebaseline flight, independent from producer watermark. */
+    var rebaselineGeneration: Long?,
 )
 
 fun createSyncCore(config: SyncCoreConfig): SyncCore = SyncCoreImpl(config)
@@ -34,7 +36,13 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     private fun scopeEntry(domain: SyncDomainConfig, scopeId: SyncScopeId): ScopeEntry {
         val byScope = scopes.getOrPut(domain.name) { LinkedHashMap() }
         return byScope.getOrPut(scopeId) {
-            ScopeEntry(appliedSeq = null, epoch = null, repairPending = false, state = domain.initialState())
+            ScopeEntry(
+                appliedSeq = null,
+                epoch = null,
+                repairPending = false,
+                state = domain.initialState(),
+                rebaselineGeneration = null,
+            )
         }
     }
 
@@ -119,16 +127,27 @@ private class SyncCoreImpl(config: SyncCoreConfig) : SyncCore {
     override fun ingestSnapshot(domain: SyncDomainName, snapshot: SyncSnapshot): SyncIngestOutcome {
         val domainConfig = domainOf(domain)
         val entry = scopeEntry(domainConfig, snapshot.scopeId)
+        val incomingGeneration = snapshot.rebaselineGeneration
+        val currentGeneration = entry.rebaselineGeneration
+        if (incomingGeneration != null && currentGeneration != null && incomingGeneration <= currentGeneration) {
+            return SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+        }
         // A stale same-epoch snapshot is a comparison-based no-op — never a rollback (convergence
-        // invariant). Cross-epoch snapshots may lower the watermark: that is a rebaseline.
+        // invariant). A newer authoritative rebaseline generation may replace state at the SAME
+        // watermark (for example sparse realtime arrived before hydrate). Cross-epoch snapshots may
+        // lower the watermark: that is a rebaseline.
         val sameEpoch = entry.epoch == null || snapshot.epoch == null || snapshot.epoch == entry.epoch
         val appliedSeq = entry.appliedSeq
-        if (sameEpoch && appliedSeq != null && snapshot.watermark <= appliedSeq) {
+        val newerGeneratedSameWatermark =
+            incomingGeneration != null && appliedSeq != null && snapshot.watermark == appliedSeq
+        if (sameEpoch && appliedSeq != null && snapshot.watermark <= appliedSeq && !newerGeneratedSameWatermark) {
             violations.push(SyncViolationDraft(SyncViolationKind.VersionRegression, domain, snapshot.scopeId, snapshot.watermark, snapshot.epoch))
             return SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
         }
         entry.state = domainConfig.fromSnapshot(snapshot)
         entry.appliedSeq = snapshot.watermark
+        entry.rebaselineGeneration =
+            incomingGeneration ?: if (sameEpoch) currentGeneration else null
         entry.epoch = snapshot.epoch
         entry.repairPending = false
         clearScopeRequests(domain, snapshot.scopeId)
