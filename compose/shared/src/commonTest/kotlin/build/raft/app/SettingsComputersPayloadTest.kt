@@ -152,6 +152,7 @@ class SettingsComputersPayloadTest {
                             fileCount = 12
                         )
                     ),
+                workspacesScanned = true,
                 agents = emptyList(),
                 sections = emptyList()
             )
@@ -160,6 +161,7 @@ class SettingsComputersPayloadTest {
         val workspace = payload.workspaces.single()
 
         assertEquals("Build farm runner", payload.computer.description)
+        assertEquals(true, payload.workspacesScanned)
         assertEquals("Pi QA Perf Profiler", workspace.name)
         assertEquals("~/.slock/agents/027ca19e-d020-4054-bed5-0f9173ea5891/", workspace.path)
         assertEquals("4.0 KB", workspace.totalSizeLabel)

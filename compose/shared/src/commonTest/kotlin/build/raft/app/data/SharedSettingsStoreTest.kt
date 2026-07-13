@@ -956,6 +956,49 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun scanComputerWorkspacesUpdatesOnlyTheWorkspaceSection() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                computerWorkspacesResult =
+                    DataResult.Content(
+                        listOf(
+                            SettingsComputerWorkspaceSnapshot(
+                                id = "workspace-1",
+                                name = "Raft",
+                                path = "~/.slock/agents/Raft/",
+                                statusLabel = "active"
+                            )
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+
+        store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42"))
+
+        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(true, detail.workspacesScanned)
+        assertEquals(listOf("workspace-1"), detail.workspaces.map { it.id })
+        assertEquals(0, detail.agents.size)
+        assertEquals(
+            SharedSettingsActionState(COMPUTER_ACTION_SCAN_WORKSPACES, "machine-42", inProgress = false),
+            store.state.value.actionState
+        )
+        assertEquals(listOf("computerDetail:machine-42", "scanComputerWorkspaces:machine-42"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun openComputerKeepsManageActionsHiddenForNonAdmins() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
@@ -1020,6 +1063,17 @@ class SharedSettingsStoreTest {
         val repository =
             FakeSettingsRepository(
                 computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                computerWorkspacesResult =
+                    DataResult.Content(
+                        listOf(
+                            SettingsComputerWorkspaceSnapshot(
+                                id = "workspace-1",
+                                name = "Raft",
+                                path = "~/.slock/agents/Raft/",
+                                statusLabel = "active"
+                            )
+                        )
+                    ),
                 renameComputerResult = DataResult.Content(renamed)
             )
         val store =
@@ -1032,10 +1086,10 @@ class SharedSettingsStoreTest {
                 scope = scope
             )
 
-        // Open the detail page first so the route is the detail page, then
-        // rename. The rename helper should call renameComputer + reload
-        // the detail snapshot, leaving the route on ComputerDetail.
+        // A successful scan should survive the unscanned detail snapshot
+        // returned after a rename action reloads the rest of the page.
         store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.ScanComputerWorkspaces("machine-42"))
         store.accept(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest("machine-42", "MacBook Pro 2")))
 
         // Repository called: initial OpenComputer (loads detail), then
@@ -1047,6 +1101,7 @@ class SharedSettingsStoreTest {
         assertEquals(
             listOf(
                 "computerDetail:machine-42",
+                "scanComputerWorkspaces:machine-42",
                 "renameComputer:machine-42:MacBook Pro 2",
                 "computerDetail:machine-42"
             ),
@@ -1058,7 +1113,9 @@ class SharedSettingsStoreTest {
         assertEquals(false, actionState.inProgress)
         assertNull(actionState.errorCode)
         // Detail reload happened (still Content) and route is still ComputerDetail.
-        assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
+        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(true, detail.workspacesScanned)
+        assertEquals(listOf("workspace-1"), detail.workspaces.map { it.id })
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
         scope.cancel()
     }
@@ -2166,6 +2223,7 @@ class SharedSettingsStoreTest {
         var connectedAppsResult: DataResult<SettingsConnectedAppsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computerDetailResult: DataResult<SettingsComputerDetailSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var computerWorkspacesResult: DataResult<List<SettingsComputerWorkspaceSnapshot>> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var languageRegionResult: DataResult<SettingsLanguageRegionSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -2438,6 +2496,11 @@ class SharedSettingsStoreTest {
         override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> {
             calls += "computerDetail:$machineId"
             return computerDetailResult
+        }
+
+        override suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> {
+            calls += "scanComputerWorkspaces:$machineId"
+            return computerWorkspacesResult
         }
 
         override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> {

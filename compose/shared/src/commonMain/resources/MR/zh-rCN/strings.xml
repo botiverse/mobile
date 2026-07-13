@@ -1310,6 +1310,11 @@
     <string name="settings_computers_action_select">选择</string>
     <string name="settings_computers_action_create">创建</string>
     <string name="settings_computers_section_workspaces">智能体工作区</string>
+    <string name="settings_computers_action_scan">扫描</string>
+    <string name="settings_computers_action_rescan">重新扫描</string>
+    <string name="settings_computers_action_scanning">扫描中</string>
+    <string name="settings_computers_workspace_scan_title">尚未扫描工作区</string>
+    <string name="settings_computers_workspace_scan_detail">按需扫描此电脑上的工作区目录。</string>
     <string name="settings_computers_section_actions">操作</string>
     <string name="settings_computers_rotate_key_title">轮换 API 密钥</string>
     <string name="settings_computers_rotate_key_detail">生成新密钥供守护进程重新连接，旧密钥会立即失效。</string>

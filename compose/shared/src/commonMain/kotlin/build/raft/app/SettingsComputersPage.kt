@@ -126,6 +126,7 @@ internal data class KuiklySettingsComputerDetailPayload(
     val status: String = "content",
     val computer: KuiklySettingsComputerItem = KuiklySettingsComputerItem(),
     val workspaces: List<KuiklySettingsWorkspaceItem> = emptyList(),
+    val workspacesScanned: Boolean = false,
     val agents: List<KuiklySettingsAgentItem> = emptyList(),
     val canOpenAgents: Boolean = false,
     val canManageMachines: Boolean = false,
@@ -574,7 +575,9 @@ private fun handleSettingsComputerDetailAction(
     fallbackEvent: (String, String?) -> Unit
 ) {
     when (action) {
-        "retryWorkspaces", "retryAgents" ->
+        "retryWorkspaces", "scanWorkspaces" ->
+            computerId.takeIf { it.isNotBlank() }?.let { dispatch(SharedSettingsIntent.ScanComputerWorkspaces(it)) }
+        "retryAgents" ->
             computerId.takeIf { it.isNotBlank() }?.let { dispatch(SharedSettingsIntent.OpenComputer(it)) }
         "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { payload ->
             val parts = payload.split("|", limit = 2)
@@ -809,6 +812,7 @@ internal fun SettingsComputerDetailContent(
     val descriptionBusy = actionState?.action == "updateComputerDescription" && actionState.inProgress && actionState.itemId == computerId
     val deleteBusy = actionState?.action == "deleteComputer" && actionState.inProgress && actionState.itemId == computerId
     val rotateBusy = actionState?.action == "rotateComputerKey" && actionState.inProgress && actionState.itemId == computerId
+    val workspacesBusy = actionState?.action == "scanComputerWorkspaces" && actionState.inProgress && actionState.itemId == computerId
     val anyBusy = renameBusy || descriptionBusy || deleteBusy || rotateBusy
     var renameDraft by remember(computerId) { mutableStateOf(computerName) }
     var editingName by remember(computerId) { mutableStateOf(false) }
@@ -859,6 +863,7 @@ internal fun SettingsComputerDetailContent(
         anyBusy = anyBusy,
         rotateBusy = rotateBusy,
         deleteBusy = deleteBusy,
+        workspacesBusy = workspacesBusy,
         bottomContentPadding = bottomContentPadding,
         onRenameDraftChange = { renameDraft = it.replace('\n', ' ').replace('\r', ' ') },
         onStartRename = { startRename() },
@@ -887,6 +892,7 @@ private fun SettingsComputerDetailVisualContent(
     anyBusy: Boolean = false,
     rotateBusy: Boolean = false,
     deleteBusy: Boolean = false,
+    workspacesBusy: Boolean = false,
     bottomContentPadding: Dp = 24.dp,
     onRenameDraftChange: (String) -> Unit = {},
     onStartRename: () -> Unit = {},
@@ -1004,14 +1010,43 @@ private fun SettingsComputerDetailVisualContent(
         if (productionMode) {
             item { VisualDivider() }
             item { Spacer(Modifier.height(16.dp)) }
-            item { VisualSectionHeader(stringResource(MR.strings.settings_computers_section_workspaces), payload.workspaces.size) }
+            item {
+                VisualSectionHeader(
+                    title = stringResource(MR.strings.settings_computers_section_workspaces),
+                    count = payload.workspaces.takeIf { payload.workspacesScanned }?.size,
+                    action = {
+                        VisualSmallActionButton(
+                            label =
+                                when {
+                                    workspacesBusy -> stringResource(MR.strings.settings_computers_action_scanning)
+                                    payload.workspacesScanned -> stringResource(MR.strings.settings_computers_action_rescan)
+                                    else -> stringResource(MR.strings.settings_computers_action_scan)
+                                },
+                            icon = SlockLucideIconName.RefreshCw,
+                            onClick = { onEvent("scanWorkspaces", null) },
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            faceWidth = 76.dp,
+                            enabled = !workspacesBusy
+                        )
+                    }
+                )
+            }
             payload.workspacesErrorCode?.let { error ->
                 item {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                         SettingsInlineError(stringResource(MR.strings.settings_computers_error_load_workspaces), error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) }
                     }
                 }
-            } ?: if (payload.workspaces.isEmpty()) {
+            } ?: if (!payload.workspacesScanned) {
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        SettingsEmptyMessage(
+                            stringResource(MR.strings.settings_computers_workspace_scan_title),
+                            stringResource(MR.strings.settings_computers_workspace_scan_detail)
+                        )
+                    }
+                }
+            } else if (payload.workspaces.isEmpty()) {
                 item {
                     Box(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                         SettingsEmptyMessage(
@@ -1401,7 +1436,11 @@ private fun settingsComputerRuntimePillRows(installedRuntimes: List<String>): Li
     settingsComputerRuntimePills(installedRuntimes).chunked(2)
 
 @Composable
-private fun VisualSectionHeader(title: String, count: Int? = null) {
+private fun VisualSectionHeader(
+    title: String,
+    count: Int? = null,
+    action: (@Composable () -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1418,6 +1457,10 @@ private fun VisualSectionHeader(title: String, count: Int? = null) {
                 style = SlockType.Input.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
+        }
+        if (action != null) {
+            Spacer(Modifier.weight(1f))
+            action()
         }
     }
 }
@@ -1880,6 +1923,7 @@ private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
         instanceId = "shared-shell-settings-computer-${computer.id}",
         computer = computer.toComputerItem(timeContext),
         workspaces = workspaces.map { it.toWorkspaceItem(timeContext) },
+        workspacesScanned = workspacesScanned,
         agents = agents.map { it.toAgentItem() },
         canManageMachines = canManageMachines,
         workspacesErrorCode = workspacesError?.code,

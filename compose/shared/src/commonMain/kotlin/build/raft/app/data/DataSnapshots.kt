@@ -936,6 +936,7 @@ data class SettingsComputerDetailSnapshot(
     val workspaces: List<SettingsComputerWorkspaceSnapshot>,
     val agents: List<SettingsComputerAgentSnapshot>,
     val sections: List<SettingsServerSectionSnapshot>,
+    val workspacesScanned: Boolean = false,
     val workspacesError: SettingsSectionErrorSnapshot? = null,
     val agentsError: SettingsSectionErrorSnapshot? = null,
     /**

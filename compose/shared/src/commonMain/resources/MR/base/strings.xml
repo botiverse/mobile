@@ -1310,6 +1310,11 @@
     <string name="settings_computers_action_select">Select</string>
     <string name="settings_computers_action_create">Create</string>
     <string name="settings_computers_section_workspaces">Agent Workspaces</string>
+    <string name="settings_computers_action_scan">Scan</string>
+    <string name="settings_computers_action_rescan">Rescan</string>
+    <string name="settings_computers_action_scanning">Scanning</string>
+    <string name="settings_computers_workspace_scan_title">Workspaces not scanned</string>
+    <string name="settings_computers_workspace_scan_detail">Scan on demand to inspect workspace directories on this computer.</string>
     <string name="settings_computers_section_actions">Actions</string>
     <string name="settings_computers_rotate_key_title">Rotate API key</string>
     <string name="settings_computers_rotate_key_detail">Generate a new key for the daemon to reconnect. The old key stops working immediately.</string>
