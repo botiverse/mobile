@@ -218,7 +218,7 @@ jobs:
           if-no-files-found: error
 
   android-capture:
-    name: Android capture (shard ${{ matrix.shard }}/6)
+    name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
@@ -228,7 +228,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       # Targeted case_filter runs only use shard 0; the other shards no-op
       # so the round finishes in one emulator's time.
@@ -308,7 +308,7 @@ jobs:
             # non-zero instrumentation run still falls through to the pull (never
             # aborts the script) — we just persist rc to a file (script lines
             # don't share shell vars) for the guard to report.
-            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 6 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; echo "$?" > visual-testing-results/instr-rc-${{ matrix.shard }}.txt; echo "instrumentation exit code $(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt); pulling whatever was captured"
+            adb shell am instrument -w -e class ${{ needs.android-build.outputs.method_filter != '' && needs.android-build.outputs.method_filter || format('build.raft.app.visual.KmpVisualScreenshotCaptureTest -e numShards 8 -e shardIndex {0}', matrix.shard) }} build.raft.app.connectedtest.test/androidx.test.runner.AndroidJUnitRunner; echo "$?" > visual-testing-results/instr-rc-${{ matrix.shard }}.txt; echo "instrumentation exit code $(cat visual-testing-results/instr-rc-${{ matrix.shard }}.txt); pulling whatever was captured"
             adb pull /sdcard/Download/slock-visual-testing/android/. visual-testing-results/android/ || echo "nothing captured on this shard"
             # Per-case timing + idle-wait warnings for this shard. Grep
             # CASE_START/CASE_END to see how long every android item ran and
