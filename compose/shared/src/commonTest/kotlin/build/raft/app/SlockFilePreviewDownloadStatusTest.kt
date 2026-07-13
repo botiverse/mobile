@@ -555,6 +555,97 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun composerImageGallerySwitchesBetweenLocalFilesWithoutNetworkLoading() {
+        val gallery =
+            listOf(
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "local-1",
+                    name = "one.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "file://one",
+                    composerImageFileRef = "file://one",
+                    composerImagePreviewUri = "file://one",
+                    composerImageSizeBytes = 10L
+                ),
+                SlockFilePreviewGalleryImage(
+                    attachmentId = "local-2",
+                    name = "two.png",
+                    mimeType = "image/png",
+                    thumbnailUrl = "file://two",
+                    composerImageFileRef = "file://two",
+                    composerImagePreviewUri = "file://two",
+                    composerImageSizeBytes = 20L
+                )
+            )
+        val payload =
+            SlockFilePreviewPayload(
+                kind = "image",
+                imageUrl = "file://one",
+                composerImageActionId = "composer-action",
+                composerImageFileRef = "file://one",
+                composerImageCanComplete = true,
+                composerImageCanEdit = true,
+                imageGallery = gallery
+            )
+
+        val next = payload.withImageGalleryIndex(1)
+
+        assertEquals("image", next?.kind)
+        assertEquals("", next?.source)
+        assertEquals("", next?.attachmentId)
+        assertEquals("file://two", next?.imageUrl)
+        assertEquals("file://two", next?.composerImageFileRef)
+        assertEquals(1, next?.imageGalleryIndex)
+        assertTrue(next?.canCompleteComposerImageSelection() == true)
+    }
+
+    @Test
+    fun composerImageGalleryCompletionRequiresEveryLocalFile() {
+        val payload =
+            SlockFilePreviewPayload(
+                composerImageFileRef = "file://one",
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "local-1",
+                            composerImageFileRef = "file://one"
+                        ),
+                        SlockFilePreviewGalleryImage(attachmentId = "local-2")
+                    )
+            )
+
+        assertFalse(payload.canCompleteComposerImageSelection())
+    }
+
+    @Test
+    fun composerImageGalleryEditReplacesOnlyCurrentImage() {
+        val payload =
+            SlockFilePreviewPayload(
+                imageGalleryIndex = 1,
+                imageGallery =
+                    listOf(
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "local-1",
+                            composerImageFileRef = "file://one",
+                            composerImagePreviewUri = "file://one"
+                        ),
+                        SlockFilePreviewGalleryImage(
+                            attachmentId = "local-2",
+                            composerImageFileRef = "file://two",
+                            composerImagePreviewUri = "file://two"
+                        )
+                    )
+            )
+
+        val edited = payload.withComposerImageEditResult("file://two-edited")
+
+        assertEquals("file://one", edited.imageGallery[0].composerImageFileRef)
+        assertEquals("file://two-edited", edited.imageGallery[1].composerImageFileRef)
+        assertEquals("file://two-edited", edited.imageUrl)
+        assertTrue(edited.canCompleteComposerImageSelection())
+    }
+
+    @Test
     fun filePreviewPresentationHidesMimeWhileKeepingUsefulMetadata() {
         val payload =
             SlockFilePreviewPayload(
