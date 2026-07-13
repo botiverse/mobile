@@ -33,18 +33,21 @@ package build.raft.app.network.sync
  *    previous one resolved (single-flight preserved). Frames are NEVER released to legacy fan-out from
  *    FOLD/BROKEN — that would show uncommitted facts; the reviewer explicitly forbade LEGACY-degrade as
  *    a failure fallback. Availability never justifies crossing missing facts.
- *  - **Rebaseline success** ([SoleApplyInput.RebaselineSucceeded] in FOLD/BROKEN): the hold queue is
- *    CLEARED — the canonical snapshot supersedes every held frame — mode returns to FOLD and the
- *    barrier/generation counter bumps.
+ *  - **Rebaseline completion** is generation-fenced. Every [SoleApplyCommand.RequestRebaseline]
+ *    carries a unique generation and only the matching [SoleApplyInput.RebaselineSucceeded] /
+ *    [SoleApplyInput.RebaselineFailed] may resolve it. Duplicate or stale completions are diagnostic
+ *    no-ops: they cannot unlock the scope or create a second concurrent request.
+ *  - **Rebaseline success** in FOLD/BROKEN clears the hold queue — the canonical snapshot supersedes
+ *    every held frame — returns to FOLD, and advances the barrier generation to the request token.
  *  - **Eligibility revoke** ([SoleApplyInput.EligibilityRevoked]) is the ONLY path back to LEGACY from
  *    FOLD/BROKEN, and it is barriered: the engine enters a revoking state ([SoleApplyScopeState.revokePending],
  *    everything holds) in which a rebaseline must SUCCEED first; only then does it emit
  *    [SoleApplyCommand.DropToLegacyAtBarrier]. If rebaselines keep failing the scope stays held (dark)
  *    with diagnostics.
- *  - **Queue overflow** (bounded [SoleApplyConfig.holdQueueCapacity]): treated as an apply failure —
- *    hold + single-flight rebaseline + diagnostic; NEVER a bypass to legacy. The overflowing frame is
- *    not retained (the now-mandatory rebaseline supersedes the whole hold window), it is only ever
- *    superseded, never shown.
+ *  - **Queue overflow** (bounded [SoleApplyConfig.holdQueueCapacity]) and actor-mailbox overflow
+ *    ([SoleApplyInput.MailboxOverflowed]) share the same apply-failure/rebaseline transition — NEVER a
+ *    bypass to legacy. An overflowing frame is not retained (the mandatory rebaseline supersedes the
+ *    whole hold window); the loss is therefore modeled as supersession, never silent disappearance.
  */
 
 /** Per-scope apply mode. */
@@ -62,15 +65,20 @@ data class SoleApplyScopeState(
     val mode: SoleApplyMode = SoleApplyMode.LEGACY,
     /** Hold buffer: seqs held (arrival order), each awaiting its commit or a superseding rebaseline. */
     val heldSeqs: List<Long> = emptyList(),
-    /** Single-flight latch: a RequestRebaseline is outstanding; no second one may be emitted. */
-    val rebaselineInFlight: Boolean = false,
+    /**
+     * Generation token of the outstanding rebaseline request. `null` means no request is in flight.
+     * The token is both the single-flight latch and the stale/duplicate completion fence.
+     */
+    val rebaselineGeneration: Long? = null,
     /** Apply is blocked (commit failure / overflow): everything holds until a rebaseline SUCCEEDS. */
     val applyBlocked: Boolean = false,
     /** Revoking barrier: eligibility was revoked; drop to LEGACY only after a successful rebaseline. */
     val revokePending: Boolean = false,
     /** Monotonic barrier/generation counter — bumps at every activation/rebaseline/drop barrier. */
     val generation: Long = 0L,
-)
+) {
+    val rebaselineInFlight: Boolean get() = rebaselineGeneration != null
+}
 
 /** Inputs the host feeds the engine (one at a time, per scope). */
 sealed interface SoleApplyInput {
@@ -92,11 +100,14 @@ sealed interface SoleApplyInput {
     /** The fold+persist commit for [seq] failed. */
     data class CommitFailed(val seq: Long) : SoleApplyInput
 
-    /** The outstanding rebaseline resolved with a fresh canonical snapshot (supersedes held frames). */
-    data object RebaselineSucceeded : SoleApplyInput
+    /** The actor mailbox overflowed; at least one frame is now superseded by a mandatory rebaseline. */
+    data object MailboxOverflowed : SoleApplyInput
 
-    /** The outstanding rebaseline resolved in failure. */
-    data object RebaselineFailed : SoleApplyInput
+    /** The matching rebaseline generation restored a fresh canonical snapshot and fresh core. */
+    data class RebaselineSucceeded(val generation: Long) : SoleApplyInput
+
+    /** The matching rebaseline generation resolved in failure (including restore/reseed failure). */
+    data class RebaselineFailed(val generation: Long) : SoleApplyInput
 
     /** Sole-apply eligibility was revoked — begin the barriered drop back to LEGACY. */
     data object EligibilityRevoked : SoleApplyInput
@@ -110,8 +121,8 @@ sealed interface SoleApplyCommand {
     /** Keep the frame [seq] dark (held / superseded); nothing reaches the sinks for it yet. */
     data class Hold(val seq: Long) : SoleApplyCommand
 
-    /** Ask the host for a scope rebaseline (canonical snapshot). Single-flight — never re-emitted while one is outstanding. */
-    data object RequestRebaseline : SoleApplyCommand
+    /** Ask the host for a scope rebaseline. [generation] must be echoed by the completion. */
+    data class RequestRebaseline(val generation: Long) : SoleApplyCommand
 
     /** The revoke barrier passed (rebaseline succeeded): tear down and hand the scope back to legacy. */
     data object DropToLegacyAtBarrier : SoleApplyCommand
@@ -133,8 +144,10 @@ const val SOLE_APPLY_DIAG_COMMIT_FAILED: String = "commit_failed"
 const val SOLE_APPLY_DIAG_REPEATED_FAILURE: String = "repeated_apply_failure_broken_canonical"
 const val SOLE_APPLY_DIAG_REBASELINE_FAILED: String = "rebaseline_failed"
 const val SOLE_APPLY_DIAG_QUEUE_OVERFLOW: String = "hold_queue_overflow"
+const val SOLE_APPLY_DIAG_MAILBOX_OVERFLOW: String = "mailbox_overflow"
 const val SOLE_APPLY_DIAG_REVOKE_PENDING: String = "eligibility_revoked_awaiting_rebaseline"
 const val SOLE_APPLY_DIAG_STALE_COMMIT: String = "stale_commit_result_dropped"
+const val SOLE_APPLY_DIAG_STALE_REBASELINE_COMPLETION: String = "stale_rebaseline_completion_dropped"
 
 /**
  * The pure reducer. Total: an input that is meaningless in the current mode folds to the unchanged
@@ -151,8 +164,9 @@ fun reduceSoleApply(
     SoleApplyInput.WarmStartFailed -> reduceWarmStartFailed(state)
     is SoleApplyInput.CommitSucceeded -> reduceCommitSucceeded(state, input.seq)
     is SoleApplyInput.CommitFailed -> reduceCommitFailed(state)
-    SoleApplyInput.RebaselineSucceeded -> reduceRebaselineSucceeded(state)
-    SoleApplyInput.RebaselineFailed -> reduceRebaselineFailed(state)
+    SoleApplyInput.MailboxOverflowed -> reduceMailboxOverflowed(state)
+    is SoleApplyInput.RebaselineSucceeded -> reduceRebaselineSucceeded(state, input.generation)
+    is SoleApplyInput.RebaselineFailed -> reduceRebaselineFailed(state, input.generation)
     SoleApplyInput.EligibilityRevoked -> reduceEligibilityRevoked(state)
 }
 
@@ -180,12 +194,8 @@ private fun reduceFrameArrived(
             // Queue overflow = apply failure: hold + single-flight rebaseline + diagnostic. NEVER a
             // legacy bypass — held frames are only ever superseded (by the rebaseline), never shown.
             else -> {
-                val commands = buildList {
-                    add(SoleApplyCommand.Hold(seq))
-                    if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline)
-                    add(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_QUEUE_OVERFLOW))
-                }
-                SoleApplyTransition(state.copy(applyBlocked = true, rebaselineInFlight = true), commands)
+                val failed = reduceApplyFailure(state, SOLE_APPLY_DIAG_QUEUE_OVERFLOW)
+                SoleApplyTransition(failed.state, listOf(SoleApplyCommand.Hold(seq)) + failed.commands)
             }
         }
 
@@ -260,45 +270,63 @@ private fun reduceCommitSucceeded(state: SoleApplyScopeState, seq: Long): SoleAp
 private fun reduceCommitFailed(state: SoleApplyScopeState): SoleApplyTransition =
     when (state.mode) {
         SoleApplyMode.LEGACY, SoleApplyMode.ACTIVATING -> unchanged(state)
-        SoleApplyMode.FOLD ->
-            if (state.applyBlocked) {
-                // Repeated apply failure while already blocked → BROKEN_CANONICAL. Single-flight: a
-                // new request only if the previous one already resolved.
-                val commands = buildList {
-                    if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline)
-                    add(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REPEATED_FAILURE))
-                }
-                SoleApplyTransition(
-                    state.copy(mode = SoleApplyMode.BROKEN_CANONICAL, rebaselineInFlight = true),
-                    commands,
-                )
+        else -> reduceApplyFailure(
+            state,
+            if (state.applyBlocked || state.mode == SoleApplyMode.BROKEN_CANONICAL) {
+                SOLE_APPLY_DIAG_REPEATED_FAILURE
             } else {
-                // First failure: the failed frame + everything after it stays held; one rebaseline.
-                val commands = buildList {
-                    if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline)
-                    add(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_COMMIT_FAILED))
-                }
-                SoleApplyTransition(state.copy(applyBlocked = true, rebaselineInFlight = true), commands)
-            }
-        SoleApplyMode.BROKEN_CANONICAL -> {
-            val commands = buildList {
-                if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline)
-                add(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REPEATED_FAILURE))
-            }
-            SoleApplyTransition(state.copy(rebaselineInFlight = true), commands)
-        }
+                SOLE_APPLY_DIAG_COMMIT_FAILED
+            },
+        )
     }
 
-private fun reduceRebaselineSucceeded(state: SoleApplyScopeState): SoleApplyTransition =
+private fun reduceMailboxOverflowed(state: SoleApplyScopeState): SoleApplyTransition =
     when (state.mode) {
-        SoleApplyMode.LEGACY -> unchanged(state.copy(rebaselineInFlight = false))
+        SoleApplyMode.LEGACY -> unchanged(state)
+        else -> reduceApplyFailure(state, SOLE_APPLY_DIAG_MAILBOX_OVERFLOW)
+    }
+
+/** Commit failure, hold-buffer overflow, and mailbox overflow share one deterministic recovery path. */
+private fun reduceApplyFailure(state: SoleApplyScopeState, diagnostic: String): SoleApplyTransition {
+    val nextMode =
+        if (state.applyBlocked || state.mode == SoleApplyMode.BROKEN_CANONICAL) {
+            SoleApplyMode.BROKEN_CANONICAL
+        } else {
+            state.mode
+        }
+    val requestGeneration = state.rebaselineGeneration ?: (state.generation + 1L)
+    val commands = buildList {
+        if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline(requestGeneration))
+        add(SoleApplyCommand.Diagnostic(diagnostic))
+    }
+    return SoleApplyTransition(
+        state.copy(
+            mode = nextMode,
+            applyBlocked = true,
+            rebaselineGeneration = requestGeneration,
+        ),
+        commands,
+    )
+}
+
+private fun staleRebaselineCompletion(state: SoleApplyScopeState): SoleApplyTransition =
+    SoleApplyTransition(
+        state,
+        listOf(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_STALE_REBASELINE_COMPLETION)),
+    )
+
+private fun reduceRebaselineSucceeded(state: SoleApplyScopeState, generation: Long): SoleApplyTransition =
+    when {
+        state.rebaselineGeneration != generation -> staleRebaselineCompletion(state)
+        state.mode == SoleApplyMode.LEGACY -> staleRebaselineCompletion(state)
+        else -> when (state.mode) {
         SoleApplyMode.ACTIVATING, SoleApplyMode.FOLD, SoleApplyMode.BROKEN_CANONICAL -> {
             // The canonical snapshot supersedes every held frame: queue cleared, barrier bumps.
             val recovered = state.copy(
                 heldSeqs = emptyList(),
-                rebaselineInFlight = false,
+                rebaselineGeneration = null,
                 applyBlocked = false,
-                generation = state.generation + 1,
+                generation = generation,
             )
             if (state.revokePending) {
                 // Revoke barrier passed: ONLY now may the scope drop back to legacy.
@@ -313,23 +341,27 @@ private fun reduceRebaselineSucceeded(state: SoleApplyScopeState): SoleApplyTran
                 )
             }
         }
+        SoleApplyMode.LEGACY -> staleRebaselineCompletion(state)
+        }
     }
 
-private fun reduceRebaselineFailed(state: SoleApplyScopeState): SoleApplyTransition =
-    when (state.mode) {
-        SoleApplyMode.LEGACY -> unchanged(state.copy(rebaselineInFlight = false))
-        SoleApplyMode.ACTIVATING, SoleApplyMode.FOLD, SoleApplyMode.BROKEN_CANONICAL -> {
+private fun reduceRebaselineFailed(state: SoleApplyScopeState, generation: Long): SoleApplyTransition =
+    when {
+        state.rebaselineGeneration != generation -> staleRebaselineCompletion(state)
+        state.mode == SoleApplyMode.LEGACY -> staleRebaselineCompletion(state)
+        else -> {
             // The previous request RESOLVED (in failure) — single-flight allows exactly one re-emit.
             // Retry timing/backoff is the host's (§3 retry boundary); the engine only re-arms. It never
             // gives up silently: it keeps the scope dark and keeps asking (escalation via Diagnostic).
+            val retryGeneration = generation + 1L
             SoleApplyTransition(
                 state.copy(
                     mode = SoleApplyMode.BROKEN_CANONICAL,
-                    rebaselineInFlight = true,
+                    rebaselineGeneration = retryGeneration,
                     applyBlocked = true,
                 ),
                 listOf(
-                    SoleApplyCommand.RequestRebaseline,
+                    SoleApplyCommand.RequestRebaseline(retryGeneration),
                     SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REBASELINE_FAILED),
                 ),
             )
@@ -363,12 +395,17 @@ private fun reduceEligibilityRevoked(state: SoleApplyScopeState): SoleApplyTrans
             // The ONLY road back to LEGACY from FOLD/BROKEN: hold everything and require a SUCCESSFUL
             // rebaseline before DropToLegacyAtBarrier. Availability never justifies crossing missing
             // facts — if rebaselines keep failing the scope stays held.
+            val requestGeneration = state.rebaselineGeneration ?: (state.generation + 1L)
             val commands = buildList {
-                if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline)
+                if (!state.rebaselineInFlight) add(SoleApplyCommand.RequestRebaseline(requestGeneration))
                 add(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REVOKE_PENDING))
             }
             SoleApplyTransition(
-                state.copy(revokePending = true, applyBlocked = true, rebaselineInFlight = true),
+                state.copy(
+                    revokePending = true,
+                    applyBlocked = true,
+                    rebaselineGeneration = requestGeneration,
+                ),
                 commands,
             )
         }

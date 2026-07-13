@@ -2,10 +2,12 @@ package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.model.RealtimeEvent
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 
 /**
  * Sole-apply slice-2 stage A — the per-scope APPLY ACTOR wrapping [reduceSoleApply]. DORMANT in slice-2:
@@ -28,13 +30,13 @@ internal class MessageSoleApplyLane(
     private val adapter: FoldPersistenceAdapter,
     /** Post-commit delivery to the legacy sinks (executed for [SoleApplyCommand.FanOut] only). */
     private val fanOut: (RealtimeEvent) -> Unit,
-    /** Surface a [SoleApplyCommand.RequestRebaseline] to the host (single-flight, engine-enforced). */
-    private val requestRebaseline: (SyncScopeKey) -> Unit,
+    /** Surface a generation-fenced [SoleApplyCommand.RequestRebaseline] to the host. */
+    private val requestRebaseline: (SyncScopeKey, Long) -> Unit,
     laneScope: CoroutineScope,
     private val config: SoleApplyConfig = SoleApplyConfig(),
     private val logger: (String) -> Unit = {},
     // A per-lane pure core (one lane = one scope); state is keyed by channel scope id, as in the shadow lane.
-    private val core: SyncCore = createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain()))),
+    initialCore: SyncCore = createMessageSyncCore(),
     // Stage A starts the engine directly in FOLD (a warm-started lane); the ACTIVATING warm-start
     // orchestration (restore + queued replay) is host wiring that lands with the activation slice.
     initialState: SoleApplyScopeState = SoleApplyScopeState(mode = SoleApplyMode.FOLD, generation = 1L),
@@ -48,62 +50,172 @@ internal class MessageSoleApplyLane(
         val epoch: SyncEpoch?,
     )
 
-    private sealed interface LaneMessage {
-        data class Enqueued(val frame: Frame) : LaneMessage
-        data class Control(val input: SoleApplyInput) : LaneMessage
+    /** Frame plus the actor barrier generation observed at enqueue time. */
+    private data class QueuedFrame(val frame: Frame, val generation: Long)
+
+    private sealed interface LaneControl {
+        data object MailboxOverflowed : LaneControl
+        data class RebaselineResolved(val generation: Long, val success: Boolean) : LaneControl
+        data object EligibilityRevoked : LaneControl
     }
 
-    // Bounded mailbox: the engine's hold buffer is the semantic bound; the channel bound only guards
-    // the mailbox itself. Overflow inside the engine is apply-failure, never a legacy bypass.
-    private val mailbox = Channel<LaneMessage>(capacity = config.holdQueueCapacity)
+    // Frames are bounded; an overflowed frame is synchronously converted into one coalesced CONTROL
+    // signal and then superseded by the mandatory rebaseline. Controls use a separate non-dropping
+    // channel: protocol cardinality is bounded (one overflow signal, one rebaseline completion, one
+    // revoke intent) and duplicate/stale completions are fenced by the engine generation.
+    private val frames = Channel<QueuedFrame>(capacity = config.holdQueueCapacity)
+    private val controls = Channel<LaneControl>(capacity = Channel.UNLIMITED)
+    private val mailboxOverflowSignalPending = atomic(false)
+    private val mailboxGeneration = atomic(initialState.generation)
 
     private var state: SoleApplyScopeState = initialState
+    private var core: SyncCore = initialCore
 
     /** Frames currently dark, keyed by seq, so a later FanOut(seq) can deliver the exact held event. */
     private val heldEvents = LinkedHashMap<Long, RealtimeEvent>()
 
     private val job: Job = laneScope.launch {
-        for (message in mailbox) {
-            when (message) {
-                is LaneMessage.Enqueued -> consume(message.frame)
-                is LaneMessage.Control -> dispatch(message.input)
+        while (true) {
+            // Controls win at every message boundary. In particular, an overflow observed while a
+            // commit was suspended is reduced before the next queued frame can attempt another fold.
+            val immediateControl = controls.tryReceive().getOrNull()
+            if (immediateControl != null) {
+                consumeControl(immediateControl)
+                continue
+            }
+            val next = select<Any?> {
+                controls.onReceiveCatching { it.getOrNull() }
+                frames.onReceiveCatching { it.getOrNull() }
+            } ?: break
+            when (next) {
+                is LaneControl -> consumeControl(next)
+                is QueuedFrame -> consume(next)
             }
         }
     }
 
-    /** Hand one accepted message frame to the actor. Never blocks the caller (bounded trySend). */
+    /**
+     * Hand one accepted message frame to the actor. Never blocks the caller. A full frame mailbox is
+     * not a silent drop: the frame is declared superseded by a coalesced [SoleApplyInput.MailboxOverflowed]
+     * transition, which blocks apply and requests the same generation-fenced rebaseline as a commit failure.
+     */
     fun enqueue(frame: Frame) {
-        mailbox.trySend(LaneMessage.Enqueued(frame))
+        val offered = frames.trySend(QueuedFrame(frame, mailboxGeneration.value))
+        if (offered.isFailure && job.isActive && mailboxOverflowSignalPending.compareAndSet(expect = false, update = true)) {
+            if (controls.trySend(LaneControl.MailboxOverflowed).isFailure) {
+                mailboxOverflowSignalPending.value = false
+                logger("sole_apply_diag scope=${scopeKey.scopeId} reason=mailbox_closed")
+            }
+        } else if (offered.isFailure && !job.isActive) {
+            logger("sole_apply_diag scope=${scopeKey.scopeId} reason=mailbox_closed")
+        }
     }
 
     /**
-     * Feed the resolution of a previously surfaced rebaseline request back into the engine. On success
-     * the engine clears its hold window (the canonical snapshot supersedes it); reseeding the pure core
-     * + persisted scope from that snapshot ([SyncCore.ingestSnapshot] / [FoldPersistFrame.rebaseline])
-     * is host wiring that lands with the activation slice — stage A only proves the decision semantics.
+     * Feed the resolution of a previously surfaced rebaseline request back into the actor. The host
+     * must echo the request [generation]. A success is not delivered to the engine until the actor has
+     * restored durable canonical facts, seeded a FRESH core, and atomically replaced the polluted core
+     * reference. Restore/reseed failure is reduced as [SoleApplyInput.RebaselineFailed], keeping the
+     * scope dark and rearming exactly one new generation.
      */
-    fun rebaselineResolved(success: Boolean) {
-        mailbox.trySend(
-            LaneMessage.Control(
-                if (success) SoleApplyInput.RebaselineSucceeded else SoleApplyInput.RebaselineFailed,
-            ),
-        )
+    fun rebaselineResolved(generation: Long, success: Boolean) {
+        sendControl(LaneControl.RebaselineResolved(generation, success))
     }
 
     /** Feed the eligibility-revoke barrier into the engine (drop to legacy only after a good rebaseline). */
     fun eligibilityRevoked() {
-        mailbox.trySend(LaneMessage.Control(SoleApplyInput.EligibilityRevoked))
+        sendControl(LaneControl.EligibilityRevoked)
     }
 
     /** Engine state snapshot for tests/diagnostics. */
     fun currentState(): SoleApplyScopeState = state
 
     fun shutdown() {
-        mailbox.close()
+        controls.close()
+        frames.close()
         job.cancel()
     }
 
-    private suspend fun consume(frame: Frame) {
+    private fun sendControl(control: LaneControl) {
+        if (controls.trySend(control).isFailure) {
+            logger("sole_apply_diag scope=${scopeKey.scopeId} reason=control_mailbox_closed")
+        }
+    }
+
+    private suspend fun consumeControl(control: LaneControl) {
+        when (control) {
+            LaneControl.MailboxOverflowed -> {
+                mailboxOverflowSignalPending.value = false
+                dispatch(SoleApplyInput.MailboxOverflowed)
+            }
+            is LaneControl.RebaselineResolved -> resolveRebaseline(control)
+            LaneControl.EligibilityRevoked -> dispatch(SoleApplyInput.EligibilityRevoked)
+        }
+    }
+
+    private suspend fun resolveRebaseline(control: LaneControl.RebaselineResolved) {
+        // Avoid storage IO for a duplicate/stale completion. The reducer remains the authority and
+        // emits the bounded stale-completion diagnostic; this pre-check only prevents a stale callback
+        // from restoring/replacing core state before that deterministic decision.
+        if (state.rebaselineGeneration != control.generation) {
+            dispatch(
+                if (control.success) SoleApplyInput.RebaselineSucceeded(control.generation)
+                else SoleApplyInput.RebaselineFailed(control.generation),
+            )
+            return
+        }
+        if (!control.success) {
+            dispatch(SoleApplyInput.RebaselineFailed(control.generation))
+            return
+        }
+
+        val restoredCore = runCatching { restoreFreshCore() }
+        if (restoredCore.isSuccess) {
+            core = restoredCore.getOrThrow()
+            // Publish the new barrier before completing the engine transition. Any concurrent enqueue
+            // before this store is tagged old and explicitly superseded; any enqueue after it is tagged
+            // with the restored generation and cannot be mistaken for pre-snapshot backlog.
+            mailboxGeneration.value = control.generation
+            dispatch(SoleApplyInput.RebaselineSucceeded(control.generation))
+        } else {
+            logger("sole_apply_diag scope=${scopeKey.scopeId} reason=rebaseline_restore_failed")
+            dispatch(SoleApplyInput.RebaselineFailed(control.generation))
+        }
+    }
+
+    /** Build and fully seed a fresh core before publishing it; the old polluted core has no reuse path. */
+    private suspend fun restoreFreshCore(): SyncCore {
+        val restored = adapter.restore(scopeKey)
+        val cursor = requireNotNull(restored.cursor) { "rebaseline restore missing cursor" }
+        require(restored.facts.all { it.channelId == scopeKey.scopeId }) {
+            "rebaseline restore contained a fact outside scope ${scopeKey.scopeId}"
+        }
+        val orderedFacts = restored.facts.sortedWith(compareBy({ it.seq }, { it.id }))
+        val maxFactSeq = orderedFacts.lastOrNull()?.seq
+        val watermark = cursor.latestSeq ?: cursor.newestLoadedSeq ?: maxFactSeq ?: 0L
+        require(maxFactSeq == null || watermark >= maxFactSeq) {
+            "rebaseline cursor $watermark precedes restored fact $maxFactSeq"
+        }
+        val freshCore = createMessageSyncCore()
+        val outcome = freshCore.ingestSnapshot(
+            MESSAGES_SYNC_DOMAIN,
+            SyncSnapshot(
+                scopeId = scopeKey.scopeId,
+                watermark = watermark,
+                epoch = cursor.epoch,
+                state = MessageDomainState(channelMessages = mapOf(scopeKey.scopeId to orderedFacts)),
+            ),
+        )
+        check(outcome is SyncIngestOutcome.Applied) { "fresh-core rebaseline was not applied: $outcome" }
+        return freshCore
+    }
+
+    private suspend fun consume(queued: QueuedFrame) {
+        if (queued.generation != state.generation) {
+            logger("sole_apply_diag scope=${scopeKey.scopeId} reason=stale_mailbox_frame_superseded")
+            return
+        }
+        val frame = queued.frame
         val seq = frame.decoded.row.seq
         heldEvents[seq] = frame.event
         dispatch(SoleApplyInput.FrameArrived(seq))
@@ -168,7 +280,7 @@ internal class MessageSoleApplyLane(
         when (command) {
             is SoleApplyCommand.FanOut -> heldEvents.remove(command.seq)?.let(fanOut)
             is SoleApplyCommand.Hold -> Unit // dark by construction: nothing delivered until FanOut
-            SoleApplyCommand.RequestRebaseline -> requestRebaseline(scopeKey)
+            is SoleApplyCommand.RequestRebaseline -> requestRebaseline(scopeKey, command.generation)
             SoleApplyCommand.DropToLegacyAtBarrier ->
                 logger("sole_apply_drop_to_legacy scope=${scopeKey.scopeId} generation=${state.generation}")
             is SoleApplyCommand.Diagnostic ->
@@ -188,7 +300,7 @@ internal class MessageSoleApplyLane(
             scopeKey: SyncScopeKey,
             adapter: FoldPersistenceAdapter,
             fanOut: (RealtimeEvent) -> Unit,
-            requestRebaseline: (SyncScopeKey) -> Unit,
+            requestRebaseline: (SyncScopeKey, Long) -> Unit,
             laneScope: CoroutineScope,
             config: SoleApplyConfig = SoleApplyConfig(),
             logger: (String) -> Unit = {},
@@ -216,3 +328,6 @@ internal class MessageSoleApplyLane(
  */
 internal fun soleApplyLaneEligible(perScopeControl: Boolean): Boolean =
     CANONICAL_FACT_SOLE_APPLY_ELIGIBLE && perScopeControl
+
+private fun createMessageSyncCore(): SyncCore =
+    createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain())))

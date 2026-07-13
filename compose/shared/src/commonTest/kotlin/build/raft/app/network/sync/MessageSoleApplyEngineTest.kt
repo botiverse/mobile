@@ -38,6 +38,12 @@ class MessageSoleApplyEngineTest {
         fun fanOutSeqs(): List<Long> = commands.filterIsInstance<SoleApplyCommand.FanOut>().map { it.seq }
         fun rebaselineRequestCount(): Int = commands.count { it is SoleApplyCommand.RequestRebaseline }
         fun dropCount(): Int = commands.count { it is SoleApplyCommand.DropToLegacyAtBarrier }
+        fun outstandingRebaselineGeneration(): Long =
+            requireNotNull(state.rebaselineGeneration) { "no rebaseline request is outstanding" }
+        fun rebaselineSucceeded(generation: Long = outstandingRebaselineGeneration()): List<SoleApplyCommand> =
+            send(SoleApplyInput.RebaselineSucceeded(generation))
+        fun rebaselineFailed(generation: Long = outstandingRebaselineGeneration()): List<SoleApplyCommand> =
+            send(SoleApplyInput.RebaselineFailed(generation))
     }
 
     // ── gate 1: queue overflow → apply-failure semantics ────────────────────────────────────────────
@@ -52,7 +58,7 @@ class MessageSoleApplyEngineTest {
         val overflow = h.send(SoleApplyInput.FrameArrived(3))
 
         assertTrue(SoleApplyCommand.Hold(3) in overflow, "the overflowing frame must HOLD, never bypass")
-        assertTrue(SoleApplyCommand.RequestRebaseline in overflow, "overflow is an apply failure: rebaseline")
+        assertTrue(overflow.any { it is SoleApplyCommand.RequestRebaseline }, "overflow is an apply failure: rebaseline")
         assertTrue(overflow.any { it is SoleApplyCommand.Diagnostic }, "overflow must emit a diagnostic")
         assertTrue(h.state.applyBlocked, "overflow blocks the scope until a rebaseline succeeds")
 
@@ -82,7 +88,7 @@ class MessageSoleApplyEngineTest {
         assertEquals(0, h.dropCount(), "failure never degrades to legacy")
 
         // Recovery: the canonical snapshot supersedes everything held — still no fan-out of 1..3.
-        h.send(SoleApplyInput.RebaselineSucceeded)
+        h.rebaselineSucceeded()
         assertEquals(emptyList(), h.fanOutSeqs(), "held frames are superseded by the rebaseline, not replayed")
         assertEquals(SoleApplyMode.FOLD, h.state.mode)
         assertFalse(h.state.applyBlocked)
@@ -109,9 +115,11 @@ class MessageSoleApplyEngineTest {
         assertEquals(1, h.rebaselineRequestCount(), "exactly one RequestRebaseline while one is outstanding")
 
         // Only a RESOLUTION re-arms the flight slot: a failed rebaseline may re-emit exactly once.
-        h.send(SoleApplyInput.RebaselineFailed)
+        val firstGeneration = h.outstandingRebaselineGeneration()
+        h.rebaselineFailed(firstGeneration)
         assertEquals(2, h.rebaselineRequestCount(), "re-emit is allowed only after the previous one resolves")
         assertTrue(h.state.rebaselineInFlight)
+        assertTrue(h.outstandingRebaselineGeneration() > firstGeneration)
     }
 
     // ── gate 4: cursor-never-crosses (property-style) ───────────────────────────────────────────────
@@ -146,8 +154,14 @@ class MessageSoleApplyEngineTest {
                         h.send(SoleApplyInput.CommitSucceeded(seq))
                     }
                     3 -> h.send(SoleApplyInput.CommitFailed(h.state.heldSeqs.firstOrNull() ?: 0L))
-                    4 -> h.send(SoleApplyInput.RebaselineSucceeded)
-                    else -> h.send(SoleApplyInput.RebaselineFailed)
+                    4 -> {
+                        val generation = h.state.rebaselineGeneration ?: nextInt(20).toLong()
+                        h.rebaselineSucceeded(generation)
+                    }
+                    else -> {
+                        val generation = h.state.rebaselineGeneration ?: nextInt(20).toLong()
+                        h.rebaselineFailed(generation)
+                    }
                 }
                 // THE invariant: in FOLD/BROKEN a FanOut may exist only for a seq whose
                 // CommitSucceeded has already been fed to the engine.
@@ -173,20 +187,20 @@ class MessageSoleApplyEngineTest {
         h.send(SoleApplyInput.FrameArrived(1))
         val revoke = h.send(SoleApplyInput.EligibilityRevoked)
 
-        assertTrue(SoleApplyCommand.RequestRebaseline in revoke, "revoke requires a rebaseline first")
+        assertTrue(revoke.any { it is SoleApplyCommand.RequestRebaseline }, "revoke requires a rebaseline first")
         assertEquals(0, h.dropCount(), "no DropToLegacyAtBarrier before the rebaseline succeeds")
 
         // Rebaseline keeps failing: stay held + diagnostic — availability never crosses missing facts.
-        h.send(SoleApplyInput.RebaselineFailed)
+        h.rebaselineFailed()
         assertEquals(0, h.dropCount())
         val held = h.send(SoleApplyInput.FrameArrived(2))
         assertEquals(listOf<SoleApplyCommand>(SoleApplyCommand.Hold(2)), held)
-        h.send(SoleApplyInput.RebaselineFailed)
+        h.rebaselineFailed()
         assertEquals(0, h.dropCount())
         assertEquals(emptyList(), h.fanOutSeqs(), "revoking scope stays dark")
 
         // Only a SUCCESSFUL rebaseline passes the barrier.
-        val resolved = h.send(SoleApplyInput.RebaselineSucceeded)
+        val resolved = h.rebaselineSucceeded()
         assertTrue(SoleApplyCommand.DropToLegacyAtBarrier in resolved)
         assertEquals(SoleApplyMode.LEGACY, h.state.mode)
         assertFalse(h.state.revokePending)
@@ -249,7 +263,7 @@ class MessageSoleApplyEngineTest {
         h.activateToFold()
         h.send(SoleApplyInput.FrameArrived(1))
         h.send(SoleApplyInput.CommitFailed(1))
-        h.send(SoleApplyInput.RebaselineFailed)
+        h.rebaselineFailed()
         assertEquals(SoleApplyMode.BROKEN_CANONICAL, h.state.mode)
 
         val requestsSoFar = h.rebaselineRequestCount()
@@ -268,7 +282,7 @@ class MessageSoleApplyEngineTest {
         )
 
         // Recovery is rebaseline-only.
-        h.send(SoleApplyInput.RebaselineSucceeded)
+        h.rebaselineSucceeded()
         assertEquals(SoleApplyMode.FOLD, h.state.mode)
         assertEquals(emptyList(), h.state.heldSeqs)
     }
@@ -294,7 +308,7 @@ class MessageSoleApplyEngineTest {
                     RestoredFoldState(emptyList(), null)
             },
             fanOut = {},
-            requestRebaseline = {},
+            requestRebaseline = { _, _ -> },
             laneScope = CoroutineScope(EmptyCoroutineContext),
         )
         assertNull(lane, "no lane can exist in production while the eligibility gate is false")
@@ -311,11 +325,45 @@ class MessageSoleApplyEngineTest {
         h.send(SoleApplyInput.WarmStartSucceeded)
         h.send(SoleApplyInput.FrameArrived(1))
         h.send(SoleApplyInput.CommitFailed(1))
-        h.send(SoleApplyInput.RebaselineSucceeded)
+        h.rebaselineSucceeded()
         val g2 = h.state.generation
         h.send(SoleApplyInput.EligibilityRevoked)
-        h.send(SoleApplyInput.RebaselineSucceeded)
+        h.rebaselineSucceeded()
         val g3 = h.state.generation
         assertTrue(g0 < g1 && g1 < g2 && g2 < g3, "barrier/generation bumps monotonically: $g0 $g1 $g2 $g3")
+    }
+
+    @Test
+    fun mailboxOverflowUsesApplyFailureSemantics_andStaleCompletionsCannotUnlock() {
+        val h = Harness()
+        h.activateToFold()
+
+        val overflow = h.send(SoleApplyInput.MailboxOverflowed)
+        val request = overflow.filterIsInstance<SoleApplyCommand.RequestRebaseline>().single()
+        assertTrue(h.state.applyBlocked)
+        assertEquals(request.generation, h.state.rebaselineGeneration)
+        assertTrue(
+            overflow.any { it == SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_MAILBOX_OVERFLOW) },
+            "mailbox overflow must reach the pure engine's bounded telemetry",
+        )
+
+        // Repeated/coalesced overflow while the request is outstanding cannot create another flight.
+        h.send(SoleApplyInput.MailboxOverflowed)
+        assertEquals(1, h.rebaselineRequestCount())
+
+        // Wrong generation and a post-success duplicate are no-ops: neither unlocks early nor retries.
+        h.rebaselineSucceeded(request.generation - 1)
+        assertTrue(h.state.applyBlocked)
+        assertEquals(request.generation, h.state.rebaselineGeneration)
+
+        h.rebaselineSucceeded(request.generation)
+        assertFalse(h.state.applyBlocked)
+        assertNull(h.state.rebaselineGeneration)
+        val generationAfterSuccess = h.state.generation
+
+        h.rebaselineSucceeded(request.generation)
+        assertFalse(h.state.applyBlocked)
+        assertEquals(generationAfterSuccess, h.state.generation)
+        assertEquals(1, h.rebaselineRequestCount(), "duplicate completion must not form a second flight")
     }
 }
