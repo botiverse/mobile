@@ -3850,9 +3850,13 @@ internal fun SharedThreadRouteContent(
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     val threadMembersServerId = currentServerId?.let(::ServerId)
     val threadMembersChannelId = baseRenderedPayload.sourceThreadId?.trim()?.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val serverMembersState by remember(serverMembersStore) {
-        serverMembersStore?.state ?: MutableStateFlow(SharedServerMembersState())
-    }.collectAsState(SharedServerMembersState())
+    val threadServerMembersEntry by remember(serverMembersStore, threadMembersServerId) {
+        if (serverMembersStore != null && threadMembersServerId != null) {
+            serverMembersStore.serverMembersEntryFlow(threadMembersServerId)
+        } else {
+            MutableStateFlow(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
+        }
+    }.collectAsState(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
     val threadChannelMembersSlice by remember(
         serverMembersStore,
         threadMembersServerId,
@@ -3888,11 +3892,11 @@ internal fun SharedThreadRouteContent(
         )
     )
     val threadMembersProjection =
-        remember(baseRenderedPayload, threadChannelMembersSlice, serverMembersState, threadMembersServerId) {
+        remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
             threadMembersProjection(
                 basePayload = baseRenderedPayload,
                 channelMembersSlice = threadChannelMembersSlice,
-                serverMembersState = serverMembersState,
+                serverMembersEntry = threadServerMembersEntry,
                 serverId = threadMembersServerId
             )
         }
@@ -5264,7 +5268,7 @@ internal fun SharedThreadRouteContent(
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
             mentionHandleResolver = { message ->
-                message.threadMentionHandle(serverMembersState, threadMembersServerId)
+                message.threadMentionHandle(threadServerMembersEntry, threadMembersServerId)
             },
             onExportShareImage = { rect ->
                 bridge.exportThreadShareImage(
@@ -10701,7 +10705,7 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
     val messageCandidates =
         messages.map { message ->
             ThreadMarkdownPreparseCandidate(
-                id = message.id,
+                id = message.threadMessageRenderIdentity(),
                 body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
                 messageId = message.id
             )
@@ -10709,7 +10713,7 @@ private fun ThreadTimelineSlice.threadMarkdownOrderedPreparseCandidates(
     val originCandidate =
         originMessage?.let { origin ->
             ThreadMarkdownPreparseCandidate(
-                id = "origin:${origin.id}",
+                id = "origin:${origin.threadMessageRenderIdentity()}",
                 body = origin.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
                 messageId = origin.id
             )
@@ -10824,7 +10828,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
             ) {
                 add(
                     ThreadMarkdownPreparseCandidate(
-                        id = "origin:${originMessage.id}",
+                        id = "origin:${originMessage.threadMessageRenderIdentity()}",
                         body = originMessage.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
                         messageId = originMessage.id
                     )
@@ -10838,7 +10842,7 @@ private fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                     val message = messages[index]
                     add(
                         ThreadMarkdownPreparseCandidate(
-                            id = message.id,
+                            id = message.threadMessageRenderIdentity(),
                             body = message.threadMarkdownPreparseBody(expandedLongMessageIds, longMessageCollapseEnabled),
                             messageId = message.id
                         )
@@ -10996,6 +11000,10 @@ private fun ThreadMessagesList(
     )
     val captureMessageAnchors = !listState.isScrollInProgress
     val coroutineScope = rememberCoroutineScope()
+    val duplicateMessageRandomIds =
+        remember(renderPayload.messages) {
+            renderPayload.messages.threadDuplicateRandomIds()
+        }
     // Phase 1 (#172) instrumentation: per-Thread session marker that
     // uniquely identifies this Thread entry. Combined with the row-level
     // `LaunchedEffect(message.id, sessionMarker)` inside `items()`, this
@@ -11183,7 +11191,8 @@ private fun ThreadMessagesList(
             "thread_markdown_preparse scope=priority_anchor " +
                 "bodyCandidates=${initialMarkdownPreparsePlan.priorityCandidates.size} " +
                 "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
-                "cacheHit=${result.cacheHitCount} messages=${renderPayload.messages.size} " +
+                "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
+                "messages=${renderPayload.messages.size} " +
                 "focused=${renderPayload.focusedMessageId?.isNotBlank() == true} " +
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
@@ -11221,6 +11230,7 @@ private fun ThreadMessagesList(
             var parsedCount = 0
             var cacheHitCount = 0
             var requestedCount = 0
+            var scheduledCount = 0
             val batches = initialMarkdownPreparsePlan.deferredCandidates.chunked(ThreadInitialMarkdownPreparseMessageCount)
             batches.forEachIndexed { index, batch ->
                 if (index > 0) {
@@ -11235,12 +11245,14 @@ private fun ThreadMessagesList(
                 requestedCount += result.requestedCount
                 parsedCount += result.parsedCount
                 cacheHitCount += result.cacheHitCount
+                scheduledCount += result.scheduledCount
                 val batchDurationMs = batchStartedAt.elapsedNow().inWholeMilliseconds
                 diagnosticsLogger(
                     "thread_markdown_preparse_batch scope=loaded_latest_first " +
                         "batch=${index + 1}/${batches.size} bodyCandidates=${batch.size} " +
                         "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
-                        "cacheHit=${result.cacheHitCount} messages=${renderPayload.messages.size} " +
+                        "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
+                        "messages=${renderPayload.messages.size} " +
                         "durationMs=$batchDurationMs"
                 )
             }
@@ -11250,7 +11262,8 @@ private fun ThreadMessagesList(
                     "bodyCandidates=${initialMarkdownPreparsePlan.deferredCandidates.size} " +
                     "parserCandidates=${initialMarkdownPreparsePlan.deferredParserCandidateCount} " +
                     "priorityBodyCandidates=${initialMarkdownPreparsePlan.priorityCandidates.size} " +
-                    "batchParserRequests=$requestedCount parsed=$parsedCount cacheHit=$cacheHitCount " +
+                    "batchParserRequests=$requestedCount scheduled=$scheduledCount " +
+                    "parsed=$parsedCount cacheHit=$cacheHitCount " +
                     "batches=${batches.size} " +
                     "messages=${renderPayload.messages.size} durationMs=$durationMs"
             )
@@ -11303,7 +11316,8 @@ private fun ThreadMessagesList(
                     "thread_markdown_preparse scope=visible_overscan " +
                         "bodyCandidates=${visiblePreparsePlan.candidates.size} " +
                         "parserCandidates=${result.requestedCount} parsed=${result.parsedCount} " +
-                        "cacheHit=${result.cacheHitCount} messages=${renderPayload.messages.size} " +
+                        "scheduled=${result.scheduledCount} cacheHit=${result.cacheHitCount} " +
+                        "messages=${renderPayload.messages.size} " +
                         "overscan=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
                         "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                 )
@@ -11964,7 +11978,10 @@ private fun ThreadMessagesList(
                     ThreadStateMessage("Loading...", null)
                 }
             }
-            items(renderPayload.messages.size, key = { renderPayload.messages[it].messageListItemKey() }) { index ->
+            items(
+                renderPayload.messages.size,
+                key = { index -> renderPayload.messages[index].messageListItemKey(duplicateMessageRandomIds) }
+            ) { index ->
                 val message = renderPayload.messages[index]
                 val absoluteMessageIndex = index
                 val previousMessage = renderPayload.messages.getOrNull(index - 1)
@@ -12695,21 +12712,42 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
 
-private fun KuiklyThreadMessageItem.messageListItemKey(): String =
-    "thread-page:message:$id"
+internal fun KuiklyThreadMessageItem.threadMessageRenderIdentity(): String =
+    randomId?.trim()?.takeIf { it.isNotBlank() }?.let { "random:$it" }
+        ?: id
+
+internal fun List<KuiklyThreadMessageItem>.threadDuplicateRandomIds(): Set<String> =
+    mapNotNull { message -> message.randomId?.trim()?.takeIf { it.isNotBlank() } }
+        .groupingBy { it }
+        .eachCount()
+        .filterValues { count -> count > 1 }
+        .keys
+
+internal fun KuiklyThreadMessageItem.messageListItemKey(
+    duplicateRandomIds: Set<String> = emptySet()
+): String {
+    val cleanRandomId = randomId?.trim()?.takeIf { it.isNotBlank() }
+    val identity =
+        if (cleanRandomId != null && cleanRandomId !in duplicateRandomIds) {
+            "random:$cleanRandomId"
+        } else {
+            id
+        }
+    return "thread-page:$identity"
+}
 
 internal data class ThreadMessageMarkdownRenderSignature(
-    val messageId: String,
+    val renderIdentity: String,
     val bodyLength: Int,
     val bodyHash: Int
 ) {
     val inlineContentScope: String =
-        "$messageId:$bodyLength:${bodyHash.toString(16)}"
+        "$renderIdentity:$bodyLength:${bodyHash.toString(16)}"
 }
 
 internal fun KuiklyThreadMessageItem.threadMarkdownRenderSignature(): ThreadMessageMarkdownRenderSignature =
     ThreadMessageMarkdownRenderSignature(
-        messageId = id,
+        renderIdentity = threadMessageRenderIdentity(),
         bodyLength = body.length,
         bodyHash = body.hashCode()
     )
@@ -15097,9 +15135,30 @@ internal fun KuiklyThreadMessageItem.threadMentionHandle(
 ): String? {
     if (threadAuthorBadgeLabel() != null) return null
     val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
-    serverMembersState
-        .threadMentionAuthorHandle(serverId, cleanAuthorId)
-        ?.let { return it }
+    return threadMentionHandleFromRoster(
+        serverMembersState.threadMentionAuthorHandle(serverId, cleanAuthorId)
+    )
+}
+
+internal fun KuiklyThreadMessageItem.threadMentionHandle(
+    serverMembersEntry: SharedServerMembersEntry,
+    serverId: ServerId? = null
+): String? {
+    if (threadAuthorBadgeLabel() != null) return null
+    val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
+    val rosterHandle =
+        serverMembersEntry
+            .takeIf { entry -> entry.serverId == serverId?.value?.trim() }
+            ?.members
+            ?.firstOrNull { member -> member.id.value.trim() == cleanAuthorId }
+            ?.handle
+            .threadMentionHandleValue()
+    return threadMentionHandleFromRoster(rosterHandle)
+}
+
+private fun KuiklyThreadMessageItem.threadMentionHandleFromRoster(rosterHandle: String?): String? {
+    rosterHandle?.let { return it }
+    val cleanAuthorId = authorId.trim().takeIf { it.isNotBlank() }
     val explicitAuthorHandle = authorHandle.threadMentionExplicitAuthorHandle(authorName)
     if (explicitAuthorHandle != null) return explicitAuthorHandle
     return cleanAuthorId
@@ -18900,7 +18959,7 @@ private fun KuiklyThreadScreenPayload.withThreadMembersProjection(
 private fun threadMembersProjection(
     basePayload: KuiklyThreadScreenPayload,
     channelMembersSlice: SharedServerChannelMembersSlice,
-    serverMembersState: SharedServerMembersState,
+    serverMembersEntry: SharedServerMembersEntry,
     serverId: ServerId?
 ): ThreadMembersProjection {
     val loadedMembers =
@@ -18915,9 +18974,7 @@ private fun threadMembersProjection(
         }
     val memberKeys = members.map { it.memberKey }.toSet()
     val serverMembers =
-        serverId
-            ?.let { serverMembersState.entryFor(it)?.members }
-            .orEmpty()
+        serverMembersEntry.members.takeIf { serverMembersEntry.serverId == serverId?.value?.trim() }.orEmpty()
     val candidates =
         if (serverMembers.isEmpty()) {
             basePayload.memberCandidates

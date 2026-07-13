@@ -405,10 +405,10 @@ internal fun ThreadTimelineSlice.initialMarkdownPreparseCandidateSignature(conte
     if (!contentExtrasVisible || (messages.isEmpty() && originMessage == null)) return ""
     return buildList {
         messages.asReversed().forEach { message ->
-            add("${message.id}:${message.body.length}:${message.body.hashCode()}")
+            add("${message.threadMessageRenderIdentity()}:${message.body.length}:${message.body.hashCode()}")
         }
         originMessage?.let { origin ->
-            add("origin:${origin.id}:${origin.body.length}:${origin.body.hashCode()}")
+            add("origin:${origin.threadMessageRenderIdentity()}:${origin.body.length}:${origin.body.hashCode()}")
         }
     }.joinToString(separator = "|")
 }

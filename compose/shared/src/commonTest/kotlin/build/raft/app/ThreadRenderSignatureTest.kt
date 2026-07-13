@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.model.ChannelId
 import build.raft.app.data.SharedServerChannelMembersScope
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -252,6 +253,32 @@ class ThreadRenderSignatureTest {
             )
 
         assertEquals("Android-Developer-2", message.threadMentionHandle(serverMembersState, ServerId("server-1")))
+    }
+
+    @Test
+    fun threadMentionHandle_resolvesFromScopedRosterEntry() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "agent-1",
+                authorName = "Android Developer",
+                authorKind = "agent"
+            )
+        val entry =
+            SharedServerMembersEntry(
+                serverId = "server-1",
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Android Developer",
+                            handle = "Android-Developer-2",
+                            kind = MemberKind.Agent
+                        )
+                    )
+            )
+
+        assertEquals("Android-Developer-2", message.threadMentionHandle(entry, ServerId("server-1")))
     }
 
     @Test
