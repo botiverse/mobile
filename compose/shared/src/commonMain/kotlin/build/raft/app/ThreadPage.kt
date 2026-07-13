@@ -360,6 +360,13 @@ internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(
                 !hasProgressiveThreadLoadingShell()
         )
 
+internal fun KuiklyThreadScreenPayload.shouldRenderThreadLoadingShell(
+    timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution
+): Boolean =
+    accessResolution == ThreadAccessResolution.Loading ||
+        shouldRenderThreadEarlyLoadingShell(timelineSlice)
+
 private fun KuiklyThreadScreenPayload.hasProgressiveThreadLoadingShell(): Boolean {
     if (status != "loading") return false
     val routeIdentity = resolveThreadRouteIdentity()
@@ -1799,6 +1806,8 @@ private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     }
 }
 
+private val ThreadResolvedContentStatuses = setOf("content", "empty")
+
 internal fun shouldShowThreadComposerForTab(
     joined: Boolean,
     showComposer: Boolean,
@@ -1816,12 +1825,25 @@ internal fun shouldShowThreadComposerForReadyContent(
     shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
 
 internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(): Boolean =
-    hasRenderableContentForComposer(toThreadTimelineSlice())
+    hasRenderableContentForComposer(
+        timelineSlice = toThreadTimelineSlice(),
+        accessResolution = ThreadAccessResolution.Resolved
+    )
 
-internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(timelineSlice: ThreadTimelineSlice): Boolean =
-    !shouldRenderThreadEarlyLoadingShell(timelineSlice) &&
-        status != "no_permission" &&
-        status != "error"
+internal fun KuiklyThreadScreenPayload.hasRenderableContentForComposer(
+    timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution = ThreadAccessResolution.Resolved
+): Boolean =
+    isThreadPrimaryFooterReady(timelineSlice, accessResolution)
+
+internal fun KuiklyThreadScreenPayload.isThreadPrimaryFooterReady(
+    timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution
+): Boolean =
+    accessResolution == ThreadAccessResolution.Resolved &&
+        status in ThreadResolvedContentStatuses &&
+        timelineSlice.status in ThreadResolvedContentStatuses &&
+        !shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
 internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
     RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat
@@ -3277,18 +3299,13 @@ internal fun SharedThreadRouteContent(
                 diagnosticsLogger = { bridge.log(it) }
             )
         }
-    val payload by remember(threadViewModel) {
-        threadViewModel.payloadFlow()
-    }.collectAsState(threadViewModel.currentPayload)
-    val timelineSlice by remember(threadViewModel) {
-        threadViewModel.timelineSliceFlow()
-    }.collectAsState(threadViewModel.currentTimelineSlice)
-    val replyMetadataByParentId by remember(threadViewModel) {
-        threadViewModel.replyMetadataFlow()
-    }.collectAsState(threadViewModel.currentReplyMetadataByParentId)
-    val highlightedMentions by remember(threadViewModel) {
-        threadViewModel.highlightedMentionsFlow()
-    }.collectAsState(threadViewModel.currentHighlightedMentions)
+    val renderSlice by remember(threadViewModel) {
+        threadViewModel.renderSliceFlow()
+    }.collectAsState(threadViewModel.currentRenderSlice)
+    val payload = renderSlice.payload
+    val timelineSlice = renderSlice.timelineSlice
+    val replyMetadataByParentId = renderSlice.replyMetadataByParentId
+    val highlightedMentions = renderSlice.highlightedMentions
     val initialThreadInstanceKey = initialRouteIdentity.instanceKey
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
@@ -5268,6 +5285,7 @@ internal fun SharedThreadRouteContent(
             threadInstanceKey = threadInstanceKey,
             payload = renderedThread,
             timelineSlice = renderedTimelineSlice,
+            accessResolution = renderSlice.accessResolution,
             replyMetadataByParentId = replyMetadataByParentId,
             headerDisplay = headerDisplayModel,
             composerSurface = composerSurface,
@@ -9150,6 +9168,7 @@ private fun ThreadPageContent(
     threadInstanceKey: String,
     payload: KuiklyThreadScreenPayload,
     timelineSlice: ThreadTimelineSlice,
+    accessResolution: ThreadAccessResolution,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
     headerDisplay: ThreadHeaderDisplayModel,
     composerSurface: ThreadComposerSurface,
@@ -9192,7 +9211,11 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
-    val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell(timelineSlice)
+    val renderEarlyLoadingShell =
+        payload.shouldRenderThreadLoadingShell(
+            timelineSlice = timelineSlice,
+            accessResolution = accessResolution
+        )
     val shareExportScope = rememberCoroutineScope()
     val markdownTagFeedbackScope = rememberCoroutineScope()
     var selectedTab by remember(payload.selectedTab) {
@@ -9424,7 +9447,13 @@ private fun ThreadPageContent(
     var composerKeyboardInsetDp by remember(threadInstanceKey) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
     val composerKeyboardInsetExcludesBottomSafeArea = slockKeyboardInsetExcludesBottomSafeArea()
+    val primaryFooterReady =
+        payload.isThreadPrimaryFooterReady(
+            timelineSlice = timelineSlice,
+            accessResolution = accessResolution
+        )
     val showComposerForSelectedTab =
+        primaryFooterReady &&
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
@@ -9690,7 +9719,12 @@ private fun ThreadPageContent(
                     Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
                 )
             }
-            if (!payload.joined) {
+            if (!primaryFooterReady) {
+                // Loading/permission/error owns the whole content frame. Join and
+                // composer mount only with the same resolved render-slice emission
+                // that removes the loading UI, avoiding a second LazyColumn resize.
+                Unit
+            } else if (!payload.joined) {
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
@@ -9778,7 +9812,7 @@ private fun ThreadPageContent(
                         }
                     )
                 }
-            } else if (payload.hasRenderableContentForComposer(timelineSlice) && showComposerForSelectedTab) {
+            } else if (showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(

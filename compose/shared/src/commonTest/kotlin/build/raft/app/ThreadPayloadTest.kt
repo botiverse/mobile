@@ -751,23 +751,66 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadComposerCanRenderWhileLoadingWhenCachedContentIsVisible() {
+    fun threadComposerWaitsForResolvedPayloadAndTimelineInBothConversationSurfaces() {
         assertFalse(KuiklyThreadScreenPayload(status = "loading").hasRenderableContentForComposer())
-        assertTrue(
-            KuiklyThreadScreenPayload(
-                status = "loading",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "cached"
+        listOf(KuiklyThreadSurfaceKind.Channel, KuiklyThreadSurfaceKind.ReplyThread).forEach { surfaceKind ->
+            val cachedLoadingPayload =
+                KuiklyThreadScreenPayload(
+                    status = "loading",
+                    surfaceKind = surfaceKind,
+                    messages =
+                        listOf(
+                            KuiklyThreadMessageItem(
+                                id = "m1",
+                                authorId = "u1",
+                                authorName = "Artin",
+                                body = "cached"
+                            )
                         )
-                    )
-            ).hasRenderableContentForComposer()
+                )
+            assertFalse(cachedLoadingPayload.hasRenderableContentForComposer())
+            assertFalse(
+                cachedLoadingPayload
+                    .copy(status = "content")
+                    .hasRenderableContentForComposer(cachedLoadingPayload.toThreadTimelineSlice())
+            )
+            val cachedContentPayload = cachedLoadingPayload.copy(status = "content")
+            assertFalse(
+                cachedContentPayload.hasRenderableContentForComposer(
+                    timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                    accessResolution = ThreadAccessResolution.Loading
+                )
+            )
+            assertTrue(
+                cachedContentPayload.shouldRenderThreadLoadingShell(
+                    timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                    accessResolution = ThreadAccessResolution.Loading
+                )
+            )
+            assertFalse(
+                cachedContentPayload.shouldRenderThreadLoadingShell(
+                    timelineSlice = cachedContentPayload.toThreadTimelineSlice(),
+                    accessResolution = ThreadAccessResolution.Resolved
+                )
+            )
+            assertTrue(cachedContentPayload.hasRenderableContentForComposer())
+        }
+        val unjoinedLoading = KuiklyThreadScreenPayload(status = "loading", joined = false)
+        val unjoinedContent = KuiklyThreadScreenPayload(status = "content", joined = false)
+        assertFalse(
+            unjoinedLoading.isThreadPrimaryFooterReady(
+                timelineSlice = unjoinedLoading.toThreadTimelineSlice(),
+                accessResolution = ThreadAccessResolution.Loading
+            )
+        )
+        assertTrue(
+            unjoinedContent.isThreadPrimaryFooterReady(
+                timelineSlice = unjoinedContent.toThreadTimelineSlice(),
+                accessResolution = ThreadAccessResolution.Resolved
+            )
         )
         assertTrue(KuiklyThreadScreenPayload(status = "content").hasRenderableContentForComposer())
+        assertTrue(KuiklyThreadScreenPayload(status = "empty").hasRenderableContentForComposer())
         assertFalse(KuiklyThreadScreenPayload(status = "error").hasRenderableContentForComposer())
         assertFalse(KuiklyThreadScreenPayload(status = "no_permission").hasRenderableContentForComposer())
     }
