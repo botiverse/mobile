@@ -2,6 +2,8 @@ package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * #491 A-minimal T-message-fold — the KMP messages-domain fold, a behavioral mirror of the web
@@ -400,41 +402,72 @@ private fun restoreMessageDomainSnapshot(snapshot: SyncSnapshot): MessageDomainS
  *
  * RFC043's generic [SyncCore] intentionally rejects a same-epoch snapshot at an already-applied
  * watermark. Sparse message realtime can legitimately arrive before conversation hydrate, so this
- * host owns the mobile-only generation fence and replaces its single active core with a freshly
- * seeded core. Callers serialize access through their existing actor; the replacement becomes visible
- * only after [SyncCore.ingestSnapshot] succeeds. Stale generations leave the active core untouched.
+ * host owns a mobile-only generation fence and one active core per scope. The scope lock serializes
+ * frame ingress, snapshot seed/swap, and reads; the replacement becomes visible only after
+ * [SyncCore.ingestSnapshot] succeeds. Stale generations leave that scope's active core untouched.
  */
-class MessageDomainSyncHost {
-    private var activeCore: SyncCore = newMessageDomainSyncCore()
-    private var acceptedRebaselineGeneration: Long? = null
+internal class MessageDomainSyncHost(
+    /** Deterministic concurrency-test seam; invoked with the scope lock held after seed, before swap. */
+    private val beforeSnapshotSwap: (() -> Unit)? = null,
+    /** Deterministic concurrency-test seam; invoked immediately before frame lock acquisition. */
+    private val beforeFrameLock: ((SyncFrame) -> Unit)? = null,
+) {
+    private class ScopeOwner(
+        val lock: SynchronizedObject = SynchronizedObject(),
+        var activeCore: SyncCore = newMessageDomainSyncCore(),
+        var acceptedRebaselineGeneration: Long? = null,
+    )
 
-    fun ingestFrame(frame: SyncFrame): SyncIngestOutcome =
-        activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+    private val ownersLock = SynchronizedObject()
+    private val owners = mutableMapOf<SyncScopeId, ScopeOwner>()
+
+    private fun owner(scopeId: SyncScopeId): ScopeOwner =
+        synchronized(ownersLock) { owners.getOrPut(scopeId, ::ScopeOwner) }
+
+    fun ingestFrame(frame: SyncFrame): SyncIngestOutcome {
+        val scopeOwner = owner(frame.scopeId)
+        beforeFrameLock?.invoke(frame)
+        return synchronized(scopeOwner.lock) {
+            scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+        }
+    }
 
     fun ingestAuthoritativeSnapshot(
         snapshot: SyncSnapshot,
         generation: Long,
     ): SyncIngestOutcome {
-        val currentGeneration = acceptedRebaselineGeneration
-        if (generation <= 0L || (currentGeneration != null && generation <= currentGeneration)) {
-            return SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
-        }
+        val scopeOwner = owner(snapshot.scopeId)
+        return synchronized(scopeOwner.lock) {
+            val currentGeneration = scopeOwner.acceptedRebaselineGeneration
+            if (generation <= 0L || (currentGeneration != null && generation <= currentGeneration)) {
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
 
-        val replacement = newMessageDomainSyncCore()
-        val outcome = replacement.ingestSnapshot(MESSAGES_SYNC_DOMAIN, snapshot)
-        if (outcome is SyncIngestOutcome.Applied) {
-            activeCore = replacement
-            acceptedRebaselineGeneration = generation
+            val replacement = newMessageDomainSyncCore()
+            val outcome = replacement.ingestSnapshot(MESSAGES_SYNC_DOMAIN, snapshot)
+            if (outcome is SyncIngestOutcome.Applied) {
+                beforeSnapshotSwap?.invoke()
+                scopeOwner.activeCore = replacement
+                scopeOwner.acceptedRebaselineGeneration = generation
+            }
+            outcome
         }
-        return outcome
     }
 
-    fun state(scopeId: SyncScopeId): MessageDomainState =
-        activeCore.state(MESSAGES_SYNC_DOMAIN, scopeId) as? MessageDomainState
-            ?: createInitialMessageDomainState()
+    fun state(scopeId: SyncScopeId): MessageDomainState {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            scopeOwner.activeCore.state(MESSAGES_SYNC_DOMAIN, scopeId) as? MessageDomainState
+                ?: createInitialMessageDomainState()
+        }
+    }
 
-    fun scopeSyncState(scopeId: SyncScopeId): SyncScopeState? =
-        activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId)
+    fun scopeSyncState(scopeId: SyncScopeId): SyncScopeState? {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId)
+        }
+    }
 }
 
 private fun newMessageDomainSyncCore(): SyncCore =

@@ -24,6 +24,10 @@ import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -501,5 +505,105 @@ class MessageSyncDomainTest {
             ),
         )
         assertSame(installed, host.state("c1"))
+    }
+
+    @Test
+    fun authoritativeRebaselineIsScopedAndGenerationFencedPerScope() {
+        val host = MessageDomainSyncHost()
+        val c1Row = row("c1-m11", channel = "c1", seq = 11, senderId = "u1")
+        val c2Row = row("c2-m21", channel = "c2", seq = 21, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 11, epoch = "e1", event = MessageDomainEvent.New(c1Row, MESSAGE_NEW)),
+        )
+        host.ingestFrame(
+            SyncFrame("c2", seq = 21, epoch = "e1", event = MessageDomainEvent.New(c2Row, MESSAGE_NEW)),
+        )
+        val c2Before = host.state("c2")
+        val c2CursorBefore = host.scopeSyncState("c2")
+
+        val c1Authoritative = baseline(state = host.state("c1"), rows = listOf(c1Row), scopeId = "c1")
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 11),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 11, epoch = "e1", state = c1Authoritative),
+                generation = 2,
+            ),
+        )
+        assertSame(c2Before, host.state("c2"))
+        assertEquals(c2CursorBefore, host.scopeSyncState("c2"))
+
+        val c2Authoritative = baseline(
+            state = c2Before,
+            rows = listOf(c2Row),
+            scopeId = "c2",
+            coveredFromSeq = 21,
+            remoteHighWaterSeq = 21,
+        )
+        assertEquals(
+            SyncIngestOutcome.Applied("c2", 21),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c2", watermark = 21, epoch = "e1", state = c2Authoritative),
+                generation = 1,
+            ),
+        )
+        assertTrue(project(host.state("c2"), scopeId = "c2", maxReadSeq = 20).complete)
+
+        val c1Installed = host.state("c1")
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 12),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 12, epoch = "e1", state = c1Installed),
+                generation = 1,
+            ),
+        )
+        assertSame(c1Installed, host.state("c1"))
+    }
+
+    @Test
+    fun realtimeAtSnapshotSwapWaitsForSameScopeCutAndAppliesToReplacementCore() = runBlocking {
+        val snapshotSeeded = CompletableDeferred<Unit>()
+        val allowSnapshotSwap = CompletableDeferred<Unit>()
+        val frameAtLock = CompletableDeferred<Unit>()
+        val host = MessageDomainSyncHost(
+            beforeSnapshotSwap = {
+                runBlocking {
+                    snapshotSeeded.complete(Unit)
+                    allowSnapshotSwap.await()
+                }
+            },
+            beforeFrameLock = { frame ->
+                if (frame.scopeId == "c1" && frame.seq == 15L) frameAtLock.complete(Unit)
+            },
+        )
+        val m14 = row("m14", seq = 14, senderId = "u1")
+        val m15 = row("m15", seq = 15, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val authoritative = baseline(state = host.state("c1"), rows = listOf(m14), coveredFromSeq = 14)
+
+        val snapshotResult = async(Dispatchers.Default) {
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = authoritative),
+                generation = 1,
+            )
+        }
+        snapshotSeeded.await()
+        val frameResult = async(Dispatchers.Default) {
+            host.ingestFrame(
+                SyncFrame("c1", seq = 15, epoch = "e1", event = MessageDomainEvent.New(m15, MESSAGE_NEW)),
+            )
+        }
+        frameAtLock.await()
+        assertFalse(frameResult.isCompleted)
+
+        allowSnapshotSwap.complete(Unit)
+        assertEquals(SyncIngestOutcome.Applied("c1", 14), snapshotResult.await())
+        assertEquals(SyncIngestOutcome.MaxAdvanced("c1", 15), frameResult.await())
+
+        val finalState = host.state("c1")
+        assertEquals(listOf("m14", "m15"), ids(finalState))
+        assertTrue(project(finalState, maxReadSeq = 13).complete)
+        assertEquals(2, project(finalState, maxReadSeq = 13).unreadCount)
     }
 }
