@@ -403,8 +403,11 @@ private fun restoreMessageDomainSnapshot(snapshot: SyncSnapshot): MessageDomainS
  * RFC043's generic [SyncCore] intentionally rejects a same-epoch snapshot at an already-applied
  * watermark. Sparse message realtime can legitimately arrive before conversation hydrate, so this
  * host owns a mobile-only generation fence and one active core per scope. The scope lock serializes
- * frame ingress, snapshot seed/swap, and reads; the replacement becomes visible only after
- * [SyncCore.ingestSnapshot] succeeds. Stale generations leave that scope's active core untouched.
+ * frame ingress, snapshot seed/swap, and reads. New rows use the generic seq watermark; updates are
+ * folded directly because their seq is the original creation seq. A snapshot flight that observes
+ * an update is coverage-dirty and must be retried with a later generation because request begin is
+ * not the server's snapshot cut. Clean replacements become visible only after snapshot ingest succeeds.
+ * Stale generations leave that scope's active core untouched.
  */
 internal class MessageDomainSyncHost(
     /** Deterministic concurrency-test seam; invoked with the scope lock held after seed, before swap. */
@@ -434,10 +437,61 @@ internal class MessageDomainSyncHost(
         val scopeOwner = owner(frame.scopeId)
         beforeFrameLock?.invoke(frame)
         return synchronized(scopeOwner.lock) {
-            val outcome = scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+            val event = frame.event as? MessageDomainEvent
+            val outcome =
+                if (event is MessageDomainEvent.Updated) {
+                    scopeOwner.foldUpdatedFrame(frame, event)
+                } else {
+                    scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+                }
             scopeOwner.pendingRebaseline?.postBeginFrames?.add(frame)
             outcome
         }
+    }
+
+    /**
+     * Message updates carry the original creation seq, not a mutation version. Applying them through
+     * generic SyncCore would drop every update at or below the scope watermark. Re-seed the same
+     * per-scope owner with the directly folded state while preserving its watermark and epoch.
+     */
+    private fun ScopeOwner.foldUpdatedFrame(
+        frame: SyncFrame,
+        event: MessageDomainEvent.Updated,
+    ): SyncIngestOutcome {
+        if (event.row.channelId != frame.scopeId) {
+            return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+        val syncState = activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, frame.scopeId)
+            ?: return activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+        if (syncState.epoch != null && frame.epoch != null && syncState.epoch != frame.epoch) {
+            return activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+        }
+        val current = activeCore.state(MESSAGES_SYNC_DOMAIN, frame.scopeId) as? MessageDomainState
+            ?: return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        if (current.channelMessages[frame.scopeId].orEmpty().none { it.id == event.row.id }) {
+            return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+        var updated = applyMessageDomainEvent(current, event)
+        if (pendingRebaseline != null) {
+            // begin is not the server's snapshot cut. Until a clean later generation completes,
+            // an update observed during this flight makes coverage authority ambiguous.
+            updated = invalidateMessageScopeCoverage(updated, frame.scopeId)
+        }
+        if (updated === current) return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+
+        val replacement = newMessageDomainSyncCore()
+        val outcome =
+            replacement.ingestSnapshot(
+                MESSAGES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = frame.scopeId,
+                    watermark = syncState.appliedSeq,
+                    epoch = syncState.epoch,
+                    state = updated,
+                ),
+            )
+        if (outcome is SyncIngestOutcome.Applied) activeCore = replacement
+        return outcome
     }
 
     /** Start the host generation before issuing the server snapshot request. */
@@ -476,6 +530,15 @@ internal class MessageDomainSyncHost(
                 return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
             }
 
+            // Without a producer mutation version, begin-time cannot attribute Updated frames to
+            // before or after the server's actual snapshot cut. Keep the directly folded active
+            // state, consume this generation, and require a clean later rebaseline.
+            if (pending.postBeginFrames.any { it.event is MessageDomainEvent.Updated }) {
+                scopeOwner.acceptedRebaselineGeneration = generation
+                scopeOwner.pendingRebaseline = null
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
+
             var replacementState = snapshot.state as MessageDomainState
             var replacementWatermark = snapshot.watermark
             for (frame in pending.postBeginFrames) {
@@ -487,16 +550,9 @@ internal class MessageDomainSyncHost(
                 if (event.row.channelId != snapshot.scopeId) {
                     return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
                 }
-                if (
-                    event is MessageDomainEvent.Updated &&
-                    replacementState.channelMessages[snapshot.scopeId].orEmpty().none { it.id == event.row.id }
-                ) {
-                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
-                }
+                if (event !is MessageDomainEvent.New || frame.seq <= snapshot.watermark) continue
                 replacementState = applyMessageDomainEvent(replacementState, event)
-                if (event is MessageDomainEvent.New) {
-                    replacementWatermark = maxOf(replacementWatermark, frame.seq)
-                }
+                replacementWatermark = maxOf(replacementWatermark, frame.seq)
             }
 
             val replacement = newMessageDomainSyncCore()

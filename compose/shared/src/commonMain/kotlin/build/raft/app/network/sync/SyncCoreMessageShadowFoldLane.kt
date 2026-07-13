@@ -53,6 +53,7 @@ internal class SyncCoreMessageShadowFoldLane(
             domainHost.ingestFrame(
                 SyncFrame(scopeId = channelId, seq = row.seq, epoch = epoch, event = domainEvent),
             )
+            val appliedSeq = domainHost.scopeSyncState(channelId)?.appliedSeq ?: row.seq
             val facts = domainHost.state(channelId)
                 .channelMessages
                 .get(channelId)
@@ -61,9 +62,11 @@ internal class SyncCoreMessageShadowFoldLane(
                 scope = SyncScopeKey(resolvedServerId, channelId, SHADOW_SCOPE_KIND),
                 facts = facts,
                 cursor = PersistedCursor(
-                    latestSeq = row.seq,
+                    // Updated frames carry the message creation seq. Persist the host watermark so
+                    // an edit to an older message cannot rewind the durable scope cursor.
+                    latestSeq = appliedSeq,
                     oldestLoadedSeq = facts.firstOrNull()?.seq,
-                    newestLoadedSeq = facts.lastOrNull()?.seq ?: row.seq,
+                    newestLoadedSeq = facts.lastOrNull()?.seq ?: appliedSeq,
                     hasLoadedOldest = false,
                     hasLoadedNewest = true,
                     epoch = epoch,

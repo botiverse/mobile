@@ -20,6 +20,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -96,6 +97,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun canonicalRow(
         id: String,
         seq: Long,
+        content: String = "body-$id",
         reactions: List<CanonicalReactionWire> = emptyList(),
     ) = CanonicalMessageRow(
         id = id,
@@ -103,7 +105,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         seq = seq,
         senderType = "human",
         senderId = "u1",
-        content = "body-$id",
+        content = content,
         messageType = "chat",
         createdAt = "2026-07-12T00:00:0${seq}Z",
         senderName = "Alice",
@@ -113,6 +115,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun messageNewWithCanonical(
         id: String,
         seq: Long,
+        content: String = "body-$id",
         reactions: List<CanonicalReactionWire> = emptyList(),
     ): MessageNew =
         MessageNew(
@@ -123,16 +126,42 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
                 seq = seq,
                 author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
                 timestampLabel = "now",
-                body = "body-$id",
+                body = content,
             ),
             decodedCanonical = CanonicalMessageCarry(
-                row = canonicalRow(id, seq, reactions),
+                row = canonicalRow(id, seq, content, reactions),
+                presentAggregates = emptySet<MessageAggregateField>(),
+            ),
+        )
+
+    private fun messageUpdatedWithCanonical(
+        id: String,
+        seq: Long,
+        content: String,
+    ): MessageUpdated =
+        MessageUpdated(
+            message = Message(
+                id = MessageId(id),
+                threadId = ThreadId(channelId),
+                channelId = ChannelId(channelId),
+                seq = seq,
+                author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
+                timestampLabel = "now",
+                body = content,
+            ),
+            decodedCanonical = CanonicalMessageCarry(
+                row = canonicalRow(id, seq, content),
                 presentAggregates = emptySet<MessageAggregateField>(),
             ),
         )
 
     private fun persistedFactIds(db: SlockSqlDatabase): List<String> = runBlocking {
         SqlDelightFoldPersistStore(db, now = { 100L }).readFacts(scopeKey).map { it.id }
+    }
+
+    private fun restoredState(db: SlockSqlDatabase): RestoredFoldState = runBlocking {
+        val store = SqlDelightFoldPersistStore(db, now = { 100L })
+        RestoredFoldState(store.readFacts(scopeKey), store.readCursor(scopeKey))
     }
 
     @Test
@@ -152,6 +181,33 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         assertEquals(listOf("m1"), persistedFactIds(db), "flag-on shadow lane must persist the canonical fact")
         // Shadow is invisible: the legacy sink still saw the event exactly once.
         assertEquals(1, homeEvents.size)
+    }
+
+    @Test
+    fun olderMessageUpdatePersistsFoldedFactWithoutRewindingScopeCursor() {
+        val db = freshDatabase()
+        val lane = SyncCoreMessageShadowFoldLane.create(
+            featureFlags = resolvedFlags(enabled = true),
+            sqlDatabase = db,
+            now = { 100L },
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            logger = {},
+        )
+        val (owner, homeEvents) = ownerWith(lane)
+
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        owner.accept(
+            serverId,
+            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            source = "app_shell",
+        )
+
+        val restored = restoredState(db)
+        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
+        assertEquals(14, restored.cursor?.latestSeq)
+        assertEquals(14, restored.cursor?.newestLoadedSeq)
+        assertEquals(3, homeEvents.size, "shadow update must remain invisible to legacy sink delivery")
     }
 
     @Test

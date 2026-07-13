@@ -594,7 +594,7 @@ class MessageSyncDomainTest {
     }
 
     @Test
-    fun postCutUpdateWithCreationSeqBelowWatermarkIsFoldedIntoReplacementState() {
+    fun ordinaryUpdateFoldsWithoutAdvancingCreationSeqWatermark() {
         val host = MessageDomainSyncHost()
         val m10Old = row("m10", seq = 10, content = "old", senderId = "u1")
         val m14 = row("m14", seq = 14, senderId = "u2")
@@ -604,16 +604,9 @@ class MessageSyncDomainTest {
         host.ingestFrame(
             SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
         )
-        val snapshotAt14 = baseline(
-            state = host.state("c1"),
-            rows = listOf(m10Old, m14),
-            coveredFromSeq = 10,
-            remoteHighWaterSeq = 14,
-        )
 
-        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
         assertEquals(
-            SyncIngestOutcome.DuplicateDropped("c1", 10),
+            SyncIngestOutcome.Applied("c1", 14),
             host.ingestFrame(
                 SyncFrame(
                     "c1",
@@ -623,16 +616,105 @@ class MessageSyncDomainTest {
                 ),
             ),
         )
+
+        assertEquals("new", host.state("c1").channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertEquals(14, host.scopeSyncState("c1")?.appliedSeq)
+    }
+
+    @Test
+    fun updateDuringSnapshotFlightInvalidatesCoverageAndRequiresCleanRebaseline() {
+        val host = MessageDomainSyncHost()
+        val m10Old = row("m10", seq = 10, content = "old", senderId = "u1")
+        val m10Mid = m10Old.copy(content = "mid")
+        val m10Newer = m10Old.copy(content = "newer")
+        val m14 = row("m14", seq = 14, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 10, epoch = "e1", event = MessageDomainEvent.New(m10Old, MESSAGE_NEW)),
+        )
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotWithNewer = baseline(
+            state = host.state("c1"),
+            rows = listOf(m10Newer, m14),
+            coveredFromSeq = 10,
+            remoteHighWaterSeq = 14,
+        )
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 2))
         assertEquals(
             SyncIngestOutcome.Applied("c1", 14),
+            host.ingestFrame(
+                SyncFrame(
+                    "c1",
+                    seq = 10,
+                    epoch = "e1",
+                    event = MessageDomainEvent.Updated(m10Mid, ENRICHED),
+                ),
+            ),
+        )
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 14),
             host.ingestAuthoritativeSnapshot(
-                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotAt14),
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotWithNewer),
                 generation = 2,
             ),
         )
 
+        val dirtyState = host.state("c1")
+        assertEquals("mid", dirtyState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertFalse(project(dirtyState, maxReadSeq = 9).complete)
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 3))
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotWithNewer),
+                generation = 3,
+            ),
+        )
+        val cleanState = host.state("c1")
+        assertEquals("newer", cleanState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertTrue(project(cleanState, maxReadSeq = 9).complete)
+    }
+
+    @Test
+    fun newAtOrBelowSnapshotWatermarkCannotOverwriteAuthoritativeRow() {
+        val host = MessageDomainSyncHost()
+        val m10Old = row("m10", seq = 10, content = "old", senderId = "u1")
+        val m10Mid = m10Old.copy(content = "mid")
+        val m10Newer = m10Old.copy(content = "newer")
+        val m14 = row("m14", seq = 14, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 10, epoch = "e1", event = MessageDomainEvent.New(m10Old, MESSAGE_NEW)),
+        )
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val snapshotWithNewer = baseline(
+            state = host.state("c1"),
+            rows = listOf(m10Newer, m14),
+            coveredFromSeq = 10,
+            remoteHighWaterSeq = 14,
+        )
+
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
+        assertEquals(
+            SyncIngestOutcome.DuplicateDropped("c1", 10),
+            host.ingestFrame(
+                SyncFrame("c1", seq = 10, epoch = "e1", event = MessageDomainEvent.New(m10Mid, MESSAGE_NEW)),
+            ),
+        )
+        assertEquals(
+            SyncIngestOutcome.Applied("c1", 14),
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = snapshotWithNewer),
+                generation = 1,
+            ),
+        )
+
         val finalState = host.state("c1")
-        assertEquals("new", finalState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertEquals("newer", finalState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
         assertTrue(project(finalState, maxReadSeq = 9).complete)
     }
 
@@ -780,5 +862,69 @@ class MessageSyncDomainTest {
         assertEquals(listOf("m14", "m15"), ids(finalState))
         assertTrue(project(finalState, maxReadSeq = 13).complete)
         assertEquals(2, project(finalState, maxReadSeq = 13).unreadCount)
+    }
+
+    @Test
+    fun updateWaitingAtSnapshotSwapFoldsIntoReplacementWithoutAdvancingWatermark() = runBlocking {
+        val snapshotSeeded = CompletableDeferred<Unit>()
+        val allowSnapshotSwap = CompletableDeferred<Unit>()
+        val frameAtLock = CompletableDeferred<Unit>()
+        val host = MessageDomainSyncHost(
+            beforeSnapshotSwap = {
+                runBlocking {
+                    snapshotSeeded.complete(Unit)
+                    allowSnapshotSwap.await()
+                }
+            },
+            beforeFrameLock = { frame ->
+                if (frame.scopeId == "c1" && frame.event is MessageDomainEvent.Updated) {
+                    frameAtLock.complete(Unit)
+                }
+            },
+        )
+        val m10Old = row("m10", seq = 10, content = "old", senderId = "u1")
+        val m14 = row("m14", seq = 14, senderId = "u2")
+        host.ingestFrame(
+            SyncFrame("c1", seq = 10, epoch = "e1", event = MessageDomainEvent.New(m10Old, MESSAGE_NEW)),
+        )
+        host.ingestFrame(
+            SyncFrame("c1", seq = 14, epoch = "e1", event = MessageDomainEvent.New(m14, MESSAGE_NEW)),
+        )
+        val authoritative = baseline(
+            state = host.state("c1"),
+            rows = listOf(m10Old, m14),
+            coveredFromSeq = 10,
+            remoteHighWaterSeq = 14,
+        )
+        assertTrue(host.beginAuthoritativeRebaseline("c1", generation = 1))
+
+        val snapshotResult = async(Dispatchers.Default) {
+            host.ingestAuthoritativeSnapshot(
+                SyncSnapshot("c1", watermark = 14, epoch = "e1", state = authoritative),
+                generation = 1,
+            )
+        }
+        snapshotSeeded.await()
+        val updateResult = async(Dispatchers.Default) {
+            host.ingestFrame(
+                SyncFrame(
+                    "c1",
+                    seq = 10,
+                    epoch = "e1",
+                    event = MessageDomainEvent.Updated(m10Old.copy(content = "new"), ENRICHED),
+                ),
+            )
+        }
+        frameAtLock.await()
+        assertFalse(updateResult.isCompleted)
+
+        allowSnapshotSwap.complete(Unit)
+        assertEquals(SyncIngestOutcome.Applied("c1", 14), snapshotResult.await())
+        assertEquals(SyncIngestOutcome.Applied("c1", 14), updateResult.await())
+
+        val finalState = host.state("c1")
+        assertEquals("new", finalState.channelMessages.getValue("c1").first { it.id == "m10" }.content)
+        assertEquals(14, host.scopeSyncState("c1")?.appliedSeq)
+        assertTrue(project(finalState, maxReadSeq = 9).complete)
     }
 }
