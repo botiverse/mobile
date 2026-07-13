@@ -53,6 +53,7 @@ import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.foundation.Image
@@ -1020,6 +1021,7 @@ internal fun SlockStructuralHomeShell(
         remember(currentServerId, servers) {
             homeServerSwitcherHasOtherUnread(currentServerId, servers)
         }
+    val serverSwitcherAvatarPainters = rememberServerSwitcherAvatarPainters(servers)
     val sidebarSelection =
         homeSidebarSelection(
             selectedChannelId = selectedChannelId,
@@ -1608,6 +1610,7 @@ internal fun SlockStructuralHomeShell(
                 }
             }
             }
+            ServerSwitcherAvatarPrewarmSurface(serverSwitcherAvatarPainters)
             if (serverSwitcherExpanded) {
                 // task #436: both home popovers ride the shared floating-overlay
                 // infrastructure (touch-guard barrier + tap-outside dismiss) instead
@@ -1619,6 +1622,7 @@ internal fun SlockStructuralHomeShell(
                 ) { _ ->
                     ServerSwitcherPanel(
                         servers,
+                        serverSwitcherAvatarPainters,
                         currentServerId,
                         pendingServerId,
                         prefersChineseCommunity,
@@ -3031,6 +3035,7 @@ internal fun HomeInlineErrorCard(
 @Composable
 private fun ServerSwitcherPanel(
     servers: List<SlockServerSwitcherItem>,
+    avatarPainters: Map<String, AsyncImagePainter>,
     currentServerId: String,
     pendingServerId: String?,
     prefersChineseCommunity: Boolean,
@@ -3181,6 +3186,7 @@ private fun ServerSwitcherPanel(
                         } else {
                             ServerSwitcherRow(
                                 server,
+                                avatarPainters[server.id],
                                 server.id == currentServerId,
                                 server.id == pendingServerId,
                                 dragHandleVisible = order.size > 1,
@@ -3212,6 +3218,7 @@ private fun ServerSwitcherPanel(
                     serversById[active]?.let { server ->
                         ServerSwitcherRow(
                             server,
+                            avatarPainters[server.id],
                             server.id == currentServerId,
                             server.id == pendingServerId,
                             dragHandleVisible = true,
@@ -3264,6 +3271,7 @@ private fun HardShadowPanel(
 @Composable
 private fun ServerSwitcherRow(
     server: SlockServerSwitcherItem,
+    avatarPainter: AsyncImagePainter?,
     selected: Boolean,
     pending: Boolean,
     dragHandleVisible: Boolean = false,
@@ -3295,7 +3303,7 @@ private fun ServerSwitcherRow(
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
-        ServerSwitcherAvatarTile(server)
+        ServerSwitcherAvatarTile(server, avatarPainter)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(server.name, style = SlockType.Button, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
@@ -3323,7 +3331,10 @@ private fun ServerSwitcherRow(
 }
 
 @Composable
-private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
+private fun ServerSwitcherAvatarTile(
+    server: SlockServerSwitcherItem,
+    avatarPainter: AsyncImagePainter?
+) {
     val presentation = server.toServerSwitcherAvatarPresentation()
     Box(
         modifier =
@@ -3346,9 +3357,11 @@ private fun ServerSwitcherAvatarTile(server: SlockServerSwitcherItem) {
             maxLines = 1,
             textAlign = TextAlign.Center
         )
-        presentation.avatarWireValue?.let { avatarUrl ->
-            SlockAvatarHttpImage(
-                source = avatarUrl,
+        if (presentation.avatarWireValue != null && avatarPainter != null) {
+            Image(
+                painter = avatarPainter,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -3365,6 +3378,43 @@ internal fun SlockServerSwitcherItem.toServerSwitcherAvatarPresentation(): Serve
         avatarWireValue = avatarUrl?.takeIf { it.isNotBlank() },
         fallbackLabel = name.take(1).uppercase()
     )
+
+@Composable
+private fun rememberServerSwitcherAvatarPainters(
+    servers: List<SlockServerSwitcherItem>
+): Map<String, AsyncImagePainter> {
+    val painters = linkedMapOf<String, AsyncImagePainter>()
+    servers.forEach { server ->
+        val source = server.toServerSwitcherAvatarPresentation().avatarWireValue ?: return@forEach
+        key(server.id, source) {
+            painters[server.id] = rememberSlockAvatarHttpPainter(source)
+        }
+    }
+    return painters
+}
+
+@Composable
+private fun ServerSwitcherAvatarPrewarmSurface(
+    avatarPainters: Map<String, AsyncImagePainter>
+) {
+    if (avatarPainters.isEmpty()) return
+    Box(
+        modifier =
+            Modifier
+                .size(1.dp)
+                .alpha(0f)
+                .clipToBounds()
+    ) {
+        avatarPainters.values.forEach { painter ->
+            Image(
+                painter = painter,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+    }
+}
 
 @Composable
 private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
@@ -4309,6 +4359,17 @@ private fun SlockAvatarHttpImage(
     // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
     // once the fetch completes. We therefore render Image unconditionally
     // and the default app avatar underneath remains visible when loading fails.
+    val painter = rememberSlockAvatarHttpPainter(source)
+    Image(
+        painter = painter,
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.FillBounds
+    )
+}
+
+@Composable
+private fun rememberSlockAvatarHttpPainter(source: String): AsyncImagePainter {
     val fallbackSource =
         remember(source) {
             source.appAvatarApiFallbackUrl(
@@ -4327,12 +4388,7 @@ private fun SlockAvatarHttpImage(
             activeSource = fallbackSource
         }
     }
-    Image(
-        painter = painter,
-        contentDescription = null,
-        modifier = modifier,
-        contentScale = ContentScale.FillBounds
-    )
+    return painter
 }
 
 @Composable
