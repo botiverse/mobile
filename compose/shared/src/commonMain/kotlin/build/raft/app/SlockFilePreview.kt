@@ -24,6 +24,7 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.markdown.SlockMarkdownBody
 import build.raft.app.model.MemberId
 import build.raft.app.model.SlockWorkspaceFilePreview
+import build.raft.app.network.binaryDownloadUrlDiagnostics
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -422,6 +423,16 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
     }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
+        if (
+            payload.source == SlockFilePreviewSourceThreadAttachment &&
+            payload.kind == "loading" &&
+            payload.requestedKind == "image"
+        ) {
+            bridge.log(
+                "file_preview_image_resolve status=start attachment=${payload.attachmentId.take(8)} " +
+                    "kind=${payload.kind} thumbnail=${payload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+            )
+        }
         val nextPayload =
             when (payload.source) {
                 SlockFilePreviewSourceThreadAttachment ->
@@ -432,6 +443,14 @@ private fun SlockFilePreviewStandalonePageContent() {
         }
         if (nextPayload != null) {
             payload = nextPayload
+            if (nextPayload.source == SlockFilePreviewSourceThreadAttachment && nextPayload.requestedKind == "image") {
+                bridge.log(
+                    "file_preview_image_resolve status=committed attachment=${nextPayload.attachmentId.take(8)} " +
+                        "kind=${nextPayload.kind} error=${nextPayload.error ?: "none"} " +
+                        "primary=${nextPayload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
+                        "fallback=${nextPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+                )
+            }
             if (
                 nextPayload.source == SlockFilePreviewSourceThreadAttachment &&
                 nextPayload.attachmentId.isNotBlank() &&
@@ -446,6 +465,15 @@ private fun SlockFilePreviewStandalonePageContent() {
     LaunchedEffect(payload.commentsInitiallyOpen, payload.attachmentId, payload.source) {
         if (payload.commentsInitiallyOpen && attachmentCommentsState == null) {
             openAttachmentComments()
+        }
+    }
+    LaunchedEffect(payload.kind, payload.requestedKind, payload.attachmentId, payload.imageUrl) {
+        if (payload.shouldRenderImagePreview()) {
+            bridge.log(
+                "file_preview_image_render attachment=${payload.attachmentId.take(8)} kind=${payload.kind} " +
+                    "primary=${payload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
+                    "fallback=${payload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+            )
         }
     }
     val canOpenWith = canOpenPayloadWithExternalViewer(payload)
@@ -1880,6 +1908,24 @@ internal fun SlockFilePreviewPayloadContent(
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
+    if (payload.kind == "loading" && payload.shouldRenderImagePreview()) {
+        SlockFilePreviewImageGallerySurface(
+            payload = payload,
+            onImageGalleryIndexChange = onImageGalleryIndexChange,
+            modifier = modifier.fillMaxSize()
+        ) {
+            SlockFilePreviewImagePanel(
+                source = payload.imageUrl,
+                fallbackSource = payload.currentImageThumbnailUrl(),
+                contentDescription = payload.name.ifBlank { payload.path },
+                modifier = Modifier.fillMaxSize(),
+                backgroundColor = SlockColor.SurfaceWhite,
+                borderWidth = 0.dp,
+                zoomable = true
+            )
+        }
+        return
+    }
     when (payload.kind) {
         "markdown" ->
             SlockFilePreviewDownloadStatusOverlay(
@@ -1941,6 +1987,7 @@ internal fun SlockFilePreviewPayloadContent(
                     ) {
                         SlockFilePreviewImagePanel(
                             source = payload.imageUrl,
+                            fallbackSource = payload.currentImageThumbnailUrl(),
                             contentDescription = payload.name.ifBlank { payload.path },
                             modifier = Modifier.fillMaxSize(),
                             backgroundColor = SlockColor.SurfaceWhite,
@@ -3320,6 +3367,7 @@ internal fun SlockFilePreviewTextPanel(
 @Composable
 internal fun SlockFilePreviewImagePanel(
     source: String?,
+    fallbackSource: String? = null,
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
@@ -3329,6 +3377,7 @@ internal fun SlockFilePreviewImagePanel(
 ) {
     SlockAspectFitImagePreviewSurface(
         source = source,
+        fallbackSource = fallbackSource,
         contentDescription = contentDescription,
         placeholderLabel = placeholderLabel,
         modifier = modifier.fillMaxWidth(),
@@ -3338,6 +3387,18 @@ internal fun SlockFilePreviewImagePanel(
         showLoadingIndicator = true
     )
 }
+
+internal fun SlockFilePreviewPayload.shouldRenderImagePreview(): Boolean =
+    kind == "image" || (kind == "loading" && requestedKind == "image" && !imageUrl.isNullOrBlank())
+
+internal fun SlockFilePreviewPayload.currentImageThumbnailUrl(): String? =
+    imageGallery
+        .takeIf { it.isNotEmpty() }
+        ?.let { gallery -> gallery[imageGalleryIndex.coerceIn(gallery.indices)] }
+        ?.thumbnailUrl
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: imageUrl?.trim()?.takeIf { kind == "loading" && requestedKind == "image" && it.isNotBlank() }
 
 @Composable
 internal fun SlockFilePreviewMessage(
