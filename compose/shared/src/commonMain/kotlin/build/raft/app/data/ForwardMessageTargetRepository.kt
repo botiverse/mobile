@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.messageStreamChannelId
 import kotlinx.coroutines.CancellationException
@@ -72,6 +74,7 @@ class RealForwardMessageTargetRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val channelRepository: ChannelRepository,
+    private val memberRepository: MemberRepository,
     private val warningLogger: (String) -> Unit = {}
 ) : ForwardMessageTargetRepository {
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> {
@@ -164,10 +167,12 @@ class RealForwardMessageTargetRepository(
         val max = limit.coerceAtLeast(1)
         val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
         val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
+        val members = memberRepository.getMembers(DataRequestPriority.Foreground, serverId).contentOrEmpty { it.members }
 
         return fallbackForwardMessageTargets(
             directMessages = directMessages,
             channels = channels,
+            members = members,
             query = query,
             limit = max
         )
@@ -262,22 +267,56 @@ private fun HomeChannelRow.toSearchForwardTarget(): ForwardMessageTarget? {
 internal fun fallbackForwardMessageTargets(
     directMessages: List<HomeDirectMessageRow>,
     channels: List<HomeChannelRow>,
+    members: List<MemberProfile> = emptyList(),
     query: String,
     limit: Int
 ): List<ForwardMessageTarget> {
+    val existingDmMemberIds = directMessages.mapNotNull { it.presenceMemberId }.toSet()
     return (
         directMessages.mapNotNull { it.toRecentForwardTarget() } +
-            channels.mapNotNull { it.toSearchForwardTarget() }
+            channels.mapNotNull { it.toSearchForwardTarget() } +
+            members
+                .filterNot { it.id in existingDmMemberIds }
+                .mapNotNull { it.toForwardMemberCandidate() }
         )
         .filter { it.matchesForwardQuery(query) }
         .dedupeForwardTargets()
         .take(limit.coerceAtLeast(1))
 }
 
+private fun MemberProfile.toForwardMemberCandidate(): ForwardMessageTarget? {
+    val targetKind =
+        when (kind) {
+            MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
+            MemberKind.Agent -> ForwardMessageTargetKind.AgentDirectMessageCandidate
+            MemberKind.System -> return null
+        }
+    val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
+    return ForwardMessageTarget(
+        kind = targetKind,
+        id = id.value,
+        title = title,
+        subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        avatarLabel = avatarLabel.ifBlank { title.take(1).uppercase() },
+        memberId = id,
+        dmExists = false,
+        canForwardNow = false,
+        requiredAction = ForwardMessageTargetRequiredAction.CreateDirectMessage
+    )
+}
+
 private fun ForwardMessageTarget.matchesForwardQuery(query: String): Boolean {
     val cleanQuery = query.trim()
     if (cleanQuery.isBlank()) return true
-    return listOf(title, id, memberId?.value.orEmpty(), channelId?.value.orEmpty())
+    val identityValues = listOf(title, id, memberId?.value.orEmpty(), channelId?.value.orEmpty())
+    val searchableValues =
+        when (kind) {
+            ForwardMessageTargetKind.HumanDirectMessageCandidate,
+            ForwardMessageTargetKind.AgentDirectMessageCandidate -> identityValues + subtitle
+            else -> identityValues
+        }
+    return searchableValues
         .any { value -> value.contains(cleanQuery, ignoreCase = true) }
 }
 

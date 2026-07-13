@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -135,5 +137,73 @@ class ForwardMessageTargetRepositoryTest {
 
         assertEquals(1, targets.size)
         assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets.single().kind)
+    }
+
+    @Test
+    fun fallbackSearchAddsHumanAndAgentCandidatesWithoutDuplicatingExistingDms() {
+        val targets =
+            fallbackForwardMessageTargets(
+                directMessages =
+                    listOf(
+                        HomeDirectMessageRow(
+                            threadId = ThreadId("dm-ada"),
+                            channelId = ChannelId("dm-ada"),
+                            name = "Ada",
+                            presenceMemberId = MemberId("user-ada")
+                        )
+                    ),
+                channels = emptyList(),
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("user-ada"),
+                            displayName = "Ada",
+                            handle = "ada",
+                            kind = MemberKind.Human
+                        ),
+                        MemberProfile(
+                            id = MemberId("agent-build"),
+                            displayName = "Build Agent",
+                            handle = "build-agent",
+                            kind = MemberKind.Agent
+                        ),
+                        MemberProfile(
+                            id = MemberId("system-1"),
+                            displayName = "System",
+                            handle = "system",
+                            kind = MemberKind.System
+                        )
+                    ),
+                query = "a",
+                limit = 10
+            )
+
+        assertEquals(listOf("dm-ada", "agent-build"), targets.map { it.id })
+        assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets[0].kind)
+        assertEquals(ForwardMessageTargetKind.AgentDirectMessageCandidate, targets[1].kind)
+        assertEquals(ForwardMessageTargetRequiredAction.CreateDirectMessage, targets[1].requiredAction)
+    }
+
+    @Test
+    fun fallbackSearchMatchesMemberHandleWhenDisplayNameDoesNotMatch() {
+        val targets =
+            fallbackForwardMessageTargets(
+                directMessages = emptyList(),
+                channels = emptyList(),
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-build"),
+                            displayName = "Build Agent",
+                            handle = "release-bot",
+                            kind = MemberKind.Agent
+                        )
+                    ),
+                query = "release-bot",
+                limit = 10
+            )
+
+        assertEquals(listOf("agent-build"), targets.map { it.id })
+        assertEquals("@release-bot", targets.single().subtitle)
     }
 }

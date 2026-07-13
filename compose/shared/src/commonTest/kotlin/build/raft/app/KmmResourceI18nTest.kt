@@ -248,6 +248,8 @@ class KmmResourceI18nTest {
                 MR.strings.thread_action_card_scope_identity,
                 MR.strings.thread_comments_title,
                 MR.strings.thread_forward_destinations,
+                MR.strings.thread_forward_destination,
+                MR.strings.thread_forward_add_note,
                 MR.strings.thread_share_preview_title,
                 MR.strings.thread_error_reason_auth,
                 MR.strings.thread_error_reason_permission,
@@ -275,7 +277,9 @@ class KmmResourceI18nTest {
                 MR.strings.thread_composer_placeholder_channel.format(listOf("design")),
                 MR.strings.thread_members_title.format(listOf(3)),
                 MR.strings.thread_action_card_title_add_members.format(listOf(2, "#design")),
-                MR.strings.thread_forward_selected.format(listOf(2))
+                MR.strings.thread_forward_selected.format(listOf(2)),
+                MR.strings.thread_forward_messages_selected.format(listOf(2)),
+                MR.strings.thread_forward_destinations_selected.format(listOf(2))
             )
         formattedResources.forEach { desc ->
             assertTrue(

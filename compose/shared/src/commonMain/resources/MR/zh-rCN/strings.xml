@@ -465,6 +465,10 @@
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>
     <string name="thread_forward_sending">发送中</string>
     <string name="thread_forward_destinations">目标位置</string>
+    <string name="thread_forward_destination">目标位置</string>
+    <string name="thread_forward_messages_selected">已选择 %1$d 条消息</string>
+    <string name="thread_forward_destinations_selected">已选择 %1$d 个目标</string>
+    <string name="thread_forward_add_note">添加备注</string>
     <string name="thread_forward_search_results">搜索结果</string>
     <string name="thread_forward_loading_targets">正在加载目标</string>
     <string name="thread_forward_targets_unavailable">目标不可用</string>
