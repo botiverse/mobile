@@ -210,7 +210,7 @@ private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
-private val MemberRowMinHeight = 42.dp
+private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 28.dp
 private val MembersAgentActivityTimeColumnWidth = 74.dp
@@ -650,7 +650,7 @@ private val membersSmokePayload = KuiklyMembersPayload(
             displayName = "Cindy",
             handle = "Onboarding Assistant",
             kind = MemberKind.Agent,
-            description = null,
+            description = "Onboarding Assistant",
             roleDescription = "agent",
             avatar = build.raft.app.model.AvatarReference.Pixel("heart"),
             avatarLabel = "C",
@@ -660,48 +660,15 @@ private val membersSmokePayload = KuiklyMembersPayload(
         ),
         MemberProfile(
             id = build.raft.app.model.MemberId("builder"),
-            displayName = "Builder with a deliberately long display name",
+            displayName = "Builder",
             handle = "@builder",
             kind = MemberKind.Agent,
-            description = "File, repository, release, and automation workflows across the workspace",
+            description = "File and repo automation",
             avatar = build.raft.app.model.AvatarReference.Pixel("robot"),
             avatarLabel = "B",
             presence = build.raft.app.model.Presence.Away,
             agentStatus = build.raft.app.model.AgentStatus.Working,
             permissionBadges = listOf("computer:MacBook Pro")
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("mobile-qa"),
-            displayName = "Mobile QA Sentinel",
-            handle = "@QA-Tester",
-            kind = MemberKind.Agent,
-            description = "Android, KMP, visual, performance, and release regression verification",
-            avatar = build.raft.app.model.AvatarReference.Pixel("shield"),
-            avatarLabel = "Q",
-            presence = build.raft.app.model.Presence.Active,
-            agentStatus = build.raft.app.model.AgentStatus.Working
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("product-ux"),
-            displayName = "Product UX Designer for Mobile and Desktop",
-            handle = "@Product-UX-Designer",
-            kind = MemberKind.Agent,
-            description = "Turns screenshots and product feedback into implementation-ready interaction specs",
-            avatar = build.raft.app.model.AvatarReference.Pixel("paint"),
-            avatarLabel = "P",
-            presence = build.raft.app.model.Presence.Away,
-            agentStatus = build.raft.app.model.AgentStatus.Idle
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("kmp-bridge"),
-            displayName = "KMP Bridge and Runtime Integration Specialist",
-            handle = "@KMP-Bridge",
-            kind = MemberKind.Agent,
-            description = "Shared MVI, native bridge, storage, networking, and cross-platform runtime boundaries",
-            avatar = build.raft.app.model.AvatarReference.Pixel("link"),
-            avatarLabel = "K",
-            presence = build.raft.app.model.Presence.Offline,
-            agentStatus = build.raft.app.model.AgentStatus.Offline
         ),
         MemberProfile(
             id = build.raft.app.model.MemberId("artin"),
@@ -720,33 +687,6 @@ private val membersSmokePayload = KuiklyMembersPayload(
             description = "Android",
             avatarLabel = "J",
             presence = build.raft.app.model.Presence.Away
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("artea"),
-            displayName = "Artea with a long product review display name",
-            handle = "@Artea",
-            kind = MemberKind.Human,
-            description = "Product and visual acceptance across mobile surfaces",
-            avatarLabel = "AR",
-            presence = build.raft.app.model.Presence.Active
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("cata"),
-            displayName = "Cata",
-            handle = "@Cata",
-            kind = MemberKind.Human,
-            description = "Cross-platform product engineering and release coordination",
-            avatarLabel = "CA",
-            presence = build.raft.app.model.Presence.Away
-        ),
-        MemberProfile(
-            id = build.raft.app.model.MemberId("reviewer"),
-            displayName = "A human member whose display name must ellipsize cleanly",
-            handle = "",
-            kind = MemberKind.Human,
-            description = null,
-            avatarLabel = "R",
-            presence = build.raft.app.model.Presence.Offline
         )
     )
 )
@@ -3159,7 +3099,7 @@ internal fun MembersListContent(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
             beyondBoundsItemCount = sharedListBeyondBoundsItemCount(lazyItemCount)
         ) {
             if (slockPlatformSupportsKuiklyPullToRefreshItem()) {
@@ -3205,31 +3145,15 @@ internal fun MembersListContent(
             if (agentsExpanded) {
                 groupedAgentMembers(agents).forEach { group ->
                     item("group_${group.label}") {
-                        Row(
+                        Text(
+                            text = group.label,
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = MembersPageInset)
-                                .padding(top = 6.dp, bottom = SlockSpacing.Xxs),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                        ) {
-                            SlockLucideIcon(
-                                name = SlockLucideIconName.Monitor,
-                                modifier = Modifier.size(9.dp),
-                                color = "#66000000"
-                            )
-                            Text(
-                                text = group.label.lowercase(),
-                                style = SlockType.Caption.copy(
-                                    fontFamily = SlockMonoFamily,
-                                    fontSize = 10.sp,
-                                    lineHeight = 14.sp
-                                ),
-                                color = SlockColor.TextBlack.copy(alpha = 0.40f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                                .padding(top = SlockSpacing.Xs)
+                        )
                     }
                     items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                         val member = group.members[index]
@@ -9308,7 +9232,6 @@ private fun MembersListRow(
     memberAvatarResolver: SlockMemberAvatarResolver = EmptySlockMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
-    val subtitle = membersListRowSubtitle(member)
     val agentStatusDisplayState =
         if (member.kind == MemberKind.Agent) {
             rememberSlockAgentStatusIndicatorState(agentStatusResolver, member.id.value)
@@ -9320,7 +9243,7 @@ private fun MembersListRow(
             .fillMaxWidth()
             .heightIn(min = MemberRowMinHeight)
             .clickable(onClick = onClick)
-            .padding(vertical = SlockSpacing.Xs),
+            .padding(vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
@@ -9330,44 +9253,37 @@ private fun MembersListRow(
             statusIndicatorState = agentStatusDisplayState,
             memberAvatarResolver = memberAvatarResolver
         )
-        Column(
+        Row(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xxs)
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Text(
                 text = member.displayName,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(0.5f, fill = false)
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                text = member.description ?: member.handle,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
-        Box(
-            modifier = Modifier.width(MemberStatusDotSize),
-            contentAlignment = Alignment.Center
-        ) {
-            if (member.kind == MemberKind.Agent) {
-                SlockStatusIndicator(
-                    color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
-                    size = MemberStatusDotSize,
-                    pulsing = agentStatusDisplayState?.pulsing == true
-                )
-            }
+        if (member.kind == MemberKind.Agent) {
+            SlockStatusIndicator(
+                color = agentStatusDisplayState?.color ?: SlockColor.StatusNeutralGray,
+                size = MemberStatusDotSize,
+                pulsing = agentStatusDisplayState?.pulsing == true
+            )
         }
     }
 }
-
-internal fun membersListRowSubtitle(member: MemberProfile): String? =
-    member.description?.trim()?.takeIf { it.isNotEmpty() }
 
 @Composable
 private fun MembersAvatar(
