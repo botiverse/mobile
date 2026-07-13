@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.Message
 import build.raft.app.model.MessageNew
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -203,7 +204,7 @@ class SharedHomeShellStore(
                     allowLocalPatch = current.home.allowsLocalActivityPatch(event)
                 )
             )
-        } else if (current.primarySurfaceVisible) {
+        } else if (event is PerReceiverReadStateChanged || current.primarySurfaceVisible) {
             dispatchActivity(
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(
                     event = event,
