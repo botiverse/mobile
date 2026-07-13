@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-07-13 22:09:03 UTC
+Generated: 2026-07-13 22:14:20 UTC
 Latest run: c1d1e21-20260713220645
 Latest commit: c1d1e21-20260713220645
 Commit subject: Open image annotation before composer upload (#854)
 Providers: react vs android, react vs ios, android vs ios
 Summary: total 95, same 0, pass 0, basic-pass 1, different 89, missing 5
-AI analysis: ready 69 / total 95, pending 26
+AI analysis: ready 90 / total 95, pending 5
 Visual coverage matrix: active 96 / total 115, pending 16, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

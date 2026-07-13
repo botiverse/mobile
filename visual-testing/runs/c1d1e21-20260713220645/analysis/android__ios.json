@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-13T22:09:01.694Z",
+  "generatedAt": "2026-07-13T22:14:18.382Z",
   "baseline": "android",
   "current": "ios",
   "comparison": "android__ios",
@@ -8,8 +8,8 @@
   "analysisModel": "MiniMax-M3",
   "summary": {
     "total": 95,
-    "ready": 73,
-    "pending": 22
+    "ready": 87,
+    "pending": 8
   },
   "cases": [
     {
@@ -250,15 +250,32 @@
     },
     {
       "id": "components.ui.status-dot.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0000000007fc0ffe03fc07fe03fc87fe0000fffebffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffcfffefffc0000fff00001",
-      "generatedAt": "2026-07-13T22:09:00.023Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:25.704Z",
+      "severity": "low",
+      "summary": [
+        "Header text 'Raft UI Status Dot' and caption text appear identical in size, weight, and color across both ends.",
+        "Four colored status dots (green, orange, gray, blue) match in color, size, and spacing on both sides.",
+        "Pink 'Waiting pulse' dot matches in color and shape; label text 'Waiting pulse' matches in font, weight, and color.",
+        "Badge in top-right differs only in label content ('ANDROID' vs 'IOS'), which is intentional and not a visual divergence.",
+        "Pixel mismatch of 0.30% is within the 2% tolerance and attributable to minor anti-aliasing differences; no structural, spacing, alignment, color, shape, missing-element, clipping, state-indicator, or component-bounds divergences observed."
+      ],
+      "likelyCauses": [
+        "Minor rendering anti-aliasing differences between Android and iOS text/edge rasterization.",
+        "Sub-px rounding when the iOS screenshot (1170×2532) is downscaled to the comparison canvas."
+      ],
+      "suggestedOwner": "design-system",
+      "suggestedFixes": [
+        "No fix required; the comparison passes tolerance. If stricter parity is desired, normalize font hinting settings or apply identical stroke widths to the dot shapes in the Kuikly cross-platform style definition.",
+        "Confirm the 'ANDROID'/'IOS' corner badges are intentionally platform-labeled and excluded from visual diff baselines."
+      ],
+      "intentional": [
+        "Platform-specific badge label ('ANDROID' on Android end, 'IOS' on iOS end) is an intentional identification tag, not a UI divergence."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.002999216861776066
     },
     {
@@ -356,15 +373,32 @@
     },
     {
       "id": "components.ui.slug-input.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ff83ffc0000000200000002000000020068009200000002fffcfffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe0000fff80fff",
-      "generatedAt": "2026-07-13T22:09:00.104Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:25.788Z",
+      "severity": "low",
+      "summary": [
+        "Typography weight differs: iOS placeholder/input text appears lighter/thinner than Android for both 'design-lab' and 'partner-workspace' fields.",
+        "Input field border weight: iOS active/focused field shows a thicker, darker black border compared to Android's thinner outline.",
+        "Both slug inputs appear to be in identical states (active focused vs. inactive placeholder) on both platforms, with no missing or extra elements.",
+        "Vertical spacing between the two input fields is proportionally consistent between platforms (no cropping or clipping observed).",
+        "Header label 'Raft UI Slug Input' and platform badges (ANDROID/IOS) render identically in position and styling."
+      ],
+      "likelyCauses": [
+        "Kuikly text rendering falls back to different system fonts on iOS (likely SF/Helvetica) vs Android (likely Roboto), producing lighter glyph weights on iOS.",
+        "Border styling on the input component may resolve to platform-default focus ring thickness instead of a unified token."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Force an explicit font-family (e.g., 'Inter' or specified design-system font) on the slug input to equalize weights across Android and iOS.",
+        "Define a shared border-width token for the input's focused/active state and apply it consistently in the Kuikly render layer.",
+        "Verify placeholder color value is identical on both platforms (currently appears consistent, confirm token).",
+        "Add a cross-platform snapshot test asserting font weight and border thickness parity for the slug input states."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.008409284238668158
     },
     {
@@ -779,15 +813,37 @@
     },
     {
       "id": "components.thread.composer.channel-suggestions",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03f807fc00010002000100020ff90ffa00010002000100020ff10ff20001000200050002fffdfffefffdfffefffdfffe0001fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffe0000fffa1fff",
-      "generatedAt": "2026-07-13T22:09:00.371Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:26.066Z",
+      "severity": "low",
+      "summary": [
+        "Text appears slightly larger and heavier on iOS side compared to Android across both panels (channel labels and composer area)",
+        "Top selected channel row uses a lighter pink fill on iOS versus a more saturated/hotter pink on Android",
+        "Selected row text on iOS appears slightly more transparent/muted than Android",
+        "The highlighted 'Send' (paper-plane) button on iOS uses a softer pink than Android's more saturated pink",
+        "Overall horizontal spacing inside the channel suggestion list looks marginally tighter on iOS"
+      ],
+      "likelyCauses": [
+        "Different platform default font metrics (iOS SF vs Android Roboto) not fully normalized by Kuikly's text engine",
+        "Platform-specific color token mapping where the selection/accent pinks resolve to slightly different RGB values per OS",
+        "Density/scaling differences between Android (1026x960 viewport) and iOS (1170x2532 viewport) producing minor sub-pixel text rendering differences",
+        "Slight rounding variance in spacing constants across the two Kuikly renderers"
+      ],
+      "suggestedOwner": "kuikly-rendering",
+      "suggestedFixes": [
+        "Normalize the selection pink and accent pink tokens to a single shared color constant across Android and iOS renderers",
+        "Apply explicit text style (size/weight/letter-spacing) to channel-suggestion rows so platform font fallback cannot drift",
+        "Use density-independent dp/pt units consistently for row paddings and item spacing",
+        "Add a visual-regression baseline snapshot for the channel-suggestions component on both platforms to catch future drifts",
+        "Verify the highlighted send button background uses the same token (e.g., color.primary/accent) on both ends"
+      ],
+      "intentional": [
+        "Identical component structure, order, and icons on both platforms — only sub-pixel color and font-metric drift observed"
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04271040088575628
     },
     {
@@ -1061,15 +1117,31 @@
     },
     {
       "id": "components.thread.forward-modal",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc1ffc03fe03fe007e007e000000000000000000000000dffe5ffe83fe03fe80fe00fe87fe07fe83fe07fe9ffe1ffe807e007e9bfe0bfe87fe07fe83fe03fedffe5ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-13T22:09:00.555Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:26.332Z",
+      "severity": "low",
+      "summary": [
+        "Android destination row icons (# and chat glyph) render with noticeably thicker/bolder strokes and fill weight than the iOS equivalents, which appear lighter and thinner.",
+        "iOS search input border is thinner (hairline) compared to the heavier border on Android.",
+        "iOS avatar tile (Cindy) appears slightly smaller relative to row height than on Android."
+      ],
+      "likelyCauses": [
+        "Platform-default font weight/icon stroke differences not normalized in Kuikly rendering layer.",
+        "Missing density-aware stroke widths or icon weight tokens applied per platform."
+      ],
+      "suggestedOwner": "mobile-platform",
+      "suggestedFixes": [
+        "Normalize icon stroke weight across Android and iOS in the shared Kuikly icon component.",
+        "Apply consistent border thickness token to the Search input on both platforms.",
+        "Verify avatar tile sizing uses a shared dp/pt-based token rather than platform defaults."
+      ],
+      "intentional": [
+        "Forward flow structural difference (Android single modal with inline destinations vs iOS search-targets step) is an intentional mobile UX adaptation and is not a defect."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.04666322355895813
     },
     {
@@ -1139,15 +1211,35 @@
     },
     {
       "id": "components.home.notification-center.states",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:07fc07fefffe7ffefffefffe80020006800202428002000280020002c07240728012001280120012a0124012e07240728002000280060006fffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe00007ffefffe7fff",
-      "generatedAt": "2026-07-13T22:09:00.631Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:26.423Z",
+      "severity": "medium",
+      "summary": [
+        "The notification card is positioned higher (further from the top) on the iOS render compared to the Android render, leaving a large empty gap between the header and the card on iOS.",
+        "The Android render has a cream/beige background fill, while the iOS render has a white background, increasing empty-page mismatch.",
+        "Both notification items and their internal layout (icon, title, body, View/Dismiss and Open/Dismiss buttons) are visually identical in content, color, and shape across platforms.",
+        "Typography weight, size, and color for 'NOTIFICATIONS', '2 items', titles, bodies, and button labels appear isomorphic between Android and iOS."
+      ],
+      "likelyCauses": [
+        "iOS render is missing the page background fill color applied on Android (theming/background token not propagated to iOS).",
+        "iOS page is not applying the same top padding/margin before the notification card, suggesting a platform-specific safe-area or container padding difference.",
+        "Differences in raw canvas size (390×844 vs 1170×2532) and crop settings (iOS crop is null) mean the iOS view extends further down with empty space, inflating the pixel mismatch."
+      ],
+      "suggestedOwner": "Kuikly platform / iOS adapter owner (notification center component)",
+      "suggestedFixes": [
+        "Align the iOS render's top padding/inset for the notification card with the Android version so the card sits at the same relative position.",
+        "Ensure the page background color token is applied on iOS to match the Android cream background.",
+        "Normalize viewport crop/canvas sizing so both platforms are compared in the same coordinate space before pixel-diff.",
+        "Verify Kuikly iOS adapter renders the same container/box height so the card isn't pushed up by an extra spacer or safe-area inset."
+      ],
+      "intentional": [
+        "Same notification content, colors, button styles, and typography between platforms.",
+        "Same icon glyphs and accent color for the alert and info indicators."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6569493390583439
     },
     {
@@ -1814,15 +1906,36 @@
     },
     {
       "id": "components.settings.administration.admins",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffe87fe8ffe80fe80ff1ffe1fff89f70bf7801200128002000680020002bff23ff28ff20ff283f203f2800200028006000787f207f786020606820202068e02020280060007fffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffefffffffeffff7ffc7ffeffffffff",
-      "generatedAt": "2026-07-13T22:09:01.131Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:28.295Z",
+      "severity": "low",
+      "summary": [
+        "iOS Profile card vertical shadow offset appears further down/right compared to Android, producing a more pronounced drop-shadow on iOS.",
+        "iOS Delete Server card border (right and bottom edges) is noticeably thicker/darker than on Android, with a heavier shadow.",
+        "iOS Save Profile button has a more saturated pink fill and slightly stronger drop-shadow than the paler pink button on Android.",
+        "iOS Danger Zone warning icon and label appear slightly darker/heavier than on Android.",
+        "Overall layout, spacing, typography sizes, and component bounds are nearly identical between the two ends; differences are limited to shadow weight, border weight, and disabled-button color saturation."
+      ],
+      "likelyCauses": [
+        "Platform-default shadow tokens differ between Android and iOS in the Kuikly render layer (elevation/shadow mapping).",
+        "Border/stroke thickness tokens may not be unified across platforms (Android uses thinner Material-style strokes, iOS uses slightly heavier rendering).",
+        "Disabled-state button background uses a slightly different token between platforms, causing the Save Profile pink to render more saturated on iOS."
+      ],
+      "suggestedOwner": "Kuikly design-system / cross-platform theming owner",
+      "suggestedFixes": [
+        "Unify elevation/shadow tokens so iOS and Android produce visually equivalent card and button shadows.",
+        "Align border-stroke weights across platforms (or apply per-platform overrides that match in visual weight).",
+        "Normalize the disabled button background color token so Save Profile renders with the same pink saturation on both platforms.",
+        "Re-run visual diff after token alignment; expect pixel mismatch to drop below 5%.",
+        "Confirm Danger Zone icon/label color weight is governed by a shared token rather than platform default."
+      ],
+      "intentional": [
+        "Resolution scaling differences (390x844 vs 1170x2532) are expected and not a defect."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16720169859980283
     },
     {
@@ -2081,15 +2194,37 @@
     },
     {
       "id": "components.settings.appearance.page",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:0ffc0ffc87fe07fe80fe01fe06060606801200160012001281f201f28072007280020002800200028032003280020002a00220028002000280064006fffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe00004000fffa3fff",
-      "generatedAt": "2026-07-13T22:09:01.309Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:31.766Z",
+      "severity": "low",
+      "summary": [
+        "Typography rendering differs slightly between Android (baseline, 390×844) and iOS (current, 1170×2532); pixel mismatch 16.31%.",
+        "Body text and labels appear thinner/lighter on iOS vs Android (likely font hinting/weight rendering difference).",
+        "Appearance card is vertically shorter on iOS — Short/Medium/Large segmented control sits higher and the Preview block occupies less vertical space.",
+        "Large segment button appears slightly wider on iOS (different horizontal padding/sizing of segmented control).",
+        "Button borders on iOS look marginally thinner (1px vs ~2px on Android)."
+      ],
+      "likelyCauses": [
+        "Default Kuikly font substitution on iOS using SF/system font with different metrics than Android's Roboto.",
+        "Different default line-height/letter-spacing values applied per-platform by the Appearance card style.",
+        "Segmented control component applies platform-specific padding/border thickness on iOS.",
+        "Pixel-density difference: iOS shot at 3x (1170 px) vs Android at 1x raw viewport (390 px), amplifying sub-pixel/antialias mismatches despite ignoreAntialiasing=true."
+      ],
+      "suggestedOwner": "Kuikly cross-platform Appearance/Settings component owner",
+      "suggestedFixes": [
+        "Lock the Appearance card typography to a single cross-platform font token (weight + size + lineHeight + letterSpacing) and disable platform font substitution.",
+        "Define shared spacing tokens for the segmented control (padding-x, border-width) so Small/Medium/Large buttons render identical widths across Android and iOS.",
+        "Normalize card min-height or use flex/auto-layout so the Appearance card and Preview block don't compress on iOS.",
+        "Audit the AppBar header: pin arrow-icon size and title font-size so the 390×844 vs 1170×2532 canvases don't drift in proportions.",
+        "Tighten tolerance to ignore sub-pixel text rendering only after the tokens above are unified; recompute pixelPerfectSimilarity."
+      ],
+      "intentional": [
+        "Platform font-family difference may be acceptable if a design-system rule allows native fonts; current token is undefined."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.1630817839348645
     },
     {
@@ -2194,7 +2329,7 @@
       "id": "screens.members.agent-detail.profile",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.269Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2207,7 +2342,7 @@
       "id": "screens.members.agent-detail.permissions",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.269Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2220,7 +2355,7 @@
       "id": "screens.members.agent-detail.reminders",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.270Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2233,7 +2368,7 @@
       "id": "screens.members.agent-detail.workspace",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.270Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2246,7 +2381,7 @@
       "id": "screens.members.agent-detail.apps",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.270Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2259,7 +2394,7 @@
       "id": "screens.members.agent-detail.activity",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.270Z",
+      "generatedAt": "2026-07-13T22:14:17.891Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2398,15 +2533,35 @@
     },
     {
       "id": "screens.settings.computer-detail",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:1ffc1ffe87bf47ff8007000689060f268007000787ff0dff8fff4fffffffffff81ff81ffffffffffdfffdfffffffffffffffffffffffffff9fffbfffdfffdfffdfff9fffdfffdfff80ff00ff80030003800080018002800380078003c00fc00f8fff8fffefffefffffffffff80ff00ff80ff00ff807f807e807e0070ffffffff",
-      "generatedAt": "2026-07-13T22:09:01.484Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:33.427Z",
+      "severity": "medium",
+      "summary": [
+        "Spacing inside the 'Detected Runtimes' chips is inconsistent: iOS uses a wider horizontal padding around chip text (e.g., 'Antigravity CLI (not installed)', 'OpenCode (not installed)', 'Pi (not installed)'), while Android uses tighter padding.",
+        "iOS applies text truncation/ellipsis on long chips ('Kimi Code (not installe...', 'Copilot CLI (not...'), whereas Android renders the full text without truncation.",
+        "iOS adds spacing after the green 'Connected' status dot before the 'Connected' label, slightly shifting the dot leftward relative to the text compared to Android.",
+        "Agent row on iOS shows an additional 'Online' status indicator with a yellow dot on the right edge; Android omits this status/indicator.",
+        "iOS displays a left margin/indent on the 'NAME', 'DESCRIPTION', 'INFO', and 'AGENTS ON THIS COMPUTER' section headers and on the 'OS', 'Computer Version', 'Detected Runtimes', 'Created' field labels, whereas Android aligns these flush to the left edge."
+      ],
+      "likelyCauses": [
+        "Kuikly iOS renderer applies different default horizontal padding/insets to chip-like Text components than the Android renderer.",
+        "Text-overflow/ellipsis rules differ between Android (no truncation) and iOS (truncates when chip width is constrained).",
+        "iOS row component renders an extra trailing status pill (Online indicator) not present in the Android markup, or the Android side fails to render the same binding.",
+        "Layout container on iOS adds a leading section indent/padding that Android does not apply, suggesting a missing or platform-conditional style override."
+      ],
+      "suggestedOwner": "Kuikly cross-platform layout/styling owner",
+      "suggestedFixes": [
+        "Normalize chip padding: set explicit horizontal padding (e.g., 8dp) on the runtime chip Text/View wrapper on both platforms instead of relying on platform defaults.",
+        "Disable ellipsis on runtime chips or enforce a min-width so full labels ('Antigravity CLI (not installed)', 'Kimi Code (not installed)', 'Copilot CLI (not installed)') render without truncation on iOS.",
+        "Verify the agent row markup on both platforms: ensure the 'Online' status indicator is either rendered on both ends or removed from iOS to match Android; check the Online state binding.",
+        "Remove the leading indent on section headers and field labels on iOS so they align flush-left like Android, or apply the same indent on Android if the indent is intended.",
+        "Audit the Kuikly container padding/margin tokens used on iOS vs Android for this screen to identify the source of the extra indent."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.06480873874238802
     },
     {
@@ -2442,15 +2597,36 @@
     },
     {
       "id": "screens.home.loading",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:3ffc3ffc000000000000000002000000cffecffecffe4ffecffecffecffe4ffec7fec7fe9ffe9ffe9ffe9ffe9ffe9ffe9ffe9ffed3febffec1fec1ff9ffe9ffe9ffe9ffe9ffe9ffefffefffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffefffe7ffe0000fffe0100dfba0000199a20462000fffa1fff",
-      "generatedAt": "2026-07-13T22:09:01.539Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:33.561Z",
+      "severity": "high",
+      "summary": [
+        "Top tab bar is fully visible on Android (yellow background, bold black labels HOME/TASKS/MEMBERS/SETTINGS with HOME tab highlighted yellow) but on iOS the tab bar is rendered as faded/transparent icons with no background fill and labels are barely legible.",
+        "Android shows a yellow server-switcher pill at top with a visible black dropdown caret rendered correctly; iOS pill background and caret appear slightly clipped or shifted.",
+        "iOS bottom tab bar appears to overlap or sit atop content with reduced opacity and no active-state highlighting, while Android shows a clear selected HOME state with yellow fill and bold label.",
+        "List item placeholders (channels & direct messages) on iOS are slightly taller/longer bars compared to Android, indicating row-height or padding drift.",
+        "Section headers (CHANNELS / DIRECT MESSAGES) and trailing sort/menu icons render with similar layout but slightly different vertical spacing between rows on iOS."
+      ],
+      "likelyCauses": [
+        "Kuikly bottom TabBar component not initializing native iOS background/active-state styling (UITabBar appearance not being set, or safe-area inset missing background fill).",
+        "Active-tab highlight (yellow fill + bold weight) is implemented via Android-specific Material theme and not ported to iOS equivalent (UITabBarItem selectedAttributes).",
+        "Tab labels on iOS use a thinner font weight / lower contrast color, possibly defaulting to UIColor.label without an explicit selected-state color token.",
+        "Row height/padding in the channel/DM list uses dp that does not map 1:1 on iOS (density or line-height token mismatch).",
+        "Server-switcher pill relies on a shadow/border style that is being clipped on iOS due to overflow:hidden on the parent container."
+      ],
+      "suggestedOwner": "mobile-platform / Kuikly cross-platform renderer team",
+      "suggestedFixes": [
+        "Audit the bottom TabBar implementation: ensure both platforms consume the same selected/unselected color tokens and that iOS applies the yellow active background + bold weight via UITabBarAppearance / selectedAppearance.",
+        "Set explicit backgroundColor on the iOS tab bar container (including safe-area region) instead of relying on translucent material.",
+        "Normalize row heights and vertical padding in the channel/DM list to a shared dp token; verify with pixelRatio tolerance.",
+        "Add a regression visual test for the server-switcher pill so iOS overflow clipping and caret positioning are caught.",
+        "Compare font-family/weight mapping between Android (likely SF/Roboto equivalent) and iOS; pin the selected label to a bold/medium weight to match Android."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.10896051903160908
     },
     {
@@ -2521,74 +2697,182 @@
     },
     {
       "id": "components.thread.message-row.md-wrap-slice1",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01e00ffcfff7fffe83f41fff803401fff07783fff01780fff00f807ff00f807ff00f80fff01780fff07789fff03783fff837c1fff11780fff01780fff01780fff0f781fff09781fff3f780fff00780fff01780fff01780fff81788fff0178ffff1f780fff01780fff077807ff8378ffff01780fff1f783fff007c0feffffffff",
-      "generatedAt": "2026-07-13T22:09:01.615Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:34.813Z",
+      "severity": "medium",
+      "summary": [
+        "Long inline code tokens (e.g., `realtimeReadStatePreservesPartialSummaryAndReconcil…`) wrap differently between Android and iOS — iOS breaks the identifier across more lines with finer line splits, while Android keeps longer unbroken runs before wrapping, indicating different code/email tokenization or break-word behavior in the markdown wrap component.",
+        "Android column horizontally clips/truncates mid-token within the highlighted code box (e.g., `realtimeReadSta` is cut at the container edge then continued on the next line), whereas iOS fits the wider canvas and breaks the line cleanly inside whitespace, producing no visual clipping of the token itself.",
+        "iOS column is visibly taller and shows additional content lines in the same viewport (more of the message body is revealed) because of larger vertical metrics/line-height or smaller font size, while Android truncates earlier — this is a layout-density divergence rather than missing content.",
+        "Highlight chip background color (peach/cream) and border rendering appear subtly different: iOS chips look slightly lighter/warmer with thinner borders, Android chips render with a more saturated fill — likely a platform default background/border token mismatch on the markdown `code`/`inlineCode` highlight box."
+      ],
+      "likelyCauses": [
+        "Markdown wrap component on iOS applies a softer break strategy (breaking on word/char boundaries differently) than Android, suggesting separate platform-specific wrap implementations or differing `wordBreak`/`lineBreakStrategy` configuration per Kuikly bridge.",
+        "iOS uses a taller line-height or smaller effective font size for the message body, so the same logical content occupies more vertical space — likely caused by platform-default TextStyle (SF Pro on iOS vs Roboto on Android) not being normalized to a shared metric.",
+        "Highlighted code chip styling (background + border) is sourced from a platform default rather than a shared design token, producing fill/border color drift between Android and iOS.",
+        "Inline code token in the source contains no whitespace and exceeds the container width differently per platform, exposing the divergence in break-word policy rather than a content bug."
+      ],
+      "suggestedOwner": "Kuikly platform / message-thread component owner (mobile-client + design-system)",
+      "suggestedFixes": [
+        "Normalize the markdown wrap component so Android and iOS use the same break strategy for long inline code (e.g., `wordBreak: 'break-word'` + consistent break opportunities) so identical wrap lines are produced regardless of platform.",
+        "Pin a shared font-size/line-height style on the message body Text (override platform defaults) so vertical density and reveal count match across Android and iOS.",
+        "Replace platform-default code-chip background/border with explicit design-system tokens so the highlight box color renders identically on both ends.",
+        "Verify the inline code token content and, if it must remain unbroken, increase the message column width or apply `overflow-wrap: anywhere`; if intentional, keep but document the per-platform wrap diff.",
+        "Re-run the Slock visual comparison with the same logical viewport (e.g., normalize both to the same dp width) to confirm whether the height-reveal diff disappears once line metrics are unified."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.16439421557904965
     },
     {
       "id": "components.thread.message-row.md-wrap-clarify",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00e007fcfff3fffe821410fe821400fef03704fee1d700fee01703fef07781fef01700fee01701fee03700fee01700fee01703fee07701fee03700fee01700fee01703fee077fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffefff7fffe00020000fffc1fff",
-      "generatedAt": "2026-07-13T22:09:01.612Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:35.950Z",
+      "severity": "medium",
+      "summary": [
+        "Text wrapping width differs: Android collapses message bubble to a narrow column (~140px) so '#31' and '#521' badges, code spans and inline code wrap heavily; iOS uses a wider column (~280px) producing far fewer line breaks.",
+        "On Android the bottom ~55% of the panel is filled by a cream/beige background (the message bubble fill) that extends well beyond the text; on iOS no such bubble fill is rendered — the background under the message is white/plain.",
+        "Avatar and header row appear visually consistent in position, but the surrounding message bubble geometry is markedly different across the two ends."
+      ],
+      "likelyCauses": [
+        "Message-row component computes available width differently between Kuikly Android and Kuikly iOS (e.g., padding, max-width, or container constraints diverge).",
+        "Markdown wrapping / inline-code (`message:new`) word-break rules are not harmonized across platforms — Android appears to honor a narrower soft-wrap boundary than iOS.",
+        "Message bubble background/color fill is rendered on Android but suppressed or transparent on iOS (platform-specific drawable vs. nil background).",
+        "Likely layout-dp tolerance breach: the Android view is constrained to ~260px while the iOS canvas is ~1170px yet the inner content column was not scaled proportionally, producing a much wider wrap on iOS."
+      ],
+      "suggestedOwner": "Kuikly components / Thread message-row owner (markdown wrap + bubble background)",
+      "suggestedFixes": [
+        "Normalize the message bubble's max-width and horizontal padding between Android and iOS so soft-wrap width matches.",
+        "Audit the markdown renderer for inline-code / CJK punctuation soft-wrap behavior — ensure both platforms apply the same break rules around code spans and badges (#31, #521).",
+        "Make the message bubble background (cream fill) render on iOS the same way it does on Android, or remove it on both if not intentional.",
+        "Re-snap the baseline crop at true component bounds (contract: component-bounds) on iOS so the compare canvas reflects the message row, not the full 1170x2532 viewport.",
+        "Add a platform-parity visual test for components.thread.message-row.md-wrap-clarify covering wrap count and bubble fill."
+      ],
+      "intentional": [],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3519598709172169
     },
     {
       "id": "components.thread.message-row.md-wrap-adjacent",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:01fc01fc7ffe7ffe801a0012801e001ee0026002e60266027ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe7ffe00000000fff81fff",
-      "generatedAt": "2026-07-13T22:09:01.645Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:36.528Z",
+      "severity": "high",
+      "summary": [
+        "Background/page fill differs: Android renders a warm cream/beige canvas fill; iOS renders pure white.",
+        "Body copy uses a monospaced/typewriter-style font on Android while iOS uses a proportional sans-serif font.",
+        "Timestamp text '07/13 05:56' and the meta line 'Keeps visual testing ...' appear lighter/grayer on iOS than Android.",
+        "Header title 'Thread Message Row Markdown Adjacent Chips' and metadata line '1170×2532' are noticeably larger on iOS.",
+        "Top-right platform badge text differs: 'ANDROID' (left) vs 'IOS' (right), with the iOS badge appearing taller/wider."
+      ],
+      "likelyCauses": [
+        "iOS Kuikly runtime not applying the design-token background fill (cream/brand color) that Android applies.",
+        "Markdown/typography token stack falls back to platform default on iOS instead of the intended monospaced family.",
+        "Secondary text color token resolves to a lighter value on iOS (possible opacity/alpha or different gray token).",
+        "Header scale token uses pt (iOS) vs dp (Android) without normalization, causing larger iOS rendering.",
+        "Platform badge component binds label text to OS name with different paddings/sizes."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Audit and align the page/screen background fill token so both Android and iOS render the same cream/beige base color.",
+        "Pin the markdown code/inline font to the same monospaced family on iOS (currently appearing as proportional sans).",
+        "Normalize the secondary text color (timestamp/meta) to the same gray value across platforms.",
+        "Normalize header typography between dp and pt so title and meta render at matching visual sizes.",
+        "Unify the platform indicator badge dimensions and padding so the ANDROID/iOS pills have identical bounds."
+      ],
+      "intentional": [
+        "Platform badge text correctly reflects the rendering platform (ANDROID vs IOS)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.8485123749341759
     },
     {
       "id": "components.thread.message-row.md-wrap-status606",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:03fc03fefffe7ffe8037023690061006e0016001e0016001e006e001e006e001e00ee006e006e003e003e003e003ec6aecfefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffefffe00007ffefffe7fff",
-      "generatedAt": "2026-07-13T22:09:01.668Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:38.445Z",
+      "severity": "high",
+      "summary": [
+        "iOS (right) uses a narrower content column with smaller line-wrap width, producing 14 wrapped lines vs Android's 13 lines; the message body fills a much smaller portion of the viewport width.",
+        "Android (left) renders an additional background-colored region (cream/beige) extending below the message text, occupying roughly the lower 50% of the canvas; iOS leaves this area as plain background, breaking the message bubble's vertical extent.",
+        "iOS truncates the header meta string with an ellipsis ('Keeps visual testing…' and '…07/13 11:25' merged onto one line), while Android shows the full text on a single line without ellipsis — iOS is dropping characters due to width.",
+        "Inline code/span background pill geometry differs: on iOS the highlighted tokens ('db01c5e…', '#对话流专修:661a12bf', '#606', '8a5e542f4') appear larger/taller and split the long SHA hash across two lines, whereas Android keeps the hash in a single contained pill on one line.",
+        "Vertical rhythm/leading: iOS line height is tighter and baseline alignment of mixed CJK + Latin + monospace runs is visibly offset (e.g., the trailing 'e' on 'db01c5e' and the broken '5b91f3696b…' wrap), while Android wraps cleanly inside the pill."
+      ],
+      "likelyCauses": [
+        "Kuikly text layout is not applying the same maxWidth/measure constraints to the message bubble on iOS, so inline content reflows into more, narrower lines.",
+        "The message row's container or Markdown renderer is not using a fixed/percentage width on iOS — it may be sized to a parent that is too narrow, while Android uses the full available width.",
+        "Different default font metrics / line-height / monospace ascent on iOS cause highlighted code spans to render taller, breaking long tokens like the SHA-256 hash across lines.",
+        "The cream background block on Android is part of a 'message bubble' view that is not being drawn (or is sized to content only) on iOS, so the colored area under the text is missing.",
+        "Header meta row on iOS is being constrained to a single line with text-overflow ellipsis instead of allowing wrap or a wider container."
+      ],
+      "suggestedOwner": "kuikly-runtime / message-row component owner",
+      "suggestedFixes": [
+        "Set an explicit width (or flex/maxWidth matching the parent) on the message bubble container in Kuikly so both platforms allocate the same horizontal space to the Markdown body.",
+        "Normalize the Markdown renderer's code-span / inline-code style: cap font size for monospace, ensure the pill background uses the same padding/line-height on iOS, and allow long tokens to either wrap inside the pill or apply word-break: break-all consistently across platforms.",
+        "Remove the single-line ellipsis on the header meta line ('Keeps visual testing … 07/13 11:25'); let it wrap to two lines or widen the header row, matching Android's layout.",
+        "Ensure the message bubble's background fill extends to the full content height on iOS (apply background to the wrapping View, not just to the text), so the cream/beige area is present as on Android.",
+        "Audit platform-specific font metrics (ascent/lineHeight) for the monospace family used in code spans and override to a shared value so pill geometry and baseline alignment match."
+      ],
+      "intentional": [
+        "The 'ANDROID' vs 'iOS' tag chips in the top-right of each canvas are test-runner annotations, not part of the app UI, so any styling difference between them is expected and not a real divergence."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.6815955766192733
     },
     {
       "id": "components.thread.message-row.md-wrap-task607",
-      "status": "pending",
+      "status": "ready",
       "imageHash": "p1:00e007fcfff3fffe81b40ffe801400fee013007ee7f33ffee01300fee01300fee013007ee00300fee01300fef01300fee01300fee7f33ffefff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff3fffe7ff7fffe7ff3fffe00000000fff01fff",
-      "generatedAt": "2026-07-13T22:09:01.692Z",
-      "severity": "unknown",
-      "summary": [],
-      "likelyCauses": [],
-      "suggestedOwner": "",
-      "suggestedFixes": [],
-      "error": "codex CLI not found",
+      "generatedAt": "2026-07-13T22:12:40.467Z",
+      "severity": "high",
+      "summary": [
+        "iOS message body wraps earlier, producing more lines than Android (Android collapses '接受耦' with '合' on the same line; iOS breaks after '耦'), inflating total height.",
+        "Body text glyph metrics differ: iOS characters render slightly wider/taller, increasing line height and per-line width.",
+        "Trailing content beyond the message text differs: Android shows an additional empty/cream-colored region occupying the lower ~50% of the canvas, while iOS leaves that area blank white — indicating a missing container, spacer, or scroll/view element on iOS.",
+        "Heading text 'Cindy Kee… 07/13 05:57' has slightly different spacing/truncation: iOS shows tighter gap before '07/13' and uses an ellipsis style that leaves more of 'Kee…' visible.",
+        "Inline code/chip badges (#607 yellow, #对话流专修 pink) have subtly different border-radius and padding: iOS corners look rounder and padding slightly tighter; text baseline inside the chip is shifted down on iOS."
+      ],
+      "likelyCauses": [
+        "Platform font metrics mismatch (SF Pro vs Roboto) causing different wrap points and line heights in the Markdown renderer.",
+        "Kuikly text layout using different default line-break rules between Android and iOS backends.",
+        "Missing or zero-height trailing view/spacer/footer on iOS that Android renders (e.g., continued message thread preview, attachment placeholder, or background container).",
+        "Differing default styles for inline code spans / custom spans (#607, #对话流专修) — border-radius and vertical padding not normalized across platforms.",
+        "Locale/time formatting producing a slightly wider '07/13' segment on iOS, pushing the header wrap point."
+      ],
+      "suggestedOwner": "ui-platform",
+      "suggestedFixes": [
+        "Normalize line-height, font-size, and font-family fallbacks in the Markdown text component so wrap behavior matches across Android and iOS.",
+        "Audit the message-row layout tree on iOS to identify and restore the missing lower container/spacer that Android renders (check for conditional view based on has-attachments or thread continuation).",
+        "Unify inline-code/chip styling (border-radius, vertical padding, baseline alignment) in the shared component definition rather than relying on platform defaults.",
+        "Verify that the trailing whitespace/cream block on Android is intentional; if not, remove it from Android; if it is, port the equivalent view to iOS.",
+        "Add a visual regression test case for long Markdown body + inline code chips to catch wrap-count and height divergence between platforms."
+      ],
+      "intentional": [
+        "Header avatar, name, and timestamp order are consistent across both sides.",
+        "Color palette for code chips (yellow #607, pink #对话流专修) matches in hue between platforms.",
+        "Both sides correctly render @-mention underlines (@artin, @Android-Developer-2)."
+      ],
+      "analysisProvider": "minimax",
+      "analysisModel": "MiniMax-M3",
+      "error": null,
       "metricMismatch": 0.3951961896274693
     },
     {
       "id": "screens.settings.administration.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.579Z",
+      "generatedAt": "2026-07-13T22:14:18.282Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],
@@ -2601,7 +2885,7 @@
       "id": "screens.settings.connected-apps.full-height",
       "status": "pending",
       "imageHash": null,
-      "generatedAt": "2026-07-13T22:09:01.579Z",
+      "generatedAt": "2026-07-13T22:14:18.282Z",
       "severity": "unknown",
       "summary": [],
       "likelyCauses": [],

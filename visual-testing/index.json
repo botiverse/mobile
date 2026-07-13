@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-07-13T22:09:03.541Z",
+  "generatedAt": "2026-07-13T22:14:20.502Z",
   "latestRunId": "c1d1e21-20260713220645",
   "latest": {
     "runId": "c1d1e21-20260713220645",
     "commit": "c1d1e21-20260713220645",
     "commitSubject": "Open image annotation before composer upload (#854)",
-    "generatedAt": "2026-07-13T22:09:03.541Z",
+    "generatedAt": "2026-07-13T22:14:20.502Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 95,
-      "ready": 69,
-      "pending": 26
+      "ready": 90,
+      "pending": 5
     },
     "comparisons": [
       "react__android",
@@ -129,7 +129,7 @@
       "runId": "c1d1e21-20260713220645",
       "commit": "c1d1e21-20260713220645",
       "commitSubject": "Open image annotation before composer upload (#854)",
-      "generatedAt": "2026-07-13T22:09:03.541Z",
+      "generatedAt": "2026-07-13T22:14:20.502Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -142,8 +142,8 @@
       },
       "analysisSummary": {
         "total": 95,
-        "ready": 69,
-        "pending": 26
+        "ready": 90,
+        "pending": 5
       },
       "comparisons": [
         "react__android",
