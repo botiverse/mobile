@@ -4201,7 +4201,7 @@ private fun MembersDetailHeader(
                     leadingIcon = SlockLucideIconName.MessageSquare,
                     enabled = member.kind != MemberKind.System && !deleted,
                     minHeight = MembersActionSize,
-                    modifier = Modifier.width(92.dp),
+                    modifier = Modifier.widthIn(min = 92.dp),
                     onClick = onOpenDirectMessage
                 )
             }
@@ -5288,7 +5288,10 @@ private fun MembersAgentServerRoleEditor(
     onToggle: () -> Unit
 ) {
     val shadowOffset = if (enabled) SlockShadow.BrutalSmall else 0.dp
-    Box(modifier = Modifier.width(160.dp).height(33.dp + shadowOffset)) {
+    Box(
+        modifier = Modifier.padding(end = shadowOffset, bottom = shadowOffset),
+        propagateMinConstraints = true
+    ) {
         if (enabled) {
             Box(
                 modifier = Modifier
@@ -5299,7 +5302,7 @@ private fun MembersAgentServerRoleEditor(
         }
         Row(
             modifier = Modifier
-                .width(160.dp)
+                .widthIn(min = 160.dp)
                 .height(33.dp)
                 .background(role.backgroundColor)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
@@ -5312,9 +5315,7 @@ private fun MembersAgentServerRoleEditor(
                 text = role.localizedLabel(),
                 style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                maxLines = 1
             )
             SlockLucideIcon(
                 SlockLucideIconName.ChevronDown,
@@ -6470,7 +6471,7 @@ private fun MembersAgentProfileTab(
                                 title = stringResource(MR.strings.member_label_role),
                                 options = membersAgentServerRoleOptions(draftServerRole),
                                 selectedId = draftServerRole.wireValue,
-                                modifier = Modifier.width(160.dp),
+                                modifier = Modifier.widthIn(min = 160.dp),
                                 showHeader = false,
                                 onSelect = { option ->
                                     val nextRole = option.id.toMembersAgentServerRoleOrNull()
