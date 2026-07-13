@@ -26,16 +26,21 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
+import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
+import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
@@ -208,6 +213,60 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         assertEquals(14, restored.cursor?.latestSeq)
         assertEquals(14, restored.cursor?.newestLoadedSeq)
         assertEquals(3, homeEvents.size, "shadow update must remain invisible to legacy sink delivery")
+    }
+
+    @Test
+    fun olderPersistCannotCompleteAfterNewerUpdateAndRollbackDurableState() = runBlocking {
+        val db = freshDatabase()
+        val delegate = DefaultFoldPersistenceAdapter(
+            runner = SqlDelightFoldPersistTransactionRunner(db),
+            store = SqlDelightFoldPersistStore(db, now = { 100L }),
+        )
+        val invocation = AtomicInteger(0)
+        val olderStarted = CompletableDeferred<Unit>()
+        val releaseOlder = CompletableDeferred<Unit>()
+        val newerStarted = CompletableDeferred<Unit>()
+        val newerCompleted = CompletableDeferred<Unit>()
+        val pausingAdapter = object : FoldPersistenceAdapter {
+            override suspend fun applyFrame(frame: FoldPersistFrame) {
+                when (invocation.incrementAndGet()) {
+                    2 -> {
+                        olderStarted.complete(Unit)
+                        releaseOlder.await()
+                    }
+                    3 -> newerStarted.complete(Unit)
+                }
+                delegate.applyFrame(frame)
+                if (invocation.get() == 3) newerCompleted.complete(Unit)
+            }
+
+            override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = delegate.restore(scope)
+        }
+        val lane = SyncCoreMessageShadowFoldLane(
+            featureFlags = resolvedFlags(enabled = true),
+            adapter = pausingAdapter,
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            logger = {},
+        )
+        val (owner, _) = ownerWith(lane)
+
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        olderStarted.await()
+        owner.accept(
+            serverId,
+            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            source = "app_shell",
+        )
+
+        assertFalse(newerStarted.isCompleted, "newer frame must wait behind the earlier same-owner persist")
+        releaseOlder.complete(Unit)
+        newerCompleted.await()
+
+        val restored = restoredState(db)
+        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
+        assertEquals(14, restored.cursor?.latestSeq)
+        assertEquals(14, restored.cursor?.newestLoadedSeq)
     }
 
     @Test
