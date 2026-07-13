@@ -38,7 +38,10 @@ package build.raft.app.network.sync
  *    [SoleApplyInput.RebaselineFailed] may resolve it. Duplicate or stale completions are diagnostic
  *    no-ops: they cannot unlock the scope or create a second concurrent request.
  *  - **Rebaseline success** in FOLD/BROKEN clears the hold queue — the canonical snapshot supersedes
- *    every held frame — returns to FOLD, and advances the barrier generation to the request token.
+ *    every held frame — returns to FOLD, and advances the barrier generation to the request token,
+ *    BUT only for a clean flight. Any frame/loss observed after that request started marks the flight
+ *    dirty; its matching success installs the snapshot as a baseline while staying dark and immediately
+ *    rearms the next generation, so a late snapshot cut can never erase a post-cut arrival.
  *  - **Eligibility revoke** ([SoleApplyInput.EligibilityRevoked]) is the ONLY path back to LEGACY from
  *    FOLD/BROKEN, and it is barriered: the engine enters a revoking state ([SoleApplyScopeState.revokePending],
  *    everything holds) in which a rebaseline must SUCCEED first; only then does it emit
@@ -70,6 +73,8 @@ data class SoleApplyScopeState(
      * The token is both the single-flight latch and the stale/duplicate completion fence.
      */
     val rebaselineGeneration: Long? = null,
+    /** A frame/loss arrived after the current recovery flight started; its snapshot cut is insufficient. */
+    val rebaselineDirty: Boolean = false,
     /** Apply is blocked (commit failure / overflow): everything holds until a rebaseline SUCCEEDS. */
     val applyBlocked: Boolean = false,
     /** Revoking barrier: eligibility was revoked; drop to LEGACY only after a successful rebaseline. */
@@ -102,6 +107,9 @@ sealed interface SoleApplyInput {
 
     /** The actor mailbox overflowed; at least one frame is now superseded by a mandatory rebaseline. */
     data object MailboxOverflowed : SoleApplyInput
+
+    /** Actor-side cut fence observed a post-request arrival that may be newer than the snapshot. */
+    data class RebaselineDirtied(val generation: Long) : SoleApplyInput
 
     /** The matching rebaseline generation restored a fresh canonical snapshot and fresh core. */
     data class RebaselineSucceeded(val generation: Long) : SoleApplyInput
@@ -143,6 +151,7 @@ const val SOLE_APPLY_DIAG_WARM_START_FAILED_BLOCKED: String = "warm_start_failed
 const val SOLE_APPLY_DIAG_COMMIT_FAILED: String = "commit_failed"
 const val SOLE_APPLY_DIAG_REPEATED_FAILURE: String = "repeated_apply_failure_broken_canonical"
 const val SOLE_APPLY_DIAG_REBASELINE_FAILED: String = "rebaseline_failed"
+const val SOLE_APPLY_DIAG_REBASELINE_DIRTY_REARMED: String = "rebaseline_dirty_rearmed"
 const val SOLE_APPLY_DIAG_QUEUE_OVERFLOW: String = "hold_queue_overflow"
 const val SOLE_APPLY_DIAG_MAILBOX_OVERFLOW: String = "mailbox_overflow"
 const val SOLE_APPLY_DIAG_REVOKE_PENDING: String = "eligibility_revoked_awaiting_rebaseline"
@@ -165,6 +174,7 @@ fun reduceSoleApply(
     is SoleApplyInput.CommitSucceeded -> reduceCommitSucceeded(state, input.seq)
     is SoleApplyInput.CommitFailed -> reduceCommitFailed(state)
     SoleApplyInput.MailboxOverflowed -> reduceMailboxOverflowed(state)
+    is SoleApplyInput.RebaselineDirtied -> reduceRebaselineDirtied(state, input.generation)
     is SoleApplyInput.RebaselineSucceeded -> reduceRebaselineSucceeded(state, input.generation)
     is SoleApplyInput.RebaselineFailed -> reduceRebaselineFailed(state, input.generation)
     SoleApplyInput.EligibilityRevoked -> reduceEligibilityRevoked(state)
@@ -186,7 +196,10 @@ private fun reduceFrameArrived(
             // Blocked (post-failure/overflow) or revoking: the frame stays dark and is NOT retained —
             // the mandatory rebaseline supersedes the whole hold window, so retention buys nothing.
             state.applyBlocked || state.revokePending ->
-                SoleApplyTransition(state, listOf(SoleApplyCommand.Hold(seq)))
+                SoleApplyTransition(
+                    state.copy(rebaselineDirty = state.rebaselineDirty || state.rebaselineInFlight),
+                    listOf(SoleApplyCommand.Hold(seq)),
+                )
 
             state.heldSeqs.size < config.holdQueueCapacity ->
                 SoleApplyTransition(state.copy(heldSeqs = state.heldSeqs + seq), listOf(SoleApplyCommand.Hold(seq)))
@@ -201,7 +214,10 @@ private fun reduceFrameArrived(
 
     SoleApplyMode.BROKEN_CANONICAL ->
         // Sinks stay dark. Not retained (superseded by the recovery rebaseline); never legacy.
-        SoleApplyTransition(state, listOf(SoleApplyCommand.Hold(seq)))
+        SoleApplyTransition(
+            state.copy(rebaselineDirty = state.rebaselineDirty || state.rebaselineInFlight),
+            listOf(SoleApplyCommand.Hold(seq)),
+        )
 }
 
 private fun reduceActivationRequested(state: SoleApplyScopeState): SoleApplyTransition =
@@ -288,6 +304,7 @@ private fun reduceMailboxOverflowed(state: SoleApplyScopeState): SoleApplyTransi
 
 /** Commit failure, hold-buffer overflow, and mailbox overflow share one deterministic recovery path. */
 private fun reduceApplyFailure(state: SoleApplyScopeState, diagnostic: String): SoleApplyTransition {
+    val requestAlreadyInFlight = state.rebaselineInFlight
     val nextMode =
         if (state.applyBlocked || state.mode == SoleApplyMode.BROKEN_CANONICAL) {
             SoleApplyMode.BROKEN_CANONICAL
@@ -304,6 +321,7 @@ private fun reduceApplyFailure(state: SoleApplyScopeState, diagnostic: String): 
             mode = nextMode,
             applyBlocked = true,
             rebaselineGeneration = requestGeneration,
+            rebaselineDirty = state.rebaselineDirty || requestAlreadyInFlight,
         ),
         commands,
     )
@@ -315,16 +333,41 @@ private fun staleRebaselineCompletion(state: SoleApplyScopeState): SoleApplyTran
         listOf(SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_STALE_REBASELINE_COMPLETION)),
     )
 
+private fun reduceRebaselineDirtied(state: SoleApplyScopeState, generation: Long): SoleApplyTransition =
+    if (state.rebaselineGeneration != generation) staleRebaselineCompletion(state)
+    else SoleApplyTransition(state.copy(rebaselineDirty = true), emptyList())
+
 private fun reduceRebaselineSucceeded(state: SoleApplyScopeState, generation: Long): SoleApplyTransition =
     when {
         state.rebaselineGeneration != generation -> staleRebaselineCompletion(state)
         state.mode == SoleApplyMode.LEGACY -> staleRebaselineCompletion(state)
+        state.rebaselineDirty -> {
+            // The restored snapshot is a valid new baseline, but at least one arrival/loss happened
+            // after this flight began and may sit beyond its cut. Keep the scope dark and immediately
+            // request the next generation; only a clean flight may unlock or cross a revoke barrier.
+            val retryGeneration = generation + 1L
+            SoleApplyTransition(
+                state.copy(
+                    mode = SoleApplyMode.BROKEN_CANONICAL,
+                    heldSeqs = emptyList(),
+                    rebaselineGeneration = retryGeneration,
+                    rebaselineDirty = false,
+                    applyBlocked = true,
+                    generation = generation,
+                ),
+                listOf(
+                    SoleApplyCommand.RequestRebaseline(retryGeneration),
+                    SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REBASELINE_DIRTY_REARMED),
+                ),
+            )
+        }
         else -> when (state.mode) {
         SoleApplyMode.ACTIVATING, SoleApplyMode.FOLD, SoleApplyMode.BROKEN_CANONICAL -> {
             // The canonical snapshot supersedes every held frame: queue cleared, barrier bumps.
             val recovered = state.copy(
                 heldSeqs = emptyList(),
                 rebaselineGeneration = null,
+                rebaselineDirty = false,
                 applyBlocked = false,
                 generation = generation,
             )
@@ -358,6 +401,7 @@ private fun reduceRebaselineFailed(state: SoleApplyScopeState, generation: Long)
                 state.copy(
                     mode = SoleApplyMode.BROKEN_CANONICAL,
                     rebaselineGeneration = retryGeneration,
+                    rebaselineDirty = false,
                     applyBlocked = true,
                 ),
                 listOf(

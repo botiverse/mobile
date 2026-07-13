@@ -87,7 +87,12 @@ class MessageSoleApplyEngineTest {
         assertEquals(emptyList(), h.fanOutSeqs(), "zero FanOut after a CommitFailed, for ANY frame")
         assertEquals(0, h.dropCount(), "failure never degrades to legacy")
 
-        // Recovery: the canonical snapshot supersedes everything held — still no fan-out of 1..3.
+        // The first snapshot flight was dirtied by seq2/3 arriving after the request, so its matching
+        // completion installs a baseline but MUST rearm another flight instead of unlocking.
+        h.rebaselineSucceeded()
+        assertTrue(h.state.applyBlocked)
+        assertEquals(SoleApplyMode.BROKEN_CANONICAL, h.state.mode)
+        // A clean retry snapshot supersedes everything held — still no fan-out of 1..3.
         h.rebaselineSucceeded()
         assertEquals(emptyList(), h.fanOutSeqs(), "held frames are superseded by the rebaseline, not replayed")
         assertEquals(SoleApplyMode.FOLD, h.state.mode)
@@ -281,7 +286,10 @@ class MessageSoleApplyEngineTest {
             "single-flight preserved in BROKEN: no re-emit while the request is outstanding",
         )
 
-        // Recovery is rebaseline-only.
+        // The in-flight recovery was dirtied by seq2/3, so one completion rearms and a clean retry
+        // completion is the only path back to FOLD.
+        h.rebaselineSucceeded()
+        assertTrue(h.state.applyBlocked)
         h.rebaselineSucceeded()
         assertEquals(SoleApplyMode.FOLD, h.state.mode)
         assertEquals(emptyList(), h.state.heldSeqs)
@@ -347,10 +355,6 @@ class MessageSoleApplyEngineTest {
             "mailbox overflow must reach the pure engine's bounded telemetry",
         )
 
-        // Repeated/coalesced overflow while the request is outstanding cannot create another flight.
-        h.send(SoleApplyInput.MailboxOverflowed)
-        assertEquals(1, h.rebaselineRequestCount())
-
         // Wrong generation and a post-success duplicate are no-ops: neither unlocks early nor retries.
         h.rebaselineSucceeded(request.generation - 1)
         assertTrue(h.state.applyBlocked)
@@ -365,5 +369,32 @@ class MessageSoleApplyEngineTest {
         assertFalse(h.state.applyBlocked)
         assertEquals(generationAfterSuccess, h.state.generation)
         assertEquals(1, h.rebaselineRequestCount(), "duplicate completion must not form a second flight")
+    }
+
+    @Test
+    fun arrivalOrOverflowDuringFlight_makesMatchingSuccessRearmInsteadOfUnlocking() {
+        for (dirtyInput in listOf<SoleApplyInput>(SoleApplyInput.FrameArrived(2), SoleApplyInput.MailboxOverflowed)) {
+            val h = Harness()
+            h.activateToFold()
+            h.send(SoleApplyInput.FrameArrived(1))
+            h.send(SoleApplyInput.CommitFailed(1))
+            val firstGeneration = h.outstandingRebaselineGeneration()
+
+            h.send(dirtyInput)
+            assertTrue(h.state.rebaselineDirty)
+            assertEquals(1, h.rebaselineRequestCount(), "dirtying an active flight must not create a concurrent request")
+
+            val completion = h.rebaselineSucceeded(firstGeneration)
+            val retry = completion.filterIsInstance<SoleApplyCommand.RequestRebaseline>().single()
+            assertTrue(retry.generation > firstGeneration)
+            assertTrue(h.state.applyBlocked)
+            assertEquals(SoleApplyMode.BROKEN_CANONICAL, h.state.mode)
+            assertEquals(retry.generation, h.state.rebaselineGeneration)
+            assertFalse(h.state.rebaselineDirty, "the new flight starts clean after the dirty one is rearmed")
+            assertTrue(
+                completion.any { it == SoleApplyCommand.Diagnostic(SOLE_APPLY_DIAG_REBASELINE_DIRTY_REARMED) },
+            )
+            assertEquals(emptyList(), h.fanOutSeqs())
+        }
     }
 }
