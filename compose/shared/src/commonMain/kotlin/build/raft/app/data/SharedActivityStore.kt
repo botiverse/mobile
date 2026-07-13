@@ -52,8 +52,7 @@ private data class ActivityRealtimeHighWater(
 )
 
 private data class ActivityRealtimeReconcileResult(
-    val items: List<InboxItem>,
-    val totalUnreadDelta: Int = 0
+    val items: List<InboxItem>
 )
 
 data class ActivityReplyThreadPrewarmKey(
@@ -882,7 +881,7 @@ class SharedActivityStore internal constructor(
                                             maxOf(0, result.data.totalCount - pageItems.removedDoneRows)
                                         },
                                     totalUnreadCount =
-                                        maxOf(0, canonicalUnreadCount + realtimeReconcile.totalUnreadDelta),
+                                        canonicalUnreadCount,
                                     hasMore = result.data.hasMore,
                                     nextOffset = result.data.nextOffset
                                 ),
@@ -955,7 +954,6 @@ class SharedActivityStore internal constructor(
                 .filter { item -> item.kind == InboxItemKind.Thread }
                 .associateBy { item -> item.key }
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
-        var totalUnreadDelta = 0
         val reconciled =
             canonicalItems.map { canonical ->
                 val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
@@ -974,17 +972,28 @@ class SharedActivityStore internal constructor(
                 ) {
                     return@map canonical
                 }
-                totalUnreadDelta += current.unreadCount - canonical.unreadCount
-                current
+                canonical.withRealtimeActivityContent(current)
             }
         realtimeHighWater.keys.toList().forEach { key ->
             if (key !in canonicalKeys) realtimeHighWater.remove(key)
         }
         return ActivityRealtimeReconcileResult(
-            items = reconciled,
-            totalUnreadDelta = totalUnreadDelta
+            items = reconciled
         )
     }
+
+    private fun InboxItem.withRealtimeActivityContent(current: InboxItem): InboxItem =
+        // Realtime high-water owns only live activity content. Read/mention/task state stays canonical.
+        copy(
+            latestActivityMessageId = current.latestActivityMessageId,
+            latestActivityPreview = current.latestActivityPreview,
+            latestActivityAt = current.latestActivityAt,
+            latestActivitySenderName = current.latestActivitySenderName,
+            latestActivitySenderId = current.latestActivitySenderId,
+            latestActivitySenderKind = current.latestActivitySenderKind,
+            latestActivitySenderAvatarWireValue = current.latestActivitySenderAvatarWireValue,
+            replyCount = current.replyCount
+        )
 
     private fun markAllRead() {
         val previous = _state.value

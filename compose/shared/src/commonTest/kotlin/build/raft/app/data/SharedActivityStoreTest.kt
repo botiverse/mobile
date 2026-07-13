@@ -1364,6 +1364,55 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun readStateCanonicalClearSurvivesRealtimeThreadHighWater() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                realtimeReconcileDelayMillis = 60_000L
+            )
+        val stale = threadItem("thread-channel-1", unreadCount = 2).copy(replyCount = 2)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 2))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "message-new",
+                        channelId = "thread-channel-1",
+                        body = "Realtime preview",
+                        timestamp = "2026-07-13T03:03:00Z",
+                        conversationContext = MessageConversationContext(channelKind = ConversationKind.Thread)
+                    )
+                )
+            )
+        )
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "thread-channel-1", version = 1, maxReadSeq = 10)
+            )
+        )
+        inbox.completeNextSnapshot(
+            snapshot(
+                listOf(stale.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)),
+                totalUnreadCount = 0
+            )
+        )
+
+        val reconciled = store.state.value.items.single()
+        assertEquals(MessageId("message-new"), reconciled.latestActivityMessageId)
+        assertEquals("Realtime preview", reconciled.latestActivityPreview)
+        assertEquals(3, reconciled.replyCount)
+        assertEquals(0, reconciled.unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeBurstDuringRefreshCoalescesToOneFollowUpReconcile() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
