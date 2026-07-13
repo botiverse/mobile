@@ -832,6 +832,57 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
+    fun serverMembersEntryFlowIgnoresUnrelatedPresenceFacts() = runBlocking {
+        val store = SharedServerMembersStore(FakeMemberRepository())
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent One").copy(kind = MemberKind.Agent),
+                    member("agent-2", "Agent Two").copy(kind = MemberKind.Agent)
+                )
+            )
+        )
+        val entries = mutableListOf<SharedServerMembersEntry>()
+        val firstEmission = CompletableDeferred<Unit>()
+        val collectJob =
+            launch {
+                store.serverMembersEntryFlow(ServerId("server-1"))
+                    .onEach { firstEmission.complete(Unit) }
+                    .take(2)
+                    .toList(entries)
+            }
+        firstEmission.await()
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-2"),
+                kind = MemberKind.Agent,
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Working
+            )
+        )
+        yield()
+        assertEquals(1, entries.size)
+
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
+                listOf(
+                    member("agent-1", "Agent One Updated").copy(kind = MemberKind.Agent),
+                    member("agent-2", "Agent Two").copy(kind = MemberKind.Agent)
+                )
+            )
+        )
+        collectJob.join()
+
+        assertEquals(
+            listOf("Agent One", "Agent One Updated"),
+            entries.map { it.members.first { member -> member.id.value == "agent-1" }.displayName }
+        )
+    }
+
+    @Test
     fun memberSuggestionsAreOwnedByServerMembersStore() = runBlocking {
         val repository = FakeMemberRepository()
         repository.membersByServer["server-1"] =
