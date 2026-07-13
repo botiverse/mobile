@@ -1199,6 +1199,7 @@ internal fun SlockStructuralHomeShell(
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
+                SlockAppShellBodyTopBanner()
                 BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     val targetHomeBeyondBoundsItemCount =
                         homeListBeyondBoundsItemCount(

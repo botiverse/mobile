@@ -350,6 +350,7 @@ private fun SharedActivityPanelContent(
             refreshing = state.refreshing && !state.pullRefreshing,
             onTitleClick = onTitleClick
         )
+        SlockAppShellBodyTopBanner()
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
             totalUnreadCount = state.totalUnreadCount,
