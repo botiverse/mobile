@@ -43,6 +43,7 @@ import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SlockTasksApi
+import build.raft.app.data.SlockShellStoreScope
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadRowAffordancePreference
@@ -1006,7 +1007,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
+    fun genericAttachmentNoPreviewMetaLineHidesMimeType() {
         val attachment =
             KuiklyThreadAttachmentItem(
                 id = "att-1",
@@ -1015,11 +1016,11 @@ class ThreadPayloadTest {
                 mimeType = "application/zip"
             )
 
-        assertEquals("42 KB · application/zip", attachment.genericAttachmentMetaLine())
+        assertEquals("42 KB", attachment.genericAttachmentMetaLine())
     }
 
     @Test
-    fun attachmentChipMetaMatchesReactPreviewLabels() {
+    fun attachmentChipMetaKeepsSemanticPreviewLabelsWithoutMime() {
         val pdf =
             KuiklyThreadAttachmentItem(
                 id = "att-pdf",
@@ -1035,7 +1036,7 @@ class ThreadPayloadTest {
                 mimeType = "text/html"
             )
 
-        assertEquals("application/pdf · 184 KB", pdf.threadAttachmentChipMetaLine())
+        assertEquals("184 KB", pdf.threadAttachmentChipMetaLine())
         assertEquals("Document preview", pdf.threadAttachmentSummaryLine())
         assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine())
         assertEquals("Text preview", html.threadAttachmentSummaryLine())
@@ -6238,6 +6239,48 @@ class ThreadPayloadTest {
         assertEquals("20623", pageData.optString("todayEpochDay"))
         assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
         assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+    }
+
+    @Test
+    fun threadMembersPagerRouteCarriesOnlyScopeAndDisplayContext() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                sourceThreadId = "channel-1",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20623,
+                nowEpochMillis = 1782200000000,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        val pageData =
+            payload.toThreadMembersPageData(
+                serverId = ServerId("server-1"),
+                channelId = ChannelId("channel-1"),
+                storeScope = SlockShellStoreScope.create("shell-1", "server-1")
+            )
+
+        assertEquals(THREAD_MEMBERS_PAGE, pageData.optString("pageName"))
+        assertEquals("thread-members-thread-1", pageData.optString("instanceId"))
+        assertEquals("server-1", pageData.optString("serverId"))
+        assertEquals("channel-1", pageData.optString("channelId"))
+        assertEquals("", pageData.optString("members"))
+        assertEquals("", pageData.optString("memberCandidates"))
+        assertEquals("", pageData.optString("title"))
+        assertEquals("shell-1", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
+        assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
+        assertEquals(
+            ThreadMembersPageRoute(
+                instanceId = "thread-members-thread-1",
+                serverId = ServerId("server-1"),
+                channelId = ChannelId("channel-1"),
+                localOffsetMinutes = 480,
+                todayEpochDay = 20623,
+                nowEpochMillis = 1782200000000,
+                timeFormat = SlockTimeFormat12Hour
+            ),
+            pageData.toThreadMembersPageRouteOrNull()
+        )
     }
 
     @Test

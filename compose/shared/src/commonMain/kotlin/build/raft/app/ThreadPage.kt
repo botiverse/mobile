@@ -21,6 +21,7 @@ import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentSkillsSnapshot
+import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageExecuteRequest
 import build.raft.app.data.ForwardMessageSendMode
@@ -35,6 +36,7 @@ import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealForwardMessageTargetRepository
 import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.RealSavedRepository
+import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SlockEventBus
@@ -74,6 +76,7 @@ import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
@@ -261,6 +264,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
+internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 4
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
@@ -543,6 +547,14 @@ internal class ComposeThreadPage : build.raft.app.base.BasePager() {
     }
 }
 
+@Page(THREAD_MEMBERS_PAGE, supportInLocal = true)
+internal class ComposeThreadMembersPage : build.raft.app.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMembersPageScreen() }
+    }
+}
+
 @Serializable
 internal data class KuiklyThreadScreenPayload(
     val instanceId: String = "",
@@ -620,6 +632,63 @@ internal data class KuiklyThreadScreenPayload(
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false
 )
+
+internal data class ThreadMembersPageRoute(
+    val instanceId: String,
+    val serverId: ServerId,
+    val channelId: ChannelId,
+    val localOffsetMinutes: Int,
+    val todayEpochDay: Long?,
+    val nowEpochMillis: Long?,
+    val timeFormat: String
+)
+
+internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
+    serverId: ServerId,
+    channelId: ChannelId,
+    storeScope: SlockShellStoreScope
+): JSONObject =
+    JSONObject().apply {
+        put("pageName", THREAD_MEMBERS_PAGE)
+        put("instanceId", "thread-members-${instanceId.ifBlank { channelId.value }}")
+        put("serverId", serverId.value)
+        put("channelId", channelId.value)
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+        put(SLOCK_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
+        storeScope.initialServerId?.let { put(SLOCK_SHELL_SERVER_ID, it) }
+    }
+
+internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute? {
+    val serverId = optString("serverId").trim().takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+    val channelId = optString("channelId").trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
+    return ThreadMembersPageRoute(
+        instanceId = optString("instanceId"),
+        serverId = serverId,
+        channelId = channelId,
+        localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        todayEpochDay = optString("todayEpochDay").toLongOrNull(),
+        nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: SlockTimeFormat24Hour
+    )
+}
+
+private fun ThreadMembersPageRoute.toMemberDetailPageData(identity: MemberDetailIdentity): JSONObject? {
+    val selected = identity.memberId.value.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "thread-members-detail-${instanceId.ifBlank { channelId.value }}-$selected")
+        put("memberId", selected)
+        put("memberKind", identity.kind.memberKindWireValue())
+        identity.sourceServerId?.value?.let { put("sourceServerId", it) }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
+}
 
 internal data class ThreadActivityMuteUiState(
     val channelId: String,
@@ -1977,8 +2046,273 @@ private fun ThreadPageScreen() {
                     }
                 routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
             }
+        },
+        onOpenMembersPager = { currentPayload, serverId, channelId, currentStoreScope ->
+            routerModule.openPage(
+                THREAD_MEMBERS_PAGE,
+                currentPayload.toThreadMembersPageData(serverId, channelId, currentStoreScope)
+            )
         }
     )
+}
+
+@Composable
+private fun ThreadMembersPageScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = Utils.bridgeModule(pager.pagerId)
+    val route = remember(pager.pageData.params.toString()) { pager.pageData.params.toThreadMembersPageRouteOrNull() }
+    if (route == null) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SlockTopPageHeader(
+                    title = "Members",
+                    iconName = SlockLucideIconName.Users,
+                    leadingContent = {
+                        SlockTopPageHeaderAction(
+                            icon = SlockLucideIconName.ArrowLeft,
+                            onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+                        )
+                    }
+                )
+                ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
+            }
+        }
+        return
+    }
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.slockShellStoreScope(SlockShellStoreScope.Legacy.shellInstanceId)
+    }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
+    val agentDetailStore = remember(sharedStores, storeScope) { sharedStores.agentDetailStore(storeScope) }
+    val memberScope = rememberCoroutineScope()
+    val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
+    val slice by remember(serverMembersStore, route.serverId, route.channelId) {
+        serverMembersStore
+            .channelMemberSliceFlow(route.serverId, route.channelId)
+            .onStart {
+                serverMembersStore.loadChannelMembers(
+                    serverId = route.serverId,
+                    channelId = route.channelId,
+                    priority = DataRequestPriority.Visible,
+                    force = false
+                )
+            }
+    }.collectAsState(
+        SharedServerChannelMembersSlice(
+            serverId = route.serverId.value,
+            channelId = route.channelId.value
+        )
+    )
+    val serverMembersEntry by remember(serverMembersStore, route.serverId) {
+        serverMembersStore.serverMembersEntryFlow(route.serverId)
+    }.collectAsState(SharedServerMembersEntry(serverId = route.serverId.value))
+    LaunchedEffect(serverMembersStore, route.serverId) {
+        serverMembersStore.refreshMembers(route.serverId, DataRequestPriority.Background, force = false)
+    }
+    val members = remember(slice.members, route.serverId) {
+        slice.members
+            .distinctBy { it.threadMemberKey }
+            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+    }
+    val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
+    val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
+        serverMembersEntry
+            .members
+            .filterNot { it.threadMemberKey in memberKeys }
+            .map { it.toKuiklyThreadMemberItem(route.serverId) }
+    }
+    val agentStatusResolver = remember(serverMembersStore, route.serverId) {
+        slockAgentStatusResolver(serverMembersStore, route.serverId.value)
+    }
+    val memberAvatarResolver = remember(serverMembersStore, route.serverId) {
+        slockMemberAvatarResolver(
+            serverMembersStore = serverMembersStore,
+            serverId = route.serverId.value,
+            diagnosticsLogger = { message -> bridge.log("thread_members_pager_avatar $message") }
+        )
+    }
+    var addDialogVisible by remember { mutableStateOf(false) }
+    var addMemberStatus by remember { mutableStateOf("idle") }
+    var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
+    var removeMemberStatus by remember { mutableStateOf("idle") }
+    var removingMemberId by remember { mutableStateOf<String?>(null) }
+    var removeMemberErrorCode by remember { mutableStateOf<String?>(null) }
+
+    fun openMember(member: KuiklyThreadMemberItem) {
+        val identity = member.memberDetailIdentity() ?: return
+        val pageData = route.toMemberDetailPageData(identity) ?: return
+        member.toMemberProfile()
+            ?.let { profile ->
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
+            }
+        router.openPage(MEMBER_DETAIL_PAGE, pageData)
+    }
+
+    fun removeMember(member: KuiklyThreadMemberItem) {
+        val identity = member.memberDetailIdentity() ?: return
+        if (!member.canRemove || removingMemberId != null) return
+        removeMemberStatus = "removing"
+        removingMemberId = member.id
+        removeMemberErrorCode = null
+        memberScope.launch {
+            when (
+                val result =
+                    serverMembersStore.removeChannelMember(
+                        serverId = route.serverId,
+                        request = RemoveChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
+                    )
+            ) {
+                is DataResult.Content -> {
+                    removeMemberStatus = "idle"
+                    removingMemberId = null
+                }
+                is DataResult.Empty -> {
+                    removeMemberStatus = "failed"
+                    removeMemberErrorCode = "member_remove_empty"
+                    removingMemberId = null
+                }
+                is DataResult.Error -> {
+                    removeMemberStatus = "failed"
+                    removeMemberErrorCode = result.error.code
+                    removingMemberId = null
+                }
+                is DataResult.NoPermission -> {
+                    removeMemberStatus = "no_permission"
+                    removeMemberErrorCode = result.blocker.code
+                    removingMemberId = null
+                }
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = stringResource(MR.strings.thread_members_title, members.size),
+                iconName = SlockLucideIconName.Users,
+                backgroundColor = SlockColor.SurfaceWhite,
+                refreshing = slice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
+                leadingContent = {
+                    SlockTopPageHeaderAction(
+                        icon = SlockLucideIconName.ArrowLeft,
+                        onClick = { router.closePage() }
+                    )
+                },
+                trailingContent =
+                    if (slice.canAddMembers) {
+                        {
+                            SlockTopPageHeaderAction(
+                                icon = SlockLucideIconName.UserPlus,
+                                onClick = { addDialogVisible = true }
+                            )
+                        }
+                    } else {
+                        null
+                    }
+            )
+            if (removeMemberStatus == "failed" || removeMemberStatus == "no_permission") {
+                Text(
+                    text =
+                        if (removeMemberStatus == "no_permission") {
+                            stringResource(MR.strings.thread_members_remove_no_permission)
+                        } else {
+                            stringResource(MR.strings.thread_members_remove_failed)
+                        },
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                    color = SlockColor.AccentRed,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+                )
+            }
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (members.isEmpty()) {
+                    item {
+                        ThreadModalEmptyState(
+                            title = stringResource(MR.strings.thread_state_no_members),
+                            detail = stringResource(MR.strings.thread_members_refresh_detail)
+                        )
+                    }
+                } else {
+                    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
+                    val humans = members.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                    if (agents.isNotEmpty()) {
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
+                        items(agents.size, key = { agents[it].memberKey }) { index ->
+                            ThreadMembersPagerRow(
+                                member = agents[index],
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                removing = removeMemberStatus == "removing" && removingMemberId == agents[index].id,
+                                onOpen = ::openMember,
+                                onRemove = ::removeMember
+                            )
+                        }
+                    }
+                    if (humans.isNotEmpty()) {
+                        item { SlockModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
+                        items(humans.size, key = { humans[it].memberKey }) { index ->
+                            ThreadMembersPagerRow(
+                                member = humans[index],
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                removing = removeMemberStatus == "removing" && removingMemberId == humans[index].id,
+                                onOpen = ::openMember,
+                                onRemove = ::removeMember
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (addDialogVisible) {
+            ThreadAddMemberModal(
+                members = members,
+                candidates = candidates,
+                canAddMembers = slice.canAddMembers,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver,
+                addMemberStatus = addMemberStatus,
+                addMemberErrorCode = addMemberErrorCode,
+                onDismiss = { addDialogVisible = false },
+                onSubmit = { member ->
+                    val identity = member.memberDetailIdentity() ?: return@ThreadAddMemberModal
+                    if (addMemberStatus == "adding") return@ThreadAddMemberModal
+                    addMemberStatus = "adding"
+                    addMemberErrorCode = null
+                    memberScope.launch {
+                        when (
+                            val result =
+                                serverMembersStore.addChannelMember(
+                                    serverId = route.serverId,
+                                    request = AddChannelMemberRequest(route.channelId, identity.memberId, identity.kind)
+                                )
+                        ) {
+                            is DataResult.Content -> {
+                                addMemberStatus = "idle"
+                                addDialogVisible = false
+                            }
+                            is DataResult.Empty -> {
+                                addMemberStatus = "failed"
+                                addMemberErrorCode = "member_add_empty"
+                            }
+                            is DataResult.Error -> {
+                                addMemberStatus = "failed"
+                                addMemberErrorCode = result.error.code
+                            }
+                            is DataResult.NoPermission -> {
+                                addMemberStatus = "no_permission"
+                                addMemberErrorCode = result.blocker.code
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Page("compose_thread_message_row_visual", supportInLocal = true)
@@ -2826,7 +3160,8 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
-    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> }
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
+    onOpenMembersPager: (KuiklyThreadScreenPayload, ServerId, ChannelId, SlockShellStoreScope) -> Unit = { _, _, _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
@@ -4126,7 +4461,7 @@ internal fun SharedThreadRouteContent(
     fun openComposerAttachmentPreview(attachmentId: String) {
         val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
         val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
             pager.openSlockFilePreviewPage(
                 SlockFilePreviewPayload(
@@ -5644,6 +5979,19 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "selectTab" && !tab.isNullOrBlank() -> {
                     threadViewModel.dispatch(SharedThreadIntent.SelectTab(tab))
+                }
+                action == "openMembersPager" -> {
+                    val serverId = threadMembersServerId
+                    val channelId = threadMembersChannelId
+                    if (serverId == null || channelId == null) {
+                        bridge.logWarn(
+                            "thread_members_pager_open_skip reason=missing_scope " +
+                                "serverId=${currentSession?.currentServerId.orEmpty()} " +
+                                "channelId=${renderedThread.sourceThreadId.orEmpty()}"
+                        )
+                        return@ThreadPageContent
+                    }
+                    onOpenMembersPager(renderedThread, serverId, channelId, storeScope)
                 }
                 action == "loadMembers" -> {
                     if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
@@ -7286,11 +7634,19 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_TASK524_MARKDOWN_VISIBLE = "tas
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_ACTION_CARD_CATALOG = "action_card_catalog"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD = "approve_login_action_card"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECUTED = "approve_login_action_card_executed"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 = "md_wrap_slice1"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY = "md_wrap_clarify"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 = "md_wrap_task607"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
         THREAD_MESSAGE_VISUAL_FIXTURE_WIDE_MARKDOWN_WRAP -> 920.dp
         THREAD_MESSAGE_VISUAL_FIXTURE_PERMALINK_CHIPS_NARROW -> 260.dp
+        // Narrow 260dp column forces a channel/task chip to wrap to the next
+        // line (the inline-box line-wrap bug these cases reproduce).
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 -> 260.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY -> 260.dp
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 -> 260.dp
         else -> 390.dp
     }
 
@@ -7718,6 +8074,189 @@ internal fun threadVisualFixture(
                             handle = "KMP-专家",
                             kind = "agent",
                             avatarLabel = "KM"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#raft-mobile-reconcile",
+                subtitle = "Narrow markdown wrap fixture (slice-1)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                // #791 is a PR (not a known task) so it stays plain; only #787 chips.
+                knownMarkdownChannelNames = listOf("raft-mobile-reconcile"),
+                knownMarkdownMentionNames = listOf("artin", "Mahua", "赵梓淇"),
+                knownMarkdownTaskNumbers = listOf(787),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_slice1_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:55",
+                            messageType = "Chat",
+                            body =
+                                "@artin **slice-1 已合入 main** —— PR #791 squash → `80e3162da`。\n\n" +
+                                    "- 重跑那个 flaky job **绿了**（`realtimeReadStatePreservesPartialSummaryAndReconcilesAcceptedRewind` 重跑即过，坐实是 flake 不是我的），Android/OHOS host/OHOS shared 三端 compile+test 全绿、sign-off 过、iOS skip。\n" +
+                                    "- **披露 merge actor**：走 `gh` 身份 `bytemain`（≠ commit author `HanXin`），squash-merge、删了分支。\n" +
+                                    "- 落地形态：flag `sync_core_messages_v0` **默认关 = 零行为变化**；开了才在旁边 shadow fold+persist（不可见、fail-open、eligibility 仍 false）。真实用户完全无感。\n" +
+                                    "- **AD2 的 mapper 解耦设计点**按你说的转 post-merge follow-up，我留着 observer-routed 方案等他定。\n" +
+                                    "- 我另外给 @Mahua 报了那个 flaky 测试（#787 的，main 上间歇误挂无关 PR）。\n\n" +
+                                    "**数据流接线地基这块落了。** 下一步 V2 归一化信封在 #raft-mobile-reconcile 跟 @赵梓淇 对齐字段（他是 canonical DRI）——赵定了形状我就落 mobile V2，然后翻 eligibility 就到你能\"试效果\"那步。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "human-mahua",
+                            displayName = "Mahua",
+                            handle = "Mahua",
+                            kind = "human",
+                            avatarLabel = "MA"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "human-zhaoziqi",
+                            displayName = "赵梓淇",
+                            handle = "赵梓淇",
+                            kind = "human",
+                            avatarLabel = "赵"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#conversation-flow",
+                subtitle = "Narrow markdown wrap fixture (clarify)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownMentionNames = listOf("Android-Developer-4"),
+                knownMarkdownTaskNumbers = listOf(31, 521),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_clarify_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:56",
+                            messageType = "Chat",
+                            body =
+                                "另外帮一个澄清避免混淆：#31（read-state→Activity，我的）和 @Android-Developer-4 的 **task #521**（`message:new`→Activity 即时新增，artin 原话\"新消息来了 activity 没刷新\"）是两个不同 gap，不是重复——Codex 早前建议的\"#521 判重关闭\"是把两者混了，AD4 已更正。#31 复用 versioned read-state fact，#521 是 SharedActivityStore 缺 message:new realtime，两条链路各修各的。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-android-dev-4",
+                            displayName = "Android-Developer-4",
+                            handle = "Android-Developer-4",
+                            kind = "agent",
+                            avatarLabel = "AD"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#对话流专修",
+                subtitle = "Narrow markdown wrap fixture (task607)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("对话流专修"),
+                knownMarkdownMentionNames = listOf("artin", "Android-Developer-2"),
+                knownMarkdownTaskNumbers = listOf(607),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_task607_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:57",
+                            messageType = "Chat",
+                            body =
+                                "@artin 建好了：**task #607**（#对话流专修，我已 claim）——slice-1 那个 mapper→network.sync 解耦 follow-up。scope + @Android-Developer-2 的 A/B 设计选择（接受耦合 vs observer-routed 重构）我贴在 task thread 了。AD2 定 A 我 close 成 by-design，定 B 我实现。V2 那条独立、等赵定信封。"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "agent-android-dev-2",
+                            displayName = "Android-Developer-2",
+                            handle = "Android-Developer-2",
+                            kind = "agent",
+                            avatarLabel = "AD"
                         )
                     ),
                 showComposer = false,
@@ -8787,8 +9326,7 @@ private fun ThreadPageContent(
                     }
                 },
                 onShowMembers = {
-                    activeModal = "members"
-                    onThreadEvent("loadMembers", null, null, null)
+                    onThreadEvent("openMembersPager", null, null, null)
                 },
                 onShowSettings = {
                     activeModal = "settings"
@@ -8950,28 +9488,6 @@ private fun ThreadPageContent(
                 }
             }
         }
-        if (activeModal == "addMember") {
-            ThreadMembersModal(
-                members = payload.members,
-                membersCount = payload.membersCount,
-                canAddMembers = payload.canAddMembers,
-                agentStatusResolver = agentStatusResolver,
-                memberAvatarResolver = memberAvatarResolver,
-                onDismiss = { activeModal = null },
-                onAddMember = {
-                    activeModal = "addMember"
-                },
-                onOpenMember = { member ->
-                    member.memberDetailIdentity()?.let(onOpenMemberProfile)
-                },
-                removeMemberStatus = payload.removeMemberStatus,
-                removingMemberId = payload.removingMemberId,
-                removeMemberErrorCode = payload.removeMemberErrorCode,
-                onRemoveMember = { memberId ->
-                    onThreadEvent("removeMember", memberId, null, null)
-                }
-            )
-        }
         when (activeModal) {
             "forwardBundle" ->
                 activeForwardBundle?.let { bundle ->
@@ -9074,41 +9590,6 @@ private fun ThreadPageContent(
                                 }
                             }
                         }
-                    }
-                )
-            "members" ->
-                ThreadMembersModal(
-                    members = payload.members,
-                    membersCount = payload.membersCount,
-                    canAddMembers = payload.canAddMembers,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    onDismiss = { activeModal = null },
-                    onAddMember = {
-                        activeModal = "addMember"
-                    },
-                    onOpenMember = { member ->
-                        member.memberDetailIdentity()?.let(onOpenMemberProfile)
-                    },
-                    removeMemberStatus = payload.removeMemberStatus,
-                    removingMemberId = payload.removingMemberId,
-                    removeMemberErrorCode = payload.removeMemberErrorCode,
-                    onRemoveMember = { memberId ->
-                        onThreadEvent("removeMember", memberId, null, null)
-                    }
-                )
-            "addMember" ->
-                ThreadAddMemberModal(
-                    members = payload.members,
-                    candidates = payload.memberCandidates,
-                    canAddMembers = payload.canAddMembers,
-                    agentStatusResolver = agentStatusResolver,
-                    memberAvatarResolver = memberAvatarResolver,
-                    addMemberStatus = payload.addMemberStatus,
-                    addMemberErrorCode = payload.addMemberErrorCode,
-                    onDismiss = { activeModal = "members" },
-                    onSubmit = { member ->
-                        onThreadEvent("submitAddMember", member.id, null, member.kind)
                     }
                 )
             "settings" ->
@@ -16118,9 +16599,7 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
     isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
-    listOf(displaySizeLabel(), mimeType)
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
+    displaySizeLabel()
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
     listOf("thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
@@ -16131,13 +16610,10 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
     listOf(
-        when {
-            isHtmlAttachment() -> "HTML preview"
-            mimeType.isNotBlank() -> mimeType
-            else -> "file"
-        },
+        "HTML preview".takeIf { isHtmlAttachment() },
         displaySizeLabel()
     )
+        .filterNotNull()
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
@@ -16471,7 +16947,7 @@ private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentIte
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+            val meta = attachment.displaySizeLabel()
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
@@ -17897,6 +18373,34 @@ private fun ThreadMembersModal(
             )
         }
     }
+}
+
+@Composable
+private fun ThreadMembersPagerRow(
+    member: KuiklyThreadMemberItem,
+    agentStatusResolver: SlockAgentStatusResolver,
+    memberAvatarResolver: SlockMemberAvatarResolver,
+    removing: Boolean,
+    onOpen: (KuiklyThreadMemberItem) -> Unit,
+    onRemove: (KuiklyThreadMemberItem) -> Unit
+) {
+    val status = member.modalAgentStatusIndicatorState(agentStatusResolver)
+    val avatarWireValue = rememberSlockMemberAvatarWireValue(memberAvatarResolver, member.id)
+        ?: member.modalAvatarWireValue()
+    SlockModalCompactMemberRow(
+        title = member.displayName,
+        subtitle = member.localizedModalRoleLabel(),
+        sourceBadgeLabel = member.sourceServerLabel,
+        avatarWireValue = avatarWireValue,
+        avatarLabel = member.modalAvatarLabel(),
+        statusColor = status?.color,
+        statusPulsing = status?.pulsing == true,
+        enabled = !removing,
+        trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
+        trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
+        onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
+        onClick = { onOpen(member) }
+    )
 }
 
 @Composable

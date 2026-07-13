@@ -1,13 +1,16 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
+import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -332,6 +335,41 @@ class SharedHomeShellStoreTest {
         fixture.cancel()
     }
 
+    @Test
+    fun mutedConversationDisablesLocalActivityMessagePatchButStillForwardsEvent() {
+        val fixture = fixture(homeState = homeStateForServer("server-1", activityMuted = true))
+        val event =
+            build.raft.app.model.MessageNew(
+                Message(
+                    id = MessageId("message-1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    seq = 10,
+                    author =
+                        MemberProfile(
+                            id = MemberId("user-2"),
+                            displayName = "User Two",
+                            handle = "user-2",
+                            kind = MemberKind.Human
+                        ),
+                    timestampLabel = "2026-07-13T03:00:00Z",
+                    body = "Muted ordinary activity"
+                )
+            )
+
+        fixture.store.dispatch(SharedHomeShellIntent.OpenActivity)
+        fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                event = event,
+                allowLocalPatch = false
+            ),
+            fixture.activityIntents.last()
+        )
+        fixture.cancel()
+    }
+
     private fun fixture(
         homeState: SharedHomeState = SharedHomeState(),
         activityState: SharedActivityState = SharedActivityState(),
@@ -370,7 +408,8 @@ class SharedHomeShellStoreTest {
 
     private fun homeStateForServer(
         serverId: String,
-        contentRefreshing: Boolean = false
+        contentRefreshing: Boolean = false,
+        activityMuted: Boolean? = null
     ): SharedHomeState {
         val server = ServerSummary(ServerId(serverId), "$serverId server")
         val member =
@@ -388,7 +427,22 @@ class SharedHomeShellStoreTest {
                         HomeSnapshot(
                             server = server,
                             currentMember = member,
-                            channels = emptyList(),
+                            channels =
+                                activityMuted?.let { muted ->
+                                    listOf(
+                                        HomeChannelRow(
+                                            threadId = ThreadId("channel-1"),
+                                            channelId = ChannelId("channel-1"),
+                                            name = "general",
+                                            activityNotificationPreference =
+                                                ChannelActivityNotificationPreference(
+                                                    activityMuted = muted,
+                                                    muteFromSeq = if (muted) 1L else null,
+                                                    activityMuteSupported = true
+                                                )
+                                        )
+                                    )
+                                }.orEmpty(),
                             directMessages = emptyList(),
                             unreadTotal = 0
                         ),

@@ -507,9 +507,38 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertEquals("att-2", next?.attachmentId)
         assertEquals("two.png", next?.name)
-        assertEquals("2 KB · image/png", next?.meta)
+        assertEquals("2 KB", next?.meta)
         assertEquals("thumb-two", next?.imageUrl)
         assertEquals("2/2", next?.imageGalleryProgressLabel())
+    }
+
+    @Test
+    fun filePreviewPresentationHidesMimeWhileKeepingUsefulMetadata() {
+        val payload =
+            SlockFilePreviewPayload(
+                name = "report.pdf",
+                path = "report.pdf",
+                meta = "42 KB · application/pdf",
+                subtitle = "application/pdf",
+                externalMimeType = "application/pdf"
+            )
+
+        assertEquals("42 KB", payload.slockFilePreviewVisibleSubtitle(headerTitle = "report.pdf"))
+        assertEquals("42 KB", payload.meta.withoutUserVisibleMimeType())
+        assertEquals("folder/file", "folder/file".withoutUserVisibleMimeType())
+    }
+
+    @Test
+    fun filePreviewDoesNotUseExternalMimeAsSubtitleFallback() {
+        val payload =
+            SlockFilePreviewPayload(
+                name = "report.pdf",
+                path = "report.pdf",
+                subtitle = "application/pdf",
+                externalMimeType = "application/pdf"
+            )
+
+        assertEquals(null, payload.slockFilePreviewVisibleSubtitle(headerTitle = "report.pdf"))
     }
 
     @Test

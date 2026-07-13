@@ -787,6 +787,45 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdWrapSlice1() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-slice1",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-slice1")
+                    .put("visualFixture", "md_wrap_slice1"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapClarify() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-clarify",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-clarify")
+                    .put("visualFixture", "md_wrap_clarify"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapTask607() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-task607",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-task607")
+                    .put("visualFixture", "md_wrap_task607"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowWideMarkdownWrap() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.wide-markdown-wrap",
@@ -1028,21 +1067,6 @@ class KmpVisualScreenshotCaptureTest {
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
-    }
-
-    @Test
-    fun captureMembersSmokeList() {
-        runShellCommand("wm size ${MEMBERS_SMOKE_DISPLAY_WIDTH_PX}x$MEMBERS_SMOKE_DISPLAY_HEIGHT_PX")
-        try {
-            captureKmpComponentCase(
-                caseId = "screens.members.smoke-list",
-                pageName = "compose_members_smoke",
-                crop = MEMBERS_SMOKE_LONG_CROP,
-                settleMs = 2_500
-            )
-        } finally {
-            runShellCommand("wm size reset")
-        }
     }
 
     @Test
@@ -2680,15 +2704,6 @@ class KmpVisualScreenshotCaptureTest {
                 contract = "viewport-bounds",
                 captureMethod = "app-window-root-draw-viewport-density-resize"
             )
-        private val MEMBERS_SMOKE_LONG_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 390,
-                heightDp = 1000,
-                contract = "long-viewport-bounds",
-                captureMethod = "app-window-root-draw-long-viewport-density-resize"
-            )
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -3133,6 +3148,16 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 390,
                 heightDp = 844
             )
+        // Narrow 260dp column (matching the React 260px harness container) for
+        // the markdown message-row wrap cases: the narrow width forces a
+        // channel/task chip to wrap to the next line (inline-box line-wrap bug).
+        private val THREAD_MESSAGE_ROW_MD_WRAP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 260,
+                heightDp = 844
+            )
 
         @BeforeClass
         @JvmStatic
@@ -3218,8 +3243,6 @@ class KmpVisualScreenshotCaptureTest {
         // sentinel token. 7500px ≈ 3 viewports, under common GL texture limits.
         private const val FULL_HEIGHT_DISPLAY_WIDTH_PX = 1170
         private const val FULL_HEIGHT_DISPLAY_HEIGHT_PX = 7500
-        private const val MEMBERS_SMOKE_DISPLAY_WIDTH_PX = 1024
-        private const val MEMBERS_SMOKE_DISPLAY_HEIGHT_PX = 2625
         private const val FULL_HEIGHT_TOKEN = "settings_route_visual_fullheight"
         private const val FULL_HEIGHT_TOKEN_TIMEOUT_MS = 20_000L
         private const val FULL_HEIGHT_POLL_MS = 250L
