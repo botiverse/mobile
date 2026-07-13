@@ -15638,7 +15638,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
-    val contentTopLeft = remember { SlockMutableOffsetRef() }
+    val contentTopLeft = remember(openGestureKey) { SlockMutableOffsetRef() }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =

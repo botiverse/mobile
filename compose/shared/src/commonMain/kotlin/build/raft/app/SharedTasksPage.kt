@@ -1074,7 +1074,7 @@ private fun SharedTaskCard(
 ) {
     // Capture the card root so a long-press offset reported in card-local coords can be
     // converted to root coords for the overlay menu anchor.
-    val rootPos = remember { SlockMutableOffsetRef() }
+    val rootPos = remember(task.id.value) { SlockMutableOffsetRef() }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
     val description = task.description?.takeIf { it.isNotBlank() }
@@ -1195,6 +1195,7 @@ private fun SharedTaskCard(
                     iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
+                    clickIdentity = tasksStatusChipClickIdentity(task.id.value, task.status),
                     modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
                     trailingIconName = SlockLucideIconName.Pencil.takeIf { !updating },
                     // react's card status badge (InlineBadgeEditor, text-xs/leading-4 +
@@ -1211,6 +1212,9 @@ private fun SharedTaskCard(
         }
     }
 }
+
+internal fun tasksStatusChipClickIdentity(taskId: String, status: TaskStatus): String =
+    "tasks-status:$taskId:${status.name}"
 
 @Composable
 private fun SharedTasksStatusLabel(

@@ -150,7 +150,7 @@ internal fun SlockAnchoredMetaChip(
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap,
     clickIdentity: Any? = null
 ) {
-    val geometryAnchor = remember { SlockMutableOffsetRef() }
+    val geometryAnchor = remember(clickIdentity) { SlockMutableOffsetRef() }
     val chipModifier =
         modifier
             .heightIn(min = minHeight)

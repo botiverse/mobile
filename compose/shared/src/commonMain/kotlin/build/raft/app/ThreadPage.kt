@@ -15101,7 +15101,7 @@ private fun Modifier.threadMessageLongPressActions(
 ): Modifier {
     val currentOnShowActions by rememberUpdatedState(onShowActions)
     val currentOnPressChanged by rememberUpdatedState(onPressChanged)
-    val rootPos = remember { SlockMutableOffsetRef() }
+    val rootPos = remember(messageId) { SlockMutableOffsetRef() }
     return this
         .then(
             if (captureLongPressAnchor) {
