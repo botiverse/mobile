@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly WEB_REPOSITORY="botiverse/slock"
-readonly WEB_HEAD="47e3545bbea1364ca5a209a0e2d5218779c7d762"
+readonly WEB_HEAD="e5a021210ee6977b26869a2435853522372d90b9"
 readonly WEB_PATH="packages/shared/src/canonicalMessageV2.vector.json"
 readonly EXPECTED_SHA256="9ac66a83515df1e7eada19b864d5b41c6038a1a559de18249479455af4e9086e"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/sync/canonical-message-v2-reaction.vector.json"
