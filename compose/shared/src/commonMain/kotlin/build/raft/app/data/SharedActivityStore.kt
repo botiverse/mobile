@@ -2,12 +2,14 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -19,6 +21,9 @@ import build.raft.app.model.TaskDeleted
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.data.realtime.PerReceiverReadStateFactResult
+import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -57,6 +62,7 @@ class SharedActivityStore internal constructor(
     private var memberRepository: MemberRepository? = null,
     private var serverMembersStore: SharedServerMembersStore? = null,
     private var tasksDataStore: SharedTasksDataStore? = null,
+    private val perReceiverStateVersionStore: PerReceiverStateVersionStore,
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
@@ -70,9 +76,12 @@ class SharedActivityStore internal constructor(
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var loadGeneration: Long = 0L
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var unreadClearOverrides: Map<String, ActivityUnreadClearOverride> = emptyMap()
     private var doneOverrides: Map<String, ActivityDoneOverride> = emptyMap()
+    private var pendingReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
+    private var reconciledReadStateFacts: Map<ActivityReadStateProjectionKey, PerReceiverReadStateCheckpoint> = emptyMap()
     private val replyPrewarmSemaphore = Semaphore(SharedActivityReplyPrewarmConcurrency)
     private var visibleReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
     private var tailReplyPrewarmMarkers: Map<ActivityReplyThreadPrewarmKey, ActivityReplyThreadPrewarmMarker> = emptyMap()
@@ -136,8 +145,10 @@ class SharedActivityStore internal constructor(
     }
 
     fun clear() {
+        loadGeneration += 1L
         loadJob?.cancel()
         loadJob = null
+        pendingReadStateFacts = emptyMap()
         clearReplyPrewarmState()
     }
 
@@ -145,6 +156,7 @@ class SharedActivityStore internal constructor(
         clear()
         unreadClearOverrides = emptyMap()
         doneOverrides = emptyMap()
+        reconciledReadStateFacts = emptyMap()
         _state.value = SharedActivityState()
     }
 
@@ -358,6 +370,10 @@ class SharedActivityStore internal constructor(
     }
 
     private fun applyRealtimeEvent(event: RealtimeEvent) {
+        if (event is PerReceiverReadStateChanged) {
+            applyPerReceiverReadStateChanged(event)
+            return
+        }
         if (!event.refreshesActivity()) return
         val current = _state.value
         if (current.loading || current.refreshing) return
@@ -370,6 +386,10 @@ class SharedActivityStore internal constructor(
         event: RealtimeEvent,
         activeConversationId: String?
     ) {
+        if (event is PerReceiverReadStateChanged) {
+            applyPerReceiverReadStateChanged(event)
+            return
+        }
         scope.launch {
             val current = _state.value
             val snapshot = current.snapshot ?: return@launch
@@ -389,6 +409,56 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    private fun applyPerReceiverReadStateChanged(event: PerReceiverReadStateChanged) {
+        scope.launch {
+            val session = authStore.readSession() ?: return@launch
+            val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return@launch
+            if (event.serverId != null && event.serverId != serverId) return@launch
+            val memberId = session.user.id.trim().takeIf { it.isNotBlank() }?.let(::MemberId) ?: return@launch
+            var shouldReconcile = false
+            var acceptedHere = false
+            event.scopes.forEach { readScope ->
+                val maxReadSeq = readScope.maxReadSeq ?: return@forEach
+                val projectionKey =
+                    ActivityReadStateProjectionKey(
+                        serverId = serverId,
+                        memberId = memberId,
+                        scopeId = readScope.scopeId
+                    )
+                val checkpoint =
+                    PerReceiverReadStateCheckpoint(
+                        version = readScope.readStateVersion,
+                        maxReadSeq = maxReadSeq
+                    )
+                val result =
+                    perReceiverStateVersionStore.applyOrObserveReadStateFact(
+                        serverId = serverId,
+                        memberId = memberId,
+                        scopeId = readScope.scopeId,
+                        incomingVersion = readScope.readStateVersion,
+                        incomingMaxReadSeq = maxReadSeq
+                    )
+                diagnosticsLogger(
+                    "activity_read_state_apply serverId=${serverId.value} scopeId=${readScope.scopeId.value} " +
+                        "version=${readScope.readStateVersion} maxReadSeq=$maxReadSeq result=${result.name.lowercase()}"
+                )
+                val alreadyScheduledOrReconciled =
+                    pendingReadStateFacts[projectionKey] == checkpoint ||
+                        reconciledReadStateFacts[projectionKey] == checkpoint
+                if (result != PerReceiverReadStateFactResult.Stale && !alreadyScheduledOrReconciled) {
+                    pendingReadStateFacts = pendingReadStateFacts + (projectionKey to checkpoint)
+                    shouldReconcile = true
+                }
+                acceptedHere = acceptedHere || result == PerReceiverReadStateFactResult.Accepted
+            }
+            if (shouldReconcile) {
+                diagnosticsLogger("activity_read_state_reconcile reason=canonical_projection_required")
+                if (acceptedHere) onUnreadCountsChanged()
+                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh)
+            }
+        }
+    }
+
     private fun load(
         refresh: Boolean,
         pullRefresh: Boolean = false,
@@ -396,6 +466,7 @@ class SharedActivityStore internal constructor(
     ) {
         val current = _state.value
         if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) return
+        val generation = ++loadGeneration
         loadJob?.cancel()
         loadJob =
             scope.launch {
@@ -477,12 +548,16 @@ class SharedActivityStore internal constructor(
                             )
                         }
                     val senderProfiles = loadSenderProfiles(serverId)
+                    if (generation != loadGeneration) return@launch
                     applyLoadResult(
                         result = result,
                         server = server,
                         append = !refresh,
                         senderProfiles = senderProfiles,
                         intent = intent
+                    )
+                    completeReadStateReconcile(
+                        successful = result is DataResult.Content || result is DataResult.Empty
                     )
                     logActivityLoad(
                         result = result.activityDiagnosticsResult(),
@@ -495,6 +570,8 @@ class SharedActivityStore internal constructor(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
+                    if (generation != loadGeneration) return@launch
+                    completeReadStateReconcile(successful = false)
                     setLoadError("activity_network", append = !refresh)
                     logActivityLoad(
                         result = "exception",
@@ -506,6 +583,14 @@ class SharedActivityStore internal constructor(
                     )
                 }
             }
+    }
+
+    private fun completeReadStateReconcile(successful: Boolean) {
+        if (pendingReadStateFacts.isEmpty()) return
+        if (successful) {
+            reconciledReadStateFacts = reconciledReadStateFacts + pendingReadStateFacts
+        }
+        pendingReadStateFacts = emptyMap()
     }
 
     private fun logActivityLoad(
@@ -1005,6 +1090,12 @@ class SharedActivityStore internal constructor(
 
 private data class ActivityUnreadClearOverride(
     val unreadAnchor: MessageId?
+)
+
+private data class ActivityReadStateProjectionKey(
+    val serverId: ServerId,
+    val memberId: MemberId,
+    val scopeId: ChannelId
 )
 
 private data class ActivityDoneOverride(

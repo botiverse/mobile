@@ -154,6 +154,49 @@ class PerReceiverStateVersionStoreTest {
     }
 
     @Test
+    fun readStateFactUsesOneAuthorityAndAllowsExactProjectionReplay() {
+        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val server = ServerId("server-1")
+        val member = MemberId("member-1")
+        val channel = ChannelId("channel-1")
+
+        assertEquals(
+            PerReceiverReadStateFactResult.Accepted,
+            store.applyOrObserveReadStateFact(server, member, channel, incomingVersion = 3, incomingMaxReadSeq = 30)
+        )
+        assertEquals(
+            PerReceiverReadStateFactResult.Current,
+            store.applyOrObserveReadStateFact(server, member, channel, incomingVersion = 3, incomingMaxReadSeq = 30)
+        )
+        assertEquals(
+            PerReceiverReadStateFactResult.Stale,
+            store.applyOrObserveReadStateFact(server, member, channel, incomingVersion = 3, incomingMaxReadSeq = 29)
+        )
+        assertEquals(
+            PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30),
+            store.readReadStateCheckpoint(server, member, channel)
+        )
+    }
+
+    @Test
+    fun readStateFactAcceptsHigherVersionCursorRewind() {
+        val store = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        val server = ServerId("server-1")
+        val member = MemberId("member-1")
+        val channel = ChannelId("channel-1")
+        store.applyOrObserveReadStateFact(server, member, channel, incomingVersion = 3, incomingMaxReadSeq = 30)
+
+        assertEquals(
+            PerReceiverReadStateFactResult.Accepted,
+            store.applyOrObserveReadStateFact(server, member, channel, incomingVersion = 4, incomingMaxReadSeq = 10)
+        )
+        assertEquals(
+            PerReceiverReadStateCheckpoint(version = 4, maxReadSeq = 10),
+            store.readReadStateCheckpoint(server, member, channel)
+        )
+    }
+
+    @Test
     fun doesNotShareRealtimeSeqCursorKeysOrSemantics() {
         val keyValueStore = InMemorySlockKeyValueStore()
         val versionStore = PerReceiverStateVersionStore(keyValueStore)

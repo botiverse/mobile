@@ -426,6 +426,7 @@ internal class SlockSharedStoreProvider private constructor(
                 memberRepository = memberRepository,
                 serverMembersStore = serverMembersStore(scope),
                 tasksDataStore = tasksDataStore,
+                perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
                 persistSlices = listOf(activityPersistSlice),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},

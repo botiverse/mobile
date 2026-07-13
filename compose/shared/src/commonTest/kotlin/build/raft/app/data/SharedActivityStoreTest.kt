@@ -15,6 +15,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
@@ -24,6 +26,7 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -800,6 +803,275 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun readStateFactBeforeInitialRequestLoadsCanonicalActivitySnapshot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
+            )
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        var homeReconcileRequests = 0
+        val store =
+            activityStore(
+                scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+                onUnreadCountsChanged = { homeReconcileRequests += 1 }
+            )
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(1, homeReconcileRequests)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 1, maxReadSeq = 10),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun readStateFactAlreadyAcceptedByHomeStillReconcilesActivity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0))
+            )
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            serverId = ServerId("server-1"),
+            memberId = MemberId("user-1"),
+            scopeId = ChannelId("channel-1"),
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30)
+        )
+        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
+            )
+        )
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 30)
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun equalVersionConflictingCursorFailsClosedWithoutActivityRefreshOrHomeNotify() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
+                    )
+            )
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            serverId = ServerId("server-1"),
+            memberId = MemberId("user-1"),
+            scopeId = ChannelId("channel-1"),
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 3, maxReadSeq = 30)
+        )
+        var homeReconcileRequests = 0
+        val store =
+            activityStore(
+                scope,
+                inboxRepository = inbox,
+                perReceiverStateVersionStore = versionStore,
+                onUnreadCountsChanged = { homeReconcileRequests += 1 }
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 3, maxReadSeq = 29)
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(0, homeReconcileRequests)
+        assertEquals(2, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleReadStateFactDoesNotRefreshActivity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
+                    )
+            )
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            serverId = ServerId("server-1"),
+            memberId = MemberId("user-1"),
+            scopeId = ChannelId("channel-1"),
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50)
+        )
+        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 4, maxReadSeq = 40)
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun higherVersionReadStateRewindReconcilesActivity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0),
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)
+                    )
+            )
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            serverId = ServerId("server-1"),
+            memberId = MemberId("user-1"),
+            scopeId = ChannelId("channel-1"),
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50)
+        )
+        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 6, maxReadSeq = 20)
+            )
+        )
+
+        assertEquals(2, inbox.initialLoadCount)
+        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 6, maxReadSeq = 20),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"))
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun readStateBulkScopesFoldIndependentlyAndScheduleOneReconcile() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList())))
+        val versionStore = PerReceiverStateVersionStore(InMemorySlockKeyValueStore())
+        versionStore.writeReadStateCheckpoint(
+            serverId = ServerId("server-1"),
+            memberId = MemberId("user-1"),
+            scopeId = ChannelId("channel-a"),
+            checkpoint = build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50)
+        )
+        val store = activityStore(scope, inboxRepository = inbox, perReceiverStateVersionStore = versionStore)
+
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                PerReceiverReadStateChanged(
+                    serverId = ServerId("server-1"),
+                    scopes =
+                        listOf(
+                            PerReceiverReadStateScope(ChannelId("channel-a"), maxReadSeq = 40, readStateVersion = 4),
+                            PerReceiverReadStateScope(ChannelId("channel-b"), maxReadSeq = 7, readStateVersion = 1)
+                        )
+                )
+            )
+        )
+
+        assertEquals(1, inbox.initialLoadCount)
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 5, maxReadSeq = 50),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-a"))
+        )
+        assertEquals(
+            build.raft.app.data.realtime.PerReceiverReadStateCheckpoint(version = 1, maxReadSeq = 7),
+            versionStore.readReadStateCheckpoint(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-b"))
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun acceptedReadStateFactFencesStaleInFlightActivityLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inboxRepository = inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
+            )
+        )
+        inbox.completeNextSnapshot(
+            snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalUnreadCount = 3)
+        )
+        assertEquals(null, store.state.value.snapshot)
+
+        inbox.completeNextSnapshot(
+            snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
+        )
+
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun partialReadStatePreservesLoadedSummaryUntilRestartedCanonicalLoadWins() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inboxRepository = inbox)
+        val visibleUnread = activityItem("channel-1", unreadCount = 3).copy(hasMention = true)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNextSnapshot(snapshot(listOf(visibleUnread), totalUnreadCount = 3))
+        store.dispatch(SharedActivityIntent.Refresh)
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                readStateEvent(scopeId = "channel-1", version = 1, maxReadSeq = 10)
+            )
+        )
+
+        assertEquals(3, store.state.value.totalUnreadCount)
+        assertEquals(true, store.state.value.items.single().hasMention)
+
+        inbox.completeNextSnapshot(
+            snapshot(listOf(activityItem("channel-1", unreadCount = 0)), totalUnreadCount = 0)
+        )
+        assertEquals(3, store.state.value.totalUnreadCount)
+        assertEquals(true, store.state.value.items.single().hasMention)
+
+        inbox.completeNextSnapshot(
+            snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1)
+        )
+        assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun homeSummaryRealtimeIncrementsUnreadWithoutRefreshingActivityRows() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox =
@@ -1348,6 +1620,8 @@ class SharedActivityStoreTest {
         serverMembersStore: SharedServerMembersStore? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
         tasksDataStore: SharedTasksDataStore? = null,
+        perReceiverStateVersionStore: PerReceiverStateVersionStore =
+            PerReceiverStateVersionStore(InMemorySlockKeyValueStore()),
         authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
         prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
             DataResult.Empty(EmptyReason.NoMessages)
@@ -1363,11 +1637,29 @@ class SharedActivityStoreTest {
             memberRepository = memberRepository,
             serverMembersStore = serverMembersStore,
             tasksDataStore = tasksDataStore,
+            perReceiverStateVersionStore = perReceiverStateVersionStore,
             persistSlices = persistSlices,
             prewarmReplyThread = prewarmReplyThread,
             tailPrewarmDepthCap = tailPrewarmDepthCap,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
+        )
+
+    private fun readStateEvent(
+        scopeId: String,
+        version: Long,
+        maxReadSeq: Long
+    ): PerReceiverReadStateChanged =
+        PerReceiverReadStateChanged(
+            serverId = ServerId("server-1"),
+            scopes =
+                listOf(
+                    PerReceiverReadStateScope(
+                        scopeId = ChannelId(scopeId),
+                        maxReadSeq = maxReadSeq,
+                        readStateVersion = version
+                    )
+                )
         )
 
     private fun replyPrewarmMarker(

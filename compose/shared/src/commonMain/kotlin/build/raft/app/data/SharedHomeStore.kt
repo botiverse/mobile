@@ -7,6 +7,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.data.realtime.PerReceiverStateScope
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.data.realtime.PerReceiverReadStateCheckpoint
+import build.raft.app.data.realtime.PerReceiverReadStateFactResult
 import build.raft.app.network.sync.ReadStateSyncApplyResult
 import build.raft.app.network.sync.ReadStateSyncEvent
 import build.raft.app.network.sync.ReadStateSyncState
@@ -530,34 +531,18 @@ internal class SharedHomeStore(
         scope: build.raft.app.model.PerReceiverReadStateScope
     ): Boolean {
         val incomingMaxReadSeq = scope.maxReadSeq ?: return false
-        val checkpoint = perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, scope.scopeId)
-        val transition =
-            reduceReadStateSyncState(
-                current =
-                    ReadStateSyncState(
-                        readStateVersion = checkpoint.version,
-                        maxReadSeq = checkpoint.maxReadSeq
-                    ),
-                event =
-                    ReadStateSyncEvent(
-                        readStateVersion = scope.readStateVersion,
-                        maxReadSeq = incomingMaxReadSeq
-                    )
+        val factResult =
+            perReceiverStateVersionStore.applyOrObserveReadStateFact(
+                serverId = serverId,
+                memberId = memberId,
+                scopeId = scope.scopeId,
+                incomingVersion = scope.readStateVersion,
+                incomingMaxReadSeq = incomingMaxReadSeq
             )
-        if (transition.result == ReadStateSyncApplyResult.Stale) return false
-        perReceiverStateVersionStore.writeReadStateCheckpoint(
-            serverId = serverId,
-            memberId = memberId,
-            scopeId = scope.scopeId,
-            checkpoint =
-                PerReceiverReadStateCheckpoint(
-                    version = transition.state.readStateVersion,
-                    maxReadSeq = transition.state.maxReadSeq
-                )
-        )
+        if (factResult != PerReceiverReadStateFactResult.Accepted) return false
         val key = BackgroundUnreadScopeKey(serverId, scope.scopeId)
         val projection = backgroundUnreadByScope[key] ?: return true
-        val clearedUnread = projection.removeThrough(transition.state.maxReadSeq)
+        val clearedUnread = projection.removeThrough(incomingMaxReadSeq)
         if (projection.isEmpty()) backgroundUnreadByScope.remove(key)
         if (clearedUnread == 0) return true
         val current = _state.value
@@ -1732,40 +1717,21 @@ internal class SharedHomeStore(
             ?: return HomeReadStateApplyOutcome.Skipped
         if (current.snapshot.server.id != update.serverId) return HomeReadStateApplyOutcome.Skipped
         if (current.snapshot.currentMember.id != update.memberId) return HomeReadStateApplyOutcome.Skipped
-        val checkpoint =
-            perReceiverStateVersionStore.readReadStateCheckpoint(
+        val incomingMaxReadSeq = update.maxReadSeq ?: return HomeReadStateApplyOutcome.Skipped
+        val factResult =
+            perReceiverStateVersionStore.applyOrObserveReadStateFact(
                 serverId = update.serverId,
                 memberId = update.memberId,
-                scopeId = update.channelId
+                scopeId = update.channelId,
+                incomingVersion = update.version,
+                incomingMaxReadSeq = incomingMaxReadSeq
             )
-        val incomingMaxReadSeq = update.maxReadSeq ?: return HomeReadStateApplyOutcome.Skipped
-        val transition =
-            reduceReadStateSyncState(
-                current =
-                    ReadStateSyncState(
-                        readStateVersion = checkpoint.version,
-                        maxReadSeq = checkpoint.maxReadSeq
-                    ),
-                event =
-                    ReadStateSyncEvent(
-                        readStateVersion = update.version,
-                        maxReadSeq = incomingMaxReadSeq
-                    )
-            )
-        if (transition.result == ReadStateSyncApplyResult.Stale) return HomeReadStateApplyOutcome.Skipped
-        perReceiverStateVersionStore.writeReadStateCheckpoint(
-            serverId = update.serverId,
-            memberId = update.memberId,
-            scopeId = update.channelId,
-            checkpoint =
-                PerReceiverReadStateCheckpoint(
-                    version = transition.state.readStateVersion,
-                    maxReadSeq = transition.state.maxReadSeq
-                )
-        )
+        if (factResult != PerReceiverReadStateFactResult.Accepted) {
+            return HomeReadStateApplyOutcome.Skipped
+        }
         applyHomeSnapshotLocally { snapshot ->
             snapshot.withPerReceiverReadState(
-                update = update.copy(maxReadSeq = transition.state.maxReadSeq)
+                update = update.copy(maxReadSeq = incomingMaxReadSeq)
             )
         }
         return HomeReadStateApplyOutcome.AcceptedNeedsReconcile
