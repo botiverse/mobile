@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.parseSharedAgentActivity
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
@@ -15,9 +16,78 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedMembersParserTest {
+    @Test
+    fun cachedAgentDetailUsesBackgroundRefreshWithoutVisibleLoading() {
+        assertEquals(
+            MemberDetailLoadPlan(
+                priority = DataRequestPriority.Background,
+                showInitialLoading = false,
+                keepCachedContentOnFailure = true
+            ),
+            memberDetailLoadPlan(hasCachedDetail = true)
+        )
+        assertEquals(
+            MemberDetailLoadPlan(
+                priority = DataRequestPriority.Visible,
+                showInitialLoading = true,
+                keepCachedContentOnFailure = false
+            ),
+            memberDetailLoadPlan(hasCachedDetail = false)
+        )
+    }
+
+    @Test
+    fun cachedAgentDetailFailureOutcomesKeepContentAndNeverBlockRoute() {
+        val cachedPlan = memberDetailLoadPlan(hasCachedDetail = true)
+
+        MemberDetailFailureKind.entries.forEach { failure ->
+            assertEquals(
+                MemberDetailFailureTransition.KeepCached,
+                memberDetailFailureResolution(cachedPlan, failure, "ignored").transition,
+                "cached $failure must retain the rendered agent detail"
+            )
+            assertNull(
+                memberDetailFailureResolution(cachedPlan, failure, "ignored").routeErrorCode,
+                "cached $failure must not return a blocking route error"
+            )
+        }
+    }
+
+    @Test
+    fun coldAgentDetailFailureOutcomesStillBlockAndSetTerminalStatus() {
+        val coldPlan = memberDetailLoadPlan(hasCachedDetail = false)
+
+        assertEquals(
+            MemberDetailFailureResolution(
+                MemberDetailFailureTransition.SetDetailEmpty,
+                routeErrorCode = "member_not_found"
+            ),
+            memberDetailFailureResolution(coldPlan, MemberDetailFailureKind.Empty)
+        )
+        assertEquals(
+            MemberDetailFailureResolution(
+                MemberDetailFailureTransition.SetDetailError,
+                routeErrorCode = "agent_detail_failed"
+            ),
+            memberDetailFailureResolution(coldPlan, MemberDetailFailureKind.Error, "agent_detail_failed")
+        )
+        assertEquals(
+            MemberDetailFailureResolution(
+                MemberDetailFailureTransition.SetDetailNoPermission,
+                routeErrorCode = "agent_detail_forbidden"
+            ),
+            memberDetailFailureResolution(
+                coldPlan,
+                MemberDetailFailureKind.NoPermission,
+                "agent_detail_forbidden"
+            )
+        )
+    }
+
     @Test
     fun agentsEndpointArrayParsesAsAgentMembers() {
         val agents =

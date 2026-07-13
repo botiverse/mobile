@@ -1467,6 +1467,76 @@ private sealed interface MemberDetailRouteState {
     ) : MemberDetailRouteState
 }
 
+internal data class MemberDetailLoadPlan(
+    val priority: DataRequestPriority,
+    val showInitialLoading: Boolean,
+    val keepCachedContentOnFailure: Boolean
+)
+
+internal fun memberDetailLoadPlan(hasCachedDetail: Boolean): MemberDetailLoadPlan =
+    if (hasCachedDetail) {
+        MemberDetailLoadPlan(
+            priority = DataRequestPriority.Background,
+            showInitialLoading = false,
+            keepCachedContentOnFailure = true
+        )
+    } else {
+        MemberDetailLoadPlan(
+            priority = DataRequestPriority.Visible,
+            showInitialLoading = true,
+            keepCachedContentOnFailure = false
+        )
+    }
+
+internal enum class MemberDetailFailureKind {
+    Empty,
+    Error,
+    NoPermission
+}
+
+internal enum class MemberDetailFailureTransition {
+    KeepCached,
+    SetDetailEmpty,
+    SetDetailError,
+    SetDetailNoPermission
+}
+
+internal data class MemberDetailFailureResolution(
+    val transition: MemberDetailFailureTransition,
+    val routeErrorCode: String? = null
+)
+
+/**
+ * Keep an already rendered agent detail authoritative while its best-effort refresh fails.
+ * A cold route must still surface the terminal result instead of presenting stale content.
+ */
+internal fun memberDetailFailureResolution(
+    loadPlan: MemberDetailLoadPlan,
+    failure: MemberDetailFailureKind,
+    code: String = ""
+): MemberDetailFailureResolution {
+    if (loadPlan.keepCachedContentOnFailure) {
+        return MemberDetailFailureResolution(MemberDetailFailureTransition.KeepCached)
+    }
+    return when (failure) {
+        MemberDetailFailureKind.Empty ->
+            MemberDetailFailureResolution(
+                transition = MemberDetailFailureTransition.SetDetailEmpty,
+                routeErrorCode = "member_not_found"
+            )
+        MemberDetailFailureKind.Error ->
+            MemberDetailFailureResolution(
+                transition = MemberDetailFailureTransition.SetDetailError,
+                routeErrorCode = code
+            )
+        MemberDetailFailureKind.NoPermission ->
+            MemberDetailFailureResolution(
+                transition = MemberDetailFailureTransition.SetDetailNoPermission,
+                routeErrorCode = code
+            )
+    }
+}
+
 private data class MemberDetailVisualSeed(
     val member: MemberProfile,
     val agentDetailState: MembersAgentDetailLoadState,
@@ -1615,38 +1685,97 @@ private class MemberDetailRouteProvider(
     ): MemberDetailRouteState {
         val state = agentDetailStore.state.value
         val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
+        val loadPlan = memberDetailLoadPlan(hasMatchingDetail)
         if (!hasMatchingDetail) {
             agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
         }
-        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
-        when (val detailResult = memberRepository.getAgentDetail(DataRequestPriority.Visible, selectedId)) {
+        if (loadPlan.showInitialLoading) {
+            agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
+        }
+        return when (val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
                 serverMembersStore.applyAgentDetailSnapshot(detailResult.data)
-                return MemberDetailRouteState.Agent(
+                MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = currentUserId
                 )
             }
             is DataResult.Empty -> {
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
-                return MemberDetailRouteState.Error("member_not_found")
+                resolveAgentDetailFailure(
+                    selectedId = selectedId,
+                    server = server,
+                    currentUserId = currentUserId,
+                    resolution = memberDetailFailureResolution(loadPlan, MemberDetailFailureKind.Empty),
+                    resultLabel = "empty"
+                )
             }
             is DataResult.Error -> {
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetDetailError(selectedId, detailResult.error.code)
+                resolveAgentDetailFailure(
+                    selectedId = selectedId,
+                    server = server,
+                    currentUserId = currentUserId,
+                    resolution = memberDetailFailureResolution(
+                        loadPlan,
+                        MemberDetailFailureKind.Error,
+                        detailResult.error.code
+                    ),
+                    resultLabel = "error",
+                    diagnosticCode = detailResult.error.code
                 )
-                return MemberDetailRouteState.Error(detailResult.error.code)
             }
             is DataResult.NoPermission -> {
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetDetailNoPermission(selectedId, detailResult.blocker.code)
+                resolveAgentDetailFailure(
+                    selectedId = selectedId,
+                    server = server,
+                    currentUserId = currentUserId,
+                    resolution = memberDetailFailureResolution(
+                        loadPlan,
+                        MemberDetailFailureKind.NoPermission,
+                        detailResult.blocker.code
+                    ),
+                    resultLabel = "no_permission",
+                    diagnosticCode = detailResult.blocker.code
                 )
-                return MemberDetailRouteState.Error(detailResult.blocker.code)
             }
         }
     }
+
+    private fun resolveAgentDetailFailure(
+        selectedId: MemberId,
+        server: ServerSummary,
+        currentUserId: String?,
+        resolution: MemberDetailFailureResolution,
+        resultLabel: String,
+        diagnosticCode: String? = null
+    ): MemberDetailRouteState =
+        when (resolution.transition) {
+            MemberDetailFailureTransition.KeepCached -> {
+                bridge.log(
+                    "member_detail_background_refresh_kept_cached agentId=${selectedId.value} " +
+                        "result=$resultLabel" +
+                        diagnosticCode?.let { " code=$it" }.orEmpty()
+                )
+                MemberDetailRouteState.Agent(server = server, currentUserId = currentUserId)
+            }
+            MemberDetailFailureTransition.SetDetailEmpty -> {
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
+                MemberDetailRouteState.Error(requireNotNull(resolution.routeErrorCode))
+            }
+            MemberDetailFailureTransition.SetDetailError -> {
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailError(selectedId, requireNotNull(resolution.routeErrorCode))
+                )
+                MemberDetailRouteState.Error(requireNotNull(resolution.routeErrorCode))
+            }
+            MemberDetailFailureTransition.SetDetailNoPermission -> {
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailNoPermission(selectedId, requireNotNull(resolution.routeErrorCode))
+                )
+                MemberDetailRouteState.Error(requireNotNull(resolution.routeErrorCode))
+            }
+        }
 
     suspend fun refreshAgentActivity(agentId: MemberId) {
         when (val activityResult = memberRepository.getAgentActivity(DataRequestPriority.Visible, agentId)) {

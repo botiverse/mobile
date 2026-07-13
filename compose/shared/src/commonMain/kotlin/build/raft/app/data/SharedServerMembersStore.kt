@@ -11,11 +11,17 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.avatarSlotResolution
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -126,26 +132,7 @@ data class SharedServerMembersState(
                     .filter { cleanServerId == null || it.serverId?.trim() == cleanServerId }
                     .flatMap { it.members.asSequence() }
                     .firstOrNull { it.kind == MemberKind.Agent && it.id.value.trim() == cleanMemberId }
-        val presenceFact = presenceByMemberId[cleanMemberId]
-        if (
-            presenceFact != null &&
-            (
-                presenceFact.kind == null ||
-                    presenceFact.kind == MemberKind.Agent ||
-                    member?.kind == MemberKind.Agent
-            )
-        ) {
-            return SharedServerMemberStatus(
-                status = presenceFact.agentStatus ?: member?.agentStatus,
-                presence = presenceFact.presence,
-                statusLabel = presenceFact.statusLabel
-            )
-        }
-        if (member?.kind != MemberKind.Agent) return null
-        return SharedServerMemberStatus(
-            status = member.agentStatus,
-            presence = member.presence
-        )
+        return member.toSharedServerMemberStatus(presenceByMemberId[cleanMemberId])
     }
 
     fun memberProfile(
@@ -177,6 +164,49 @@ data class SharedServerMemberStatus(
     val presence: Presence,
     val statusLabel: String? = null
 )
+
+private fun SharedServerMembersState.channelMemberProfile(
+    serverId: ServerId,
+    memberId: String
+): MemberProfile? =
+    channelMemberSlices.values
+        .asSequence()
+        .filter { it.serverId?.trim() == serverId.value }
+        .flatMap { it.members.asSequence() }
+        .firstOrNull { it.id.value.trim() == memberId }
+
+private fun SharedServerMembersState.scopedMemberProfile(
+    serverId: ServerId,
+    memberId: String
+): MemberProfile? =
+    entryFor(serverId)
+        ?.members
+        ?.firstOrNull { it.id.value.trim() == memberId }
+        ?: channelMemberProfile(serverId, memberId)
+
+private fun MemberProfile?.toSharedServerMemberStatus(
+    presenceFact: MemberPresenceUpdated?
+): SharedServerMemberStatus? {
+    if (
+        presenceFact != null &&
+        (
+            presenceFact.kind == null ||
+                presenceFact.kind == MemberKind.Agent ||
+                this?.kind == MemberKind.Agent
+        )
+    ) {
+        return SharedServerMemberStatus(
+            status = presenceFact.agentStatus ?: this?.agentStatus,
+            presence = presenceFact.presence,
+            statusLabel = presenceFact.statusLabel
+        )
+    }
+    if (this?.kind != MemberKind.Agent) return null
+    return SharedServerMemberStatus(
+        status = agentStatus,
+        presence = presence
+    )
+}
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.
@@ -259,18 +289,67 @@ class SharedServerMembersStore(
     fun memberStatusFlow(
         serverId: ServerId?,
         memberId: String?
-    ): Flow<SharedServerMemberStatus?> =
-        state
-            .map { current -> current.memberStatus(serverId, memberId) }
-            .distinctUntilChanged()
+    ): Flow<SharedServerMemberStatus?> {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val cleanMemberId = memberId.normalizedServerMembersId()
+        if (cleanServerId == null || cleanMemberId == null) {
+            return state
+                .map { current -> current.memberStatus(serverId, memberId) }
+                .distinctUntilChanged()
+        }
+        val scopedServerId = ServerId(cleanServerId)
+        return combine(
+            scopedMemberProfileFlow(scopedServerId, cleanMemberId),
+            state
+                .map { current -> current.presenceFor(cleanMemberId) }
+                .distinctUntilChanged()
+        ) { member, presenceFact ->
+            member.toSharedServerMemberStatus(presenceFact)
+        }.distinctUntilChanged()
+    }
 
     fun memberProfileFlow(
         serverId: ServerId?,
         memberId: String?
+    ): Flow<MemberProfile?> {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val cleanMemberId = memberId.normalizedServerMembersId()
+        if (cleanServerId == null || cleanMemberId == null) {
+            return state
+                .map { current -> current.memberProfile(serverId, memberId) }
+                .distinctUntilChanged()
+        }
+        return scopedMemberProfileFlow(ServerId(cleanServerId), cleanMemberId)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun scopedMemberProfileFlow(
+        serverId: ServerId,
+        memberId: String
     ): Flow<MemberProfile?> =
-        state
-            .map { current -> current.memberProfile(serverId, memberId) }
-            .distinctUntilChanged()
+        flow {
+            // `flatMapLatest` starts its inner collection asynchronously. Emit the
+            // current cached profile first so a freshly opened Members row never
+            // waits a frame (or loses its initial value) before the scoped flow is
+            // attached.
+            emit(_state.value.scopedMemberProfile(serverId, memberId))
+            emitAll(
+                serverMembersEntryFlow(serverId)
+                    .flatMapLatest { entry ->
+                        val rosterMember = entry.members.firstOrNull { it.id.value.trim() == memberId }
+                        if (rosterMember != null) {
+                            flowOf(rosterMember)
+                        } else {
+                            // A channel-local slice can arrive before the full server roster.
+                            // Keep that fallback until the roster contains this member, while
+                            // keeping normal Members rows off the whole-state hot path.
+                            state
+                                .map { current -> current.channelMemberProfile(serverId, memberId) }
+                                .distinctUntilChanged()
+                        }
+                    }
+            )
+        }.distinctUntilChanged()
 
     fun seed(snapshot: MemberSnapshot) {
         val key = snapshot.server.id.value.trim()
