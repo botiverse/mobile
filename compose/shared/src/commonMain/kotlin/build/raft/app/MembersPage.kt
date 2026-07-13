@@ -342,6 +342,13 @@ internal fun membersAgentDetailTabsForAccess(
         membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)
     }
 
+internal fun membersAgentDetailShowsProfileStateNotice(
+    selectedTab: MembersAgentDetailTab,
+    avatarManagementMode: Boolean
+): Boolean =
+    selectedTab == MembersAgentDetailTab.Profile &&
+        !avatarManagementMode
+
 internal fun membersOrderedAgentTabs(
     visibleTabs: List<MembersAgentDetailTab>,
     storedOrder: List<String>
@@ -3838,16 +3845,6 @@ private fun MembersDetailContent(
                     timeContext = timeContext,
                     onOpenUrl = onOpenUrl,
                     autoScrollToLatest = !stableVisualCapture,
-                    stateNotice = {
-                        MembersAgentDetailStateNotice(
-                            state = agentDetailState,
-                            modifier = Modifier.padding(
-                                start = MembersPageInset,
-                                top = SlockSpacing.Xs,
-                                end = MembersPageInset
-                            )
-                        )
-                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -3862,7 +3859,12 @@ private fun MembersDetailContent(
                         item { Spacer(Modifier.height(SlockSpacing.Sm)) }
                     }
                     if (member.kind == MemberKind.Agent) {
-                        if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                        if (
+                            membersAgentDetailShowsProfileStateNotice(
+                                selectedTab = selectedTab,
+                                avatarManagementMode = initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement
+                            )
+                        ) {
                             item {
                                 MembersAgentDetailStateNotice(
                                     state = agentDetailState,
@@ -8404,8 +8406,7 @@ private fun MembersAgentActivityTab(
     timeContext: SlockTimeContext,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
-    autoScrollToLatest: Boolean = true,
-    stateNotice: (@Composable () -> Unit)? = null
+    autoScrollToLatest: Boolean = true
 ) {
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
@@ -8441,7 +8442,6 @@ private fun MembersAgentActivityTab(
             )
         }
         MembersDetailSectionDivider()
-        stateNotice?.invoke()
         val rows =
             remember(detail?.agentId, detail?.activity) {
                 detail?.activity.orEmpty()
