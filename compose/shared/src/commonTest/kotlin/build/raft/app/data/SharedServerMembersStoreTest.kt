@@ -802,15 +802,24 @@ class SharedServerMembersStoreTest {
                 agentStatus = AgentStatus.Working
             )
         )
-        store.seedProfiles(
-            serverId = ServerId("server-1"),
-            profiles =
+        store.seed(
+            MemberSnapshot(
+                server("server-1"),
                 listOf(
                     member("agent-1", "Agent One").copy(
                         kind = MemberKind.Agent,
-                        avatar = AvatarReference.fromWireValue("pixel:spark")
+                        avatar = AvatarReference.fromWireValue("pixel:spark"),
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
+                    ),
+                    member("agent-2", "Agent Two").copy(
+                        kind = MemberKind.Agent,
+                        avatar = AvatarReference.fromWireValue("pixel:paint"),
+                        agentStatus = AgentStatus.Working,
+                        presence = Presence.Active
                     )
                 )
+            )
         )
         avatarJob.join()
         statusJob.join()
