@@ -76,6 +76,7 @@ import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.SharedMembersStore
 import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
@@ -634,7 +635,6 @@ internal data class KuiklyThreadScreenPayload(
 
 internal data class ThreadMembersPageRoute(
     val instanceId: String,
-    val title: String,
     val serverId: ServerId,
     val channelId: ChannelId,
     val localOffsetMinutes: Int,
@@ -651,7 +651,6 @@ internal fun KuiklyThreadScreenPayload.toThreadMembersPageData(
     JSONObject().apply {
         put("pageName", THREAD_MEMBERS_PAGE)
         put("instanceId", "thread-members-${instanceId.ifBlank { channelId.value }}")
-        put("title", threadHeaderDisplayTitle(title, surfaceKind))
         put("serverId", serverId.value)
         put("channelId", channelId.value)
         put("localOffsetMinutes", localOffsetMinutes)
@@ -667,7 +666,6 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
     val channelId = optString("channelId").trim().takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return null
     return ThreadMembersPageRoute(
         instanceId = optString("instanceId"),
-        title = optString("title").trim().takeIf { it.isNotBlank() } ?: "Members",
         serverId = serverId,
         channelId = channelId,
         localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
@@ -2106,8 +2104,9 @@ private fun ThreadMembersPageScreen() {
             channelId = route.channelId.value
         )
     )
-    val serverMembersState by remember(serverMembersStore) { serverMembersStore.state }
-        .collectAsState(SharedServerMembersState())
+    val serverMembersEntry by remember(serverMembersStore, route.serverId) {
+        serverMembersStore.serverMembersEntryFlow(route.serverId)
+    }.collectAsState(SharedServerMembersEntry(serverId = route.serverId.value))
     LaunchedEffect(serverMembersStore, route.serverId) {
         serverMembersStore.refreshMembers(route.serverId, DataRequestPriority.Background, force = false)
     }
@@ -2117,11 +2116,9 @@ private fun ThreadMembersPageScreen() {
             .map { it.toKuiklyThreadMemberItem(route.serverId) }
     }
     val memberKeys = remember(members) { members.map { it.memberKey }.toSet() }
-    val candidates = remember(serverMembersState, route.serverId, memberKeys) {
-        serverMembersState
-            .entryFor(route.serverId)
-            ?.members
-            .orEmpty()
+    val candidates = remember(serverMembersEntry.members, route.serverId, memberKeys) {
+        serverMembersEntry
+            .members
             .filterNot { it.threadMemberKey in memberKeys }
             .map { it.toKuiklyThreadMemberItem(route.serverId) }
     }
@@ -2146,10 +2143,8 @@ private fun ThreadMembersPageScreen() {
         val identity = member.memberDetailIdentity() ?: return
         val pageData = route.toMemberDetailPageData(identity) ?: return
         member.toMemberProfile()
-            ?.toThreadCandidateAgentDetailSnapshot()
-            ?.let { detail ->
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(detail.agentId))
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(detail.agentId, detail))
+            ?.let { profile ->
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(profile))
             }
         router.openPage(MEMBER_DETAIL_PAGE, pageData)
     }
@@ -2195,7 +2190,6 @@ private fun ThreadMembersPageScreen() {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
                 title = stringResource(MR.strings.thread_members_title, members.size),
-                subtitle = route.title,
                 iconName = SlockLucideIconName.Users,
                 backgroundColor = SlockColor.SurfaceWhite,
                 refreshing = slice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),

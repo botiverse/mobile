@@ -6246,7 +6246,6 @@ class ThreadPayloadTest {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-1",
-                title = "Engineering",
                 sourceThreadId = "channel-1",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20623,
@@ -6263,17 +6262,16 @@ class ThreadPayloadTest {
 
         assertEquals(THREAD_MEMBERS_PAGE, pageData.optString("pageName"))
         assertEquals("thread-members-thread-1", pageData.optString("instanceId"))
-        assertEquals("Engineering", pageData.optString("title"))
         assertEquals("server-1", pageData.optString("serverId"))
         assertEquals("channel-1", pageData.optString("channelId"))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("memberCandidates"))
+        assertEquals("", pageData.optString("title"))
         assertEquals("shell-1", pageData.optString(SLOCK_SHELL_INSTANCE_ID))
         assertEquals("server-1", pageData.optString(SLOCK_SHELL_SERVER_ID))
         assertEquals(
             ThreadMembersPageRoute(
                 instanceId = "thread-members-thread-1",
-                title = "Engineering",
                 serverId = ServerId("server-1"),
                 channelId = ChannelId("channel-1"),
                 localOffsetMinutes = 480,
