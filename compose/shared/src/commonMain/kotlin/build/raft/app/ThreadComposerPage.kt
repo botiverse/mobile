@@ -2550,8 +2550,7 @@ private fun ComposerFileAttachmentPreview(attachment: KuiklyPendingAttachmentIte
             )
             Text(
                 text = listOf(
-                    attachment.mimeType?.takeIf { it.isNotBlank() }
-                        ?: stringResource(MR.strings.thread_composer_attachment_file),
+                    stringResource(MR.strings.thread_composer_attachment_file),
                     attachment.displaySizeLabel(),
                 ).filter { it.isNotBlank() }.joinToString(" · "),
                 style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),

@@ -4126,7 +4126,7 @@ internal fun SharedThreadRouteContent(
     fun openComposerAttachmentPreview(attachmentId: String) {
         val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
         val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        val meta = attachment.displaySizeLabel()
         if (!attachment.isReadyThreadAttachmentForSend()) {
             pager.openSlockFilePreviewPage(
                 SlockFilePreviewPayload(
@@ -16118,9 +16118,7 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): 
     isPreviewableDocumentAttachment() || isHtmlAttachment() || isMp4VideoAttachment()
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
-    listOf(displaySizeLabel(), mimeType)
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
+    displaySizeLabel()
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
     listOf("thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
@@ -16131,13 +16129,10 @@ private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
     listOf(
-        when {
-            isHtmlAttachment() -> "HTML preview"
-            mimeType.isNotBlank() -> mimeType
-            else -> "file"
-        },
+        "HTML preview".takeIf { isHtmlAttachment() },
         displaySizeLabel()
     )
+        .filterNotNull()
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
@@ -16471,7 +16466,7 @@ private fun ThreadAttachmentCommentsHeader(attachment: KuiklyThreadAttachmentIte
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            val meta = listOf(attachment.displaySizeLabel(), attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+            val meta = attachment.displaySizeLabel()
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,

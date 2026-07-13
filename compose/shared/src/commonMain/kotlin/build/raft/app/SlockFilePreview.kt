@@ -2540,7 +2540,11 @@ private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
 @Composable
 private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
     val headerTitle = previewHeaderTitle()
-    return listOf(meta, path, subtitle, externalMimeType)
+    return slockFilePreviewVisibleSubtitle(headerTitle)
+}
+
+internal fun SlockFilePreviewPayload.slockFilePreviewVisibleSubtitle(headerTitle: String): String? =
+    listOf(meta.withoutUserVisibleMimeType(), path, subtitle.withoutUserVisibleMimeType())
         .asSequence()
         .map { it.trim() }
         .firstOrNull { candidate ->
@@ -2549,6 +2553,21 @@ private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
                 candidate.slockFilePreviewFileName() != headerTitle &&
                 !candidate.endsWith("preview", ignoreCase = true)
         }
+
+internal fun String.withoutUserVisibleMimeType(): String =
+    split('·')
+        .asSequence()
+        .map { it.trim() }
+        .filterNot { it.isMimeTypePresentationSegment() }
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+
+private fun String.isMimeTypePresentationSegment(): Boolean {
+    val normalized = substringBefore(';').trim().lowercase()
+    val topLevel = normalized.substringBefore('/', missingDelimiterValue = "")
+    if (topLevel !in SlockPresentationMimeTopLevels) return false
+    val subtype = normalized.substringAfter('/', missingDelimiterValue = "")
+    return subtype.isNotBlank() && subtype.none { it.isWhitespace() }
 }
 
 @Composable
@@ -2574,7 +2593,7 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
     imageGalleryIndex: Int
 ): SlockFilePreviewPayload {
     val title = name.ifBlank { "Attachment" }
-    val meta = listOf(sizeLabel, mimeType).filter { it.isNotBlank() }.joinToString(" · ")
+    val meta = sizeLabel
     return previous.copy(
         kind = "loading",
         requestedKind = "image",
@@ -2626,21 +2645,18 @@ internal fun SlockFilePreviewOverflowMenuButton(
 
 private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
         sizeBytes.slockFilePreviewSizeLabel(),
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
 
 private fun SlockWorkspaceFilePreview.Image.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
         sizeBytes.slockFilePreviewSizeLabel(),
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
 
 private fun SlockWorkspaceFilePreview.Unsupported.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
         sizeBytes.slockFilePreviewSizeLabel(),
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
@@ -2653,6 +2669,9 @@ private fun Long?.slockFilePreviewSizeLabel(): String? {
         else -> "${bytes / (1024 * 1024)} MB"
     }
 }
+
+private val SlockPresentationMimeTopLevels =
+    setOf("application", "audio", "chemical", "example", "font", "image", "message", "model", "multipart", "text", "video")
 
 internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownloadProgress?): String {
     val percent = progress?.percent

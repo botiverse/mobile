@@ -1006,7 +1006,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
+    fun genericAttachmentNoPreviewMetaLineHidesMimeType() {
         val attachment =
             KuiklyThreadAttachmentItem(
                 id = "att-1",
@@ -1015,11 +1015,11 @@ class ThreadPayloadTest {
                 mimeType = "application/zip"
             )
 
-        assertEquals("42 KB · application/zip", attachment.genericAttachmentMetaLine())
+        assertEquals("42 KB", attachment.genericAttachmentMetaLine())
     }
 
     @Test
-    fun attachmentChipMetaMatchesReactPreviewLabels() {
+    fun attachmentChipMetaKeepsSemanticPreviewLabelsWithoutMime() {
         val pdf =
             KuiklyThreadAttachmentItem(
                 id = "att-pdf",
@@ -1035,7 +1035,7 @@ class ThreadPayloadTest {
                 mimeType = "text/html"
             )
 
-        assertEquals("application/pdf · 184 KB", pdf.threadAttachmentChipMetaLine())
+        assertEquals("184 KB", pdf.threadAttachmentChipMetaLine())
         assertEquals("Document preview", pdf.threadAttachmentSummaryLine())
         assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine())
         assertEquals("Text preview", html.threadAttachmentSummaryLine())
