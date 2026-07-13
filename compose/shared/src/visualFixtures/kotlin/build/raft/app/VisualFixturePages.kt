@@ -677,7 +677,8 @@ internal class ComposeMembersAgentDetailVisualPage : BasePager() {
 internal class ComposeTasksPanelVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { TasksPanelVisualContent() }
+        val fixture = pageData.params.optString("fixture")
+        setContent { TasksPanelVisualContent(fixture = fixture) }
     }
 }
 
