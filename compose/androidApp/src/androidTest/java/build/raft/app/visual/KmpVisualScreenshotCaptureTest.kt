@@ -813,6 +813,21 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowMdWrapAdjacent() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-adjacent",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-adjacent")
+                    .put("visualFixture", "md_wrap_adjacent"),
+            // Standard 390dp width: the '#31 / #521' adjacent pair must stay on
+            // one line (task #60 acceptance), so no narrow wrap column here.
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowMdWrapClarify() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-wrap-clarify",
