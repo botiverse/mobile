@@ -7,6 +7,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
@@ -277,6 +279,33 @@ class SharedHomeShellStoreTest {
                 SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null),
                 SharedActivityIntent.Refresh,
                 SharedActivityIntent.ApplyRealtimeEvent(event)
+            ),
+            fixture.activityIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
+    fun readStateRealtimeAlwaysReachesActivityProjectionWhenShellSurfacesAreHidden() {
+        val fixture = fixture()
+        val event =
+            PerReceiverReadStateChanged(
+                serverId = ServerId("server-1"),
+                scopes =
+                    listOf(
+                        PerReceiverReadStateScope(
+                            scopeId = ChannelId("channel-1"),
+                            maxReadSeq = 42,
+                            readStateVersion = 7
+                        )
+                    )
+            )
+
+        fixture.store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
+
+        assertEquals(
+            listOf<SharedActivityIntent>(
+                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
             ),
             fixture.activityIntents
         )
