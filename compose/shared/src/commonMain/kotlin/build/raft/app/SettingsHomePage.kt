@@ -261,6 +261,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.AttachmentUploadRequest
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.SettingsQuiverFeedbackSubmission
+import build.raft.app.data.SettingsQuiverFeedbackDraftStore
 import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.ScreenError
@@ -5081,6 +5082,7 @@ private fun SettingsAppShellContent(
             SettingsDestinationQuiverFeedback ->
                 SharedQuiverFeedbackContent(
                     settingsCapabilities = settingsCapabilities,
+                    accountId = session?.user?.id.orEmpty(),
                     bottomContentPadding = bottomContentPadding
                 )
             else ->
@@ -9242,6 +9244,7 @@ internal fun SharedSettingsDiagnosticsContent(
 @Composable
 private fun SharedQuiverFeedbackContent(
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    accountId: String,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val copy = settingsQuiverFeedbackCopy()
@@ -9251,10 +9254,28 @@ private fun SharedQuiverFeedbackContent(
         remember {
             KeyValueChatLayoutPreferenceStore(slockSharedPreferenceStore())
         }
+    val feedbackDraftStore =
+        remember {
+            SettingsQuiverFeedbackDraftStore(slockSharedPreferenceStore())
+        }
+    val restoredDraft =
+        remember(feedbackDraftStore, accountId) {
+            feedbackDraftStore.read(accountId)
+        }
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
-    var messageFieldValue by remember { mutableStateOf(TextFieldValue("")) }
+    var messageFieldValue by remember(accountId) {
+        mutableStateOf(
+            TextFieldValue(
+                text = restoredDraft.text,
+                selection = TextRange(restoredDraft.text.length)
+            )
+        )
+    }
+    var draftTextForPersistence by remember(accountId) { mutableStateOf(restoredDraft.text) }
+    val latestDraftTextForPersistence by rememberUpdatedState(draftTextForPersistence)
     val message = messageFieldValue.text
-    var attachments by remember { mutableStateOf<List<PlatformFile>>(emptyList()) }
+    var attachments by remember(accountId) { mutableStateOf(restoredDraft.attachments) }
+    val latestAttachmentsForPersistence by rememberUpdatedState(attachments)
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingRetryRequest by remember { mutableStateOf<SettingsQuiverFeedbackRetryRequest?>(null) }
@@ -9280,6 +9301,21 @@ private fun SharedQuiverFeedbackContent(
     val attachmentMaxLabel = "${attachmentMaxBytes / (1024L * 1024L)} MB"
     val remainingSlots = attachmentLimit - attachments.size
     val normalizedMessage = message.trim()
+
+    LaunchedEffect(feedbackDraftStore, accountId, draftTextForPersistence, attachments) {
+        delay(250L)
+        feedbackDraftStore.save(accountId, draftTextForPersistence, attachments)
+    }
+
+    DisposableEffect(feedbackDraftStore, accountId) {
+        onDispose {
+            feedbackDraftStore.save(
+                accountId = accountId,
+                text = latestDraftTextForPersistence,
+                attachments = latestAttachmentsForPersistence
+            )
+        }
+    }
 
     LaunchedEffect(entries.size, busy) {
         if (entries.isNotEmpty()) {
@@ -9376,6 +9412,7 @@ private fun SharedQuiverFeedbackContent(
             val nextRetryRequest = submittedRequest.takeIf { failure.retryable }
             pendingRetryRequest = nextRetryRequest
             messageFieldValue = TextFieldValue(submittedMessage, selection = TextRange(submittedMessage.length))
+            draftTextForPersistence = submittedMessage
             composerSyncNonce += 1
             attachments = submittedAttachments
             error = failure.composerStatus
@@ -9405,6 +9442,8 @@ private fun SharedQuiverFeedbackContent(
                                     copy = copy
                                 )
                         messageFieldValue = TextFieldValue("")
+                        draftTextForPersistence = ""
+                        feedbackDraftStore.clear(accountId)
                         attachments = emptyList()
                     }
                     is DataResult.Empty -> {
@@ -9504,6 +9543,7 @@ private fun SharedQuiverFeedbackContent(
                     when (action) {
                         "change" -> {
                             messageFieldValue = TextFieldValue(value.orEmpty())
+                            draftTextForPersistence = value.orEmpty()
                             error = null
                         }
                         "send" -> {
