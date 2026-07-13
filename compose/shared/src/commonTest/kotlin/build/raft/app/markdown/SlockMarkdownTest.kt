@@ -29,6 +29,8 @@ import com.tencent.kuiklybase.markdown.compose.elements.updateMarkdownTableColum
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.ast.ASTNode
@@ -242,11 +244,28 @@ class SlockMarkdownTest {
         assertEquals(3, first.requestedCount)
         assertEquals(3, first.parsedCount)
         assertEquals(0, first.cacheHitCount)
+        assertEquals(3, first.scheduledCount)
 
         val second = prepareSlockMarkdownFullRendererBodies(listOf(fullRendererBody))
         assertEquals(1, second.requestedCount)
         assertEquals(0, second.parsedCount)
         assertEquals(1, second.cacheHitCount)
+        assertEquals(0, second.scheduledCount)
+    }
+
+    @Test
+    fun concurrentMarkdownPreparseSchedulesEachBodyOnlyOnce() = runBlocking {
+        val body = "Open https://raft.build/task264-concurrent-preparse"
+
+        val results =
+            listOf(
+                async { prepareSlockMarkdownFullRendererBodies(listOf(body)) },
+                async { prepareSlockMarkdownFullRendererBodies(listOf(body)) }
+            ).awaitAll()
+
+        assertEquals(2, results.sumOf { it.requestedCount })
+        assertEquals(1, results.sumOf { it.scheduledCount })
+        assertEquals(1, results.sumOf { it.cacheHitCount })
     }
 
     @Test

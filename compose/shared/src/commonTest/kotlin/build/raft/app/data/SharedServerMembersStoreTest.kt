@@ -832,7 +832,7 @@ class SharedServerMembersStoreTest {
     }
 
     @Test
-    fun serverMembersEntryFlowIgnoresUnrelatedPresenceFacts() = runBlocking {
+    fun serverMembersEntryFlowIgnoresPresenceBurstButStillEmitsRosterMutation() = runBlocking {
         val store = SharedServerMembersStore(FakeMemberRepository())
         store.seed(
             MemberSnapshot(
@@ -854,14 +854,17 @@ class SharedServerMembersStoreTest {
             }
         firstEmission.await()
 
-        store.applyPresence(
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-2"),
-                kind = MemberKind.Agent,
-                presence = Presence.Active,
-                agentStatus = AgentStatus.Working
+        repeat(69) { index ->
+            store.applyPresence(
+                MemberPresenceUpdated(
+                    memberId = MemberId("burst-agent-$index"),
+                    kind = MemberKind.Agent,
+                    presence = Presence.Active,
+                    agentStatus = AgentStatus.Working,
+                    serverSeq = index.toLong()
+                )
             )
-        )
+        }
         yield()
         assertEquals(1, entries.size)
 

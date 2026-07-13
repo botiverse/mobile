@@ -83,6 +83,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -1444,31 +1446,75 @@ private fun slockMessagePermalinkChipLinkStyles(): TextLinkStyles {
 
 private object SlockMarkdownPreparedBodyCache {
     private const val MaxEntries = 256
+    private val lock = SynchronizedObject()
     private val entries = LinkedHashMap<String, String>()
 
     fun getOrPut(
         body: String,
         value: () -> String
     ): Pair<String, Boolean> {
-        entries[body]?.let { cached ->
+        synchronized(lock) { entries[body] }?.let { cached ->
             return cached to true
         }
         val prepared = value()
-        entries[body] = prepared
-        if (entries.size > MaxEntries) {
-            val firstKey = entries.keys.firstOrNull()
-            if (firstKey != null) {
-                entries.remove(firstKey)
+        return synchronized(lock) {
+            entries[body]?.let { cached ->
+                return@synchronized cached to true
+            }
+            entries[body] = prepared
+            if (entries.size > MaxEntries) {
+                entries.keys.firstOrNull()?.let(entries::remove)
+            }
+            prepared to false
+        }
+    }
+}
+
+private object SlockMarkdownPreparseWarmCache {
+    private const val MaxEntries = 512
+    private val lock = SynchronizedObject()
+    private val preparedKeys = LinkedHashSet<String>()
+    private val inFlightKeys = mutableSetOf<String>()
+
+    data class Claim(
+        val contents: List<MarkdownParserContent>,
+        val coveredCount: Int
+    )
+
+    fun claim(contents: List<MarkdownParserContent>): Claim = synchronized(lock) {
+        val claimed = mutableListOf<MarkdownParserContent>()
+        var coveredCount = 0
+        contents.forEach { content ->
+            val key = content.sourceContent
+            if (key in preparedKeys || !inFlightKeys.add(key)) {
+                coveredCount += 1
+            } else {
+                claimed += content
             }
         }
-        return prepared to false
+        Claim(contents = claimed, coveredCount = coveredCount)
+    }
+
+    fun complete(content: MarkdownParserContent) = synchronized(lock) {
+        val key = content.sourceContent
+        inFlightKeys.remove(key)
+        preparedKeys.remove(key)
+        preparedKeys.add(key)
+        while (preparedKeys.size > MaxEntries) {
+            preparedKeys.firstOrNull()?.let(preparedKeys::remove)
+        }
+    }
+
+    fun release(content: MarkdownParserContent) = synchronized(lock) {
+        inFlightKeys.remove(content.sourceContent)
     }
 }
 
 internal data class SlockMarkdownPreparseResult(
     val requestedCount: Int,
     val parsedCount: Int,
-    val cacheHitCount: Int
+    val cacheHitCount: Int,
+    val scheduledCount: Int
 )
 
 internal suspend fun prepareSlockMarkdownFullRendererBodies(
@@ -1476,7 +1522,12 @@ internal suspend fun prepareSlockMarkdownFullRendererBodies(
     maxBodies: Int = SlockMarkdownDefaultPreparseLimit
 ): SlockMarkdownPreparseResult = coroutineScope {
     if (bodies.isEmpty() || maxBodies <= 0) {
-        return@coroutineScope SlockMarkdownPreparseResult(requestedCount = 0, parsedCount = 0, cacheHitCount = 0)
+        return@coroutineScope SlockMarkdownPreparseResult(
+            requestedCount = 0,
+            parsedCount = 0,
+            cacheHitCount = 0,
+            scheduledCount = 0
+        )
     }
     val contents =
         bodies
@@ -1485,15 +1536,33 @@ internal suspend fun prepareSlockMarkdownFullRendererBodies(
             .distinct()
             .take(maxBodies)
             .toList()
-    val cacheHitCount =
-        contents
-            .map { content -> async { prepareMarkdownContent(content) } }
-            .awaitAll()
-            .count { cacheHit -> cacheHit }
+    val claim = SlockMarkdownPreparseWarmCache.claim(contents)
+    val scheduledCacheHitCount =
+        try {
+            claim.contents
+                .map { content ->
+                    async {
+                        try {
+                            prepareMarkdownContent(content).also {
+                                SlockMarkdownPreparseWarmCache.complete(content)
+                            }
+                        } catch (error: Throwable) {
+                            SlockMarkdownPreparseWarmCache.release(content)
+                            throw error
+                        }
+                    }
+                }
+                .awaitAll()
+                .count { cacheHit -> cacheHit }
+        } catch (error: Throwable) {
+            claim.contents.forEach(SlockMarkdownPreparseWarmCache::release)
+            throw error
+        }
     SlockMarkdownPreparseResult(
         requestedCount = contents.size,
-        parsedCount = contents.size - cacheHitCount,
-        cacheHitCount = cacheHitCount
+        parsedCount = claim.contents.size - scheduledCacheHitCount,
+        cacheHitCount = claim.coveredCount + scheduledCacheHitCount,
+        scheduledCount = claim.contents.size
     )
 }
 

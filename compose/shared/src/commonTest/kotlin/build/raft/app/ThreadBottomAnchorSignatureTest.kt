@@ -35,7 +35,8 @@ class ThreadBottomAnchorSignatureTest {
         reactions: List<KuiklyThreadReactionItem> = emptyList(),
         metadata: Map<String, String> = emptyMap(),
         deliveryState: String = ThreadMessageDeliverySent,
-        pendingSendContext: KuiklyThreadPendingSendContext? = null
+        pendingSendContext: KuiklyThreadPendingSendContext? = null,
+        randomId: String? = null
     ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
         id = id,
         authorId = "user-$id",
@@ -48,7 +49,8 @@ class ThreadBottomAnchorSignatureTest {
         reactions = reactions,
         metadata = metadata,
         deliveryState = deliveryState,
-        pendingSendContext = pendingSendContext
+        pendingSendContext = pendingSendContext,
+        randomId = randomId
     )
 
     private fun payload(
@@ -538,6 +540,58 @@ class ThreadBottomAnchorSignatureTest {
         assertNotEquals(
             payload(messages = messagesA).timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true),
             payload(messages = messagesB).timelineSlice().initialMarkdownPreparseCandidateSignature(contentExtrasVisible = true)
+        )
+    }
+
+    @Test
+    fun localAndCanonicalSendWithSameRandomIdKeepRenderIdentityStable() {
+        val local = message("local-send-1", body = "sent body", randomId = "rid-1")
+        val canonical = message("server-message-1", body = "sent body", randomId = "rid-1")
+
+        assertEquals(local.threadMessageRenderIdentity(), canonical.threadMessageRenderIdentity())
+        assertEquals(local.messageListItemKey(), canonical.messageListItemKey())
+        assertEquals(local.threadMarkdownRenderSignature(), canonical.threadMarkdownRenderSignature())
+        assertEquals(
+            payload(messages = listOf(local)).timelineSlice().initialMarkdownPreparseCandidateSignature(true),
+            payload(messages = listOf(canonical)).timelineSlice().initialMarkdownPreparseCandidateSignature(true)
+        )
+    }
+
+    @Test
+    fun renderIdentityFallsBackToMessageIdAndNeverMergesDifferentRandomIds() {
+        val first = message("message-1", body = "same", randomId = "rid-1")
+        val second = message("message-2", body = "same", randomId = "rid-2")
+        val missingFirst = message("message-1", body = "same")
+        val missingSecond = message("message-2", body = "same")
+
+        assertNotEquals(first.messageListItemKey(), second.messageListItemKey())
+        assertNotEquals(missingFirst.messageListItemKey(), missingSecond.messageListItemKey())
+    }
+
+    @Test
+    fun duplicateRandomIdsFallBackToDistinctMessageKeys() {
+        val first = message("message-1", body = "same", randomId = "rid-collision")
+        val second = message("message-2", body = "same", randomId = "rid-collision")
+        val messages = listOf(first, second)
+        val duplicateRandomIds = messages.threadDuplicateRandomIds()
+
+        assertEquals(setOf("rid-collision"), duplicateRandomIds)
+        assertNotEquals(
+            first.messageListItemKey(duplicateRandomIds),
+            second.messageListItemKey(duplicateRandomIds)
+        )
+    }
+
+    @Test
+    fun sameRandomIdStillInvalidatesMarkdownWhenBodyChanges() {
+        val before = message("local-send-1", body = "draft", randomId = "rid-1")
+        val after = message("server-message-1", body = "canonical", randomId = "rid-1")
+
+        assertEquals(before.messageListItemKey(), after.messageListItemKey())
+        assertNotEquals(before.threadMarkdownRenderSignature(), after.threadMarkdownRenderSignature())
+        assertNotEquals(
+            payload(messages = listOf(before)).timelineSlice().initialMarkdownPreparseCandidateSignature(true),
+            payload(messages = listOf(after)).timelineSlice().initialMarkdownPreparseCandidateSignature(true)
         )
     }
 
