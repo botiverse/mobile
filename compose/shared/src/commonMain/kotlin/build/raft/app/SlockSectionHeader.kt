@@ -64,78 +64,81 @@ internal fun SlockTopPageHeader(
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val contentHeight = if (headerHeight >= SlockStroke.Default) headerHeight - SlockStroke.Default else 0.dp
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(topSafeArea + headerHeight)
-                .background(backgroundColor)
-    ) {
-        Row(
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
             modifier =
-                Modifier
+                modifier
                     .fillMaxWidth()
-                    .height(topSafeArea + contentHeight)
-                    .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .height(topSafeArea + headerHeight)
+                    .background(backgroundColor)
         ) {
-            when {
-                leadingContent != null ->
-                    Box(
-                        modifier = Modifier.size(SlockSize.HeaderIcon),
-                        contentAlignment = Alignment.Center,
-                        content = leadingContent
-                    )
-                iconName != null ->
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(SlockSize.HeaderIcon)
-                                .background(iconBackground)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SlockLucideIcon(
-                            iconName,
-                            modifier = Modifier.size(18.dp),
-                            color = "#FF000000",
-                            spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(topSafeArea + contentHeight)
+                        .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when {
+                    leadingContent != null ->
+                        Box(
+                            modifier = Modifier.size(SlockSize.HeaderIcon),
+                            contentAlignment = Alignment.Center,
+                            content = leadingContent
                         )
-                    }
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                subtitle?.takeIf { it.isNotBlank() }?.let {
+                    iconName != null ->
+                        Box(
+                            modifier =
+                                Modifier
+                                    .size(SlockSize.HeaderIcon)
+                                    .background(iconBackground)
+                                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            SlockLucideIcon(
+                                iconName,
+                                modifier = Modifier.size(18.dp),
+                                color = "#FF000000",
+                                spinning = iconName == SlockLucideIconName.Loader || iconName == SlockLucideIconName.LoaderCircle
+                            )
+                        }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = it,
-                        style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                        text = title,
+                        style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                        color = SlockColor.TextBlack,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    subtitle?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = SlockType.Caption.copy(fontFamily = SlockMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (refreshing) {
+                    SlockHeaderRefreshIndicator()
+                }
+                if (trailingContent != null) {
+                    Box(content = trailingContent)
                 }
             }
-            if (refreshing) {
-                SlockHeaderRefreshIndicator()
-            }
-            if (trailingContent != null) {
-                Box(content = trailingContent)
-            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+                    .align(Alignment.BottomCenter)
+            )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(SlockStroke.Default)
-                .background(SlockColor.BorderBlack)
-                .align(Alignment.BottomCenter)
-        )
+        SlockAppShellBodyTopBanner()
     }
 }
 

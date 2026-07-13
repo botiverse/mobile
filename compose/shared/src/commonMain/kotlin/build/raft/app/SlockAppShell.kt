@@ -1,7 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -96,6 +98,12 @@ internal fun SlockAppShellSurface(
 ) {
     val ownedModalHostState = rememberSlockUnifiedDialogHostState()
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
+    val bodyTopBanner: (@Composable () -> Unit)? =
+        if (networkStatus == SlockAppShellNetworkStatus.Offline) {
+            { SlockAppShellNetworkBanner() }
+        } else {
+            null
+        }
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockUnifiedDialogHostProvider(effectiveModalHostState) {
             Column(
@@ -105,11 +113,10 @@ internal fun SlockAppShellSurface(
                         .fillMaxSize()
                         .padding(bottom = shellScope.bottomTabBarHostInset(showBottomTabs))
             ) {
-                if (networkStatus == SlockAppShellNetworkStatus.Offline) {
-                    SlockAppShellNetworkBanner()
-                }
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    content()
+                    CompositionLocalProvider(LocalSlockAppShellBodyTopBanner provides bodyTopBanner) {
+                        content()
+                    }
                 }
             }
             if (showBottomTabs) {
@@ -135,6 +142,22 @@ internal fun SlockAppShellSurface(
 internal enum class SlockAppShellNetworkStatus {
     Online,
     Offline
+}
+
+/**
+ * App-shell alerts belong to the page body, immediately below page chrome.
+ *
+ * The shell provides the current alert through this local, while each page-header
+ * pattern consumes it after its own safe-area/header divider. Keeping the slot out
+ * of [SlockAppShellSurface]'s root column prevents status bars from covering alerts
+ * and avoids placing body state above navigation chrome.
+ */
+internal val LocalSlockAppShellBodyTopBanner =
+    staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
+
+@Composable
+internal fun SlockAppShellBodyTopBanner() {
+    LocalSlockAppShellBodyTopBanner.current?.invoke()
 }
 
 @Composable

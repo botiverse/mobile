@@ -14498,6 +14498,7 @@ private fun SharedHomeSearchPanel(
                 onTitleClick = onTitleClick
             )
             SharedHomeSearchDivider()
+            SlockAppShellBodyTopBanner()
             SharedHomeSearchFilters(
                 state = state,
                 channelFilters = channelFilters,
@@ -14919,6 +14920,7 @@ private fun SharedHomeSavedPanel(
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
+            SlockAppShellBodyTopBanner()
             SlockCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
         }
         return
@@ -14937,6 +14939,7 @@ private fun SharedHomeSavedPanel(
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )
+            SlockAppShellBodyTopBanner()
             LazyColumn(
                 state = listState,
                 modifier =
