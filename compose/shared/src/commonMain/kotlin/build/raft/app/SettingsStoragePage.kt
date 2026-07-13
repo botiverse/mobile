@@ -96,10 +96,10 @@ internal val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
         KuiklySettingsStorageRow(
             target = "attachmentDownloads",
             iconName = SlockLucideIconName.Download,
-            title = "Downloaded files",
-            detail = "Files downloaded for opening or installing from previews.",
+            title = "Attachment cache",
+            detail = "Private copies kept for previewing, opening, or installing files. Public exports are not removed.",
             size = "768 KB",
-            clearLabel = "Clear downloaded files",
+            clearLabel = "Clear attachment cache",
             clearEnabled = true
         ),
         KuiklySettingsStorageRow(

@@ -244,6 +244,7 @@ open class SlockKuiklyActivity :
     private var homeColdStartSplashTimeoutLogged = false
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
+    private var pendingAttachmentExport: PendingAttachmentExport? = null
     private var androidShellLaunchTarget: AndroidShellLaunchTarget? = null
     private val realtimeVisibilityOwnerId: String by lazy {
         androidShellLaunchTarget?.shellInstanceId
@@ -264,6 +265,10 @@ open class SlockKuiklyActivity :
     private val threadFileAttachmentPickerLauncher: ActivityResultLauncher<Array<String>> =
             registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
                 handleThreadAttachmentPickerResult(uris, persistable = true)
+            }
+    private val attachmentExportLauncher: ActivityResultLauncher<String> =
+            registerForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
+                handleAttachmentExportResult(uri)
             }
 
     private val pageName: String
@@ -687,6 +692,48 @@ open class SlockKuiklyActivity :
                 }
     }
 
+    internal fun requestAttachmentExport(
+            sourceFile: File,
+            displayName: String,
+            callback: KuiklyRenderCallback?
+    ) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread {
+                requestAttachmentExport(
+                        sourceFile = sourceFile,
+                        displayName = displayName,
+                        callback = callback
+                )
+            }
+            return
+        }
+        if (pendingAttachmentExport != null) {
+            callback?.invoke(
+                    mapOf(
+                            "status" to "failed",
+                            "message" to "Another file save is already active"
+                    )
+            )
+            return
+        }
+        pendingAttachmentExport =
+                PendingAttachmentExport(
+                        sourceFile = sourceFile,
+                        displayName = displayName,
+                        callback = callback
+                )
+        runCatching { attachmentExportLauncher.launch(displayName) }
+                .onFailure { throwable ->
+                    pendingAttachmentExport = null
+                    callback?.invoke(
+                            mapOf(
+                                    "status" to "storage_failed",
+                                    "message" to (throwable.message ?: "Unable to open system file picker")
+                            )
+                    )
+                }
+    }
+
     internal fun requestGoogleNativeSocialAuth(callback: KuiklyRenderCallback?): Boolean {
         if (!googleSocialAuthGateway.isNativeConfigured()) return false
 
@@ -778,6 +825,43 @@ open class SlockKuiklyActivity :
                         "SlockKuiklyAttachment",
                         "picker_callback_deliver code=${result["code"]} thread=${Thread.currentThread().name}"
                 )
+                pending.callback?.invoke(result)
+            }
+        }
+    }
+
+    private fun handleAttachmentExportResult(uri: Uri?) {
+        val pending = pendingAttachmentExport ?: return
+        pendingAttachmentExport = null
+        if (uri == null) {
+            pending.callback?.invoke(mapOf("status" to "cancelled"))
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val copied =
+                    runCatching {
+                                contentResolver.openOutputStream(uri, "w")?.use { output ->
+                                    FileInputStream(pending.sourceFile).use { input -> input.copyTo(output) }
+                                } != null
+                            }
+                            .getOrDefault(false)
+            val result =
+                    if (copied) {
+                        mapOf(
+                                "status" to "saved",
+                                "message" to "Saved to Downloads or Files",
+                                "uri" to uri.toString(),
+                                "fileName" to pending.displayName,
+                                "cached" to true,
+                                "sizeBytes" to pending.sourceFile.length()
+                        )
+                    } else {
+                        mapOf(
+                                "status" to "storage_failed",
+                                "message" to "Unable to save attachment"
+                        )
+                    }
+            withContext(Dispatchers.Main) {
                 pending.callback?.invoke(result)
             }
         }
@@ -1493,6 +1577,12 @@ internal object SlockKuiklyAdapters {
 
 private data class PendingThreadAttachmentUpload(
         val channelId: String,
+        val callback: KuiklyRenderCallback?
+)
+
+private data class PendingAttachmentExport(
+        val sourceFile: File,
+        val displayName: String,
         val callback: KuiklyRenderCallback?
 )
 
@@ -2219,6 +2309,10 @@ internal class SlockKuiklyBridgeModule(
             "openUrl" -> openUrl(params)
             "openAttachment" -> {
                 openAttachment(params, callback)
+                null
+            }
+            "saveAttachment" -> {
+                saveAttachment(params, callback)
                 null
             }
             "attachmentCacheStatus" -> {
@@ -2958,8 +3052,8 @@ internal class SlockKuiklyBridgeModule(
                                     .put(
                                             storageRowJson(
                                                     target = "attachmentDownloads",
-                                                    title = "Downloaded files",
-                                                    detail = "Files downloaded for opening or installing from previews.",
+                                                    title = "Attachment cache",
+                                                    detail = "Private copies kept for opening or installing files. Public exports are not removed.",
                                                     sizeLabel = snapshot.attachmentDownloadBytes.formatStorageSizeLabel(),
                                                     clearEnabled = true
                                             )
@@ -2992,7 +3086,7 @@ internal class SlockKuiklyBridgeModule(
         val feedback =
                 when (clearTarget) {
                     StorageClearTarget.ImageCache -> "Image cache cleared."
-                    StorageClearTarget.AttachmentDownloads -> "Downloaded files cleared."
+                    StorageClearTarget.AttachmentDownloads -> "Attachment cache cleared. Public exports were not removed."
                     StorageClearTarget.TemporaryAndLogs -> "Temporary files and diagnostics logs cleared."
                 }
         SlockAppLog.record("SlockStorage", "shared_clear target=$target")
@@ -4084,6 +4178,70 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
+    private fun saveAttachment(params: String?, callback: KuiklyRenderCallback?) {
+        SlockKuiklyThreadAdapter.execute("attachment-save") {
+            val request = JSONObject(params ?: "{}")
+            val trackProgress = request.optBoolean("trackProgress", false)
+            val preparation =
+                    runCatching {
+                                prepareAttachment(
+                                        request = request,
+                                        progressCallback =
+                                                if (trackProgress) {
+                                                    { progress -> callback?.invoke(progress) }
+                                                } else {
+                                                    null
+                                                }
+                                )
+                            }
+                            .getOrElse {
+                                callback?.invoke(
+                                        mapOf(
+                                                "status" to "failed",
+                                                "message" to "Unable to download attachment"
+                                        )
+                                )
+                                return@execute
+                            }
+            when (preparation) {
+                is AttachmentPreparationResult.Terminal -> callback?.invoke(preparation.payload)
+                is AttachmentPreparationResult.Ready -> {
+                    val displayName =
+                            publicDownloadDisplayName(
+                                    requestedFileName = preparation.requestedFileName,
+                                    fallbackExtension =
+                                            MimeTypeMap.getSingleton().getExtensionFromMimeType(preparation.mimeType)
+                            )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        callback?.invoke(
+                                publishAttachmentToDownloads(
+                                        source = preparation.targetFile,
+                                        displayName = displayName,
+                                        mimeType = preparation.mimeType
+                                )
+                        )
+                    } else {
+                        val hostActivity = activity as? SlockKuiklyActivity
+                        if (hostActivity == null) {
+                            callback?.invoke(
+                                    mapOf(
+                                            "status" to "storage_failed",
+                                            "message" to "Unable to open system file picker"
+                                    )
+                            )
+                        } else {
+                            hostActivity.requestAttachmentExport(
+                                    sourceFile = preparation.targetFile,
+                                    displayName = displayName,
+                                    callback = callback
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private fun attachmentCacheStatus(params: String?): Map<String, Any> {
         val request = JSONObject(params ?: "{}")
         val targetFile = attachmentCacheFile(request)
@@ -4107,7 +4265,7 @@ internal class SlockKuiklyBridgeModule(
         return if (deleted) {
             mapOf("status" to "ok", "cached" to false, "deleted" to existed)
         } else {
-            mapOf("status" to "failed", "message" to "Unable to delete downloaded file")
+            mapOf("status" to "failed", "message" to "Unable to clear cached copy")
         }
     }
 
@@ -4164,36 +4322,41 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun downloadAndOpenAttachment(
+    private fun prepareAttachment(
             request: JSONObject,
             progressCallback: ((Map<String, Any>) -> Unit)? = null
-    ): Map<String, Any> {
+    ): AttachmentPreparationResult {
         val urlText = request.optString("url").takeIf { it.isNotBlank() }
-                ?: return mapOf("status" to "failed", "message" to "Unable to download attachment")
+                ?: return AttachmentPreparationResult.Terminal(
+                        mapOf("status" to "failed", "message" to "Unable to download attachment")
+                )
         val attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment"
         val requestedFileName = request.optString("fileName").takeIf { it.isNotBlank() } ?: "attachment"
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: "${attachmentId}:${requestedFileName}".take(160)
         val requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
-        val startedAt = System.currentTimeMillis()
         val cacheDir = attachmentCacheDir()
         if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-            return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+            return AttachmentPreparationResult.Terminal(
+                    mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+            )
         }
         cleanupAttachmentCache(cacheDir)
         val targetFile = attachmentCacheFile(attachmentId, requestedFileName, requestedMimeType)
-        val needsDownload = !targetFile.isUsableAttachmentCacheFile()
+        val wasCached = targetFile.isUsableAttachmentCacheFile()
         val responseMimeType =
-                if (needsDownload) {
+                if (!wasCached) {
                     val control = AttachmentDownloadControl(downloadId)
                     attachmentDownloadControls[downloadId] = control
                     try {
                         downloadAttachmentToFile(urlText, targetFile, downloadId, control, progressCallback)
                     } catch (ignored: AttachmentDownloadStoppedException) {
-                        return mapOf(
-                                "status" to "cancelled",
-                                "message" to "Download stopped",
-                                "cached" to false
+                        return AttachmentPreparationResult.Terminal(
+                                mapOf(
+                                        "status" to "cancelled",
+                                        "message" to "Download stopped",
+                                        "cached" to false
+                                )
                         )
                     } finally {
                         attachmentDownloadControls.remove(downloadId, control)
@@ -4201,7 +4364,29 @@ internal class SlockKuiklyBridgeModule(
                 } else {
                     null
                 }
-        val openMimeType = guessAttachmentMimeType(requestedFileName, requestedMimeType ?: responseMimeType)
+        return AttachmentPreparationResult.Ready(
+                attachmentId = attachmentId,
+                requestedFileName = requestedFileName,
+                targetFile = targetFile,
+                mimeType = guessAttachmentMimeType(requestedFileName, requestedMimeType ?: responseMimeType),
+                wasCached = wasCached
+        )
+    }
+
+    private fun downloadAndOpenAttachment(
+            request: JSONObject,
+            progressCallback: ((Map<String, Any>) -> Unit)? = null
+    ): Map<String, Any> {
+        val prepared =
+                when (val preparation = prepareAttachment(request, progressCallback)) {
+                    is AttachmentPreparationResult.Ready -> preparation
+                    is AttachmentPreparationResult.Terminal -> return preparation.payload
+                }
+        val attachmentId = prepared.attachmentId
+        val requestedFileName = prepared.requestedFileName
+        val startedAt = System.currentTimeMillis()
+        val targetFile = prepared.targetFile
+        val openMimeType = prepared.mimeType
         val attachmentUri =
                 runCatching {
                     FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", targetFile)
@@ -4259,7 +4444,7 @@ internal class SlockKuiklyBridgeModule(
             }
             SlockAppLog.record(
                     "SlockAttachmentOpen",
-                    "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${!needsDownload} durationMs=${System.currentTimeMillis() - startedAt}"
+                    "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${prepared.wasCached} durationMs=${System.currentTimeMillis() - startedAt}"
             )
             mapOf(
                     "status" to "opened",
@@ -4276,6 +4461,59 @@ internal class SlockKuiklyBridgeModule(
                 mapOf("status" to "failed", "message" to "Unable to open attachment")
             }
         }
+    }
+
+    private fun publishAttachmentToDownloads(
+            source: File,
+            displayName: String,
+            mimeType: String
+    ): Map<String, Any> {
+        val resolver = appContext.contentResolver
+        val values =
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Raft")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+        val uri =
+                resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: return mapOf(
+                                "status" to "storage_failed",
+                                "message" to "Unable to create Downloads file"
+                        )
+        val copied =
+                runCatching {
+                            resolver.openOutputStream(uri, "w")?.use { output ->
+                                FileInputStream(source).use { input -> input.copyTo(output) }
+                            } != null
+                        }
+                        .getOrDefault(false)
+        if (!copied) {
+            runCatching { resolver.delete(uri, null, null) }
+            return mapOf(
+                    "status" to "storage_failed",
+                    "message" to "Unable to save attachment to Downloads"
+            )
+        }
+        values.clear()
+        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+        val published = runCatching { resolver.update(uri, values, null, null) }.getOrDefault(0) > 0
+        if (!published) {
+            runCatching { resolver.delete(uri, null, null) }
+            return mapOf(
+                    "status" to "storage_failed",
+                    "message" to "Unable to publish attachment in Downloads"
+            )
+        }
+        return mapOf(
+                "status" to "saved",
+                "message" to "Saved to Downloads/Raft",
+                "uri" to uri.toString(),
+                "fileName" to displayName,
+                "cached" to true,
+                "sizeBytes" to source.length()
+        )
     }
 
     private fun attachmentCacheDir(): File = File(appContext.cacheDir, ATTACHMENT_CACHE_DIR_NAME)
@@ -4812,6 +5050,48 @@ private class AttachmentDownloadControl(
 }
 
 private class AttachmentDownloadStoppedException : RuntimeException()
+
+private sealed interface AttachmentPreparationResult {
+    data class Ready(
+            val attachmentId: String,
+            val requestedFileName: String,
+            val targetFile: File,
+            val mimeType: String,
+            val wasCached: Boolean
+    ) : AttachmentPreparationResult
+
+    data class Terminal(
+            val payload: Map<String, Any>
+    ) : AttachmentPreparationResult
+}
+
+internal fun publicDownloadDisplayName(requestedFileName: String, fallbackExtension: String?): String {
+    val baseName =
+            requestedFileName
+                    .substringAfterLast('/')
+                    .substringAfterLast('\\')
+                    .map { character ->
+                        if (
+                            character.isLetterOrDigit() ||
+                            character == '.' ||
+                            character == '-' ||
+                            character == '_' ||
+                            character == ' '
+                        ) {
+                            character
+                        } else {
+                            '_'
+                        }
+                    }
+                    .joinToString("")
+                    .trim()
+                    .trim('.')
+                    .take(120)
+                    .ifBlank { "attachment" }
+    if (baseName.contains('.') && !baseName.endsWith('.')) return baseName
+    val extension = fallbackExtension?.trim()?.trimStart('.')?.takeIf { it.isNotBlank() }
+    return if (extension.isNullOrBlank()) baseName else "$baseName.$extension"
+}
 
 private data class QuiverUpdateDownload(
         val key: String,

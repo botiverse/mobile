@@ -67,6 +67,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly TOAST = "toast";
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
+  static readonly SAVE_ATTACHMENT = "saveAttachment";
   static readonly LOG = "log";
   static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PERFORMANCE_SCENE = "performanceScene";
@@ -118,6 +119,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.OPEN_ATTACHMENT: {
         this.openAttachment(params, callback);
+        break;
+      }
+      case KRBridgeModule.SAVE_ATTACHMENT: {
+        this.saveAttachment(params, callback);
         break;
       }
       case KRBridgeModule.LOG: {
@@ -279,6 +284,79 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
       );
       callback({ "status": "failed", "message": "Unable to download attachment" });
+    }
+  }
+
+  private async saveAttachment(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const url = records["url"] as string | undefined;
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const requestedFileName = (records["fileName"] as string | undefined) ?? "attachment";
+    const mimeType = records["mimeType"] as string | undefined;
+    const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
+    if (url === undefined || url.length === 0) {
+      callback({ "status": "failed", "message": "Unable to download attachment" });
+      return;
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    try {
+      const cacheDir = `${context.cacheDir}/slock-attachments`;
+      fs.mkdirSync(cacheDir, true);
+      this.cleanupAttachmentCache(cacheDir);
+      const requestedBaseName = requestedFileName.split("/").pop()?.split("\\").pop() ?? "attachment";
+      const fileName = this.safeAttachmentPathSegment(requestedBaseName).slice(0, 120) || "attachment";
+      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, requestedFileName, mimeType)}`;
+      const cached = this.isUsableAttachmentCacheFile(path);
+      if (!cached) {
+        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId, trackProgress ? callback : undefined);
+        if (!downloaded) {
+          callback({ "status": "failed", "message": "Unable to download attachment" });
+          return;
+        }
+      }
+      const options = new picker.DocumentSaveOptions();
+      options.newFileNames = [fileName];
+      const targetUris = await new picker.DocumentViewPicker(context).save(options);
+      const targetUri = targetUris.length > 0 ? targetUris[0] : undefined;
+      if (targetUri === undefined || targetUri.length === 0) {
+        callback({ "status": "cancelled" });
+        return;
+      }
+      try {
+        fs.copyFileSync(path, targetUri);
+      } catch (error) {
+        const businessError = error as BusinessError;
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentSave",
+          `attachmentId=${attachmentId.substring(0, 8)} status=storage_failed code=${businessError.code ?? "unknown"}`
+        );
+        callback({ "status": "storage_failed", "message": "Unable to save attachment" });
+        return;
+      }
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentSave",
+        `attachmentId=${attachmentId.substring(0, 8)} status=saved cached=${cached}`
+      );
+      callback({
+        "status": "saved",
+        "message": "Saved to Files",
+        "uri": targetUri,
+        "fileName": fileName,
+        "cached": true,
+        "sizeBytes": fs.statSync(path).size
+      });
+    } catch (error) {
+      const businessError = error as BusinessError;
+      const message = businessError.message ?? `${error}`;
+      if (message.toLowerCase().includes("cancel")) {
+        callback({ "status": "cancelled" });
+        return;
+      }
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentSave",
+        `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
+      );
+      callback({ "status": "storage_failed", "message": "Unable to save attachment" });
     }
   }
 

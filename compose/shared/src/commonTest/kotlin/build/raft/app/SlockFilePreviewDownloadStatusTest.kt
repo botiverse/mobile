@@ -221,14 +221,20 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun overflowActionShowsDownloadAndOpenBeforeCacheExists() {
+    fun overflowActionKeepsOpenWithSeparateFromExplicitDownload() {
         val label =
             slockFilePreviewOverflowActionLabel(
                 SlockFilePreviewPayload(externalFileName = "report.pdf"),
                 cached = false
             )
 
-        assertEquals("Download and open...", label)
+        assertEquals("Open with...", label)
+    }
+
+    @Test
+    fun primaryActionUsesExplicitSaveUntilPrivateCacheExists() {
+        assertEquals(SlockFilePreviewPrimaryAction.Save, slockFilePreviewPrimaryAction(cached = false))
+        assertEquals(SlockFilePreviewPrimaryAction.Open, slockFilePreviewPrimaryAction(cached = true))
     }
 
     @Test

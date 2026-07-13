@@ -654,6 +654,34 @@ void SlockIosInstallHandsReporting(void) {
     });
 }
 
+static NSString *SlockAttachmentExportFileName(NSString *value) {
+    NSString *source = SlockBridgeString(value).lastPathComponent;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._- "];
+    NSMutableString *result = [NSMutableString string];
+    for (NSUInteger index = 0; index < source.length; index++) {
+        unichar character = [source characterAtIndex:index];
+        if ([allowed characterIsMember:character]) {
+            [result appendFormat:@"%C", character];
+        } else {
+            [result appendString:@"_"];
+        }
+    }
+    NSString *trimmed = [result stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    return trimmed.length > 0 ? trimmed : @"attachment";
+}
+
+@interface HRBridgeModule () <UIDocumentPickerDelegate>
+
+@property(nonatomic, copy, nullable) KuiklyRenderCallback slock_attachmentExportCallback;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportRequestId;
+@property(nonatomic, strong, nullable) NSURL *slock_attachmentExportURL;
+@property(nonatomic, copy, nullable) NSString *slock_attachmentExportFileName;
+@property(nonatomic, strong, nullable) NSNumber *slock_attachmentExportSizeBytes;
+
+- (void)slock_finishAttachmentExport:(NSDictionary *)result;
+
+@end
+
 // 扩展桥接接口
 /*
  * @brief Native暴露接口到kotlin侧，提供kotlin侧调用native能力
@@ -897,6 +925,151 @@ void SlockIosInstallHandsReporting(void) {
             @"errorCode" : @"attachment_open_unavailable",
             @"errorBodyText" : @"Attachment opening is out of scope for iOS P0 host bridge"
         });
+    }
+}
+
+- (void)saveAttachment:(NSDictionary *)args {
+    KuiklyRenderCallback callback = args[KR_CALLBACK_KEY];
+    if (!callback) {
+        return;
+    }
+    if (self.slock_attachmentExportCallback) {
+        callback(@{
+            @"status" : @"failed",
+            @"message" : @"Another file save is already active"
+        });
+        return;
+    }
+    NSDictionary *params = SlockBridgeParams(args);
+    NSString *urlText = SlockBridgeString(params[@"url"]);
+    NSURL *url = [NSURL URLWithString:urlText];
+    if (!url || url.scheme.length == 0) {
+        callback(@{
+            @"status" : @"failed",
+            @"message" : @"Unable to download attachment"
+        });
+        return;
+    }
+    NSString *fileName = SlockAttachmentExportFileName(SlockBridgeString(params[@"fileName"]));
+    NSString *downloadId = SlockBridgeString(params[@"downloadId"]);
+    NSString *requestId = NSUUID.UUID.UUIDString;
+    self.slock_attachmentExportCallback = callback;
+    self.slock_attachmentExportRequestId = requestId;
+    self.slock_attachmentExportFileName = fileName;
+    if (SlockBridgeBool(params[@"trackProgress"])) {
+        NSMutableDictionary *progress = [@{
+            @"status" : @"progress",
+            @"downloadedBytes" : @0
+        } mutableCopy];
+        if (downloadId.length > 0) {
+            progress[@"downloadId"] = downloadId;
+        }
+        callback(progress);
+    }
+
+    __weak typeof(self) weakSelf = self;
+    NSURLSessionDownloadTask *task =
+        [NSURLSession.sharedSession downloadTaskWithURL:url
+                                      completionHandler:^(NSURL *location, NSURLResponse *response, NSError *error) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || ![strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
+            return;
+        }
+        NSHTTPURLResponse *httpResponse = [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
+        if (error || !location || (httpResponse && (httpResponse.statusCode < 200 || httpResponse.statusCode >= 300))) {
+            SlockBridgeRunOnMain(^{
+                if ([strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
+                    [strongSelf slock_finishAttachmentExport:@{
+                        @"status" : @"failed",
+                        @"message" : @"Unable to download attachment"
+                    }];
+                }
+            });
+            return;
+        }
+
+        NSFileManager *fileManager = NSFileManager.defaultManager;
+        NSURL *root = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"SlockAttachmentExports"] isDirectory:YES];
+        NSURL *directory = [root URLByAppendingPathComponent:requestId isDirectory:YES];
+        NSURL *targetURL = [directory URLByAppendingPathComponent:fileName isDirectory:NO];
+        NSError *fileError = nil;
+        [fileManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&fileError];
+        if (!fileError) {
+            [fileManager removeItemAtURL:targetURL error:nil];
+            if (![fileManager moveItemAtURL:location toURL:targetURL error:&fileError]) {
+                fileError = nil;
+                [fileManager copyItemAtURL:location toURL:targetURL error:&fileError];
+            }
+        }
+        NSDictionary *attributes = fileError ? nil : [fileManager attributesOfItemAtPath:targetURL.path error:&fileError];
+        NSNumber *sizeBytes = attributes[NSFileSize] ?: @0;
+        if (fileError || sizeBytes.unsignedLongLongValue == 0) {
+            [fileManager removeItemAtURL:directory error:nil];
+            SlockBridgeRunOnMain(^{
+                if ([strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
+                    [strongSelf slock_finishAttachmentExport:@{
+                        @"status" : @"storage_failed",
+                        @"message" : @"Unable to prepare attachment for export"
+                    }];
+                }
+            });
+            return;
+        }
+
+        SlockBridgeRunOnMain(^{
+            if (![strongSelf.slock_attachmentExportRequestId isEqualToString:requestId]) {
+                [fileManager removeItemAtURL:directory error:nil];
+                return;
+            }
+            UIViewController *controller = [strongSelf slock_currentViewController];
+            if (!controller) {
+                [fileManager removeItemAtURL:directory error:nil];
+                [strongSelf slock_finishAttachmentExport:@{
+                    @"status" : @"storage_failed",
+                    @"message" : @"Unable to open Files"
+                }];
+                return;
+            }
+            strongSelf.slock_attachmentExportURL = targetURL;
+            strongSelf.slock_attachmentExportSizeBytes = sizeBytes;
+            UIDocumentPickerViewController *pickerController =
+                [[UIDocumentPickerViewController alloc] initForExportingURLs:@[targetURL] asCopy:YES];
+            pickerController.delegate = strongSelf;
+            [controller presentViewController:pickerController animated:YES completion:nil];
+        });
+    }];
+    [task resume];
+}
+
+- (void)documentPicker:(UIDocumentPickerViewController *)controller didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
+    NSURL *savedURL = urls.firstObject;
+    [self slock_finishAttachmentExport:@{
+        @"status" : @"saved",
+        @"message" : @"Saved to Files",
+        @"uri" : savedURL.absoluteString ?: @"",
+        @"fileName" : self.slock_attachmentExportFileName ?: @"attachment",
+        @"cached" : @NO,
+        @"sizeBytes" : self.slock_attachmentExportSizeBytes ?: @0
+    }];
+}
+
+- (void)documentPickerWasCancelled:(UIDocumentPickerViewController *)controller {
+    [self slock_finishAttachmentExport:@{ @"status" : @"cancelled" }];
+}
+
+- (void)slock_finishAttachmentExport:(NSDictionary *)result {
+    KuiklyRenderCallback callback = self.slock_attachmentExportCallback;
+    NSURL *exportURL = self.slock_attachmentExportURL;
+    self.slock_attachmentExportCallback = nil;
+    self.slock_attachmentExportRequestId = nil;
+    self.slock_attachmentExportURL = nil;
+    self.slock_attachmentExportFileName = nil;
+    self.slock_attachmentExportSizeBytes = nil;
+    if (exportURL) {
+        [NSFileManager.defaultManager removeItemAtURL:[exportURL URLByDeletingLastPathComponent] error:nil];
+    }
+    if (callback) {
+        callback(result);
     }
 }
 
