@@ -233,6 +233,7 @@ internal data class ThreadComposerUiState(
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
     val channelSuggestionsStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val channelSuggestionsErrorCode: String? = null,
+    val suggestionsEnabled: Boolean = true,
     val suggestionsOpen: Boolean = false,
     val hookLabels: List<String> = emptyList()
 )
@@ -1040,7 +1041,14 @@ internal fun ThreadComposerContent(
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
-    val suggestionTrigger = remember(text, selectionStart) { detectKuiklyComposerSuggestionTrigger(text, selectionStart) }
+    val suggestionTrigger =
+        remember(text, selectionStart, state.suggestionsEnabled) {
+            threadComposerSuggestionTrigger(
+                text = text,
+                cursor = selectionStart,
+                suggestionsEnabled = state.suggestionsEnabled
+            )
+        }
     val memberSuggestionSearchEntries =
         remember(state.memberSuggestions) {
             state.memberSuggestions.toThreadComposerMemberSuggestionSearchEntries()
@@ -3096,3 +3104,14 @@ internal fun detectKuiklyComposerSuggestionTrigger(
         else -> KuiklyComposerSuggestionTrigger.None
     }
 }
+
+internal fun threadComposerSuggestionTrigger(
+    text: String,
+    cursor: Int = text.length,
+    suggestionsEnabled: Boolean = true
+): KuiklyComposerSuggestionTrigger =
+    if (suggestionsEnabled) {
+        detectKuiklyComposerSuggestionTrigger(text, cursor)
+    } else {
+        KuiklyComposerSuggestionTrigger.None
+    }
