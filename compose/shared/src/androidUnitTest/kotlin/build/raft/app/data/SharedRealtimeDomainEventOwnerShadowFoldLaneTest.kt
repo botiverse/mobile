@@ -28,7 +28,7 @@ import build.raft.app.network.sync.FoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
-import build.raft.app.network.sync.SyncCoreReactionV2ShadowLane
+import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,14 +57,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         return flags
     }
 
-    private fun resolvedV2Flags(enabled: Boolean): SharedServerFeatureFlags {
+    private fun resolvedReactionFlags(enabled: Boolean): SharedServerFeatureFlags {
         val flags = SharedServerFeatureFlags(
             object : SlockFeatureFlagsApi {
                 override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
                     HomeNetworkResponse(
                         code = 200,
                         bodyText =
-                            """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
+                            """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
                     )
             },
         )
@@ -228,15 +228,15 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
-    fun normalizedV2ShadowRunsBeforeSinkAndRemainsInvisible() {
+    fun normalizedReactionShadowRunsBeforeSinkAndRemainsInvisible() {
         val owner = SharedRealtimeDomainEventOwner(
             cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
         )
         val logs = mutableListOf<String>()
         val callOrder = mutableListOf<String>()
-        owner.installReactionV2ShadowLane(
-            SyncCoreReactionV2ShadowLane(
-                featureFlags = resolvedV2Flags(enabled = true),
+        owner.installReactionShadowLane(
+            SyncCoreReactionShadowLane(
+                featureFlags = resolvedReactionFlags(enabled = true),
                 logger = { message ->
                     logs += message
                     callOrder += "shadow"
@@ -269,13 +269,13 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
-    fun normalizedV2ShadowLoggerFailureCannotBlockLegacySink() {
+    fun normalizedReactionShadowLoggerFailureCannotBlockLegacySink() {
         val owner = SharedRealtimeDomainEventOwner(
             cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
         )
-        owner.installReactionV2ShadowLane(
-            SyncCoreReactionV2ShadowLane(
-                featureFlags = resolvedV2Flags(enabled = true),
+        owner.installReactionShadowLane(
+            SyncCoreReactionShadowLane(
+                featureFlags = resolvedReactionFlags(enabled = true),
                 logger = { error("diagnostics unavailable") },
             ),
         )

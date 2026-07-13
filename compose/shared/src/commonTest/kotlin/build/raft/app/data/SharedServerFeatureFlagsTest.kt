@@ -28,10 +28,8 @@ class SharedServerFeatureFlagsTest {
         val snapshot = flags.prefetch(server)
         assertTrue(snapshot.resolved)
         assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY))
         assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY)) // absent from evaluations -> off
         assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS, api.lastKeys) // batch: all registered keys
-        assertTrue(SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
     }
 
     @Test

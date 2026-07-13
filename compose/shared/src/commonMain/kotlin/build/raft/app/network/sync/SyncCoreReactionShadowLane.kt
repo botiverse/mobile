@@ -1,20 +1,21 @@
 package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageCarry
-import build.raft.app.data.SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY
+import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 
 /**
- * Default-off, no-apply observation lane for the normalized V2 reaction ingress. It runs over the canonical
- * decode already attached to accepted realtime message events, before legacy sink fan-out. The lane has no
- * store, cursor, cache, overlay, or UI reference, so its only effect is bounded diagnostics.
+ * No-apply normalized reaction observation inside the existing `sync_core_messages_v0` shadow rollout. It
+ * reuses the canonical decode already attached to accepted realtime message events, before legacy sink
+ * fan-out. The lane has no store, cursor, cache, overlay, or UI reference, so its only effect is bounded
+ * diagnostics. There is deliberately no second feature flag or rollout track.
  */
-internal class SyncCoreReactionV2ShadowLane(
+internal class SyncCoreReactionShadowLane(
     private val featureFlags: SharedServerFeatureFlags,
     private val logger: (String) -> Unit,
 ) {
     fun isEnabled(): Boolean =
-        featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY)
+        featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
 
     fun observe(
         resolvedServerId: String,
@@ -43,7 +44,7 @@ internal class SyncCoreReactionV2ShadowLane(
                             .take(MAX_REPORTED_VIOLATIONS)
                             .joinToString(",") { it.kind.name }
                         logger(
-                            "sync_core_v2_normalized_shadow result=violations serverId=$resolvedServerId " +
+                            "sync_core_reaction_shadow result=violations serverId=$resolvedServerId " +
                                 "msg=${decoded.row.id} violations=$reportedViolations " +
                                 "violationCount=${outcome.value.violations.size}",
                         )
@@ -52,7 +53,7 @@ internal class SyncCoreReactionV2ShadowLane(
                 }
                 is ReactionNormalizationOutcome.Rejected -> {
                     logger(
-                        "sync_core_v2_normalized_shadow result=rejected serverId=$resolvedServerId " +
+                        "sync_core_reaction_shadow result=rejected serverId=$resolvedServerId " +
                             "msg=${decoded.row.id} reason=${outcome.failure.name}",
                     )
                     null
@@ -67,7 +68,7 @@ internal class SyncCoreReactionV2ShadowLane(
     fun logFailure(serverId: String, messageId: String, throwable: Throwable) {
         runCatching {
             logger(
-                "sync_core_v2_normalized_shadow result=failed serverId=$serverId msg=$messageId " +
+                "sync_core_reaction_shadow result=failed serverId=$serverId msg=$messageId " +
                     "error=${throwable::class.simpleName}",
             )
         }

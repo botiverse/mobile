@@ -41,7 +41,7 @@ import build.raft.app.network.SlockRequestScheduler
 import build.raft.app.network.createPlatformSlockHttpExecutor
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
-import build.raft.app.network.sync.SyncCoreReactionV2ShadowLane
+import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -155,7 +155,7 @@ internal class SlockSharedStoreProvider private constructor(
         // (The owner is constructed in create() before this instance exists, so serverFeatureFlags can only
         // be wired here.) Shell-scoped owners get their own lane at construction in realtimeDomainEventOwner.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-        realtimeDomainEventOwner.installReactionV2ShadowLane(buildReactionV2ShadowLane())
+        realtimeDomainEventOwner.installReactionShadowLane(buildReactionShadowLane())
         threadSendScope.launch {
             authStore.sessionInvalidations.collect {
                 clearActiveShellServerSelections()
@@ -178,10 +178,10 @@ internal class SlockSharedStoreProvider private constructor(
             logger = sharedInfoLogger("SyncCoreT0Shadow", "sync_core_t0_shadow"),
         )
 
-    private fun buildReactionV2ShadowLane(): SyncCoreReactionV2ShadowLane =
-        SyncCoreReactionV2ShadowLane(
+    private fun buildReactionShadowLane(): SyncCoreReactionShadowLane =
+        SyncCoreReactionShadowLane(
             featureFlags = serverFeatureFlags,
-            logger = sharedInfoLogger("SyncCoreV2ReactionShadow", "sync_core_v2_reaction_shadow"),
+            logger = sharedInfoLogger("SyncCoreReactionShadow", "sync_core_reaction_shadow"),
         )
 
     val conversationIdentityProvider: SharedConversationIdentityProvider?
@@ -275,7 +275,7 @@ internal class SlockSharedStoreProvider private constructor(
                     cursorStore = RealtimeAppliedSeqCursorStore(sharedPreferenceStore)
                 ).also {
                     it.installMessageShadowFoldLane(buildMessageShadowFoldLane())
-                    it.installReactionV2ShadowLane(buildReactionV2ShadowLane())
+                    it.installReactionShadowLane(buildReactionShadowLane())
                 }
             }
         }
@@ -794,14 +794,14 @@ internal class SharedRealtimeDomainEventOwner(
     // installMessageShadowFoldLane); a null lane means the shadow path is entirely absent (e.g. unit tests
     // that don't exercise it). Invisible to sinks and fail-open — see foldPersistMessageShadow.
     private var messageShadowFoldLane: SyncCoreMessageShadowFoldLane? = null
-    private var reactionV2ShadowLane: SyncCoreReactionV2ShadowLane? = null
+    private var reactionShadowLane: SyncCoreReactionShadowLane? = null
 
     fun installMessageShadowFoldLane(lane: SyncCoreMessageShadowFoldLane) {
         messageShadowFoldLane = lane
     }
 
-    fun installReactionV2ShadowLane(lane: SyncCoreReactionV2ShadowLane) {
-        reactionV2ShadowLane = lane
+    fun installReactionShadowLane(lane: SyncCoreReactionShadowLane) {
+        reactionShadowLane = lane
     }
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
@@ -838,8 +838,8 @@ internal class SharedRealtimeDomainEventOwner(
         messageShadowFoldLane?.let { lane ->
             if (lane.isEnabled()) foldPersistMessageShadow(lane, resolvedServerId, acceptedEvents)
         }
-        reactionV2ShadowLane?.let { lane ->
-            if (lane.isEnabled()) observeReactionV2Shadow(lane, resolvedServerId, acceptedEvents)
+        reactionShadowLane?.let { lane ->
+            if (lane.isEnabled()) observeReactionShadow(lane, resolvedServerId, acceptedEvents)
         }
         val activeSinks = sinks
         // Tee to Thread routes before the Heartbeat early-return: Thread
@@ -934,9 +934,9 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
-    /** V2 normalized reaction SHADOW observation. No persistence, cache mutation, cursor, or sink output. */
-    private fun observeReactionV2Shadow(
-        lane: SyncCoreReactionV2ShadowLane,
+    /** Normalized reaction SHADOW observation. No persistence, cache mutation, cursor, or sink output. */
+    private fun observeReactionShadow(
+        lane: SyncCoreReactionShadowLane,
         resolvedServerId: String,
         acceptedEvents: List<RealtimeEvent>,
     ) {

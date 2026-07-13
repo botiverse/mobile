@@ -4,7 +4,7 @@ import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY
+import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SlockFeatureFlagsApi
 import build.raft.app.model.ServerId
@@ -15,13 +15,13 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class SyncCoreReactionV2ShadowLaneTest {
+class SyncCoreReactionShadowLaneTest {
     private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
             HomeNetworkResponse(
                 code = 200,
                 bodyText =
-                    """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
+                    """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
             )
     }
 
@@ -53,7 +53,7 @@ class SyncCoreReactionV2ShadowLaneTest {
     @Test
     fun flagOffDoesNoNormalizationWork() {
         val logs = mutableListOf<String>()
-        val lane = SyncCoreReactionV2ShadowLane(flags(false), logs::add)
+        val lane = SyncCoreReactionShadowLane(flags(false), logs::add)
 
         val result = lane.observe(
             "s1",
@@ -67,7 +67,7 @@ class SyncCoreReactionV2ShadowLaneTest {
     @Test
     fun flagOnObservesChannelRoomWithoutApplyingViewerState() {
         val logs = mutableListOf<String>()
-        val lane = SyncCoreReactionV2ShadowLane(flags(true), logs::add)
+        val lane = SyncCoreReactionShadowLane(flags(true), logs::add)
 
         val result = assertNotNull(
             lane.observe(
@@ -86,7 +86,7 @@ class SyncCoreReactionV2ShadowLaneTest {
     @Test
     fun malformedRosterProducesBoundedDiagnosticButKeepsSharedCountFact() {
         val logs = mutableListOf<String>()
-        val lane = SyncCoreReactionV2ShadowLane(flags(true), logs::add)
+        val lane = SyncCoreReactionShadowLane(flags(true), logs::add)
 
         val result = assertNotNull(
             lane.observe(
@@ -110,7 +110,7 @@ class SyncCoreReactionV2ShadowLaneTest {
 
     @Test
     fun diagnosticLoggerFailureIsSwallowedAndCannotEscapeToLegacyCaller() {
-        val lane = SyncCoreReactionV2ShadowLane(flags(true)) { error("logger unavailable") }
+        val lane = SyncCoreReactionShadowLane(flags(true)) { error("logger unavailable") }
 
         val result = lane.observe(
             "s1",
@@ -123,7 +123,7 @@ class SyncCoreReactionV2ShadowLaneTest {
     @Test
     fun wholeCallRejectionIsDiagnosedSeparatelyFromInlineViolations() {
         val logs = mutableListOf<String>()
-        val lane = SyncCoreReactionV2ShadowLane(flags(true), logs::add)
+        val lane = SyncCoreReactionShadowLane(flags(true), logs::add)
 
         val result = lane.observe(
             "s1",

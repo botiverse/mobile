@@ -15,7 +15,6 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
-import build.raft.app.data.SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SlockFeatureFlagsApi
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -37,25 +36,16 @@ import kotlin.test.assertTrue
 
 class SyncCoreMessageShadowObserverTest {
 
-    private class FakeFlagsApi(
-        private val v1Enabled: Boolean,
-        private val v2Enabled: Boolean,
-    ) : SlockFeatureFlagsApi {
+    private class FakeFlagsApi(private val enabled: Boolean) : SlockFeatureFlagsApi {
         override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
             HomeNetworkResponse(
                 code = 200,
-                bodyText =
-                    """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$v1Enabled},""" +
-                        """{"key":"$SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY","enabled":$v2Enabled}]}""",
+                bodyText = """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
             )
     }
 
-    private fun flags(
-        enabled: Boolean,
-        resolve: Boolean = true,
-        v2Enabled: Boolean = false,
-    ): SharedServerFeatureFlags {
-        val f = SharedServerFeatureFlags(api = FakeFlagsApi(enabled, v2Enabled))
+    private fun flags(enabled: Boolean, resolve: Boolean = true): SharedServerFeatureFlags {
+        val f = SharedServerFeatureFlags(api = FakeFlagsApi(enabled))
         if (resolve) runBlocking { f.prefetch(ServerId("s-1")) }
         return f
     }
@@ -136,24 +126,6 @@ class SyncCoreMessageShadowObserverTest {
         assertTrue(logs.single().contains("result=parity"), "compare must run over the single decode, got $logs")
         assertNotNull(event.decodedCanonical, "flag on must attach the decoded carry to the event")
         assertSame(decoder.lastDecoded, event.decodedCanonical, "compare and fold-lane carry must share the ONE decode")
-    }
-
-    @Test
-    fun v2Only_decodesOnceForNormalizedLaneWithoutRunningV1Compare() {
-        val decoder = CountingDecoder()
-        val logs = mutableListOf<String>()
-        val observer = SyncCoreMessageShadowObserver(
-            featureFlags = flags(enabled = false, v2Enabled = true),
-            diagnosticsLogger = logs::add,
-            decodeWire = decoder::decode,
-        )
-        val event = RealtimeEventMapper(messageShadowObserver = observer)
-            .map(RealtimeSocketEvents.MessageNew, payload()) as MessageNew
-
-        assertEquals(1, decoder.invocations)
-        assertNotNull(event.decodedCanonical)
-        assertTrue(logs.isEmpty(), "V2-only successful decode must not pretend V1 parity ran: $logs")
-        assertSame(decoder.lastDecoded, event.decodedCanonical)
     }
 
     @Test
