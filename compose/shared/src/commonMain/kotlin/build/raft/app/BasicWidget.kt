@@ -97,6 +97,12 @@ fun Modifier.backgroundColor(color: Color): Modifier {
     return this.background(color)
 }
 
+/** Neutral fallback shown before or around image preview content. */
+internal val SlockImagePreviewLetterboxColor: Color = SlockColor.SurfaceWhite
+
+/** Thumbnail contract: preserve ratio while filling the fixed preview frame. */
+internal val SlockImageThumbnailContentScale: ContentScale = ContentScale.Crop
+
 @Composable
 fun SlockCachedImage(
     source: String?,
@@ -128,8 +134,9 @@ internal fun SlockAspectFitImagePreviewSurface(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
-    backgroundColor: Color = SlockColor.SurfaceCream,
+    backgroundColor: Color = SlockImagePreviewLetterboxColor,
     borderWidth: Dp = SlockStroke.Default,
+    contentScale: ContentScale = ContentScale.Fit,
     zoomable: Boolean = false,
     showLoadingIndicator: Boolean = false
 ) {
@@ -160,7 +167,7 @@ internal fun SlockAspectFitImagePreviewSurface(
                 SlockCachedImage(
                     source = activeSource,
                     contentDescription = contentDescription,
-                    contentScale = ContentScale.Fit,
+                    contentScale = contentScale,
                     modifier = Modifier.fillMaxSize(),
                     onImageStateChange = { state ->
                         imageState = state
