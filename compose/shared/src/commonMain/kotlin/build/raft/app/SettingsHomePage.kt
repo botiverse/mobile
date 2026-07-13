@@ -2657,7 +2657,6 @@ private fun SlockAppShellContent(
         remember(sharedStores) {
             RealtimeEventMapper(
                 messageShadowObserver = sharedStores.messageShadowObserver,
-                messageShadowFoldEnabled = sharedStores.messageShadowFoldEnabled,
             )
         }
     var realtimeLastSeq by remember { mutableStateOf(0L) }

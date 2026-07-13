@@ -3176,7 +3176,6 @@ internal fun SharedThreadRouteContent(
         remember(sharedStores) {
             RealtimeEventMapper(
                 messageShadowObserver = sharedStores.messageShadowObserver,
-                messageShadowFoldEnabled = sharedStores.messageShadowFoldEnabled,
             )
         }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)

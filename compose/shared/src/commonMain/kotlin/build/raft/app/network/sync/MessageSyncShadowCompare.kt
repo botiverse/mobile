@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
@@ -104,6 +106,23 @@ fun compareCanonicalShadow(
             face,
             violation?.missingOrInvalidRequiredFields ?: emptySet(),
         )
+    return compareCanonicalShadow(decoded, face, authoritative, memberHydration, encodeFact, decodeFact)
+}
+
+/**
+ * Pre-decoded variant (#607 decode-once): compare an already-decoded [CanonicalMessageCarry] against the
+ * authoritative [authoritative] message. Used by the projection gateway so the SAME single decode feeds
+ * both this shadow-compare and the fold+persist carry — never [MessageShadowOutcome.DecodeFailed] (a
+ * decode failure fails closed before this call). Same envelope round-trip + parity semantics as above.
+ */
+fun compareCanonicalShadow(
+    decoded: CanonicalMessageCarry,
+    face: ProductionFace,
+    authoritative: Message,
+    memberHydration: CanonicalMemberHydration = { it },
+    encodeFact: (CanonicalMessageRow) -> String = ::encodeCanonicalFact,
+    decodeFact: (String) -> CanonicalMessageRow? = ::decodeCanonicalFact,
+): MessageShadowOutcome {
     // Envelope parity: the decoded fact must round-trip losslessly through the envelope codec. Restore-purity
     // (project the RESTORED row) folds the envelope layer into the same parity signal as decode.
     val restored = decodeFact(encodeFact(decoded.row))

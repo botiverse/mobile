@@ -8,7 +8,7 @@
  */
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
+import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.model.MessageId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -21,8 +21,8 @@ class FoldPersistenceOneTxnTest {
     private val scope = SyncScopeKey(serverId = "s1", scopeId = "c1", scopeKind = "channel")
 
     private fun row(id: String, seq: Long) = CanonicalMessageRow(
-        id = MessageId(id),
-        channelId = ChannelId("c1"),
+        id = id,
+        channelId = "c1",
         seq = seq,
         senderType = "human",
         senderId = "u1",
@@ -61,7 +61,7 @@ class FoldPersistenceOneTxnTest {
         override suspend fun writeCursor(scope: SyncScopeKey, cursor: PersistedCursor) { cursors[key(scope)] = cursor }
         override suspend fun maintainTimelineIndex(scope: SyncScopeKey, facts: List<CanonicalMessageRow>) {}
         override suspend fun prune(scope: SyncScopeKey, factIds: List<MessageId>) {
-            this.facts[key(scope)]?.removeAll { it.id in factIds }
+            this.facts[key(scope)]?.removeAll { MessageId(it.id) in factIds }
         }
         override suspend fun clearScope(scope: SyncScopeKey) { this.facts.remove(key(scope)) }
         override suspend fun readFacts(scope: SyncScopeKey) = facts[key(scope)]?.sortedBy { it.seq }.orEmpty()
@@ -94,7 +94,7 @@ class FoldPersistenceOneTxnTest {
         val (adapter, _) = adapter(faultHook = { it == PersistFaultPoint.AfterCommit })
         assertFailsWith<PersistKilled> { adapter.applyFrame(frame(row("m1", 1), row("m2", 2))) }
         val restored = adapter.restore(scope)
-        assertEquals(listOf("m1", "m2"), restored.facts.map { it.id.value }, "post-commit facts must be complete")
+        assertEquals(listOf("m1", "m2"), restored.facts.map { it.id }, "post-commit facts must be complete")
         assertEquals(2L, restored.cursor?.latestSeq, "post-commit cursor must be advanced")
     }
 
@@ -105,7 +105,7 @@ class FoldPersistenceOneTxnTest {
         val (adapter, runner) = adapter()
         adapter.applyFrame(frame(row("m1", 1), row("m2", 2), row("m3", 3)))
         assertEquals(1, runner.runCount, "an N-fact difference batch + cursor must be exactly one transaction")
-        assertEquals(listOf("m1", "m2", "m3"), adapter.restore(scope).facts.map { it.id.value })
+        assertEquals(listOf("m1", "m2", "m3"), adapter.restore(scope).facts.map { it.id })
     }
 
     @Test
@@ -122,7 +122,7 @@ class FoldPersistenceOneTxnTest {
         adapter.applyFrame(rebaseline)
         assertEquals(2, runner.runCount, "two ingest calls = two transactions (each internally atomic)")
         val restored = adapter.restore(scope)
-        assertEquals(listOf("new1", "new2"), restored.facts.map { it.id.value }, "rebaseline drops old facts")
+        assertEquals(listOf("new1", "new2"), restored.facts.map { it.id }, "rebaseline drops old facts")
         assertEquals("e2", restored.cursor?.epoch, "rebaseline advances epoch in the same txn")
     }
 
@@ -139,7 +139,7 @@ class FoldPersistenceOneTxnTest {
         assertFailsWith<PersistKilled> {
             faulting.applyFrame(FoldPersistFrame(scope, listOf(row("new1", 10)), PersistedCursor(10, 10, 10, epoch = "e2"), rebaseline = true))
         }
-        assertEquals(listOf("old1", "old2"), adapter.restore(scope).facts.map { it.id.value }, "torn rebaseline must not empty the scope")
+        assertEquals(listOf("old1", "old2"), adapter.restore(scope).facts.map { it.id }, "torn rebaseline must not empty the scope")
     }
 
     @Test
@@ -148,7 +148,7 @@ class FoldPersistenceOneTxnTest {
         val f = frame(row("m1", 1), row("m2", 2))
         adapter.applyFrame(f)
         val restored = adapter.restore(scope)
-        assertEquals(f.facts.map { it.id.value }, restored.facts.map { it.id.value })
+        assertEquals(f.facts.map { it.id }, restored.facts.map { it.id })
         assertEquals(f.cursor.latestSeq, restored.cursor?.latestSeq)
         assertEquals(f.cursor.epoch, restored.cursor?.epoch)
     }

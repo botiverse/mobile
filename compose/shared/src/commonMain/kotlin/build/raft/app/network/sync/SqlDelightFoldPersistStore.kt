@@ -1,5 +1,6 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.data.SlockSqlDatabase
 import build.raft.app.model.MessageId
 
@@ -27,7 +28,7 @@ internal class SqlDelightFoldPersistStore(
             val json = encodeCanonicalFact(fact)
             // INSERT-OR-IGNORE + scoped UPDATE = a CASCADE-safe in-place upsert (the dialect has no UPSERT).
             q.insertCanonicalFactIfAbsent(
-                id = fact.id.value,
+                id = fact.id,
                 serverId = scope.serverId,
                 channelId = scope.scopeId,
                 scopeKind = scope.scopeKind,
@@ -39,7 +40,7 @@ internal class SqlDelightFoldPersistStore(
                 seq = fact.seq,
                 createdAt = fact.createdAt,
                 canonicalFactJson = json,
-                id = fact.id.value,
+                id = fact.id,
                 serverId = scope.serverId,
                 scopeKind = scope.scopeKind,
                 channelId = scope.scopeId,
@@ -49,13 +50,13 @@ internal class SqlDelightFoldPersistStore(
             // apply (throw, abort the transaction), never silently succeed. Server ids are globally unique
             // by contract, so this is a hard violation, not an expected merge.
             val present = q.countCanonicalFactInScope(
-                id = fact.id.value,
+                id = fact.id,
                 serverId = scope.serverId,
                 scopeKind = scope.scopeKind,
                 channelId = scope.scopeId,
             ).executeAsOne()
             if (present == 0L) {
-                throw FoldPersistScopeConflict(scope, fact.id.value)
+                throw FoldPersistScopeConflict(scope, fact.id)
             }
         }
     }
@@ -111,11 +112,11 @@ internal class SqlDelightFoldPersistStore(
                 // projection-tamper negative proves this read-time poison of a tampered scalar.
                 val decoded = decodeCanonicalFact(row.canonicalFactJson)
                     ?: return@mapNotNull run { onDecodeFailure(scope, row.id); null }
-                val consistent = row.id == decoded.id.value &&
-                    row.channelId == decoded.channelId.value &&
+                val consistent = row.id == decoded.id &&
+                    row.channelId == decoded.channelId &&
                     row.seq == decoded.seq &&
                     row.createdAt == decoded.createdAt &&
-                    decoded.channelId.value == scope.scopeId
+                    decoded.channelId == scope.scopeId
                 if (!consistent) return@mapNotNull run { onDecodeFailure(scope, row.id); null }
                 decoded
             }

@@ -137,25 +137,17 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     /**
-     * Flag-gated sync-core shadow-compare observer injected into [RealtimeEventMapper]. Off by default
+     * Flag-gated canonical projection gateway injected into [RealtimeEventMapper]. Off by default
      * (`sync_core_messages_v0`), so it is a single flag lookup on the hot path until the rollout enables it;
-     * when on, it re-projects each message through the canonical pipeline and emits divergence diagnostics
-     * without touching the store. A provider-level singleton so all mapper instances share one gate.
+     * when on, it decodes each message frame ONCE, runs the shadow-compare over that decode and emits
+     * divergence diagnostics without touching the store, then returns the decoded carry for the shadow
+     * fold+persist lane. A provider-level singleton so all mapper instances share one gate.
      */
     val messageShadowObserver: MessageShadowObserver =
         SyncCoreMessageShadowObserver(
             featureFlags = serverFeatureFlags,
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
-
-    /**
-     * Flag gate for the `sync_core_messages_v0` shadow fold+persist carry, handed to [RealtimeEventMapper] so
-     * the raw-wire canonical decode only runs when the flag is on for a resolved server. Keeps the flag-off
-     * hot path (every real user) free of the canonical decode; the same gate the fold lane checks in accept.
-     */
-    val messageShadowFoldEnabled: () -> Boolean = {
-        serverFeatureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
-    }
 
     init {
         // Attach the flag-gated `sync_core_messages_v0` shadow fold+persist lane to the legacy-scope owner.
@@ -891,8 +883,8 @@ internal class SharedRealtimeDomainEventOwner(
 
     /**
      * SHADOW-of-record fold+persist for message-canonical frames (`sync_core_messages_v0`). For each accepted
-     * MessageNew/MessageUpdated carrying a raw-wire [DecodedCanonicalMessage] (decoded ONCE upstream in the
-     * mapper), fold it through the shadow SyncCore and persist the channel's fact window via [lane]. The epoch
+     * MessageNew/MessageUpdated carrying a raw-wire canonical carry (decoded ONCE upstream in the projection
+     * gateway), fold it through the shadow SyncCore and persist the channel's fact window via [lane]. The epoch
      * is the same per-scope recovery epoch the legacy cursor advanced just above (acceptedEventsForFold), so
      * the shadow cursor stays consistent with it. The entire body is guarded and swallows: this shadow persist
      * must NEVER block or throw into the legacy accept path, and it does not touch any sink output.

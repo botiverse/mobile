@@ -1,7 +1,15 @@
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMentionWire
+import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
+import build.raft.app.canonical.message.MessageAggregateField
+import build.raft.app.canonical.message.TaskDomainFields
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -17,22 +25,6 @@ enum class ProductionFace {
     EnrichedUpdated,
     TaskStatusUpdated,
 }
-
-/** Task-domain fields excluded from [CanonicalMessageRow] and dual-dispatched to the legacy consumer. */
-data class TaskDomainFields(
-    val taskStatus: String? = null,
-    val taskNumber: Int? = null,
-    val taskAssigneeType: String? = null,
-    val taskAssigneeId: String? = null,
-    val taskClaimedAt: String? = null,
-    val taskCompletedAt: String? = null,
-)
-
-data class DecodedCanonicalMessage(
-    val row: CanonicalMessageRow,
-    val presentAggregates: Set<MessageAggregateField>,
-    val taskFields: TaskDomainFields? = null,
-)
 
 /** Closed diagnostic data only: the raw message payload is deliberately never retained. */
 data class MessageWireCanonicalViolation(
@@ -85,7 +77,7 @@ fun decodeCanonicalMessageWire(
     rawJson: JsonObject,
     face: ProductionFace,
     onViolation: (MessageWireCanonicalViolation) -> Unit = {},
-): DecodedCanonicalMessage? {
+): CanonicalMessageCarry? {
     val presentAggregates = AGGREGATE_WIRE_KEYS
         .filterKeys(rawJson::containsKey)
         .values
@@ -110,8 +102,8 @@ fun decodeCanonicalMessageWire(
     }
 
     val row = CanonicalMessageRow(
-        id = MessageId(rawJson.strictString("id")!!),
-        channelId = ChannelId(rawJson.strictString("channelId")!!),
+        id = rawJson.strictString("id")!!,
+        channelId = rawJson.strictString("channelId")!!,
         seq = rawJson.strictLong("seq")!!,
         senderType = rawJson.strictString("senderType")!!,
         senderId = rawJson.strictString("senderId")!!,
@@ -131,7 +123,7 @@ fun decodeCanonicalMessageWire(
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
     )
 
-    return DecodedCanonicalMessage(
+    return CanonicalMessageCarry(
         row = row,
         presentAggregates = presentAggregates,
         taskFields = rawJson.toTaskDomainFieldsOrNull(),

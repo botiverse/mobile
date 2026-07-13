@@ -1,14 +1,18 @@
 /*
- * Shadow observer gate + no-apply invariants (sync_core_messages_v0).
+ * Shadow gateway gate + no-apply invariants (sync_core_messages_v0).
  *
- * Nails two rollout-safety properties LiBai flagged for #700:
- *  - flag OFF => the observer does NO work: compare never runs, zero diagnostics, zero cost beyond one
- *    map lookup (the default-off hot path);
- *  - the observer's ONLY output is a diagnostic line. It holds no store/UI reference (constructor takes
- *    feature flags + a logger only), so "shadow never applies" is structural, and asserted here end to end.
+ * Nails the rollout-safety properties LiBai flagged for #700 plus the #607 decode-once contract:
+ *  - flag OFF => the gateway does NO work: ZERO canonical decodes, compare never runs, zero diagnostics,
+ *    null carry — nothing beyond one map lookup (the default-off hot path);
+ *  - flag ON => the raw frame is decoded exactly ONCE, and that same decoded object feeds both the
+ *    shadow-compare and the returned carry the fold+persist lane consumes (no double decode);
+ *  - the gateway's only outputs are a diagnostic line and the returned carry. It holds no store/UI
+ *    reference (constructor takes feature flags + a logger + seams only), so "shadow never applies" is
+ *    structural, and asserted here end to end.
  */
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
@@ -25,6 +29,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SyncCoreMessageShadowObserverTest {
@@ -41,6 +48,21 @@ class SyncCoreMessageShadowObserverTest {
         val f = SharedServerFeatureFlags(api = FakeFlagsApi(enabled))
         if (resolve) runBlocking { f.prefetch(ServerId("s-1")) }
         return f
+    }
+
+    /** Countable wrapper around the real ingress decode — the #607 decode-once/zero-decode proof seam. */
+    private class CountingDecoder {
+        var invocations = 0
+        var lastDecoded: CanonicalMessageCarry? = null
+
+        fun decode(
+            rawJson: JsonObject,
+            face: ProductionFace,
+            onViolation: (MessageWireCanonicalViolation) -> Unit,
+        ): CanonicalMessageCarry? {
+            invocations++
+            return decodeCanonicalMessageWire(rawJson, face, onViolation).also { lastDecoded = it }
+        }
     }
 
     private val mapper = RealtimeEventMapper()
@@ -69,6 +91,41 @@ class SyncCoreMessageShadowObserverTest {
         val p = payload()
         observer.observe(RealtimeSocketEvents.MessageNew, p, legacyMessage(p))
         assertTrue(logs.isEmpty(), "flag off must produce zero diagnostics (no compare), got $logs")
+    }
+
+    @Test
+    fun flagOff_zeroDecodesAndNullEventCarry() {
+        // Gate (a): flag off => the gateway never invokes the canonical decoder AND the mapped event
+        // carries a null canonical carry (flag-off pays zero decode cost on the hot path).
+        val decoder = CountingDecoder()
+        val observer = SyncCoreMessageShadowObserver(
+            featureFlags = flags(enabled = false),
+            decodeWire = decoder::decode,
+        )
+        val event = RealtimeEventMapper(messageShadowObserver = observer)
+            .map(RealtimeSocketEvents.MessageNew, payload()) as MessageNew
+        assertEquals(0, decoder.invocations, "flag off must never invoke the canonical decoder")
+        assertNull(event.decodedCanonical, "flag off must attach a null carry to the event")
+    }
+
+    @Test
+    fun flagOn_decodesOnce_compareAndCarryShareTheSameDecodedObject() {
+        // Gate (b): flag on, one raw frame => exactly ONE decoder invocation; the shadow-compare (proven
+        // to have run by its parity diagnostic) and the event carry the fold lane consumes are the SAME
+        // decoded object — no double decode anywhere on the frame path.
+        val decoder = CountingDecoder()
+        val logs = mutableListOf<String>()
+        val observer = SyncCoreMessageShadowObserver(
+            featureFlags = flags(enabled = true),
+            diagnosticsLogger = { logs.add(it) },
+            decodeWire = decoder::decode,
+        )
+        val event = RealtimeEventMapper(messageShadowObserver = observer)
+            .map(RealtimeSocketEvents.MessageNew, payload()) as MessageNew
+        assertEquals(1, decoder.invocations, "one frame must be decoded exactly once")
+        assertTrue(logs.single().contains("result=parity"), "compare must run over the single decode, got $logs")
+        assertNotNull(event.decodedCanonical, "flag on must attach the decoded carry to the event")
+        assertSame(decoder.lastDecoded, event.decodedCanonical, "compare and fold-lane carry must share the ONE decode")
     }
 
     @Test
@@ -111,10 +168,11 @@ class SyncCoreMessageShadowObserverTest {
             put("threadId", JsonNull)
             put("createdAt", "2026-07-11T20:00:00Z")
         }
-        observer.observe(RealtimeSocketEvents.MessageNew, p, legacyMessage(p))
+        val carry = observer.observe(RealtimeSocketEvents.MessageNew, p, legacyMessage(p))
         assertEquals(1, logs.size)
         assertTrue(logs.single().contains("result=decode_failed"), "expected decode_failed, got ${logs.single()}")
         assertTrue(logs.single().contains("content"), "diagnostic should name the missing required field")
+        assertNull(carry, "a fail-closed decode must return a null carry (fold lane skips the frame)")
     }
 
     @Test

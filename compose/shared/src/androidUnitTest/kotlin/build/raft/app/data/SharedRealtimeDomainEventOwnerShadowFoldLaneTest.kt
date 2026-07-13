@@ -8,6 +8,9 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
@@ -19,11 +22,8 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
-import build.raft.app.network.sync.CanonicalMessageRow
-import build.raft.app.network.sync.DecodedCanonicalMessage
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
-import build.raft.app.network.sync.MessageAggregateField
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
@@ -77,8 +77,8 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     private fun canonicalRow(id: String, seq: Long) = CanonicalMessageRow(
-        id = MessageId(id),
-        channelId = ChannelId(channelId),
+        id = id,
+        channelId = channelId,
         seq = seq,
         senderType = "human",
         senderId = "u1",
@@ -99,14 +99,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
                 timestampLabel = "now",
                 body = "body-$id",
             ),
-            decodedCanonical = DecodedCanonicalMessage(
+            decodedCanonical = CanonicalMessageCarry(
                 row = canonicalRow(id, seq),
                 presentAggregates = emptySet<MessageAggregateField>(),
             ),
         )
 
     private fun persistedFactIds(db: SlockSqlDatabase): List<String> = runBlocking {
-        SqlDelightFoldPersistStore(db, now = { 100L }).readFacts(scopeKey).map { it.id.value }
+        SqlDelightFoldPersistStore(db, now = { 100L }).readFacts(scopeKey).map { it.id }
     }
 
     @Test

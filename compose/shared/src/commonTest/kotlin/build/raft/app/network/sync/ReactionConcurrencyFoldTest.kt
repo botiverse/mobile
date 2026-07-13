@@ -23,8 +23,8 @@
  */
 package build.raft.app.network.sync
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.MessageId
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,8 +42,8 @@ class ReactionConcurrencyFoldTest {
         seq: Long = 5L,
         reactions: List<CanonicalReactionWire> = emptyList(),
     ): CanonicalMessageRow = CanonicalMessageRow(
-        id = MessageId(id),
-        channelId = ChannelId(channel),
+        id = id,
+        channelId = channel,
         seq = seq,
         senderType = "human",
         senderId = "u1",

@@ -1,5 +1,11 @@
 package build.raft.app.network.sync
 
+import build.raft.app.canonical.message.CanonicalAttachmentWire
+import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
+import build.raft.app.canonical.message.CanonicalCommentRefWire
+import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
@@ -58,11 +64,11 @@ fun CanonicalMessageRow.toAppMessage(
     )
     val action = actionMetadata.toAppActionProjection()
     return Message(
-        id = id,
+        id = MessageId(id),
         // The wire `threadId` is an anchor, not the app navigation ThreadId. Messages live in the
         // channel bucket, which remains the app navigation identity.
-        threadId = ThreadId(channelId.value),
-        channelId = channelId,
+        threadId = ThreadId(channelId),
+        channelId = ChannelId(channelId),
         // message:* does not carry app thread linkage; preserve RealtimeEventMapper parity.
         threadChannelId = null,
         seq = seq,
