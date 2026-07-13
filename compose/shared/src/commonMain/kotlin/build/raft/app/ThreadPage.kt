@@ -7783,6 +7783,8 @@ internal const val THREAD_MESSAGE_VISUAL_FIXTURE_APPROVE_LOGIN_ACTION_CARD_EXECU
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_SLICE1 = "md_wrap_slice1"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_CLARIFY = "md_wrap_clarify"
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_TASK607 = "md_wrap_task607"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT = "md_wrap_adjacent"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 = "md_wrap_status606"
 
 private fun threadMessageVisualWidth(visualFixture: String): Dp =
     when (visualFixture) {
@@ -8346,6 +8348,91 @@ internal fun threadVisualFixture(
                             avatarLabel = "AD"
                         )
                     ),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_STATUS606 ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Agent-status markdown specimen (thread-ref + hex codes)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("对话流专修"),
+                knownMarkdownMentionNames = listOf("artin"),
+                knownMarkdownTaskNumbers = listOf(606),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_status606_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 11:25",
+                            messageType = "Chat",
+                            body =
+                                "Task #606 新真机基线已就绪：PR #785 exact `0e5a82b02` Alpha 已附在 #对话流专修:661a12bf，SHA-256 `db01c5e5b91f3696bfda64edde2fc31b3a40ffe9b508813d651a6de735e8a85b`。这是 process-owned decoded auth-session snapshot 根修包，不是日志抑制包；`8a5e542f4` 作废。\n\n等待 @artin 验普通导航/滚动及 `#/@` suggestion。若仍卡，以新 Hands 对比 auth durable cold-read 次数和 traversal/layout/draw；task #606 保持 In Progress，PR 不合。"
+                        )
+                    ),
+                members = emptyList(),
+                showComposer = false,
+                joined = true,
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MD_WRAP_ADJACENT ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Adjacent-chip acceptance fixture (task #60)",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                knownMarkdownChannelNames = listOf("对话流专修"),
+                knownMarkdownTaskNumbers = listOf(31, 521, 607),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_md_wrap_adjacent_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorDescription = "Keeps visual testing release notes aligned.",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "07/13 05:56",
+                            messageType = "Chat",
+                            body =
+                                "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
+                        )
+                    ),
+                members = emptyList(),
                 showComposer = false,
                 joined = true,
                 composer =
