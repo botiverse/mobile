@@ -3606,6 +3606,8 @@ internal fun SharedThreadRouteContent(
     val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
     val unableToLoadImageLabel = stringResource(MR.strings.thread_error_load_image)
     val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
+    val unableToDownloadAttachmentLabel = stringResource(MR.strings.file_preview_error_download_attachment)
+    val attachmentSavedLabel = stringResource(MR.strings.file_preview_download_saved)
     val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
     val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
@@ -4551,6 +4553,56 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
+    fun saveAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
+        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        val downloadId = attachment.threadAttachmentDownloadId()
+        attachmentOpenStates =
+            attachmentOpenStates +
+                (attachment.id to ThreadAttachmentOpenUiState(
+                    status = "downloading",
+                    downloadId = downloadId,
+                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                ))
+        coroutineScope.launch {
+            val result =
+                saveSharedThreadAttachment(
+                    bridge = bridge,
+                    dataSource = dataSource,
+                    attachment = attachment,
+                    downloadId = downloadId,
+                    onProgress = { progress ->
+                        if (progress.downloadId.isNotBlank() && progress.downloadId != downloadId) return@saveSharedThreadAttachment
+                        val current = attachmentOpenStates[attachment.id]
+                        if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
+                        attachmentOpenStates =
+                            attachmentOpenStates +
+                                (attachment.id to current.copy(
+                                    status = if (progress.status == "paused") "paused" else "downloading",
+                                    progress = progress.copy(downloadId = progress.downloadId.ifBlank { downloadId })
+                                ))
+                    }
+                )
+            when (result.status) {
+                "saved" -> {
+                    attachmentOpenStates = attachmentOpenStates - attachment.id
+                    bridge.toast(result.message.ifBlank { attachmentSavedLabel })
+                }
+                "cancelled" -> {
+                    attachmentOpenStates = attachmentOpenStates - attachment.id
+                }
+                else -> {
+                    attachmentOpenStates =
+                        attachmentOpenStates +
+                            (attachment.id to ThreadAttachmentOpenUiState(
+                                status = result.status,
+                                message = result.message,
+                                downloadId = downloadId
+                            ))
+                    bridge.toast(result.message.ifBlank { unableToDownloadAttachmentLabel })
+                }
+            }
+        }
+    }
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
@@ -5249,7 +5301,7 @@ internal fun SharedThreadRouteContent(
                     openAttachmentNoPreview(attachment)
                 }
             },
-            onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
+            onDownloadFilesAttachment = { attachment -> saveAttachmentExternally(attachment) },
             onOpenMemberProfile = { identity -> onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity) },
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
@@ -5298,7 +5350,7 @@ internal fun SharedThreadRouteContent(
                         val attachment =
                             renderedTimelineSlice.findThreadAttachment(attachmentId)
                                 ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
-                        openAttachmentExternally(attachment)
+                        saveAttachmentExternally(attachment)
                     }
                     action == "openFileSource" && !itemId.isNullOrBlank() -> {
                         val fileItem =
@@ -6958,6 +7010,50 @@ private suspend fun openSharedThreadAttachment(
                         status = "no_app",
                         message = nativeResult?.optString("message").orEmpty().ifBlank { "No app can open this file" }
                     )
+                "storage_failed" ->
+                    ThreadAttachmentOpenResult(
+                        status = "storage_failed",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+                    )
+                else ->
+                    ThreadAttachmentOpenResult(
+                        status = "failed",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Unable to download attachment" }
+                    )
+            }
+        }
+        is ThreadApiResult.Failure ->
+            ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
+    }
+}
+
+private suspend fun saveSharedThreadAttachment(
+    bridge: build.raft.app.base.BridgeModule,
+    dataSource: SharedThreadDataSource,
+    attachment: KuiklyThreadAttachmentItem,
+    downloadId: String? = null,
+    onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
+): ThreadAttachmentOpenResult {
+    val attachmentId = attachment.id.takeIf { it.isNotBlank() }
+        ?: return ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
+    return when (val response = dataSource.attachmentUrl(attachmentId, disposition = "attachment")) {
+        is ThreadApiResult.Success -> {
+            val nativeResult =
+                bridge.saveAttachment(
+                    url = response.data.url,
+                    attachmentId = attachmentId,
+                    fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    mimeType = attachment.mimeType,
+                    downloadId = downloadId,
+                    onProgress = onProgress
+                )
+            when (nativeResult?.optString("status").orEmpty()) {
+                "saved" ->
+                    ThreadAttachmentOpenResult(
+                        status = "saved",
+                        message = nativeResult?.optString("message").orEmpty()
+                    )
+                "cancelled" -> ThreadAttachmentOpenResult(status = "cancelled")
                 "storage_failed" ->
                     ThreadAttachmentOpenResult(
                         status = "storage_failed",

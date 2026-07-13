@@ -375,6 +375,49 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun saveAttachment(
+        url: String,
+        attachmentId: String,
+        fileName: String,
+        mimeType: String? = null,
+        downloadId: String? = null,
+        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("url", url)
+            methodArgs.put("attachmentId", attachmentId)
+            methodArgs.put("fileName", fileName)
+            methodArgs.put("trackProgress", onProgress != null)
+            downloadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("downloadId", it) }
+            mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = onProgress != null,
+                    methodName = SAVE_ATTACHMENT,
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (!continuation.isActive || completed) {
+                            return@toNative
+                        }
+                        if (payload?.optString("status") == "progress") {
+                            onProgress?.invoke(payload.toBridgeAttachmentDownloadProgress())
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        continuation.resume(payload)
+                    },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                callbackRef?.let { removeCallback(it) }
+            }
+        }
+
     suspend fun attachmentDownloadControl(downloadId: String, action: String): JSONObject? =
         suspendCancellableCoroutine { continuation ->
             val methodArgs = JSONObject()
@@ -836,6 +879,7 @@ internal class BridgeModule : Module() {
         const val CLOSE_PAGE = "closePage"
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
+        const val SAVE_ATTACHMENT = "saveAttachment"
         const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
         const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val ATTACHMENT_DOWNLOAD_CONTROL = "attachmentDownloadControl"
