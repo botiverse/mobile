@@ -2,6 +2,8 @@ package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * #491 A-minimal T-message-fold — the KMP messages-domain fold, a behavioral mirror of the web
@@ -68,6 +70,66 @@ sealed interface MessageDomainEvent {
 /** channelId -> the channel's messages, kept in canonical (seq, id) order. */
 data class MessageDomainState(
     val channelMessages: Map<String, List<CanonicalMessageRow>> = emptyMap(),
+    /**
+     * Authoritative tail coverage for each channel. This lives in the same in-memory/snapshot state
+     * value as the rows, so a typed [SyncSnapshot] replaces them atomically. Current SQLite warm-start
+     * persistence remains rows-only; after that restore this map is empty and projection fails closed.
+     */
+    val scopeCoverage: Map<String, MessageScopeCoverage> = emptyMap(),
+)
+
+/**
+ * Proof that one receiver-scoped message tail is covered. [coveredFromSeq] is the first sequence the
+ * authoritative hydrate promises to cover; [coveredThroughSeq] is the end of that continuous window.
+ * It is deliberately separate from the rows because deleted/non-projectable messages may leave legal
+ * sequence holes in the materialized row list. [hasGap] records an observed break in that promise.
+ */
+data class MessageScopeCoverage(
+    val serverId: String,
+    val memberId: String,
+    val receiverKind: MessageReceiverKind,
+    val scopeId: String,
+    val epoch: String?,
+    val coveredFromSeq: Long,
+    val coveredThroughSeq: Long,
+    val remoteHighWaterSeq: Long,
+    val hasGap: Boolean,
+    val completeThroughLatest: Boolean,
+)
+
+/** The sole authoritative entry point for a conversation hydrate/rebaseline. */
+data class MessageScopeCoverageSnapshot(
+    val serverId: String,
+    val memberId: String,
+    val receiverKind: MessageReceiverKind,
+    val scopeId: String,
+    val epoch: String?,
+    val rows: List<CanonicalMessageRow>,
+    val coveredFromSeq: Long,
+    val remoteHighWaterSeq: Long,
+    val hasGap: Boolean = false,
+    val hasNewer: Boolean = false,
+)
+
+/** Receiver principal type used by server unread policy and structured mention entities. */
+enum class MessageReceiverKind(val wireName: String) {
+    User("user"),
+    Agent("agent"),
+}
+
+data class MessageReadStateCheckpoint(
+    val readStateVersion: Long,
+    val maxReadSeq: Long,
+)
+
+data class MessageReadStateProjection(
+    val readStateVersion: Long,
+    val maxReadSeq: Long,
+    val unreadCount: Int,
+    val hasMention: Boolean,
+    val firstUnreadMessageId: String?,
+    val firstMentionMessageId: String?,
+    val complete: Boolean,
 )
 
 fun createInitialMessageDomainState(): MessageDomainState = MessageDomainState()
@@ -124,6 +186,30 @@ private fun List<CanonicalMessageRow>.sortedByCanonicalOrder(): List<CanonicalMe
 private fun MessageDomainState.withBucket(channelId: String, bucket: List<CanonicalMessageRow>): MessageDomainState =
     copy(channelMessages = channelMessages + (channelId to bucket))
 
+private fun MessageDomainState.withCoverageAfterRealtimeNew(row: CanonicalMessageRow): MessageDomainState {
+    val coverage = scopeCoverage[row.channelId] ?: return this
+    if (row.seq <= coverage.coveredThroughSeq) return this
+
+    val nextCoverage =
+        if (
+            coverage.completeThroughLatest &&
+            !coverage.hasGap &&
+            row.seq == coverage.coveredThroughSeq + 1L
+        ) {
+            coverage.copy(
+                coveredThroughSeq = row.seq,
+                remoteHighWaterSeq = maxOf(coverage.remoteHighWaterSeq, row.seq),
+            )
+        } else {
+            coverage.copy(
+                remoteHighWaterSeq = maxOf(coverage.remoteHighWaterSeq, row.seq),
+                hasGap = coverage.hasGap || row.seq > coverage.coveredThroughSeq + 1L,
+                completeThroughLatest = false,
+            )
+        }
+    return if (nextCoverage == coverage) this else copy(scopeCoverage = scopeCoverage + (row.channelId to nextCoverage))
+}
+
 private fun applyMessageNew(
     state: MessageDomainState,
     row: CanonicalMessageRow,
@@ -137,7 +223,9 @@ private fun applyMessageNew(
         if (merged === bucket[existingIndex]) return state
         return state.withBucket(channelId, bucket.mapIndexed { i, r -> if (i == existingIndex) merged else r })
     }
-    return state.withBucket(channelId, (bucket + row.withAbsentAggregatesCleared(present)).sortedByCanonicalOrder())
+    return state
+        .withBucket(channelId, (bucket + row.withAbsentAggregatesCleared(present)).sortedByCanonicalOrder())
+        .withCoverageAfterRealtimeNew(row)
 }
 
 private fun applyMessageUpdated(
@@ -164,6 +252,354 @@ fun applyMessageDomainEvent(state: MessageDomainState, event: MessageDomainEvent
     }
 
 /**
+ * Atomically replace one scope's canonical rows and coverage from an authoritative conversation
+ * hydrate/rebaseline. Invalid snapshots clear that scope instead of retaining a misleading partial
+ * proof. Realtime folds never call this function and therefore cannot manufacture initial coverage.
+ */
+fun rebaselineMessageScope(
+    state: MessageDomainState,
+    snapshot: MessageScopeCoverageSnapshot,
+): MessageDomainState {
+    val sortedRows = snapshot.rows.sortedByCanonicalOrder()
+    val validIdentity =
+        snapshot.serverId.isNotBlank() && snapshot.memberId.isNotBlank() && snapshot.scopeId.isNotBlank()
+    val validBounds =
+        snapshot.coveredFromSeq >= 0L &&
+            snapshot.remoteHighWaterSeq >= 0L &&
+            (
+                snapshot.coveredFromSeq <= snapshot.remoteHighWaterSeq ||
+                    snapshot.coveredFromSeq == snapshot.remoteHighWaterSeq.saturatedIncrement()
+                )
+    val rowsValid =
+        sortedRows.all {
+            it.channelId == snapshot.scopeId &&
+                it.seq >= snapshot.coveredFromSeq &&
+                it.seq <= snapshot.remoteHighWaterSeq
+        } && sortedRows.map { it.id }.distinct().size == sortedRows.size
+
+    if (!validIdentity || !validBounds || !rowsValid) {
+        return state.copy(
+            channelMessages = state.channelMessages - snapshot.scopeId,
+            scopeCoverage = state.scopeCoverage - snapshot.scopeId,
+        )
+    }
+
+    val completeThroughLatest = !snapshot.hasGap && !snapshot.hasNewer
+    val coveredThroughSeq =
+        if (completeThroughLatest) snapshot.remoteHighWaterSeq
+        else sortedRows.maxOfOrNull { it.seq } ?: snapshot.coveredFromSeq - 1L
+    val coverage =
+        MessageScopeCoverage(
+            serverId = snapshot.serverId,
+            memberId = snapshot.memberId,
+            receiverKind = snapshot.receiverKind,
+            scopeId = snapshot.scopeId,
+            epoch = snapshot.epoch,
+            coveredFromSeq = snapshot.coveredFromSeq,
+            coveredThroughSeq = coveredThroughSeq,
+            remoteHighWaterSeq = snapshot.remoteHighWaterSeq,
+            hasGap = snapshot.hasGap,
+            completeThroughLatest = completeThroughLatest,
+        )
+    return state.copy(
+        channelMessages = state.channelMessages + (snapshot.scopeId to sortedRows),
+        scopeCoverage = state.scopeCoverage + (snapshot.scopeId to coverage),
+    )
+}
+
+/**
+ * Drop only the proof when paging/gap repair fails, a cache window is evicted, or receiver identity
+ * changes. Sparse rows may remain useful for rendering, but projection stays fail-closed until the
+ * next authoritative [rebaselineMessageScope].
+ */
+fun invalidateMessageScopeCoverage(state: MessageDomainState, scopeId: String): MessageDomainState =
+    if (scopeId !in state.scopeCoverage) state
+    else state.copy(scopeCoverage = state.scopeCoverage - scopeId)
+
+private fun incompleteReadStateProjection(checkpoint: MessageReadStateCheckpoint): MessageReadStateProjection =
+    MessageReadStateProjection(
+        readStateVersion = checkpoint.readStateVersion,
+        maxReadSeq = checkpoint.maxReadSeq,
+        unreadCount = 0,
+        hasMention = false,
+        firstUnreadMessageId = null,
+        firstMentionMessageId = null,
+        complete = false,
+    )
+
+/**
+ * Pure Web-parity projection from an already accepted receiver read-state fact. It fails closed unless
+ * the identity/epoch match and coverage proves the entire tail after [MessageReadStateCheckpoint.maxReadSeq].
+ * A higher read-state version may legally move the cursor backwards; this function never max-merges it.
+ */
+fun applyReadStateProjection(
+    state: MessageDomainState,
+    serverId: String,
+    memberId: String,
+    receiverKind: MessageReceiverKind?,
+    scopeId: String,
+    epoch: String?,
+    checkpoint: MessageReadStateCheckpoint,
+): MessageReadStateProjection {
+    if (checkpoint.readStateVersion <= 0L || checkpoint.maxReadSeq < 0L) {
+        return incompleteReadStateProjection(checkpoint)
+    }
+    val typedReceiverKind = receiverKind ?: return incompleteReadStateProjection(checkpoint)
+    val coverage = state.scopeCoverage[scopeId] ?: return incompleteReadStateProjection(checkpoint)
+    val identityMatches =
+        coverage.serverId == serverId &&
+            coverage.memberId == memberId &&
+            coverage.receiverKind == typedReceiverKind &&
+            coverage.scopeId == scopeId &&
+            coverage.epoch == epoch
+    val coversUnreadTail =
+        coverage.completeThroughLatest &&
+            !coverage.hasGap &&
+            coverage.coveredThroughSeq >= coverage.remoteHighWaterSeq &&
+            coverage.coveredFromSeq <= checkpoint.maxReadSeq.saturatedIncrement()
+    if (!identityMatches || !coversUnreadTail) return incompleteReadStateProjection(checkpoint)
+
+    var unreadCount = 0
+    var hasMention = false
+    var firstUnreadMessageId: String? = null
+    var firstMentionMessageId: String? = null
+    state.channelMessages[scopeId].orEmpty().forEach { row ->
+        val selfAuthored = row.senderType == typedReceiverKind.wireName && row.senderId == memberId
+        if (row.seq <= checkpoint.maxReadSeq || selfAuthored) return@forEach
+        unreadCount += 1
+        if (firstUnreadMessageId == null) firstUnreadMessageId = row.id
+        val mentionsMember = row.mentions.any { it.type == typedReceiverKind.wireName && it.id == memberId }
+        if (mentionsMember) {
+            hasMention = true
+            if (firstMentionMessageId == null) firstMentionMessageId = row.id
+        }
+    }
+    return MessageReadStateProjection(
+        readStateVersion = checkpoint.readStateVersion,
+        maxReadSeq = checkpoint.maxReadSeq,
+        unreadCount = unreadCount,
+        hasMention = hasMention,
+        firstUnreadMessageId = firstUnreadMessageId,
+        firstMentionMessageId = firstMentionMessageId,
+        complete = true,
+    )
+}
+
+private fun Long.saturatedIncrement(): Long = if (this == Long.MAX_VALUE) Long.MAX_VALUE else this + 1L
+
+private fun restoreMessageDomainSnapshot(snapshot: SyncSnapshot): MessageDomainState {
+    val restored = snapshot.state as? MessageDomainState ?: return createInitialMessageDomainState()
+    val coverage = restored.scopeCoverage[snapshot.scopeId] ?: return restored
+    if (coverage.scopeId == snapshot.scopeId && coverage.epoch == snapshot.epoch) return restored
+    return restored.copy(
+        channelMessages = restored.channelMessages - snapshot.scopeId,
+        scopeCoverage = restored.scopeCoverage - snapshot.scopeId,
+    )
+}
+
+/**
+ * Mobile message-domain ingress boundary for authoritative hydrate/rebaseline flights.
+ *
+ * RFC043's generic [SyncCore] intentionally rejects a same-epoch snapshot at an already-applied
+ * watermark. Sparse message realtime can legitimately arrive before conversation hydrate, so this
+ * host owns a mobile-only generation fence and one active core per scope. The scope lock serializes
+ * frame ingress, snapshot seed/swap, and reads. New rows use the generic seq watermark; updates are
+ * folded directly because their seq is the original creation seq. A snapshot flight that observes
+ * an update is coverage-dirty and must be retried with a later generation because request begin is
+ * not the server's snapshot cut. Clean replacements become visible only after snapshot ingest succeeds.
+ * Stale generations leave that scope's active core untouched.
+ */
+internal class MessageDomainSyncHost(
+    /** Deterministic concurrency-test seam; invoked with the scope lock held after seed, before swap. */
+    private val beforeSnapshotSwap: (() -> Unit)? = null,
+    /** Deterministic concurrency-test seam; invoked immediately before frame lock acquisition. */
+    private val beforeFrameLock: ((SyncFrame) -> Unit)? = null,
+) {
+    private class ScopeOwner(
+        val lock: SynchronizedObject = SynchronizedObject(),
+        var activeCore: SyncCore = newMessageDomainSyncCore(),
+        var acceptedRebaselineGeneration: Long? = null,
+        var pendingRebaseline: PendingRebaseline? = null,
+    )
+
+    private data class PendingRebaseline(
+        val generation: Long,
+        val postBeginFrames: MutableList<SyncFrame> = mutableListOf(),
+    )
+
+    private val ownersLock = SynchronizedObject()
+    private val owners = mutableMapOf<SyncScopeId, ScopeOwner>()
+
+    private fun owner(scopeId: SyncScopeId): ScopeOwner =
+        synchronized(ownersLock) { owners.getOrPut(scopeId, ::ScopeOwner) }
+
+    fun ingestFrame(frame: SyncFrame): SyncIngestOutcome {
+        val scopeOwner = owner(frame.scopeId)
+        beforeFrameLock?.invoke(frame)
+        return synchronized(scopeOwner.lock) {
+            val event = frame.event as? MessageDomainEvent
+            val outcome =
+                if (event is MessageDomainEvent.Updated) {
+                    scopeOwner.foldUpdatedFrame(frame, event)
+                } else {
+                    scopeOwner.activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+                }
+            scopeOwner.pendingRebaseline?.postBeginFrames?.add(frame)
+            outcome
+        }
+    }
+
+    /**
+     * Message updates carry the original creation seq, not a mutation version. Applying them through
+     * generic SyncCore would drop every update at or below the scope watermark. Re-seed the same
+     * per-scope owner with the directly folded state while preserving its watermark and epoch.
+     */
+    private fun ScopeOwner.foldUpdatedFrame(
+        frame: SyncFrame,
+        event: MessageDomainEvent.Updated,
+    ): SyncIngestOutcome {
+        if (event.row.channelId != frame.scopeId) {
+            return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+        val syncState = activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, frame.scopeId)
+            ?: return activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+        if (syncState.epoch != null && frame.epoch != null && syncState.epoch != frame.epoch) {
+            return activeCore.ingestFrame(MESSAGES_SYNC_DOMAIN, frame)
+        }
+        val current = activeCore.state(MESSAGES_SYNC_DOMAIN, frame.scopeId) as? MessageDomainState
+            ?: return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        if (current.channelMessages[frame.scopeId].orEmpty().none { it.id == event.row.id }) {
+            return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+        }
+        var updated = applyMessageDomainEvent(current, event)
+        if (pendingRebaseline != null) {
+            // begin is not the server's snapshot cut. Until a clean later generation completes,
+            // an update observed during this flight makes coverage authority ambiguous.
+            updated = invalidateMessageScopeCoverage(updated, frame.scopeId)
+        }
+        if (updated === current) return SyncIngestOutcome.DuplicateDropped(frame.scopeId, frame.seq)
+
+        val replacement = newMessageDomainSyncCore()
+        val outcome =
+            replacement.ingestSnapshot(
+                MESSAGES_SYNC_DOMAIN,
+                SyncSnapshot(
+                    scopeId = frame.scopeId,
+                    watermark = syncState.appliedSeq,
+                    epoch = syncState.epoch,
+                    state = updated,
+                ),
+            )
+        if (outcome is SyncIngestOutcome.Applied) activeCore = replacement
+        return outcome
+    }
+
+    /** Start the host generation before issuing the server snapshot request. */
+    fun beginAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long): Boolean {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            val accepted = scopeOwner.acceptedRebaselineGeneration
+            val pending = scopeOwner.pendingRebaseline?.generation
+            if (
+                generation <= 0L ||
+                (accepted != null && generation <= accepted) ||
+                (pending != null && generation <= pending)
+            ) {
+                false
+            } else {
+                scopeOwner.pendingRebaseline = PendingRebaseline(generation)
+                true
+            }
+        }
+    }
+
+    fun ingestAuthoritativeSnapshot(
+        snapshot: SyncSnapshot,
+        generation: Long,
+    ): SyncIngestOutcome {
+        val scopeOwner = owner(snapshot.scopeId)
+        return synchronized(scopeOwner.lock) {
+            val pending = scopeOwner.pendingRebaseline
+            if (pending == null || pending.generation != generation || !snapshot.hasMatchingMessageCoverageEnvelope()) {
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
+            val activeWatermark =
+                scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, snapshot.scopeId)?.appliedSeq ?: 0L
+            val retainedTailWatermark = pending.postBeginFrames.maxOfOrNull { it.seq } ?: snapshot.watermark
+            if (activeWatermark > snapshot.watermark && retainedTailWatermark < activeWatermark) {
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
+
+            // Without a producer mutation version, begin-time cannot attribute Updated frames to
+            // before or after the server's actual snapshot cut. Keep the directly folded active
+            // state, consume this generation, and require a clean later rebaseline.
+            if (pending.postBeginFrames.any { it.event is MessageDomainEvent.Updated }) {
+                scopeOwner.acceptedRebaselineGeneration = generation
+                scopeOwner.pendingRebaseline = null
+                return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+            }
+
+            var replacementState = snapshot.state as MessageDomainState
+            var replacementWatermark = snapshot.watermark
+            for (frame in pending.postBeginFrames) {
+                if (frame.scopeId != snapshot.scopeId || frame.epoch != snapshot.epoch) {
+                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                }
+                val event = frame.event as? MessageDomainEvent
+                    ?: return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                if (event.row.channelId != snapshot.scopeId) {
+                    return@synchronized SyncIngestOutcome.DuplicateDropped(snapshot.scopeId, snapshot.watermark)
+                }
+                if (event !is MessageDomainEvent.New || frame.seq <= snapshot.watermark) continue
+                replacementState = applyMessageDomainEvent(replacementState, event)
+                replacementWatermark = maxOf(replacementWatermark, frame.seq)
+            }
+
+            val replacement = newMessageDomainSyncCore()
+            val outcome =
+                replacement.ingestSnapshot(
+                    MESSAGES_SYNC_DOMAIN,
+                    snapshot.copy(watermark = replacementWatermark, state = replacementState),
+                )
+            if (outcome is SyncIngestOutcome.Applied) {
+                beforeSnapshotSwap?.invoke()
+                scopeOwner.activeCore = replacement
+                scopeOwner.acceptedRebaselineGeneration = generation
+                scopeOwner.pendingRebaseline = null
+            }
+            outcome
+        }
+    }
+
+    fun state(scopeId: SyncScopeId): MessageDomainState {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            scopeOwner.activeCore.state(MESSAGES_SYNC_DOMAIN, scopeId) as? MessageDomainState
+                ?: createInitialMessageDomainState()
+        }
+    }
+
+    fun scopeSyncState(scopeId: SyncScopeId): SyncScopeState? {
+        val scopeOwner = owner(scopeId)
+        return synchronized(scopeOwner.lock) {
+            scopeOwner.activeCore.scopeSyncState(MESSAGES_SYNC_DOMAIN, scopeId)
+        }
+    }
+}
+
+private fun SyncSnapshot.hasMatchingMessageCoverageEnvelope(): Boolean {
+    val domainState = state as? MessageDomainState ?: return false
+    val coverage = domainState.scopeCoverage[scopeId] ?: return false
+    if (coverage.scopeId != scopeId || coverage.epoch != epoch || coverage.remoteHighWaterSeq != watermark) return false
+    if (domainState.scopeCoverage.keys.any { it != scopeId }) return false
+    if (domainState.channelMessages.keys.any { it != scopeId }) return false
+    return domainState.channelMessages[scopeId].orEmpty().all { it.channelId == scopeId && it.seq <= watermark }
+}
+
+private fun newMessageDomainSyncCore(): SyncCore =
+    createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain())))
+
+/**
  * The registered messages domain. `density = Sparse` is the compat slice: production delivery still
  * owns gap repair. Unknown event shapes fold to the unchanged state (pure + total).
  */
@@ -179,5 +615,5 @@ fun messagesSyncDomain(): SyncDomainConfig =
                 else -> applyMessageDomainEvent(current, domainEvent)
             }
         },
-        fromSnapshot = { snapshot -> snapshot.state as? MessageDomainState ?: createInitialMessageDomainState() },
+        fromSnapshot = ::restoreMessageDomainSnapshot,
     )

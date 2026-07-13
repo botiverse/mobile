@@ -20,21 +20,27 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.FoldPersistFrame
 import build.raft.app.network.sync.FoldPersistenceAdapter
+import build.raft.app.network.sync.DefaultFoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
+import build.raft.app.network.sync.SqlDelightFoldPersistTransactionRunner
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.SyncScopeKey
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
@@ -96,6 +102,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun canonicalRow(
         id: String,
         seq: Long,
+        content: String = "body-$id",
         reactions: List<CanonicalReactionWire> = emptyList(),
     ) = CanonicalMessageRow(
         id = id,
@@ -103,7 +110,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         seq = seq,
         senderType = "human",
         senderId = "u1",
-        content = "body-$id",
+        content = content,
         messageType = "chat",
         createdAt = "2026-07-12T00:00:0${seq}Z",
         senderName = "Alice",
@@ -113,6 +120,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     private fun messageNewWithCanonical(
         id: String,
         seq: Long,
+        content: String = "body-$id",
         reactions: List<CanonicalReactionWire> = emptyList(),
     ): MessageNew =
         MessageNew(
@@ -123,16 +131,42 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
                 seq = seq,
                 author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
                 timestampLabel = "now",
-                body = "body-$id",
+                body = content,
             ),
             decodedCanonical = CanonicalMessageCarry(
-                row = canonicalRow(id, seq, reactions),
+                row = canonicalRow(id, seq, content, reactions),
+                presentAggregates = emptySet<MessageAggregateField>(),
+            ),
+        )
+
+    private fun messageUpdatedWithCanonical(
+        id: String,
+        seq: Long,
+        content: String,
+    ): MessageUpdated =
+        MessageUpdated(
+            message = Message(
+                id = MessageId(id),
+                threadId = ThreadId(channelId),
+                channelId = ChannelId(channelId),
+                seq = seq,
+                author = MemberProfile(MemberId("u1"), "Alice", "alice", MemberKind.Human),
+                timestampLabel = "now",
+                body = content,
+            ),
+            decodedCanonical = CanonicalMessageCarry(
+                row = canonicalRow(id, seq, content),
                 presentAggregates = emptySet<MessageAggregateField>(),
             ),
         )
 
     private fun persistedFactIds(db: SlockSqlDatabase): List<String> = runBlocking {
         SqlDelightFoldPersistStore(db, now = { 100L }).readFacts(scopeKey).map { it.id }
+    }
+
+    private fun restoredState(db: SlockSqlDatabase): RestoredFoldState = runBlocking {
+        val store = SqlDelightFoldPersistStore(db, now = { 100L })
+        RestoredFoldState(store.readFacts(scopeKey), store.readCursor(scopeKey))
     }
 
     @Test
@@ -152,6 +186,87 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         assertEquals(listOf("m1"), persistedFactIds(db), "flag-on shadow lane must persist the canonical fact")
         // Shadow is invisible: the legacy sink still saw the event exactly once.
         assertEquals(1, homeEvents.size)
+    }
+
+    @Test
+    fun olderMessageUpdatePersistsFoldedFactWithoutRewindingScopeCursor() {
+        val db = freshDatabase()
+        val lane = SyncCoreMessageShadowFoldLane.create(
+            featureFlags = resolvedFlags(enabled = true),
+            sqlDatabase = db,
+            now = { 100L },
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            logger = {},
+        )
+        val (owner, homeEvents) = ownerWith(lane)
+
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        owner.accept(
+            serverId,
+            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            source = "app_shell",
+        )
+
+        val restored = restoredState(db)
+        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
+        assertEquals(14, restored.cursor?.latestSeq)
+        assertEquals(14, restored.cursor?.newestLoadedSeq)
+        assertEquals(3, homeEvents.size, "shadow update must remain invisible to legacy sink delivery")
+    }
+
+    @Test
+    fun olderPersistCannotCompleteAfterNewerUpdateAndRollbackDurableState() = runBlocking {
+        val db = freshDatabase()
+        val delegate = DefaultFoldPersistenceAdapter(
+            runner = SqlDelightFoldPersistTransactionRunner(db),
+            store = SqlDelightFoldPersistStore(db, now = { 100L }),
+        )
+        val invocation = AtomicInteger(0)
+        val olderStarted = CompletableDeferred<Unit>()
+        val releaseOlder = CompletableDeferred<Unit>()
+        val newerStarted = CompletableDeferred<Unit>()
+        val newerCompleted = CompletableDeferred<Unit>()
+        val pausingAdapter = object : FoldPersistenceAdapter {
+            override suspend fun applyFrame(frame: FoldPersistFrame) {
+                when (invocation.incrementAndGet()) {
+                    2 -> {
+                        olderStarted.complete(Unit)
+                        releaseOlder.await()
+                    }
+                    3 -> newerStarted.complete(Unit)
+                }
+                delegate.applyFrame(frame)
+                if (invocation.get() == 3) newerCompleted.complete(Unit)
+            }
+
+            override suspend fun restore(scope: SyncScopeKey): RestoredFoldState = delegate.restore(scope)
+        }
+        val lane = SyncCoreMessageShadowFoldLane(
+            featureFlags = resolvedFlags(enabled = true),
+            adapter = pausingAdapter,
+            scope = CoroutineScope(Dispatchers.Unconfined),
+            logger = {},
+        )
+        val (owner, _) = ownerWith(lane)
+
+        owner.accept(serverId, messageNewWithCanonical(id = "m10", seq = 10, content = "old"), source = "app_shell")
+        owner.accept(serverId, messageNewWithCanonical(id = "m14", seq = 14), source = "app_shell")
+        olderStarted.await()
+        owner.accept(
+            serverId,
+            messageUpdatedWithCanonical(id = "m10", seq = 10, content = "new"),
+            source = "app_shell",
+        )
+
+        assertFalse(newerStarted.isCompleted, "newer frame must wait behind the earlier same-owner persist")
+        releaseOlder.complete(Unit)
+        newerCompleted.await()
+
+        val restored = restoredState(db)
+        assertEquals("new", restored.facts.first { it.id == "m10" }.content)
+        assertEquals(14, restored.cursor?.latestSeq)
+        assertEquals(14, restored.cursor?.newestLoadedSeq)
     }
 
     @Test

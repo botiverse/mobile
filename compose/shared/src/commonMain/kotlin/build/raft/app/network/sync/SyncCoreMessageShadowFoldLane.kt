@@ -4,7 +4,10 @@ import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SlockSqlDatabase
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 
 /**
@@ -25,9 +28,25 @@ internal class SyncCoreMessageShadowFoldLane(
     private val adapter: FoldPersistenceAdapter,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit,
-    // A per-lane pure core (one owner = one shell/server selection). State is keyed by channel scope id.
-    private val core: SyncCore = createSyncCore(SyncCoreConfig(domains = listOf(messagesSyncDomain()))),
+    // One active message-domain core per owner/shell. The host also owns authoritative rebaseline swaps.
+    private val domainHost: MessageDomainSyncHost = MessageDomainSyncHost(),
 ) {
+    private data class QueuedPersistFrame(
+        val serverId: String,
+        val frame: FoldPersistFrame,
+    )
+
+    private val foldAndEnqueueLock = SynchronizedObject()
+    private val persistQueue = Channel<QueuedPersistFrame>(capacity = Channel.UNLIMITED)
+
+    init {
+        scope.launch {
+            for (queued in persistQueue) {
+                runCatching { adapter.applyFrame(queued.frame) }
+                    .onFailure { logShadowFailure(queued.serverId, it) }
+            }
+        }.invokeOnCompletion { persistQueue.close() }
+    }
 
     fun isEnabled(): Boolean =
         featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
@@ -45,41 +64,55 @@ internal class SyncCoreMessageShadowFoldLane(
         epoch: SyncEpoch?,
     ) {
         try {
-            val row = decoded.row
-            val channelId = row.channelId
-            val domainEvent: MessageDomainEvent =
-                if (updated) MessageDomainEvent.Updated(row, decoded.presentAggregates)
-                else MessageDomainEvent.New(row, decoded.presentAggregates)
-            core.ingestFrame(
-                MESSAGES_SYNC_DOMAIN,
-                SyncFrame(scopeId = channelId, seq = row.seq, epoch = epoch, event = domainEvent),
-            )
-            val facts = (core.state(MESSAGES_SYNC_DOMAIN, channelId) as? MessageDomainState)
-                ?.channelMessages
-                ?.get(channelId)
-                .orEmpty()
-            val frame = FoldPersistFrame(
-                scope = SyncScopeKey(resolvedServerId, channelId, SHADOW_SCOPE_KIND),
-                facts = facts,
-                cursor = PersistedCursor(
-                    latestSeq = row.seq,
-                    oldestLoadedSeq = facts.firstOrNull()?.seq,
-                    newestLoadedSeq = facts.lastOrNull()?.seq ?: row.seq,
-                    hasLoadedOldest = false,
-                    hasLoadedNewest = true,
-                    epoch = epoch,
-                ),
-                rebaseline = false,
-                prunedFactIds = emptyList(),
-            )
-            scope.launch {
-                runCatching { adapter.applyFrame(frame) }
-                    .onFailure { logShadowFailure(resolvedServerId, it) }
+            synchronized(foldAndEnqueueLock) {
+                val row = decoded.row
+                val channelId = row.channelId
+                val domainEvent: MessageDomainEvent =
+                    if (updated) MessageDomainEvent.Updated(row, decoded.presentAggregates)
+                    else MessageDomainEvent.New(row, decoded.presentAggregates)
+                domainHost.ingestFrame(
+                    SyncFrame(scopeId = channelId, seq = row.seq, epoch = epoch, event = domainEvent),
+                )
+                val appliedSeq = domainHost.scopeSyncState(channelId)?.appliedSeq ?: row.seq
+                val facts = domainHost.state(channelId)
+                    .channelMessages
+                    .get(channelId)
+                    .orEmpty()
+                val frame = FoldPersistFrame(
+                    scope = SyncScopeKey(resolvedServerId, channelId, SHADOW_SCOPE_KIND),
+                    facts = facts,
+                    cursor = PersistedCursor(
+                        // Updated frames carry the message creation seq. Persist the host watermark so
+                        // an edit to an older message cannot rewind the durable scope cursor.
+                        latestSeq = appliedSeq,
+                        oldestLoadedSeq = facts.firstOrNull()?.seq,
+                        newestLoadedSeq = facts.lastOrNull()?.seq ?: appliedSeq,
+                        hasLoadedOldest = false,
+                        hasLoadedNewest = true,
+                        epoch = epoch,
+                    ),
+                    rebaseline = false,
+                    prunedFactIds = emptyList(),
+                )
+                if (persistQueue.trySend(QueuedPersistFrame(resolvedServerId, frame)).isFailure) {
+                    logShadowFailure(resolvedServerId, IllegalStateException("shadow persist queue unavailable"))
+                }
             }
         } catch (throwable: Throwable) {
             logShadowFailure(resolvedServerId, throwable)
         }
     }
+
+    /** Start the per-scope generation before the host issues the authoritative snapshot request. */
+    internal fun beginAuthoritativeRebaseline(scopeId: SyncScopeId, generation: Long): Boolean =
+        domainHost.beginAuthoritativeRebaseline(scopeId, generation)
+
+    /** Complete a begun authoritative conversation hydrate/rebaseline generation. */
+    internal fun ingestAuthoritativeSnapshot(
+        snapshot: SyncSnapshot,
+        generation: Long,
+    ): SyncIngestOutcome =
+        domainHost.ingestAuthoritativeSnapshot(snapshot, generation)
 
     fun logShadowFailure(serverId: String, throwable: Throwable) {
         runCatching {
