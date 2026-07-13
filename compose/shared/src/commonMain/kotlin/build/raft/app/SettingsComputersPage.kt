@@ -59,6 +59,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -958,14 +959,14 @@ private fun SettingsComputerDetailVisualContent(
                         icon = SlockLucideIconName.Check,
                         onClick = { onEvent("selectAgentsForComputer", computerId) },
                         backgroundColor = SlockColor.SurfaceWhite,
-                        faceWidth = 72.dp
+                        minFaceWidth = 72.dp
                     )
                     VisualSmallActionButton(
                         label = stringResource(MR.strings.settings_computers_action_create),
                         icon = SlockLucideIconName.Plus,
                         onClick = { onEvent("createAgentForComputer", computerId) },
                         backgroundColor = SlockColor.AccentPink,
-                        faceWidth = 72.dp
+                        minFaceWidth = 72.dp
                     )
                 }
             }
@@ -1025,7 +1026,7 @@ private fun SettingsComputerDetailVisualContent(
                             icon = SlockLucideIconName.RefreshCw,
                             onClick = { onEvent("scanWorkspaces", null) },
                             backgroundColor = SlockColor.SurfaceWhite,
-                            faceWidth = 76.dp,
+                            minFaceWidth = 76.dp,
                             enabled = !workspacesBusy
                         )
                     }
@@ -1211,7 +1212,7 @@ private fun VisualComputerNameSection(
                     icon = SlockLucideIconName.Save,
                     onClick = onSave,
                     backgroundColor = SlockColor.AccentPink,
-                    faceWidth = 64.dp,
+                    minFaceWidth = 64.dp,
                     enabled = !busy && draft.trim().isNotBlank()
                 )
                 VisualSmallActionButton(
@@ -1219,7 +1220,7 @@ private fun VisualComputerNameSection(
                     icon = SlockLucideIconName.X,
                     onClick = onCancel,
                     backgroundColor = SlockColor.SurfaceWhite,
-                    faceWidth = 72.dp,
+                    minFaceWidth = 72.dp,
                     enabled = !busy
                 )
             }
@@ -1294,7 +1295,7 @@ private fun VisualComputerDescriptionSection(
                     icon = SlockLucideIconName.Save,
                     onClick = onSave,
                     backgroundColor = SlockColor.AccentPink,
-                    faceWidth = 64.dp,
+                    minFaceWidth = 64.dp,
                     enabled = !busy
                 )
                 VisualSmallActionButton(
@@ -1302,7 +1303,7 @@ private fun VisualComputerDescriptionSection(
                     icon = SlockLucideIconName.X,
                     onClick = onCancel,
                     backgroundColor = SlockColor.SurfaceWhite,
-                    faceWidth = 72.dp,
+                    minFaceWidth = 72.dp,
                     enabled = !busy
                 )
             }
@@ -1470,24 +1471,24 @@ private fun VisualSmallActionButton(
     label: String,
     icon: SlockLucideIconName,
     backgroundColor: Color,
-    faceWidth: Dp,
+    minFaceWidth: Dp,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val shadowOffset = 2.dp
     Box(
-        modifier = Modifier.width(faceWidth + shadowOffset).height(28.dp)
+        modifier = Modifier.padding(end = shadowOffset, bottom = shadowOffset),
+        propagateMinConstraints = true
     ) {
         Box(
             modifier = Modifier
-                .width(faceWidth)
-                .height(26.dp)
+                .matchParentSize()
                 .offset(x = shadowOffset, y = shadowOffset)
                 .background(SlockColor.ShadowBlack)
         )
         Row(
             modifier = Modifier
-                .width(faceWidth)
+                .widthIn(min = minFaceWidth)
                 .height(26.dp)
                 .background(backgroundColor)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
@@ -1665,7 +1666,7 @@ private fun VisualActionPanel(
             icon = icon,
             onClick = onClick,
             backgroundColor = backgroundColor,
-            faceWidth = 116.dp,
+            minFaceWidth = 116.dp,
             enabled = enabled
         )
     }

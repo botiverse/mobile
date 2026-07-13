@@ -15,11 +15,11 @@ import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -28,6 +28,7 @@ internal data class SlockTabSpec<T>(
     val key: T,
     val label: String,
     val iconName: SlockLucideIconName,
+    /** Minimum width. Labels may expand the item inside the horizontal LazyRow. */
     val width: Dp = SlockTopTabBarDefaults.TabWidth
 )
 
@@ -35,6 +36,7 @@ internal data class SlockTopTabBarItem(
     val key: String,
     val label: String,
     val iconName: SlockLucideIconName,
+    /** Minimum width. Labels may expand the item inside the horizontal LazyRow. */
     val width: Dp = SlockTopTabBarDefaults.TabWidth
 )
 
@@ -105,7 +107,7 @@ internal fun SlockTopTabBar(
                 val selected = item.key == selectedKey
                 Row(
                     modifier = Modifier
-                        .width(item.width)
+                        .widthIn(min = item.width)
                         .fillMaxHeight()
                         .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
                         .clickable { onSelectedKeyChange(item.key) }
@@ -118,8 +120,7 @@ internal fun SlockTopTabBar(
                         text = item.label,
                         style = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 1
                     )
                 }
                 Box(

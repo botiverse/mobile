@@ -26,16 +26,22 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 30
     steps:
-      - name: Checkout requested ref
+      - name: Checkout workflow base
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Resolve source commit
         id: source
+        env:
+          REQUESTED_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
         shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          git fetch --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          sha="$(scripts/resolve_git_revision.sh "$REQUESTED_REF")"
+          git checkout --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v5
