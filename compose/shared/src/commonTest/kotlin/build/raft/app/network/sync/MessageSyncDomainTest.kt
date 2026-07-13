@@ -21,11 +21,13 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -38,6 +40,8 @@ class MessageSyncDomainTest {
         seq: Long = 1L,
         content: String = "b",
         senderName: String = "U",
+        senderId: String = "u1",
+        mentions: List<CanonicalMentionWire> = emptyList(),
         reactions: List<CanonicalReactionWire> = emptyList(),
         attachments: List<CanonicalAttachmentWire> = emptyList(),
         commentRef: CanonicalCommentRefWire? = null,
@@ -46,11 +50,12 @@ class MessageSyncDomainTest {
         channelId = channel,
         seq = seq,
         senderType = "user",
-        senderId = "u1",
+        senderId = senderId,
         content = content,
         messageType = "chat",
         createdAt = "t0",
         senderName = senderName,
+        mentions = mentions,
         reactions = reactions,
         attachments = attachments,
         commentRef = commentRef,
@@ -232,5 +237,174 @@ class MessageSyncDomainTest {
     @Test
     fun initialStateIsEmpty() {
         assertNull(createInitialMessageDomainState().channelMessages["c1"])
+    }
+
+    // --- coverage-aware read-state projection -------------------------------------------------
+
+    private fun baseline(
+        state: MessageDomainState = createInitialMessageDomainState(),
+        rows: List<CanonicalMessageRow>,
+        serverId: String = "s1",
+        memberId: String = "me",
+        scopeId: String = "c1",
+        epoch: String = "e1",
+        coveredFromSeq: Long = rows.minOfOrNull { it.seq } ?: 1L,
+        remoteHighWaterSeq: Long = rows.maxOfOrNull { it.seq } ?: 0L,
+        hasGap: Boolean = false,
+        hasNewer: Boolean = false,
+    ): MessageDomainState =
+        rebaselineMessageScope(
+            state = state,
+            snapshot = MessageScopeCoverageSnapshot(
+                serverId = serverId,
+                memberId = memberId,
+                scopeId = scopeId,
+                epoch = epoch,
+                rows = rows,
+                coveredFromSeq = coveredFromSeq,
+                remoteHighWaterSeq = remoteHighWaterSeq,
+                hasGap = hasGap,
+                hasNewer = hasNewer,
+            ),
+        )
+
+    private fun project(
+        state: MessageDomainState,
+        maxReadSeq: Long,
+        serverId: String = "s1",
+        memberId: String = "me",
+        scopeId: String = "c1",
+        epoch: String = "e1",
+        version: Long = 1L,
+    ): MessageReadStateProjection =
+        applyReadStateProjection(
+            state = state,
+            serverId = serverId,
+            memberId = memberId,
+            scopeId = scopeId,
+            epoch = epoch,
+            checkpoint = MessageReadStateCheckpoint(readStateVersion = version, maxReadSeq = maxReadSeq),
+        )
+
+    @Test
+    fun completeTailProjectsUnreadMentionAndFirstAnchorsWithWebSemantics() {
+        val state = baseline(
+            rows = listOf(
+                row("read", seq = 10, senderId = "u2"),
+                row("self", seq = 11, senderId = "me"),
+                row(
+                    "mention",
+                    seq = 12,
+                    senderId = "u2",
+                    mentions = listOf(CanonicalMentionWire(id = "me", name = "Me", type = "user")),
+                ),
+                row("unread", seq = 13, senderId = "u3"),
+            ),
+        )
+
+        assertEquals(
+            MessageReadStateProjection(
+                readStateVersion = 7,
+                maxReadSeq = 10,
+                unreadCount = 2,
+                hasMention = true,
+                firstUnreadMessageId = "mention",
+                firstMentionMessageId = "mention",
+                complete = true,
+            ),
+            project(state, maxReadSeq = 10, version = 7),
+        )
+    }
+
+    @Test
+    fun projectionFailsClosedWhenTailStartsAfterReadCursor() {
+        val state = baseline(
+            rows = listOf(row("m12", seq = 12)),
+            coveredFromSeq = 12,
+            remoteHighWaterSeq = 12,
+        )
+
+        assertFalse(project(state, maxReadSeq = 10).complete)
+    }
+
+    @Test
+    fun projectionFailsClosedForKnownGapOrUnloadedNewerTail() {
+        val rows = listOf(row("m11", seq = 11), row("m12", seq = 12))
+        assertFalse(project(baseline(rows = rows, hasGap = true), maxReadSeq = 10).complete)
+        assertFalse(project(baseline(rows = rows, hasNewer = true), maxReadSeq = 10).complete)
+    }
+
+    @Test
+    fun coverageIsBoundToServerMemberScopeAndEpoch() {
+        val state = baseline(rows = listOf(row("m11", seq = 11)))
+
+        assertFalse(project(state, maxReadSeq = 10, serverId = "other").complete)
+        assertFalse(project(state, maxReadSeq = 10, memberId = "other").complete)
+        assertFalse(project(state, maxReadSeq = 10, scopeId = "other").complete)
+        assertFalse(project(state, maxReadSeq = 10, epoch = "other").complete)
+    }
+
+    @Test
+    fun sparseRealtimeCanExtendContinuousCompleteTailButCannotBridgeGap() {
+        var state = baseline(rows = listOf(row("m11", seq = 11)))
+        state = new(state, row("m12", seq = 12))
+        assertTrue(project(state, maxReadSeq = 10).complete)
+        assertEquals(2, project(state, maxReadSeq = 10).unreadCount)
+
+        state = new(state, row("m14", seq = 14))
+        assertFalse(project(state, maxReadSeq = 10).complete)
+        assertTrue(state.scopeCoverage.getValue("c1").hasGap)
+    }
+
+    @Test
+    fun sparseRealtimeWithoutAuthoritativeBaselineNeverDeclaresCoverageComplete() {
+        val state = new(createInitialMessageDomainState(), row("m11", seq = 11))
+
+        assertNull(state.scopeCoverage["c1"])
+        assertFalse(project(state, maxReadSeq = 10).complete)
+    }
+
+    @Test
+    fun pagingFailureOrCacheEvictionInvalidatesProofButKeepsSparseRows() {
+        val state = baseline(rows = listOf(row("m11", seq = 11)))
+
+        val invalidated = invalidateMessageScopeCoverage(state, "c1")
+
+        assertEquals(listOf("m11"), ids(invalidated))
+        assertNull(invalidated.scopeCoverage["c1"])
+        assertFalse(project(invalidated, maxReadSeq = 10).complete)
+    }
+
+    @Test
+    fun snapshotRestoreTrustsRowsAndCoverageTogetherOnlyForMatchingEpoch() {
+        val config = messagesSyncDomain()
+        val persisted = baseline(rows = listOf(row("m11", seq = 11)))
+
+        val restored = config.fromSnapshot(SyncSnapshot("c1", watermark = 11, epoch = "e1", state = persisted)) as MessageDomainState
+        assertTrue(project(restored, maxReadSeq = 10).complete)
+
+        val rejected = config.fromSnapshot(SyncSnapshot("c1", watermark = 11, epoch = "e2", state = persisted)) as MessageDomainState
+        assertTrue(rejected.channelMessages.isEmpty())
+        assertTrue(rejected.scopeCoverage.isEmpty())
+    }
+
+    @Test
+    fun higherVersionCursorRewindIsProjectedWithoutMonotonicCursorAssumption() {
+        val state = baseline(rows = listOf(row("m11", seq = 11), row("m12", seq = 12)))
+
+        val readForward = project(state, maxReadSeq = 12, version = 4)
+        val rewound = project(state, maxReadSeq = 10, version = 5)
+
+        assertEquals(0, readForward.unreadCount)
+        assertEquals(2, rewound.unreadCount)
+        assertTrue(rewound.complete)
+    }
+
+    @Test
+    fun invalidReadStateCheckpointFailsClosed() {
+        val state = baseline(rows = listOf(row("m11", seq = 11)))
+
+        assertFalse(project(state, maxReadSeq = 10, version = 0).complete)
+        assertFalse(project(state, maxReadSeq = -1, version = 1).complete)
     }
 }

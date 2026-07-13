@@ -68,6 +68,58 @@ sealed interface MessageDomainEvent {
 /** channelId -> the channel's messages, kept in canonical (seq, id) order. */
 data class MessageDomainState(
     val channelMessages: Map<String, List<CanonicalMessageRow>> = emptyMap(),
+    /**
+     * Authoritative tail coverage for each channel. This lives in the same state value as the rows so
+     * snapshot persistence cannot restore one without the other. A missing entry means rows may still
+     * be useful as a sparse cache, but they cannot prove a read-state projection complete.
+     */
+    val scopeCoverage: Map<String, MessageScopeCoverage> = emptyMap(),
+)
+
+/**
+ * Proof that one receiver-scoped message tail is covered. [coveredFromSeq] is the first sequence the
+ * authoritative hydrate promises to cover; [coveredThroughSeq] is the end of that continuous window.
+ * It is deliberately separate from the rows because deleted/non-projectable messages may leave legal
+ * sequence holes in the materialized row list. [hasGap] records an observed break in that promise.
+ */
+data class MessageScopeCoverage(
+    val serverId: String,
+    val memberId: String,
+    val scopeId: String,
+    val epoch: String?,
+    val coveredFromSeq: Long,
+    val coveredThroughSeq: Long,
+    val remoteHighWaterSeq: Long,
+    val hasGap: Boolean,
+    val completeThroughLatest: Boolean,
+)
+
+/** The sole authoritative entry point for a conversation hydrate/rebaseline. */
+data class MessageScopeCoverageSnapshot(
+    val serverId: String,
+    val memberId: String,
+    val scopeId: String,
+    val epoch: String?,
+    val rows: List<CanonicalMessageRow>,
+    val coveredFromSeq: Long,
+    val remoteHighWaterSeq: Long,
+    val hasGap: Boolean = false,
+    val hasNewer: Boolean = false,
+)
+
+data class MessageReadStateCheckpoint(
+    val readStateVersion: Long,
+    val maxReadSeq: Long,
+)
+
+data class MessageReadStateProjection(
+    val readStateVersion: Long,
+    val maxReadSeq: Long,
+    val unreadCount: Int,
+    val hasMention: Boolean,
+    val firstUnreadMessageId: String?,
+    val firstMentionMessageId: String?,
+    val complete: Boolean,
 )
 
 fun createInitialMessageDomainState(): MessageDomainState = MessageDomainState()
@@ -124,6 +176,30 @@ private fun List<CanonicalMessageRow>.sortedByCanonicalOrder(): List<CanonicalMe
 private fun MessageDomainState.withBucket(channelId: String, bucket: List<CanonicalMessageRow>): MessageDomainState =
     copy(channelMessages = channelMessages + (channelId to bucket))
 
+private fun MessageDomainState.withCoverageAfterRealtimeNew(row: CanonicalMessageRow): MessageDomainState {
+    val coverage = scopeCoverage[row.channelId] ?: return this
+    if (row.seq <= coverage.coveredThroughSeq) return this
+
+    val nextCoverage =
+        if (
+            coverage.completeThroughLatest &&
+            !coverage.hasGap &&
+            row.seq == coverage.coveredThroughSeq + 1L
+        ) {
+            coverage.copy(
+                coveredThroughSeq = row.seq,
+                remoteHighWaterSeq = maxOf(coverage.remoteHighWaterSeq, row.seq),
+            )
+        } else {
+            coverage.copy(
+                remoteHighWaterSeq = maxOf(coverage.remoteHighWaterSeq, row.seq),
+                hasGap = coverage.hasGap || row.seq > coverage.coveredThroughSeq + 1L,
+                completeThroughLatest = false,
+            )
+        }
+    return if (nextCoverage == coverage) this else copy(scopeCoverage = scopeCoverage + (row.channelId to nextCoverage))
+}
+
 private fun applyMessageNew(
     state: MessageDomainState,
     row: CanonicalMessageRow,
@@ -137,7 +213,9 @@ private fun applyMessageNew(
         if (merged === bucket[existingIndex]) return state
         return state.withBucket(channelId, bucket.mapIndexed { i, r -> if (i == existingIndex) merged else r })
     }
-    return state.withBucket(channelId, (bucket + row.withAbsentAggregatesCleared(present)).sortedByCanonicalOrder())
+    return state
+        .withBucket(channelId, (bucket + row.withAbsentAggregatesCleared(present)).sortedByCanonicalOrder())
+        .withCoverageAfterRealtimeNew(row)
 }
 
 private fun applyMessageUpdated(
@@ -164,6 +242,148 @@ fun applyMessageDomainEvent(state: MessageDomainState, event: MessageDomainEvent
     }
 
 /**
+ * Atomically replace one scope's canonical rows and coverage from an authoritative conversation
+ * hydrate/rebaseline. Invalid snapshots clear that scope instead of retaining a misleading partial
+ * proof. Realtime folds never call this function and therefore cannot manufacture initial coverage.
+ */
+fun rebaselineMessageScope(
+    state: MessageDomainState,
+    snapshot: MessageScopeCoverageSnapshot,
+): MessageDomainState {
+    val sortedRows = snapshot.rows.sortedByCanonicalOrder()
+    val validIdentity =
+        snapshot.serverId.isNotBlank() && snapshot.memberId.isNotBlank() && snapshot.scopeId.isNotBlank()
+    val validBounds =
+        snapshot.coveredFromSeq >= 0L &&
+            snapshot.remoteHighWaterSeq >= 0L &&
+            (
+                snapshot.coveredFromSeq <= snapshot.remoteHighWaterSeq ||
+                    snapshot.coveredFromSeq == snapshot.remoteHighWaterSeq.saturatedIncrement()
+                )
+    val rowsValid =
+        sortedRows.all {
+            it.channelId == snapshot.scopeId &&
+                it.seq >= snapshot.coveredFromSeq &&
+                it.seq <= snapshot.remoteHighWaterSeq
+        } && sortedRows.map { it.id }.distinct().size == sortedRows.size
+
+    if (!validIdentity || !validBounds || !rowsValid) {
+        return state.copy(
+            channelMessages = state.channelMessages - snapshot.scopeId,
+            scopeCoverage = state.scopeCoverage - snapshot.scopeId,
+        )
+    }
+
+    val completeThroughLatest = !snapshot.hasGap && !snapshot.hasNewer
+    val coveredThroughSeq =
+        if (completeThroughLatest) snapshot.remoteHighWaterSeq
+        else sortedRows.maxOfOrNull { it.seq } ?: snapshot.coveredFromSeq - 1L
+    val coverage =
+        MessageScopeCoverage(
+            serverId = snapshot.serverId,
+            memberId = snapshot.memberId,
+            scopeId = snapshot.scopeId,
+            epoch = snapshot.epoch,
+            coveredFromSeq = snapshot.coveredFromSeq,
+            coveredThroughSeq = coveredThroughSeq,
+            remoteHighWaterSeq = snapshot.remoteHighWaterSeq,
+            hasGap = snapshot.hasGap,
+            completeThroughLatest = completeThroughLatest,
+        )
+    return state.copy(
+        channelMessages = state.channelMessages + (snapshot.scopeId to sortedRows),
+        scopeCoverage = state.scopeCoverage + (snapshot.scopeId to coverage),
+    )
+}
+
+/**
+ * Drop only the proof when paging/gap repair fails, a cache window is evicted, or receiver identity
+ * changes. Sparse rows may remain useful for rendering, but projection stays fail-closed until the
+ * next authoritative [rebaselineMessageScope].
+ */
+fun invalidateMessageScopeCoverage(state: MessageDomainState, scopeId: String): MessageDomainState =
+    if (scopeId !in state.scopeCoverage) state
+    else state.copy(scopeCoverage = state.scopeCoverage - scopeId)
+
+private fun incompleteReadStateProjection(checkpoint: MessageReadStateCheckpoint): MessageReadStateProjection =
+    MessageReadStateProjection(
+        readStateVersion = checkpoint.readStateVersion,
+        maxReadSeq = checkpoint.maxReadSeq,
+        unreadCount = 0,
+        hasMention = false,
+        firstUnreadMessageId = null,
+        firstMentionMessageId = null,
+        complete = false,
+    )
+
+/**
+ * Pure Web-parity projection from an already accepted receiver read-state fact. It fails closed unless
+ * the identity/epoch match and coverage proves the entire tail after [MessageReadStateCheckpoint.maxReadSeq].
+ * A higher read-state version may legally move the cursor backwards; this function never max-merges it.
+ */
+fun applyReadStateProjection(
+    state: MessageDomainState,
+    serverId: String,
+    memberId: String,
+    scopeId: String,
+    epoch: String?,
+    checkpoint: MessageReadStateCheckpoint,
+): MessageReadStateProjection {
+    if (checkpoint.readStateVersion <= 0L || checkpoint.maxReadSeq < 0L) {
+        return incompleteReadStateProjection(checkpoint)
+    }
+    val coverage = state.scopeCoverage[scopeId] ?: return incompleteReadStateProjection(checkpoint)
+    val identityMatches =
+        coverage.serverId == serverId &&
+            coverage.memberId == memberId &&
+            coverage.scopeId == scopeId &&
+            coverage.epoch == epoch
+    val coversUnreadTail =
+        coverage.completeThroughLatest &&
+            !coverage.hasGap &&
+            coverage.coveredThroughSeq >= coverage.remoteHighWaterSeq &&
+            coverage.coveredFromSeq <= checkpoint.maxReadSeq.saturatedIncrement()
+    if (!identityMatches || !coversUnreadTail) return incompleteReadStateProjection(checkpoint)
+
+    var unreadCount = 0
+    var hasMention = false
+    var firstUnreadMessageId: String? = null
+    var firstMentionMessageId: String? = null
+    state.channelMessages[scopeId].orEmpty().forEach { row ->
+        val selfAuthored = row.senderType == "user" && row.senderId == memberId
+        if (row.seq <= checkpoint.maxReadSeq || selfAuthored) return@forEach
+        unreadCount += 1
+        if (firstUnreadMessageId == null) firstUnreadMessageId = row.id
+        val mentionsMember = row.mentions.any { it.type == "user" && it.id == memberId }
+        if (mentionsMember) {
+            hasMention = true
+            if (firstMentionMessageId == null) firstMentionMessageId = row.id
+        }
+    }
+    return MessageReadStateProjection(
+        readStateVersion = checkpoint.readStateVersion,
+        maxReadSeq = checkpoint.maxReadSeq,
+        unreadCount = unreadCount,
+        hasMention = hasMention,
+        firstUnreadMessageId = firstUnreadMessageId,
+        firstMentionMessageId = firstMentionMessageId,
+        complete = true,
+    )
+}
+
+private fun Long.saturatedIncrement(): Long = if (this == Long.MAX_VALUE) Long.MAX_VALUE else this + 1L
+
+private fun restoreMessageDomainSnapshot(snapshot: SyncSnapshot): MessageDomainState {
+    val restored = snapshot.state as? MessageDomainState ?: return createInitialMessageDomainState()
+    val coverage = restored.scopeCoverage[snapshot.scopeId] ?: return restored
+    if (coverage.scopeId == snapshot.scopeId && coverage.epoch == snapshot.epoch) return restored
+    return restored.copy(
+        channelMessages = restored.channelMessages - snapshot.scopeId,
+        scopeCoverage = restored.scopeCoverage - snapshot.scopeId,
+    )
+}
+
+/**
  * The registered messages domain. `density = Sparse` is the compat slice: production delivery still
  * owns gap repair. Unknown event shapes fold to the unchanged state (pure + total).
  */
@@ -179,5 +399,5 @@ fun messagesSyncDomain(): SyncDomainConfig =
                 else -> applyMessageDomainEvent(current, domainEvent)
             }
         },
-        fromSnapshot = { snapshot -> snapshot.state as? MessageDomainState ?: createInitialMessageDomainState() },
+        fromSnapshot = ::restoreMessageDomainSnapshot,
     )
