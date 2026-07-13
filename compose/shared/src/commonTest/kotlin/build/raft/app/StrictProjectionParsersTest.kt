@@ -11,6 +11,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class StrictProjectionParsersTest {
+
+    @Test
+    fun projectedMemberKindConsumerFailsClosedWithoutDiagnostics() {
+        assertEquals(MemberKind.Human, "human".projectedMemberKindOrNull())
+        assertEquals(MemberKind.Agent, "agent".projectedMemberKindOrNull())
+        assertEquals(MemberKind.System, "system".projectedMemberKindOrNull())
+        assertEquals(null, "user".projectedMemberKindOrNull())
+        assertEquals(null, "future-kind".projectedMemberKindOrNull())
+    }
+
     @Test
     fun memberKindParserKeepsWireDialectsDisjoint() {
         val identityExpected =

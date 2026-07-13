@@ -312,11 +312,7 @@ internal fun ThreadTimelineSlice.findThreadAuthorProfile(memberId: String): Memb
         ?.toThreadAuthorProfile()
 
 private fun KuiklyThreadMessageItem.toThreadAuthorProfile(): MemberProfile? {
-    val kind =
-        authorKind.strictMemberKindOrNull(
-            source = "thread_timeline_author",
-            contract = MemberKindWireContract.Projected,
-        ) ?: return null
+    val kind = authorKind.projectedMemberKindOrNull() ?: return null
     return MemberProfile(
         id = MemberId(authorId),
         displayName = authorName.ifBlank { authorId },

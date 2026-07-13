@@ -14755,11 +14755,7 @@ internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     if (threadAuthorBadgeLabel() != null) return null
     // Avatar slot styling consumes the already-normalized Thread projection. It must not infer a
     // human author from unknown presentation data or from the legacy agent-id heuristic.
-    val authorMemberKind =
-        authorKind.strictMemberKindOrNull(
-            source = "thread_avatar_author",
-            contract = MemberKindWireContract.Projected,
-        ) ?: return null
+    val authorMemberKind = authorKind.projectedMemberKindOrNull() ?: return null
     val resolution = resolveAvatarSlot(
         kind = authorMemberKind,
         id = authorId.ifBlank { authorName },

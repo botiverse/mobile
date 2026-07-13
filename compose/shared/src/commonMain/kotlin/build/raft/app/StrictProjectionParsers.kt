@@ -65,6 +65,10 @@ internal fun String?.parsedMessageTypeOrNull(): MessageType? =
 
 internal fun String?.parsedTaskStatusOrNull(): TaskStatus? = TaskStatus.fromWireValue(this)
 
+/** Render-time consumer for values already normalized at an ingest boundary. */
+internal fun String?.projectedMemberKindOrNull(): MemberKind? =
+    parsedMemberKindOrNull(MemberKindWireContract.Projected)
+
 internal fun String?.strictMemberKindOrNull(
     source: String,
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
