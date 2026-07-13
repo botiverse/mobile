@@ -54,7 +54,13 @@ data class ReactionViewerOverlaySnapshot(
     val reactedEmojis: List<String>,
 )
 
-/** A complete compatibility seed. Partial/malformed V1 rosters never become a loaded-empty cache entry. */
+/**
+ * A complete compatibility seed. Partial/malformed V1 rosters never become a loaded-empty cache entry.
+ *
+ * Forward ledger: V1 has no partial-roster marker, so `complete` is the only legal value in this adapter.
+ * Add another completeness value only together with an authoritative producer signal and red/green tests
+ * that prove partial input cannot clear or replace a complete cache entry.
+ */
 data class ReactionActorsReadCacheSeed(
     val parentScopeKey: SyncScopeKey,
     val messageId: String,
@@ -103,16 +109,22 @@ enum class ReactionRosterDiagnosticKind {
     DuplicateEmoji,
     @SerialName("empty_emoji")
     EmptyEmoji,
+    @SerialName("non_canonical_emoji")
+    NonCanonicalEmoji,
     @SerialName("invalid_count")
     InvalidCount,
     @SerialName("parallel_roster_length_mismatch")
     ParallelRosterLengthMismatch,
     @SerialName("empty_actor_id")
     EmptyActorId,
+    @SerialName("non_canonical_actor_id")
+    NonCanonicalActorId,
     @SerialName("duplicate_actor_id")
     DuplicateActorId,
     @SerialName("empty_actor_display_name")
     EmptyActorDisplayName,
+    @SerialName("non_canonical_actor_display_name")
+    NonCanonicalActorDisplayName,
     @SerialName("actor_count_mismatch")
     ActorCountMismatch,
 }
@@ -123,6 +135,11 @@ data class ReactionNormalizationDiagnostic(
     val emoji: String,
 )
 
+/**
+ * An ingress adapter must diagnose both branches. [Normalized] exposes recoverable violations inline;
+ * [Rejected] is a whole-call failure and must be reported independently rather than disappearing because
+ * a caller only drained [NormalizedReactionIngress.violations].
+ */
 sealed interface ReactionNormalizationOutcome {
     data class Normalized(val value: NormalizedReactionIngress) : ReactionNormalizationOutcome
     data class Rejected(
@@ -184,6 +201,14 @@ fun normalizeLegacyReactionRoster(
             rosterDerivativesAreAuthoritative = false
             continue
         }
+        if (reaction.emoji != reaction.emoji.trim()) {
+            diagnostics += ReactionNormalizationDiagnostic(
+                ReactionRosterDiagnosticKind.NonCanonicalEmoji,
+                reaction.emoji,
+            )
+            rosterDerivativesAreAuthoritative = false
+            continue
+        }
         if (reaction.count < 0) {
             diagnostics += ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.InvalidCount, reaction.emoji)
             rosterDerivativesAreAuthoritative = false
@@ -209,14 +234,21 @@ fun normalizeLegacyReactionRoster(
                 rosterDiagnostics += ReactionRosterDiagnosticKind.EmptyActorId
                 return@forEachIndexed
             }
+            if (rawId != id) {
+                rosterDiagnostics += ReactionRosterDiagnosticKind.NonCanonicalActorId
+            }
             if (!actorIds.add(id)) {
                 rosterDiagnostics += ReactionRosterDiagnosticKind.DuplicateActorId
                 return@forEachIndexed
             }
-            val displayName = reaction.reactorNames.getOrNull(index)?.trim().orEmpty()
+            val rawDisplayName = reaction.reactorNames.getOrNull(index).orEmpty()
+            val displayName = rawDisplayName.trim()
             if (displayName.isEmpty()) {
                 rosterDiagnostics += ReactionRosterDiagnosticKind.EmptyActorDisplayName
                 return@forEachIndexed
+            }
+            if (rawDisplayName != displayName) {
+                rosterDiagnostics += ReactionRosterDiagnosticKind.NonCanonicalActorDisplayName
             }
             actors += ReactionActorRef(id = id, displayName = displayName)
         }

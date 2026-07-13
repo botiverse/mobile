@@ -10,6 +10,7 @@ package build.raft.app.data
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
+import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.model.ChannelId
@@ -27,6 +28,7 @@ import build.raft.app.network.sync.FoldPersistenceAdapter
 import build.raft.app.network.sync.RestoredFoldState
 import build.raft.app.network.sync.SqlDelightFoldPersistStore
 import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
+import build.raft.app.network.sync.SyncCoreReactionV2ShadowLane
 import build.raft.app.network.sync.SyncScopeKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +57,21 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         return flags
     }
 
+    private fun resolvedV2Flags(enabled: Boolean): SharedServerFeatureFlags {
+        val flags = SharedServerFeatureFlags(
+            object : SlockFeatureFlagsApi {
+                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
+                    HomeNetworkResponse(
+                        code = 200,
+                        bodyText =
+                            """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
+                    )
+            },
+        )
+        runBlocking { flags.prefetch(ServerId(serverId)) }
+        return flags
+    }
+
     private fun freshDatabase(): SlockSqlDatabase {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         build.raft.app.shared.data.local.SlockDatabase.Schema.create(driver).value
@@ -76,7 +93,11 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         return owner to homeEvents
     }
 
-    private fun canonicalRow(id: String, seq: Long) = CanonicalMessageRow(
+    private fun canonicalRow(
+        id: String,
+        seq: Long,
+        reactions: List<CanonicalReactionWire> = emptyList(),
+    ) = CanonicalMessageRow(
         id = id,
         channelId = channelId,
         seq = seq,
@@ -86,9 +107,14 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         messageType = "chat",
         createdAt = "2026-07-12T00:00:0${seq}Z",
         senderName = "Alice",
+        reactions = reactions,
     )
 
-    private fun messageNewWithCanonical(id: String, seq: Long): MessageNew =
+    private fun messageNewWithCanonical(
+        id: String,
+        seq: Long,
+        reactions: List<CanonicalReactionWire> = emptyList(),
+    ): MessageNew =
         MessageNew(
             message = Message(
                 id = MessageId(id),
@@ -100,7 +126,7 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
                 body = "body-$id",
             ),
             decodedCanonical = CanonicalMessageCarry(
-                row = canonicalRow(id, seq),
+                row = canonicalRow(id, seq, reactions),
                 presentAggregates = emptySet<MessageAggregateField>(),
             ),
         )
@@ -199,5 +225,76 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
 
         assertEquals(emptyList(), persistedFactIds(db), "flag-off must not persist anything")
         assertEquals(1, homeEvents.size)
+    }
+
+    @Test
+    fun normalizedV2ShadowRunsBeforeSinkAndRemainsInvisible() {
+        val owner = SharedRealtimeDomainEventOwner(
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+        )
+        val logs = mutableListOf<String>()
+        val callOrder = mutableListOf<String>()
+        owner.installReactionV2ShadowLane(
+            SyncCoreReactionV2ShadowLane(
+                featureFlags = resolvedV2Flags(enabled = true),
+                logger = { message ->
+                    logs += message
+                    callOrder += "shadow"
+                },
+            ),
+        )
+        val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { server, event ->
+                    callOrder += "sink"
+                    homeEvents += server to event
+                },
+            ),
+        )
+        val event = messageNewWithCanonical(
+            id = "m-v2",
+            seq = 1,
+            reactions = listOf(
+                CanonicalReactionWire("like", 2, listOf("u1", "u1"), listOf("Alice", "Other")),
+            ),
+        )
+
+        owner.accept(serverId, event, source = "app_shell")
+
+        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
+        assertEquals(listOf("shadow", "sink"), callOrder)
+        assertEquals(1, logs.size, "malformed shadow input should diagnose exactly once")
+        assertTrue(logs.single().contains("result=violations"))
+    }
+
+    @Test
+    fun normalizedV2ShadowLoggerFailureCannotBlockLegacySink() {
+        val owner = SharedRealtimeDomainEventOwner(
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemorySlockKeyValueStore()),
+        )
+        owner.installReactionV2ShadowLane(
+            SyncCoreReactionV2ShadowLane(
+                featureFlags = resolvedV2Flags(enabled = true),
+                logger = { error("diagnostics unavailable") },
+            ),
+        )
+        val homeEvents = mutableListOf<Pair<String, RealtimeEvent>>()
+        owner.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { server, event -> homeEvents += server to event },
+            ),
+        )
+        val event = messageNewWithCanonical(
+            id = "m-v2-fail-open",
+            seq = 1,
+            reactions = listOf(
+                CanonicalReactionWire("like", 2, listOf("u1", "u1"), listOf("Alice", "Other")),
+            ),
+        )
+
+        owner.accept(serverId, event, source = "app_shell")
+
+        assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEvents)
     }
 }

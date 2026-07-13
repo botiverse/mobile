@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
  * always sends `"mobile"` ([FEATURE_FLAG_PLATFORM_MOBILE]); the server treats every KMP surface as mobile.
  */
 const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v0"
+const val SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY: String = "sync_core_messages_v2_normalized_v0"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
@@ -26,6 +27,7 @@ const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 /** Mirror of web `REGISTERED_SERVER_FEATURE_FLAG_KEYS` — the batch evaluated at prefetch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
+    SYNC_CORE_MESSAGES_V2_NORMALIZED_FEATURE_FLAG_KEY,
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,

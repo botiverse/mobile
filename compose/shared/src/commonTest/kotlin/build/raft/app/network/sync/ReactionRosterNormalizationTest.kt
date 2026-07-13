@@ -139,6 +139,49 @@ class ReactionRosterNormalizationTest {
     }
 
     @Test
+    fun strictTwoActorRosterSeedsBothActorsWithoutDiagnostics() {
+        val result = normalized(
+            listOf(
+                LegacyReactionRosterDto(
+                    emoji = "like",
+                    count = 2,
+                    reactorIds = listOf("u2", "u1"),
+                    reactorNames = listOf("B", "A"),
+                ),
+            ),
+        )
+
+        assertEquals(listOf("like"), result.viewerOverlay?.reactedEmojis)
+        assertEquals(listOf("u1", "u2"), result.readCacheSeed.single().actors.map(ReactionActorRef::id))
+        assertEquals(emptyList(), result.violations)
+    }
+
+    @Test
+    fun whitespaceRepairIsDiagnosedAndCannotAuthorRosterDerivatives() {
+        val result = normalized(
+            listOf(
+                LegacyReactionRosterDto(
+                    emoji = "like",
+                    count = 2,
+                    reactorIds = listOf(" u2 ", "u1"),
+                    reactorNames = listOf(" B ", "A"),
+                ),
+            ),
+        )
+
+        assertEquals(ReactionFact("like", 2, emptyList()), result.sharedFact.single())
+        assertNull(result.viewerOverlay)
+        assertEquals(emptyList(), result.readCacheSeed)
+        assertEquals(
+            listOf(
+                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.NonCanonicalActorId, "like"),
+                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.NonCanonicalActorDisplayName, "like"),
+            ),
+            result.violations,
+        )
+    }
+
+    @Test
     fun canonicalBytesArePermutationInvariantAndContainNoRosterKeys() {
         val first = normalized(
             listOf(
@@ -189,6 +232,7 @@ class ReactionRosterNormalizationTest {
                 context(),
                 listOf(
                     LegacyReactionRosterDto("", 0),
+                    LegacyReactionRosterDto(" spaced ", 0),
                     LegacyReactionRosterDto("negative", -1),
                     LegacyReactionRosterDto("duplicate", 0),
                     LegacyReactionRosterDto("duplicate", 0),
@@ -203,6 +247,7 @@ class ReactionRosterNormalizationTest {
         assertEquals(
             listOf(
                 ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.EmptyEmoji, ""),
+                ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.NonCanonicalEmoji, " spaced "),
                 ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.InvalidCount, "negative"),
                 ReactionNormalizationDiagnostic(ReactionRosterDiagnosticKind.DuplicateEmoji, "duplicate"),
             ),
