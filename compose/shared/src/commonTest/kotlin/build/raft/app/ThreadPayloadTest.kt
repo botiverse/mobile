@@ -2545,11 +2545,20 @@ class ThreadPayloadTest {
                 serverId = ServerId("server-1"),
                 input = input
             )
-        val initialProjection = input.lookupIds.firstNotNullOfOrNull(initialMap::get)
-        val initialDisplay = input.displayModel(initialProjection, payload)
+        val owner = ThreadHeaderProjectionStateOwner(input, initialMap)
+        val initialDisplay = input.displayModel(owner.selectedProjection(), payload)
+
+        owner.accept(emptyMap())
+        val loadedPayload = payload.copy(status = "content", showOpenInChannelAction = false)
+        val loadedDisplay = input.displayModel(owner.selectedProjection(), loadedPayload)
 
         assertEquals("#general", initialDisplay.subtitle)
-        assertEquals(setOf("channel-1"), initialMap.keys)
+        assertEquals("#general", initialDisplay.threadComposerMentionScopeChannelLabel())
+        assertEquals("channel-1", payload.composer.mentionChannelId ?: payload.parentChannelId)
+        assertEquals("#general", loadedDisplay.subtitle)
+        assertEquals("#general", loadedDisplay.threadComposerMentionScopeChannelLabel())
+        assertTrue(loadedPayload.threadHeaderOpenInParentActionVisible())
+        assertEquals(setOf("channel-1"), owner.state.value.keys)
     }
 
     @Test

@@ -247,6 +247,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -882,6 +884,35 @@ internal fun threadHeaderInitialProjectionMap(
         }
         .toMap()
 }
+
+internal class ThreadHeaderProjectionStateOwner(
+    private val input: ThreadHeaderProjectionInput,
+    initialProjections: Map<String, SharedConversationDirectoryProjection>
+) {
+    private val _state = MutableStateFlow(input.acceptedHeaderProjectionMap(initialProjections))
+    val state: StateFlow<Map<String, SharedConversationDirectoryProjection>> = _state.asStateFlow()
+
+    fun accept(projections: Map<String, SharedConversationDirectoryProjection>) {
+        val accepted = input.acceptedHeaderProjectionMap(projections)
+        if (accepted.isNotEmpty()) {
+            _state.value = accepted
+        }
+    }
+
+    fun selectedProjection(): SharedConversationDirectoryProjection? =
+        input.lookupIds.firstNotNullOfOrNull(_state.value::get)
+}
+
+private fun ThreadHeaderProjectionInput.acceptedHeaderProjectionMap(
+    projections: Map<String, SharedConversationDirectoryProjection>
+): Map<String, SharedConversationDirectoryProjection> =
+    lookupIds
+        .mapNotNull { id ->
+            projections[id]
+                ?.takeIf(::accepts)
+                ?.let { projection -> id to projection }
+        }
+        .toMap()
 
 internal fun KuiklyThreadScreenPayload.toThreadChannelSearchPageData(): JSONObject? {
     val channelId = threadChannelSearchChannelId() ?: return null
@@ -3290,7 +3321,7 @@ internal fun SharedThreadRouteContent(
                 input = headerProjectionInput
             )
         }
-    val directoryConversationProjections by remember(
+    val directoryConversationProjectionFlow = remember(
         conversationIdentityProvider,
         headerProjectionServerId,
         headerProjectionInput.surfaceKind,
@@ -3306,7 +3337,18 @@ internal fun SharedThreadRouteContent(
         } else {
             emptyConversationDirectoryProjectionFlow
         }
-    }.collectAsState(initialDirectoryConversationProjections)
+    }
+    val headerProjectionStateOwner =
+        remember(headerProjectionInput, initialDirectoryConversationProjections) {
+            ThreadHeaderProjectionStateOwner(
+                input = headerProjectionInput,
+                initialProjections = initialDirectoryConversationProjections
+            )
+        }
+    LaunchedEffect(headerProjectionStateOwner, directoryConversationProjectionFlow) {
+        directoryConversationProjectionFlow.collect(headerProjectionStateOwner::accept)
+    }
+    val directoryConversationProjections by headerProjectionStateOwner.state.collectAsState()
     val directoryConversationProjection =
         remember(headerProjectionInput, conversationDirectoryLookupIds, directoryConversationProjections) {
             conversationDirectoryLookupIds
