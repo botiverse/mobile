@@ -745,6 +745,46 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun mixedMarkdownKeepsReferenceInlineBoxesOnTheirOwnTextRanges() {
+        val body =
+            "另外帮一个澄清避免混淆：#31（read-state→Activity，我的）和 @Android-Developer-4 的 " +
+                "**task #521（`message:new`→Activity 即时新增，artin 原话\"新消息来了 activity 没刷新\"）" +
+                "是两个不同 gap，不是重复——Codex 早前建议的\"#521 判重关闭\"是把两者混了，AD4 已更正。" +
+                "#31 复用 versioned read-state fact，#521 是 SharedActivityStore 缺 message:new realtime，两条链路各修各的。"
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    slockMarkdownAnnotator(
+                        body,
+                        highlightedMentions = setOf("Android-Developer-4"),
+                        isTagValid =
+                            validThreadMarkdownTags(
+                                knownMentions = setOf("Android-Developer-4"),
+                                knownTaskNumbers = setOf(31, 521)
+                            )
+                    )
+            )
+
+        val boxedLinkTexts =
+            annotated.getLinkAnnotations(0, annotated.length)
+                .filter { range ->
+                    (range.item as? LinkAnnotation.Clickable)
+                        ?.styles
+                        ?.style
+                        ?.inlineBoxStyle != null
+                }
+                .map { range -> annotated.text.substring(range.start, range.end) }
+
+        assertEquals(
+            listOf("#31", "@Android-Developer-4", "#521", "#521", "#31", "#521"),
+            boxedLinkTexts
+        )
+        assertFalse(boxedLinkTexts.contains("另外帮一个澄清避免混淆："))
+        assertEquals(listOf("message:new"), annotated.slockInlineCodeMarkerTextSegments())
+    }
+
+    @Test
     fun richTextDocumentDrivesRendererChromeAndActions() {
         val body = "Ping @artin in #visual-testing:0211621f for #438 and `#not-ref`"
         val document =
