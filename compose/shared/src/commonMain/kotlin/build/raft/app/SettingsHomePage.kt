@@ -9499,6 +9499,7 @@ private fun SharedQuiverFeedbackContent(
                         attachmentActionsEnabled = remainingSlots > 0,
                         composerMode = if (busy) "sending" else if (!error.isNullOrBlank()) "failed" else "idle",
                         statusLabel = error?.takeIf { it.isNotBlank() },
+                        suggestionsEnabled = false,
                         pendingAttachments = attachments.toFeedbackComposerAttachmentItems(copy)
                     ),
                 composerSendKeyEnabled = composerSendKeyEnabled,

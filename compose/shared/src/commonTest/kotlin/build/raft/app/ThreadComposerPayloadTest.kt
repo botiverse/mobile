@@ -276,6 +276,22 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun composerCanDisableTypedMemberAndChannelSuggestionTriggers() {
+        assertEquals(
+            KuiklyComposerSuggestionTrigger.None,
+            threadComposerSuggestionTrigger("feedback @owner", suggestionsEnabled = false)
+        )
+        assertEquals(
+            KuiklyComposerSuggestionTrigger.None,
+            threadComposerSuggestionTrigger("feedback #support", suggestionsEnabled = false)
+        )
+        assertTrue(
+            threadComposerSuggestionTrigger("feedback @owner", suggestionsEnabled = true) is
+                KuiklyComposerSuggestionTrigger.MemberTrigger
+        )
+    }
+
+    @Test
     fun sendAttachmentIdsExcludeLocalPickedAttachmentsUntilUploadFinishes() {
         val attachments =
             listOf(
