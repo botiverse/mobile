@@ -69,6 +69,11 @@ Before upload, CI verifies all of the following:
 - `pack.info` reports the expected bundle, version name, and version code;
 - at least one HAP is present;
 - every contained HAP passes `hap-sign-tool.jar verify-app`;
+- generated KmmResource strings are staged into the OHOS resource roots;
+- the signed HAP has a nontrivial `resources.index` containing representative
+  `slock_*` keys;
+- the reaction atlas and manifest exist under both `rawfile/assets` and
+  `resfile/assets`;
 - every verified signed HAP is exported as a standalone artifact;
 - the uploaded `.app` has a recorded SHA-256 digest and byte size.
 

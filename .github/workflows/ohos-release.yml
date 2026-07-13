@@ -6,6 +6,8 @@ on:
       - ".github/workflows/ohos-release.yml"
       - "compose/ohosApp/AppScope/app.json5"
       - "scripts/set_ohos_app_version.mjs"
+      - "scripts/stage_ohos_mr_resources.sh"
+      - "scripts/validate_ohos_hap_resources.sh"
       - "scripts/validate_ohos_app_pack.sh"
       - "docs/ohos-release-ci.md"
   workflow_dispatch:
@@ -59,6 +61,8 @@ jobs:
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ohos-release.yml")'
           bash -n scripts/sign_ohos_app_pack.sh
+          bash -n scripts/stage_ohos_mr_resources.sh
+          bash -n scripts/validate_ohos_hap_resources.sh
           bash -n scripts/validate_ohos_app_pack.sh
           node --check scripts/set_ohos_app_version.mjs
 
@@ -501,6 +505,8 @@ jobs:
           test -s ohosApp/entry/libs/arm64-v8a/libshared.so
           test -s ohosApp/entry/src/main/cpp/libshared_api.h
 
+          ../scripts/stage_ohos_mr_resources.sh
+
           api_header_lines="$(wc -l < "$shared_output/libshared_api.h")"
           grep -q 'raftInitKuikly' "$shared_output/libshared_api.h"
           if (( api_header_lines > 500 )); then
@@ -615,6 +621,10 @@ jobs:
             --version-code "$SLOCK_OHOS_VERSION_CODE" \
             --sign-tool "$SIGN_TOOL" \
             --output-dir "$RUNNER_TEMP/ohos-release" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Validate packaged shared resources
+        shell: bash
+        run: scripts/validate_ohos_hap_resources.sh "${{ steps.validate.outputs.hap_path }}"
 
       - name: Collect release symbols and source maps
         shell: bash
