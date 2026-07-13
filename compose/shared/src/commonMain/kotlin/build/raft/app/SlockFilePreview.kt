@@ -200,7 +200,10 @@ internal data class SlockFilePreviewGalleryImage(
     val name: String = "",
     val mimeType: String = "",
     val sizeLabel: String = "",
-    val thumbnailUrl: String? = null
+    val thumbnailUrl: String? = null,
+    val composerImageFileRef: String = "",
+    val composerImagePreviewUri: String = "",
+    val composerImageSizeBytes: Long? = null
 )
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -689,23 +692,57 @@ private fun SlockFilePreviewStandalonePageContent() {
             activeDownloadId = null
         }
     }
-    fun postComposerImageResult(fileRef: String, previewUri: String?) {
-        if (payload.composerImageActionId.isBlank() || fileRef.isBlank()) return
+    fun postComposerImageResult(
+        fileRef: String,
+        previewUri: String?,
+        actionId: String = payload.composerImageActionId,
+        fileName: String = payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } },
+        mimeType: String = payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } },
+        sizeBytes: Long? = payload.composerImageSizeBytes,
+        replaceAttachmentId: String = payload.composerImageReplaceAttachmentId,
+        closePage: Boolean = true
+    ) {
+        if (actionId.isBlank() || fileRef.isBlank()) return
         eventBus.post(
             SLOCK_COMPOSER_IMAGE_EDIT_EVENT,
             JSONObject().apply {
                 put("threadKey", payload.composerImageThreadKey)
-                put("actionId", payload.composerImageActionId)
-                put("action", if (payload.composerImageReplaceAttachmentId.isBlank()) "complete" else "replace")
+                put("actionId", actionId)
+                put("action", if (replaceAttachmentId.isBlank()) "complete" else "replace")
                 put("fileRef", fileRef)
                 put("previewUri", previewUri.orEmpty())
-                put("fileName", payload.composerImageFileName.ifBlank { payload.externalFileName.ifBlank { payload.name.ifBlank { "image.png" } } })
-                put("mimeType", payload.composerImageMimeType.ifBlank { payload.externalMimeType.ifBlank { "image/png" } })
-                payload.composerImageSizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
-                put("replaceAttachmentId", payload.composerImageReplaceAttachmentId)
+                put("fileName", fileName)
+                put("mimeType", mimeType)
+                sizeBytes?.takeIf { it > 0L }?.let { put("sizeBytes", it) }
+                put("replaceAttachmentId", replaceAttachmentId)
             },
             crossProcess = true
         )
+        if (closePage) {
+            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+        }
+    }
+    fun postComposerImageSelection() {
+        val gallery = payload.imageGallery.takeIf { it.isNotEmpty() }
+        if (gallery == null) {
+            postComposerImageResult(
+                fileRef = payload.composerImageFileRef,
+                previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
+            )
+            return
+        }
+        gallery.forEachIndexed { index, image ->
+            postComposerImageResult(
+                fileRef = image.composerImageFileRef,
+                previewUri = image.composerImagePreviewUri.ifBlank { image.thumbnailUrl.orEmpty() },
+                actionId = "${payload.composerImageActionId}-${image.attachmentId.take(12)}-$index",
+                fileName = image.name.ifBlank { "image.png" },
+                mimeType = image.mimeType.ifBlank { "image/png" },
+                sizeBytes = image.composerImageSizeBytes,
+                replaceAttachmentId = "",
+                closePage = false
+            )
+        }
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
     fun requestComposerImageEditSave() {
@@ -721,7 +758,14 @@ private fun SlockFilePreviewStandalonePageContent() {
             val fileRef = result?.optString("data").orEmpty()
             composerImageEditSaving = false
             if (code == 0 && fileRef.isNotBlank()) {
-                postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+                val currentGalleryIndex = payload.imageGalleryIndex.coerceIn(0, payload.imageGallery.lastIndex.coerceAtLeast(0))
+                val currentGalleryImage = payload.imageGallery.getOrNull(currentGalleryIndex)
+                if (payload.composerImageCanComplete && currentGalleryImage != null) {
+                    payload = payload.withComposerImageEditResult(fileRef)
+                    composerImageEditMode = false
+                } else {
+                    postComposerImageResult(fileRef = fileRef, previewUri = fileRef)
+                }
             } else {
                 bridge.toast(result?.optString("message").orEmpty().ifBlank { imageEditorExportFailed })
             }
@@ -814,12 +858,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                 payload = payload,
                 enabled = !downloadActive,
                 onEdit = { composerImageEditMode = true },
-                onComplete = {
-                    postComposerImageResult(
-                        fileRef = payload.composerImageFileRef,
-                        previewUri = payload.composerImagePreviewUri.ifBlank { payload.imageUrl }
-                    )
-                }
+                onComplete = ::postComposerImageSelection
             )
         }
         attachmentCommentsState?.let { state ->
@@ -946,7 +985,7 @@ private fun SlockFilePreviewComposerImageActionBar(
             SlockBrutalActionButton(
                 label = stringResource(MR.strings.common_done),
                 onClick = onComplete,
-                enabled = enabled && payload.composerImageFileRef.isNotBlank(),
+                enabled = enabled && payload.canCompleteComposerImageSelection(),
                 leadingIcon = SlockLucideIconName.Check,
                 minHeight = 34.dp,
                 shadowOffset = 2.dp,
@@ -2621,6 +2660,36 @@ internal fun SlockFilePreviewPayload.imageGalleryProgressLabel(): String? {
     return "${index + 1}/$size"
 }
 
+internal fun SlockFilePreviewPayload.canCompleteComposerImageSelection(): Boolean =
+    if (imageGallery.isNotEmpty()) {
+        imageGallery.all { image -> image.composerImageFileRef.isNotBlank() }
+    } else {
+        composerImageFileRef.isNotBlank()
+    }
+
+internal fun SlockFilePreviewPayload.withComposerImageEditResult(fileRef: String): SlockFilePreviewPayload {
+    if (fileRef.isBlank() || imageGallery.isEmpty()) return this
+    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val updatedGallery =
+        imageGallery.mapIndexed { index, image ->
+            if (index == currentIndex) {
+                image.copy(
+                    thumbnailUrl = fileRef,
+                    composerImageFileRef = fileRef,
+                    composerImagePreviewUri = fileRef
+                )
+            } else {
+                image
+            }
+        }
+    return copy(
+        imageUrl = fileRef,
+        composerImageFileRef = fileRef,
+        composerImagePreviewUri = fileRef,
+        imageGallery = updatedGallery
+    )
+}
+
 internal fun SlockFilePreviewPayload.withImageGalleryIndex(
     index: Int,
     resolvedPayloadByAttachmentId: Map<String, SlockFilePreviewPayload> = emptyMap()
@@ -2728,6 +2797,31 @@ private fun SlockFilePreviewGalleryImage.toPreviewPayload(
 ): SlockFilePreviewPayload {
     val title = name.ifBlank { "Attachment" }
     val meta = sizeLabel
+    if (previous.composerImageActionId.isNotBlank() && previous.composerImageCanComplete) {
+        return previous.copy(
+            kind = "image",
+            requestedKind = "image",
+            title = "Image preview",
+            subtitle = title,
+            name = title,
+            path = title,
+            meta = meta,
+            imageUrl = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() }.takeIf { it.isNotBlank() },
+            message = "",
+            messageDesc = null,
+            error = null,
+            externalFileName = title,
+            externalMimeType = mimeType,
+            source = "",
+            attachmentId = "",
+            composerImageFileRef = composerImageFileRef,
+            composerImageFileName = title,
+            composerImageMimeType = mimeType,
+            composerImageSizeBytes = composerImageSizeBytes,
+            composerImagePreviewUri = composerImagePreviewUri.ifBlank { thumbnailUrl.orEmpty() },
+            imageGalleryIndex = imageGalleryIndex
+        )
+    }
     return previous.copy(
         kind = "loading",
         requestedKind = "image",

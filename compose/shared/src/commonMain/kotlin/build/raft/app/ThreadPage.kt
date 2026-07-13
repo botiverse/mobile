@@ -284,19 +284,20 @@ private const val ThreadAttachmentUploadConcurrencyLimit = 12
 
 internal enum class ThreadPickedAttachmentComposerAction {
     None,
+    OpenImageAnnotation,
     UploadToComposer
 }
 
-@Suppress("UNUSED_PARAMETER")
 internal fun resolveThreadPickedAttachmentComposerAction(
     action: String,
     fileCount: Int,
     imageAnnotationEnabled: Boolean
 ): ThreadPickedAttachmentComposerAction {
-    return if (fileCount <= 0) {
-        ThreadPickedAttachmentComposerAction.None
-    } else {
-        ThreadPickedAttachmentComposerAction.UploadToComposer
+    return when {
+        fileCount <= 0 -> ThreadPickedAttachmentComposerAction.None
+        action == "attachImage" && imageAnnotationEnabled ->
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation
+        else -> ThreadPickedAttachmentComposerAction.UploadToComposer
     }
 }
 private val ThreadMessageBodyTextStyle =
@@ -5151,6 +5152,40 @@ internal fun SharedThreadRouteContent(
             uploadJob.start()
         }
     }
+    fun openComposerImageAnnotation(files: List<PlatformFile>) {
+        val firstFile = files.firstOrNull() ?: return
+        composerImageActionCounter += 1
+        val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
+        val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
+        pager.openSlockFilePreviewPage(
+            SlockFilePreviewPayload(
+                kind = "image",
+                title = "Image preview",
+                subtitle = firstFile.fileName,
+                name = firstFile.fileName,
+                path = firstFile.fileName,
+                meta =
+                    listOf(
+                        firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        firstFile.mimeType.orEmpty()
+                    ).filter { it.isNotBlank() }.joinToString(" · "),
+                imageUrl = previewUri.takeIf { it.isNotBlank() },
+                message = if (previewUri.isBlank()) "Image preview is unavailable." else "",
+                externalFileName = firstFile.fileName,
+                externalMimeType = firstFile.mimeType.orEmpty(),
+                imageGallery = files.map { file -> file.toComposerImageGalleryImage() },
+                composerImageThreadKey = threadInstanceKey,
+                composerImageActionId = actionId,
+                composerImageFileRef = firstFile.fileRef.orEmpty(),
+                composerImageFileName = firstFile.fileName,
+                composerImageMimeType = firstFile.mimeType.orEmpty(),
+                composerImageSizeBytes = firstFile.sizeBytes,
+                composerImagePreviewUri = previewUri,
+                composerImageCanComplete = true,
+                composerImageCanEdit = true
+            )
+        )
+    }
     DisposableEffect(eventBus, threadInstanceKey) {
         val subscription =
             eventBus.observe(SLOCK_COMPOSER_IMAGE_EDIT_EVENT, crossProcess = true) { data ->
@@ -6545,6 +6580,8 @@ internal fun SharedThreadRouteContent(
                                 imageAnnotationEnabled = action == "attachImage" && imageAnnotationEnabled()
                             )
                         ) {
+                            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
+                                openComposerImageAnnotation(files)
                             ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
                             ThreadPickedAttachmentComposerAction.None -> Unit
                         }
@@ -17082,6 +17119,18 @@ private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
 private fun PlatformFile.composerLocalPreviewUri(): String? =
     fileRef?.takeIf { it.isNotBlank() }
         ?: previewUri?.takeIf { it.isNotBlank() }
+
+private fun PlatformFile.toComposerImageGalleryImage(): SlockFilePreviewGalleryImage =
+    SlockFilePreviewGalleryImage(
+        attachmentId = id,
+        name = fileName,
+        mimeType = mimeType.orEmpty(),
+        sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+        thumbnailUrl = composerLocalPreviewUri(),
+        composerImageFileRef = fileRef.orEmpty(),
+        composerImagePreviewUri = composerLocalPreviewUri().orEmpty(),
+        composerImageSizeBytes = sizeBytes
+    )
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount

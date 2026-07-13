@@ -265,11 +265,47 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun pickedSingleImageUploadsToComposerWhenAnnotationIsEnabled() {
+    fun pickedSingleImageOpensAnnotationWhenEnabled() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 1,
+                imageAnnotationEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun pickedSingleImageUploadsDirectlyWhenAnnotationIsDisabled() {
         assertEquals(
             ThreadPickedAttachmentComposerAction.UploadToComposer,
             resolveThreadPickedAttachmentComposerAction(
                 action = "attachImage",
+                fileCount = 1,
+                imageAnnotationEnabled = false
+            )
+        )
+    }
+
+    @Test
+    fun pickedMultipleImagesOpenAnnotationGalleryWhenEnabled() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.OpenImageAnnotation,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachImage",
+                fileCount = 2,
+                imageAnnotationEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun pickedFileDoesNotOpenImageAnnotation() {
+        assertEquals(
+            ThreadPickedAttachmentComposerAction.UploadToComposer,
+            resolveThreadPickedAttachmentComposerAction(
+                action = "attachFile",
                 fileCount = 1,
                 imageAnnotationEnabled = true
             )
