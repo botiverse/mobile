@@ -314,7 +314,8 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
                 source = thumbnailUrl,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                borderWidth = 0.dp
+                borderWidth = 0.dp,
+                contentScale = SlockImageThumbnailContentScale
             )
         }
         if (!(isImage && thumbnailUrl != null)) {

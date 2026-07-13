@@ -7498,7 +7498,7 @@ private fun ThreadImagePreviewOverlay(
                 ) {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            .background(SlockColor.SurfaceCream)
+                            .background(SlockImagePreviewLetterboxColor)
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
                             .then(
                                 if (hasMultiple) {
@@ -7728,7 +7728,7 @@ private fun ThreadImagePreviewThumbnail(
     ) {
         Box(
             modifier = Modifier.fillMaxSize()
-                .background(SlockColor.SurfaceCream)
+                .background(SlockImagePreviewLetterboxColor)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
@@ -7737,7 +7737,8 @@ private fun ThreadImagePreviewThumbnail(
                     source = source,
                     contentDescription = attachment.name,
                     modifier = Modifier.fillMaxSize(),
-                    borderWidth = 0.dp
+                    borderWidth = 0.dp,
+                    contentScale = SlockImageThumbnailContentScale
                 )
             } else {
                 SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
@@ -17151,7 +17152,8 @@ private fun ThreadImageAttachmentTile(
         SlockAspectFitImagePreviewSurface(
             source = thumbnailUrl,
             contentDescription = attachment.name,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            contentScale = SlockImageThumbnailContentScale
         )
     }
 }

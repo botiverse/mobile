@@ -2594,7 +2594,8 @@ private fun ComposerImageAttachmentPreview(
                 source = imagePreviewUri,
                 contentDescription = attachment.fileName,
                 modifier = Modifier.fillMaxSize(),
-                borderWidth = 0.dp
+                borderWidth = 0.dp,
+                contentScale = SlockImageThumbnailContentScale
             )
         } else {
             SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
