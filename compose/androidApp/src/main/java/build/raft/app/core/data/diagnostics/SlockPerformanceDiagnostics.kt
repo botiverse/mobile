@@ -16,7 +16,7 @@ object SlockPerformanceDiagnostics {
     private const val TabSwitchFrameTraceCount = 8
     private const val ThreadHostFrameTraceTtlMs = 1200L
     private const val ThreadHostFrameTraceCount = 10
-    private const val ThreadHostTraversalTraceCount = 12
+    private const val ThreadHostTraversalTraceCount = 40
     private const val TraceNameLimit = 120
 
     private val route = AtomicReference("unknown")

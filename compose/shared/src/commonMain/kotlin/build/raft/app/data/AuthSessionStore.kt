@@ -445,11 +445,48 @@ class KeyValueAuthSessionStore(
     override val authSessionEvents: SharedFlow<AuthSessionEvent> = storeEvents.asSharedFlow()
 
     // Backing read/write of the session record — NOT locked; callers MUST hold [mutex]/[storeMutex].
+    // The durable JSON is loaded once per app-scope store. Every repository/network consumer then
+    // reads the process-owned decoded snapshot; mutations update MMKV and this cache atomically.
+    private fun readSessionRecordStateLocked(): Pair<CachedAuthSessionRecord, Boolean> {
+        cachedSessionRecords[store]?.let { return it to true }
+        val encoded = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
+        var decodeFailure: String? = null
+        val session =
+            encoded?.decodeStoredSessionOrNull(
+                onFailure = { type -> decodeFailure = type }
+            )
+        val record =
+            CachedAuthSessionRecord(
+                session = session,
+                encodedLength = encoded?.length,
+                decodeFailure = decodeFailure
+            )
+        cachedSessionRecords[store] = record
+        return record to false
+    }
+
     private fun readSessionRecordLocked(): StoredAuthSession? =
-        store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+        readSessionRecordStateLocked().first.session
 
     private fun writeSessionRecordLocked(session: StoredAuthSession) {
-        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+        val encoded = authSessionStoreJson.encodeToString(session)
+        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, encoded)
+        cachedSessionRecords[store] =
+            CachedAuthSessionRecord(
+                session = session,
+                encodedLength = encoded.length,
+                decodeFailure = null
+            )
+    }
+
+    private fun clearSessionRecordLocked() {
+        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+        cachedSessionRecords[store] =
+            CachedAuthSessionRecord(
+                session = null,
+                encodedLength = null,
+                decodeFailure = null
+            )
     }
 
     override suspend fun replaceAuthenticatedSession(session: StoredAuthSession) {
@@ -549,38 +586,38 @@ class KeyValueAuthSessionStore(
 
     override suspend fun readSession(): StoredAuthSession? =
         mutex.withLock {
-            val encoded = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
-            if (encoded == null) {
+            val (record, cacheHit) = readSessionRecordStateLocked()
+            if (record.decodeFailure != null) {
                 diagnosticsLogger(
-                    "auth_session_read result=null raw=null caller=${authSessionDiagnosticsCaller()}"
+                    "auth_session_read result=null rawLen=${record.encodedLength ?: 0} " +
+                        "decode=failure errorType=${record.decodeFailure} caller=${authSessionDiagnosticsCaller()}"
                 )
                 return@withLock null
             }
-            val session =
-                encoded.decodeStoredSessionOrNull(
-                    onFailure = { type ->
-                        diagnosticsLogger(
-                            "auth_session_read result=null rawLen=${encoded.length} " +
-                                "decode=failure errorType=$type caller=${authSessionDiagnosticsCaller()}"
-                        )
-                    }
-                )
+            val session = record.session
             if (session == null) {
-                null
-            } else {
-                session
+                diagnosticsLogger(
+                    "auth_session_read result=null raw=null cacheHit=$cacheHit " +
+                        "caller=${authSessionDiagnosticsCaller()}"
+                )
+                return@withLock null
             }
+            if (!cacheHit) {
+                diagnosticsLogger(
+                    "auth_session_read result=success rawLen=${record.encodedLength ?: 0} " +
+                        "selectedServer=${!session.selectedServerId.isNullOrBlank()} " +
+                        "servers=${session.servers.size} cacheHit=false"
+                )
+            }
+            session
         }
 
     override suspend fun saveSession(session: StoredAuthSession) {
         val fingerprint = session.authSessionClearFingerprint()
         val changed =
             mutex.withLock {
-                val previousFingerprint =
-                    store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)
-                        ?.decodeStoredSessionOrNull()
-                        ?.authSessionClearFingerprint()
-                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+                val previousFingerprint = readSessionRecordLocked()?.authSessionClearFingerprint()
+                writeSessionRecordLocked(session)
                 previousFingerprint != fingerprint
             }
         if (changed) {
@@ -634,8 +671,8 @@ class KeyValueAuthSessionStore(
         var generation = 0L
         val previousSession =
             mutex.withLock {
-                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
-                store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                val current = readSessionRecordLocked()
+                clearSessionRecordLocked()
                 generation = nextGenerationLocked()
                 current
             }
@@ -651,7 +688,7 @@ class KeyValueAuthSessionStore(
         var removedGeneration: Long? = null
         val shouldInvalidate =
             mutex.withLock {
-                val current = store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()
+                val current = readSessionRecordLocked()
                 when {
                     current == null -> {
                         diagnosticsLogger(
@@ -660,7 +697,7 @@ class KeyValueAuthSessionStore(
                         true
                     }
                     current.authSessionClearFingerprint() == previousSessionFingerprint -> {
-                        store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+                        clearSessionRecordLocked()
                         removedGeneration = nextGenerationLocked()
                         diagnosticsLogger(
                             "auth_session_clear_notify reason=$reason current=matched result=removed"
@@ -718,10 +755,17 @@ class KeyValueAuthSessionStore(
         }.getOrNull()
 
     private companion object {
+        private data class CachedAuthSessionRecord(
+            val session: StoredAuthSession?,
+            val encodedLength: Int?,
+            val decodeFailure: String?
+        )
+
         // Process-wide, shared across ALL KeyValueAuthSessionStore instances (every instance
         // backs the same MMKV session record). This is the single serialization domain for all
         // session read-modify-writes — the fix for the #466 cross-subsystem lost-update.
         private val storeMutex = Mutex()
+        private val cachedSessionRecords = mutableMapOf<SlockKeyValueStore, CachedAuthSessionRecord>()
 
         // Process-wide shared event bus + generation counter (#466 gate: cross-instance
         // notification). generation is assigned INSIDE storeMutex; events emit AFTER the lock,

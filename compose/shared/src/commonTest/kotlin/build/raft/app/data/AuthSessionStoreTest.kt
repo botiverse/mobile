@@ -76,15 +76,19 @@ class AuthSessionStoreTest {
     }
 
     @Test
-    fun successfulSessionReadsDoNotWriteHotPathDiagnostics() = runBlocking {
-        val keyValueStore = InMemorySlockKeyValueStore()
+    fun successfulSessionReadsUseDecodedProcessCache() = runBlocking {
+        val keyValueStore = CountingSlockKeyValueStore()
         val logs = mutableListOf<String>()
         val store = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
+        val secondStore = KeyValueAuthSessionStore(keyValueStore, diagnosticsLogger = logs::add)
 
         store.saveSession(sampleSession())
         logs.clear()
+        keyValueStore.readCount = 0
 
         assertEquals("server-1", store.readSession()?.currentServerId)
+        assertEquals("server-1", secondStore.readSession()?.currentServerId)
+        assertEquals(0, keyValueStore.readCount)
         assertTrue(logs.isEmpty())
     }
 
@@ -367,6 +371,20 @@ class AuthSessionStoreTest {
         store.replaceAuthenticatedSession(sampleSession()) // real Authenticated
         val event = withTimeoutOrNull(1000) { firstEvent.await() }
         assertTrue(event is AuthSessionEvent.Authenticated) // NOT a fabricated Cleared from the no-op notify
+    }
+
+    private class CountingSlockKeyValueStore : SlockKeyValueStore {
+        private val delegate = InMemorySlockKeyValueStore()
+        var readCount: Int = 0
+
+        override fun getString(key: String): String? {
+            readCount += 1
+            return delegate.getString(key)
+        }
+
+        override fun putString(key: String, value: String?) {
+            delegate.putString(key, value)
+        }
     }
 
     private fun sampleSession(): StoredAuthSession =

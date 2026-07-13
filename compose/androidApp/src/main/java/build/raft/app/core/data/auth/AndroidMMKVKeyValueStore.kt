@@ -119,12 +119,6 @@ internal object AndroidAppScopeMMKV {
         valueLength: Int? = null
     ) {
         if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
-        if (
-            (operation == "contains" && result == "true") ||
-            (operation == "decode" && result == "value")
-        ) {
-            return
-        }
         SlockAndroidLocalDiagnostics.recordLog(
             "info",
             "SlockKuikly",
@@ -182,8 +176,19 @@ internal object AndroidAppScopeMMKV {
     }
 }
 
+private object AndroidAppScopeKeyValueStores {
+    private val stores = mutableMapOf<String, AndroidMMKVKeyValueStore>()
+
+    fun get(context: Context, namespace: String): AndroidMMKVKeyValueStore =
+        synchronized(stores) {
+            stores.getOrPut(namespace) {
+                AndroidMMKVKeyValueStore(context.applicationContext, namespace)
+            }
+        }
+}
+
 fun androidMMKVAuthKeyValueStore(context: Context): SlockKeyValueStore =
-    AndroidMMKVKeyValueStore(context, SLOCK_AUTH_SESSION_MMKV_NAMESPACE)
+    AndroidAppScopeKeyValueStores.get(context, SLOCK_AUTH_SESSION_MMKV_NAMESPACE)
 
 fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
     val appContext = context.applicationContext
@@ -193,7 +198,7 @@ fun installAndroidAppScopeSharedKeyValueStores(context: Context) {
         SharedApiEnvironmentStore.Namespace
     ).forEach { namespace ->
         SlockSharedKeyValueStoreProvider.installAppScopeFactory(namespace) {
-            AndroidMMKVKeyValueStore(appContext, namespace)
+            AndroidAppScopeKeyValueStores.get(appContext, namespace)
         }
     }
 }
