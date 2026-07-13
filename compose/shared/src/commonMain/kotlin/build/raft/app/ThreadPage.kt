@@ -2070,7 +2070,10 @@ private fun ThreadMembersPageScreen() {
                     title = "Members",
                     iconName = SlockLucideIconName.Users,
                     leadingContent = {
-                        SlockTopPageHeaderAction(SlockLucideIconName.ArrowLeft) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+                        SlockTopPageHeaderAction(
+                            icon = SlockLucideIconName.ArrowLeft,
+                            onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+                        )
                     }
                 )
                 ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
@@ -2197,12 +2200,18 @@ private fun ThreadMembersPageScreen() {
                 backgroundColor = SlockColor.SurfaceWhite,
                 refreshing = slice.status == SharedServerMembersLoadStatus.InFlight && members.isNotEmpty(),
                 leadingContent = {
-                    SlockTopPageHeaderAction(SlockLucideIconName.ArrowLeft) { router.closePage() }
+                    SlockTopPageHeaderAction(
+                        icon = SlockLucideIconName.ArrowLeft,
+                        onClick = { router.closePage() }
+                    )
                 },
                 trailingContent =
                     if (slice.canAddMembers) {
                         {
-                            SlockTopPageHeaderAction(SlockLucideIconName.UserPlus) { addDialogVisible = true }
+                            SlockTopPageHeaderAction(
+                                icon = SlockLucideIconName.UserPlus,
+                                onClick = { addDialogVisible = true }
+                            )
                         }
                     } else {
                         null
